@@ -1887,32 +1887,22 @@ static bool is_likely_interp(string fsname) {
 
 static remote_ptr<void> base_addr_from_rendezvous(Task* t, string fname)
 {
-  std::vector<uint8_t> auxv = t->vm()->saved_auxv();
-  if (auxv.size() == 0 || (auxv.size() % sizeof(uint64_t) != 0)) {
-    // Corrupted or missing auxv
+  remote_ptr<void> interpreter_base = t->vm()->saved_interpreter_base();
+  if (!interpreter_base || !t->vm()->has_mapping(interpreter_base)) {
     return nullptr;
   }
-  remote_ptr<void> interpreter_base = nullptr;
-  bool found = false;
-  for (size_t i = 0; i < (auxv.size() / sizeof(uint64_t)) - 1; i += 2) {
-    uint64_t* entry = ((uint64_t*)auxv.data())+i;
-    uint64_t kind = entry[0];
-    uint64_t value = entry[1];
-    if (kind == AT_BASE) {
-      interpreter_base = value;
-      found = true;
-      break;
-    }
+  string ld_path = t->vm()->saved_ld_path();
+  if (ld_path.length() == 0) {
+    FATAL() << "Failed to retrieve interpreter name with interpreter_base=" << interpreter_base;
   }
-  if (!found || !t->vm()->has_mapping(interpreter_base)) {
-    return nullptr;
-  }
-  string ld_path = t->vm()->mapping_of(interpreter_base).map.fsname();
   ScopedFd ld(ld_path.c_str(), O_RDONLY);
+  if (ld < 0) {
+    FATAL() << "Open failed: " << ld_path;
+  }
   ElfFileReader reader(ld);
   auto syms = reader.read_symbols(".dynsym", ".dynstr");
   static const char r_debug[] = "_r_debug";
-  found = false;
+  bool found = false;
   uintptr_t r_debug_offset = 0;
   for (size_t i = 0; i < syms.size(); ++i) {
     if (!syms.is_name(i, r_debug)) {

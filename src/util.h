@@ -52,6 +52,16 @@ enum Completion { COMPLETE, INCOMPLETE };
 std::vector<uint8_t> read_auxv(Task* t);
 
 /**
+ * Returns the base address where the interpreter is mapped.
+ */
+remote_ptr<void> read_interpreter_base(std::vector<uint8_t> auxv);
+
+/**
+ * Returns a string containing the file name of the interpreter.
+ */
+std::string read_ld_path(Task* t, remote_ptr<void> interpreter_base);
+
+/**
  * Returns a vector containing the environment strings.
  */
 std::vector<std::string> read_env(Task* t);
