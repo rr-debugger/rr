@@ -101,6 +101,31 @@ vector<uint8_t> read_auxv(Task* t) {
   RR_ARCH_FUNCTION(read_auxv_arch, t->arch(), t);
 }
 
+remote_ptr<void> read_interpreter_base(std::vector<uint8_t> auxv) {
+  if (auxv.size() == 0 || (auxv.size() % sizeof(uint64_t) != 0)) {
+    // Corrupted or missing auxv
+    return nullptr;
+  }
+  remote_ptr<void> interpreter_base = nullptr;
+  for (size_t i = 0; i < (auxv.size() / sizeof(uint64_t)) - 1; i += 2) {
+    uint64_t* entry = ((uint64_t*)auxv.data())+i;
+    uint64_t kind = entry[0];
+    uint64_t value = entry[1];
+    if (kind == AT_BASE) {
+      interpreter_base = value;
+      break;
+    }
+  }
+  return interpreter_base;
+}
+
+std::string read_ld_path(Task* t, remote_ptr<void> interpreter_base) {
+  if (!interpreter_base || !t->vm()->has_mapping(interpreter_base)) {
+    return {};
+  }
+  return t->vm()->mapping_of(interpreter_base).map.fsname();
+}
+
 template <typename Arch> void patch_auxv_vdso_arch(RecordTask* t) {
   auto stack_ptr = auxv_ptr<Arch>(t);
   std::vector<uint8_t> v = read_auxv_arch<Arch>(t, stack_ptr);

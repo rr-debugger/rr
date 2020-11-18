@@ -482,7 +482,19 @@ vector<AddressSpace::SyscallType> AddressSpace::rr_page_syscalls() {
   return result;
 }
 
-void AddressSpace::save_auxv(Task* t) { saved_auxv_ = read_auxv(t); }
+void AddressSpace::save_auxv(Task* t) {
+  saved_auxv_ = read_auxv(t);
+  save_interpreter_base(t, saved_auxv());
+}
+
+void AddressSpace::save_interpreter_base(Task* t, std::vector<uint8_t> auxv) {
+  saved_interpreter_base_ = read_interpreter_base(auxv);
+  save_ld_path(t, saved_interpreter_base());
+}
+
+void AddressSpace::save_ld_path(Task* t, remote_ptr<void> interpreter_base) {
+  saved_ld_path_ = read_ld_path(t, interpreter_base);
+}
 
 void AddressSpace::read_mm_map(Task* t, struct prctl_mm_map* map) {
   char buf[PATH_MAX+1024];
@@ -1657,6 +1669,8 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       stopping_breakpoint_table_(o.stopping_breakpoint_table_),
       stopping_breakpoint_table_entry_size_(o.stopping_breakpoint_table_entry_size_),
       saved_auxv_(o.saved_auxv_),
+      saved_interpreter_base_(o.saved_interpreter_base_),
+      saved_ld_path_(o.saved_ld_path_),
       first_run_event_(0) {
   for (auto& m : mem) {
     // The original address space continues to have exclusive ownership of

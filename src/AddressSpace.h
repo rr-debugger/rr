@@ -752,6 +752,12 @@ public:
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
 
+  remote_ptr<void> saved_interpreter_base() { return saved_interpreter_base_; }
+  void save_interpreter_base(Task* t, std::vector<uint8_t> auxv);
+
+  std::string saved_ld_path() { return saved_ld_path_;}
+  void save_ld_path(Task* t, remote_ptr<void>);
+
   void read_mm_map(Task* t, struct prctl_mm_map* map);
 
   /**
@@ -1123,6 +1129,8 @@ private:
   int stopping_breakpoint_table_entry_size_;
 
   std::vector<uint8_t> saved_auxv_;
+  remote_ptr<void> saved_interpreter_base_;
+  std::string saved_ld_path_;
 
   /**
    * The time of the first event that ran code for a task in this address space.
