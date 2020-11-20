@@ -1215,6 +1215,7 @@ set(TESTS_WITH_PROGRAM
   x86/int3_ok
   interrupt
   intr_ptrace_decline
+  invalid_interpreter
   invalid_jump
   jit_proc_mem
   link
