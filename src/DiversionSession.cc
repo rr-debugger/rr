@@ -154,6 +154,10 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   if (t->stop_sig()) {
     LOG(debug) << "Pending signal: " << t->get_siginfo();
     result.break_status = diagnose_debugger_trap(t, command);
+    if (!result.break_status.breakpoint_hit && result.break_status.watchpoints_hit.empty() && !result.break_status.singlestep_complete && (t->stop_sig() == SIGTRAP)) {
+      result.break_status.signal = unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
+      result.break_status.signal->si_signo = t->stop_sig();
+    }
     LOG(debug) << "Diversion break at ip=" << (void*)t->ip().register_value()
                << "; break=" << result.break_status.breakpoint_hit
                << ", watch=" << !result.break_status.watchpoints_hit.empty()
