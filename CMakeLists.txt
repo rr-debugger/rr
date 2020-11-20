@@ -1185,6 +1185,7 @@ set(TESTS_WITH_PROGRAM
   daemon_read
   dconf_mock
   dev_tty
+  diversion_sigtrap
   diversion_syscall
   dlopen
   early_error
