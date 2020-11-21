@@ -8,7 +8,7 @@ static __attribute__((noinline)) void breakpoint(void) {
 }
 
 static __attribute__((noinline)) int hardware_breakpoint(void) {
-  asm("int3;");
+  debug_trap();
   return 10;
 }
 
