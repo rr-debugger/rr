@@ -734,7 +734,7 @@ bool GdbConnection::query(char* payload) {
       req.target = query_thread;
       req.mem().addr = strtoul(args, &args, 16);
       parser_assert(';' == *args++);
-      req.mem().len = strtoul(args, &args, 16);
+      req.mem().len = strtoull(args, &args, 16);
       parser_assert(';' == *args++);
       read_binary_data((const uint8_t*)args, inbuf.data() + packetend,
                        req.mem().data);
