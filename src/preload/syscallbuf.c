@@ -143,6 +143,7 @@ static int process_inited;
 RR_HIDDEN struct preload_globals globals;
 RR_HIDDEN char impose_syscall_delay;
 RR_HIDDEN char impose_spurious_desched;
+RR_HIDDEN int (*real_pthread_mutex_init)(void* mutex, const void* attr);
 RR_HIDDEN int (*real_pthread_mutex_lock)(void* mutex);
 RR_HIDDEN int (*real_pthread_mutex_trylock)(void* mutex);
 RR_HIDDEN int (*real_pthread_mutex_timedlock)(void* mutex,
@@ -775,6 +776,7 @@ static void __attribute__((constructor)) init_process(void) {
           "or try using `rr record -n` (slow).");
   }
 
+  real_pthread_mutex_init = dlsym(RTLD_NEXT, "pthread_mutex_init");
   real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
   real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
   real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");

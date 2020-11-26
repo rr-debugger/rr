@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -31,8 +32,32 @@ static void fix_mutex_kind(pthread_mutex_t* mutex) {
  * to use a pthreads-based implementation). So before our pointers are set
  * up, call these.
  */
+extern int __pthread_mutex_init(pthread_mutex_t* mutex,
+                                const pthread_mutexattr_t* attr);
 extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
 extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
+
+int pthread_mutex_init(pthread_mutex_t* mutex,
+                       const pthread_mutexattr_t* attr) {
+  int ret;
+  pthread_mutexattr_t realattr;
+
+  /* We wish to enforce the use of plain (no PI) mutex to avoid
+   * needing to handle PI futex() operations.
+   * We also wish to ensure that pthread_mutexattr_getprotocol()
+   * still returns the requested protocol.
+   * So we copy the attribute and force PTHREAD_PRIO_NONE.
+   */
+  memcpy(&realattr, &attr, sizeof(realattr));
+  ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
+  if (ret) {
+    return ret;
+  }
+  if (real_pthread_mutex_init) {
+    return real_pthread_mutex_init(mutex, &realattr);
+  }
+  return __pthread_mutex_init(mutex, &realattr);
+}
 
 /* Prevent use of lock elision; Haswell's TSX/RTM features used by
    lock elision increment the rbc perf counter for instructions which

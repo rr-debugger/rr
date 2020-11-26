@@ -944,6 +944,7 @@ set(BASIC_TESTS
   pid_ns_reap
   pid_ns_segv
   pidfd
+  pthread_pi_mutex
   pthread_rwlocks
   poll_sig_race
   ppoll
