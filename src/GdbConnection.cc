@@ -531,6 +531,19 @@ bool GdbConnection::xfer(const char* name, char* args) {
     return false;
   }
 
+  // qXfer:libraries
+  if (!strcmp(name, "libraries")) {
+    if (strcmp(mode, "read")) {
+      write_packet("");
+      return false;
+    }
+
+    req = GdbRequest(DREQ_GET_LIBRARY_LIST);
+    req.library().addr = offset;
+    req.library().len = len;
+    return true;
+  }
+
   write_packet("");
   return false;
 }
@@ -663,7 +676,6 @@ bool GdbConnection::query(char* payload) {
                  ";QStartNoAckMode+"
                  ";qXfer:features:read+"
                  ";qXfer:auxv:read+"
-                 ";qXfer:exec-file:read+"
                  ";qXfer:siginfo:read+"
                  ";qXfer:siginfo:write+"
                  ";multiprocess+"
@@ -671,6 +683,12 @@ bool GdbConnection::query(char* payload) {
                  ";swbreak+"
                  ";ConditionalBreakpoints+"
                  ";vContSupported+";
+    if (features().target_wine) {
+      supported << ";qXfer:libraries:read+";
+    } else {
+      /* Don't announce exec-file, executable gets delivered as library with --target-wine for now. */
+      supported << ";qXfer:exec-file:read+";
+    }
     if (features().reverse_execution) {
       supported << ";ReverseContinue+"
                    ";ReverseStep+";
@@ -1708,6 +1726,29 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
     str.back() = 0;
     write_packet(str.c_str());
   }
+
+  consume_request();
+}
+
+extern string create_library_response_from_mappings(Task *t);
+
+void GdbConnection::reply_get_library_list(Task *t) {
+  DEBUG_ASSERT(DREQ_GET_LIBRARY_LIST == req.type);
+  auto addr = req.library().addr;
+  auto len = req.library().len;
+  static string str;
+  if (addr == 0) {
+    str = create_library_response_from_mappings(t);
+    LOG(debug) << "GDB library reply: " << str;
+  }
+  string part;
+  if (str.length() < addr + len) {
+    part = "l";
+  } else {
+    part = "m";
+  }
+  part += str.substr(addr, len);
+  write_packet(part.c_str());
 
   consume_request();
 }

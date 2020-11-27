@@ -142,6 +142,9 @@ enum GdbRequestType {
   DREQ_FILE_PREAD,
   // vFile:close packet, uses params.file_close.
   DREQ_FILE_CLOSE,
+
+  // qXfer:libraries, uses params.library
+  DREQ_GET_LIBRARY_LIST,
 };
 
 enum GdbRestartType {
@@ -245,6 +248,10 @@ struct GdbRequest {
   struct FileClose {
     int fd;
   } file_close_;
+  struct Library {
+    uintptr_t addr;
+    size_t len;
+  } library_;
 
   Mem& mem() {
     DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -337,6 +344,14 @@ struct GdbRequest {
   const FileClose& file_close() const {
     DEBUG_ASSERT(type == DREQ_FILE_CLOSE);
     return file_close_;
+  }
+  Library& library() {
+    DEBUG_ASSERT(type == DREQ_GET_LIBRARY_LIST);
+    return library_;
+  }
+  const Library& library() const {
+    DEBUG_ASSERT(type == DREQ_GET_LIBRARY_LIST);
+    return library_;
   }
 
   /**
@@ -486,6 +501,11 @@ public:
    * |len|.
    */
   void reply_get_thread_list(const std::vector<GdbThreadId>& threads);
+
+  /**
+   * Reply to the DREQ_GET_LIBRARY_LIST request.
+   */
+  void reply_get_library_list(Task *t);
 
   /**
    * |ok| is true if the request was successfully applied, false if

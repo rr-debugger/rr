@@ -772,6 +772,10 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_tls_addr(ok, address);
       return;
     }
+    case DREQ_GET_LIBRARY_LIST: {
+      dbg->reply_get_library_list(target);
+      return;
+    }
     default:
       FATAL() << "Unknown debugger request " << req.type;
   }
