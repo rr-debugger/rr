@@ -30,13 +30,15 @@ class GdbServer {
 
 public:
   struct Target {
-    Target() : pid(0), require_exec(false), event(0) {}
+    Target() : pid(0), require_exec(false), event(0), target_wine(false) {}
     // Target process to debug, or 0 to just debug the first process
     pid_t pid;
     // If true, wait for the target process to exec() before attaching debugger
     bool require_exec;
     // Wait until at least 'event' has elapsed before attaching
     FrameTime event;
+
+    bool target_wine;
   };
 
   struct ConnectionFlags {
@@ -87,7 +89,8 @@ public:
   static void launch_gdb(ScopedFd& params_pipe_fd,
                          const std::string& gdb_binary_file_path,
                          const std::vector<std::string>& gdb_options,
-                         bool serve_files);
+                         bool serve_files,
+                         bool target_wine);
 
   /**
    * Start a debugging connection for |t| and return when there are no

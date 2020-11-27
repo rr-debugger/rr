@@ -620,8 +620,10 @@ set(RR_GDB_RESOURCES
   64bit-seg.xml
   64bit-sse.xml
   amd64-avx-linux.xml
+  amd64-avx-wine.xml
   amd64-linux.xml
   i386-avx-linux.xml
+  i386-avx-wine.xml
   i386-linux.xml
   aarch64-core.xml
   aarch64-fpu.xml

@@ -69,7 +69,10 @@ ReplayCommand ReplayCommand::singleton(
     "  --stats=<N>                display brief stats every N steps (eg 10000).\n"
     "  --serve-files              Serve all files from the trace rather than\n"
     "                             assuming they exist on disk. Debugging will\n"
-    "                             be slower, but be able to tolerate missing files\n");
+    "                             be slower, but be able to tolerate missing files\n"
+    "  --target-wine              Tell gdb to use a library list supplied by rr.\n"
+    "                             This requires to jump after wine finished process\n"
+    "                             creation by adding option -g.\n");
 
 struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
@@ -128,6 +131,10 @@ struct ReplayFlags {
   // to get them from the filesystem
   bool serve_files;
 
+  // When set, gdb should retrieve the list of shared libraries via
+  // gdbserver instead of inspecting memory itself.
+  bool target_wine;
+
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -142,7 +149,8 @@ struct ReplayFlags {
         cpu_unbound(false),
         share_private_mappings(false),
         dump_interval(0),
-        serve_files(false) {}
+        serve_files(false),
+        target_wine(false) {}
 };
 
 static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
@@ -168,7 +176,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 2, "stats", HAS_PARAMETER },
     { 3, "serve-files", NO_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
-    { 'i', "interpreter", HAS_PARAMETER }
+    { 'i', "interpreter", HAS_PARAMETER },
+    { 4, "target-wine", NO_PARAMETER },
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -258,6 +267,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     case 'i':
       flags.gdb_options.push_back("-i");
       flags.gdb_options.push_back(opt.value);
+      break;
+    case 4:
+      flags.target_wine = true;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
@@ -441,6 +453,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       break;
   }
   target.event = flags.goto_event;
+  target.target_wine = flags.target_wine;
 
   // If we're not going to autolaunch the debugger, don't go
   // through the rigamarole to set that up.  All it does is
@@ -515,7 +528,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
     GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_binary_file_path,
                           flags.gdb_options,
-                          flags.serve_files);
+                          flags.serve_files,
+                          flags.target_wine);
   }
 
   // Child must have died before we were able to get debugger parameters

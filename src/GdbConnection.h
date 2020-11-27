@@ -368,8 +368,9 @@ struct GdbRequest {
 class GdbConnection {
 public:
   struct Features {
-    Features() : reverse_execution(true) {}
+    Features() : reverse_execution(true), target_wine(false) {}
     bool reverse_execution;
+    bool target_wine;
   };
 
   /**
