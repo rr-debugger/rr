@@ -35,7 +35,8 @@ public:
     Stdio,
     VirtualPerfCounter,
     SysCpu,
-    ProcStat
+    ProcStat,
+    RRPage
   };
 
   virtual Type type() { return Base; }

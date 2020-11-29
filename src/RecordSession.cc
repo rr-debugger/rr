@@ -1971,22 +1971,6 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
   return true;
 }
 
-static string find_helper_library(const char* basepath) {
-  string lib_path = resource_path() + "lib64/rr/";
-  string file_name = lib_path + basepath;
-  if (access(file_name.c_str(), F_OK) == 0) {
-    return lib_path;
-  }
-  lib_path = resource_path() + "lib/rr/";
-  file_name = lib_path + basepath;
-  if (access(file_name.c_str(), F_OK) == 0) {
-    return lib_path;
-  }
-  // File does not exist. Assume install put it in LD_LIBRARY_PATH.
-  lib_path = "";
-  return lib_path;
-}
-
 static void inject_ld_helper_library(vector<string>& env,
                                      string env_var,
                                      string value) {

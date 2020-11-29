@@ -728,9 +728,10 @@ public:
     SupportedArch arch, remote_code_ptr ip);
 
   /**
-   * Return a pointer to 8 bytes of 0xFF
+   * Return a pointer to 8 bytes of 0xFF.
+   * (Currently only set during record / not part of the ABI)
    */
-  static remote_ptr<uint8_t> rr_page_ff_bytes() { return RR_PAGE_FF_BYTES; }
+  static remote_ptr<uint8_t> rr_page_record_ff_bytes() { return RR_PAGE_FF_BYTES; }
 
   /**
    * Locate a syscall instruction in t's VDSO.

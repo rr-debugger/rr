@@ -97,6 +97,10 @@ static inline const char* extract_file_name(const char* s) {
 #define RTLDAUDIT_LIB_FILENAME_PADDED RTLDAUDIT_LIB_FILENAME_BASE ".so:::"
 #define RTLDAUDIT_LIB_FILENAME_32 RTLDAUDIT_LIB_FILENAME_BASE "_32.so"
 
+#define RRPAGE_LIB_FILENAME_BASE "librrpage"
+#define RRPAGE_LIB_FILENAME RRPAGE_LIB_FILENAME_BASE ".so"
+#define RRPAGE_LIB_FILENAME_32 RRPAGE_LIB_FILENAME_BASE "_32.so"
+
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
@@ -724,6 +728,10 @@ inline static int is_proc_stat_file(const char* filename) {
   return streq("/proc/stat", filename);
 }
 
+inline static int is_rr_page_lib(const char* filename) {
+  return streq(extract_file_name(filename), "librrpage.so");
+}
+
 /**
  * Returns nonzero if an attempted open() of |filename| can be syscall-buffered.
  * When this returns zero, the open must be forwarded to the rr process.
@@ -736,7 +744,7 @@ inline static int allow_buffered_open(const char* filename) {
          !is_blacklisted_filename(filename) && !is_gcrypt_deny_file(filename) &&
          !is_terminal(filename) && !is_proc_mem_file(filename) &&
          !is_proc_fd_dir(filename) && !is_sys_cpu_online_file(filename) &&
-         !is_proc_stat_file(filename);
+         !is_proc_stat_file(filename) && !is_rr_page_lib(filename);
 }
 
 #endif /* RR_PRELOAD_INTERFACE_H_ */

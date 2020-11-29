@@ -70,6 +70,7 @@
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
 #include "ProcStatMonitor.h"
+#include "RRPageMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Scheduler.h"
@@ -2958,7 +2959,7 @@ static void prepare_exit(RecordTask* t) {
   // So hijack this SYS_exit call and rewrite it into a SYS_rt_sigprocmask.
   r.set_original_syscallno(syscall_number_for_rt_sigprocmask(t->arch()));
   r.set_arg1(SIG_BLOCK);
-  r.set_arg2(AddressSpace::rr_page_ff_bytes());
+  r.set_arg2(AddressSpace::rr_page_record_ff_bytes());
   r.set_arg3(0);
   r.set_arg4(sizeof(sig_set_t));
   t->set_regs(r);
@@ -2996,7 +2997,24 @@ static void prepare_mmap_register_params(RecordTask* t) {
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
 #endif
-  if (t->session().enable_chaos() &&
+  int fd = r.arg5_signed();
+  size_t offset = r.arg6();
+  size_t length = r.arg2();
+  intptr_t flags = r.arg4_signed();
+  FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
+  if (fd > 0 && fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
+    LOG(debug) << "Got request to map rr page";
+    if (offset == 0 && !(flags & MAP_FIXED) && length <= 2*page_size()) {
+      // If the dynamic linker allows us to map the rr page anywhere, ask to
+      // map it at the address we need it to be to match RR_PAGE_ADDR.
+      // N.B. rr_page.ld sets this layout. If the layout is edited, this may
+      // need to be adjusted.
+      r.set_arg1(RR_PAGE_ADDR - page_size());
+      r.set_arg2(page_size());
+      r.set_arg4(flags | MAP_FIXED);
+    }
+  }
+  else if (t->session().enable_chaos() &&
       !(r.arg4_signed() & mask_flag) && r.arg1() == 0) {
     // No address hint was provided. Randomize the allocation address.
     size_t len = r.arg2();
@@ -5312,6 +5330,23 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     return;
   }
 
+  FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
+  if (fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
+    LOG(debug) << "Processing mmap of rr page";
+    if (offset_pages == 1 && length <= page_size() &&
+        addr == RR_PAGE_ADDR && t->vm()->has_rr_page()) {
+      // If this is a remap of the rr page at the RR_PAGE_ADDR, skip all further
+      // processing. We silently already did this just after exec.
+      KernelMapping rr_page_mapping =
+          t->vm()->mapping_of(AddressSpace::rr_page_start()).map;
+      auto d = t->trace_writer().write_mapped_region(t, rr_page_mapping,
+        rr_page_mapping.fake_stat(), rr_page_mapping.fsname(),
+        vector<TraceRemoteFd>(), TraceWriter::RR_BUFFER_MAPPING);
+      ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
+      return;
+    }
+  }
+
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
   ASSERT(t, !(flags & MAP_GROWSDOWN));
 
@@ -5676,6 +5711,9 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
   } else if (is_proc_stat_file(pathname.c_str())) {
     LOG(info) << "Installing ProcStatMonitor for " << fd;
     file_monitor = new ProcStatMonitor(t, pathname);
+  } else if (is_rr_page_lib(pathname.c_str())) {
+    LOG(info) << "Installing RRPageMonitor for " << fd;
+    file_monitor = new RRPageMonitor();
   } else if (flags & O_DIRECT) {
     // O_DIRECT can impose unknown alignment requirements, in which case
     // syscallbuf records will not be properly aligned and will cause I/O
@@ -5861,10 +5899,12 @@ static void rec_process_syscall_arch(RecordTask* t,
           Registers r = t->regs();
           r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
           r.set_arg4(syscall_state.syscall_entry_registers.arg4_signed());
-          t->set_regs(r);
           process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
                        (int)r.arg4_signed(), (int)r.arg5_signed(),
                        ((off_t)r.arg6_signed()) / 4096);
+          r.set_arg2(syscall_state.syscall_entry_registers.arg2_signed());
+          r.set_arg3(syscall_state.syscall_entry_registers.arg3_signed());
+          t->set_regs(r);
           break;
         }
       }
@@ -5874,10 +5914,12 @@ static void rec_process_syscall_arch(RecordTask* t,
       Registers r = t->regs();
       r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
       r.set_arg4(syscall_state.syscall_entry_registers.arg4_signed());
-      t->set_regs(r);
       process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
                    (int)r.arg4_signed(), (int)r.arg5_signed(),
                    (off_t)r.arg6_signed());
+      r.set_arg2(syscall_state.syscall_entry_registers.arg2_signed());
+      r.set_arg3(syscall_state.syscall_entry_registers.arg3_signed());
+      t->set_regs(r);
       break;
     }
 

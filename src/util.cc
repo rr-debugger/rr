@@ -1259,6 +1259,23 @@ bool running_under_rr(bool cache) {
   return rr_under_rr;
 }
 
+string find_helper_library(const char *basepath)
+{
+  string lib_path = resource_path() + "lib64/rr/";
+  string file_name = lib_path + basepath;
+  if (access(file_name.c_str(), F_OK) == 0) {
+    return lib_path;
+  }
+  lib_path = resource_path() + "lib/rr/";
+  file_name = lib_path + basepath;
+  if (access(file_name.c_str(), F_OK) == 0) {
+    return lib_path;
+  }
+  // File does not exist. Assume install put it in LD_LIBRARY_PATH.
+  lib_path = "";
+  return lib_path;
+}
+
 vector<string> read_proc_status_fields(pid_t tid, const char* name,
                                        const char* name2, const char* name3) {
   vector<string> result;
