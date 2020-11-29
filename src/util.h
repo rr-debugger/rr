@@ -517,6 +517,8 @@ enum NestedBehavior {
 
 std::string find_exec_stub(SupportedArch arch);
 
+std::string find_helper_library(const char* basepath);
+
 static inline struct timeval to_timeval(double t) {
   struct timeval v;
   v.tv_sec = (time_t)floor(t);

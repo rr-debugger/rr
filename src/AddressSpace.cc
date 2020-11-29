@@ -277,28 +277,6 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
           .as_int());
 }
 
-static string find_rr_page_file(Task* t) {
-  string path = resource_path() + "share/rr/rr_page_";
-  switch (t->arch()) {
-    case x86:
-      path += "32";
-      break;
-    case x86_64:
-      path += "64";
-      break;
-    case aarch64:
-      path += "arm64";
-      break;
-    default:
-      ASSERT(t, false) << "Unknown architecture";
-      return path;
-  }
-  if (!t->session().is_recording()) {
-    path += "_replay";
-  }
-  return path;
-}
-
 void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
@@ -307,22 +285,39 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   Task* t = remote.task();
   SupportedArch arch = t->arch();
 
-  string path = find_rr_page_file(t);
+  const char *fname;
+  switch (t->arch()) {
+    case x86_64:
+    case aarch64:
+      fname = RRPAGE_LIB_FILENAME;
+      break;
+    case x86:
+      fname = RRPAGE_LIB_FILENAME_32;
+      break;
+  }
+
+  string path = find_helper_library(fname);
+  if (path.empty()) {
+    FATAL() << "Failed to locate " << fname;
+  }
+  path += fname;
+  size_t offset_pages = t->session().is_recording() ? 1 : 2;
 
   {
     ScopedFd page(path.c_str(), O_RDONLY);
-    ASSERT(t, page.is_open()) << "Failed to open rr_page file " << path;
+    ASSERT(t, page.is_open()) << "Failed to open rrpage library " << path;
     long child_fd = remote.send_fd(page.get());
     ASSERT(t, child_fd >= 0);
     remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                   child_fd, 0);
+                                   child_fd, offset_pages);
 
     struct stat fstat = t->stat_fd(child_fd);
     file_name = t->file_name_of_fd(child_fd);
 
     remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
-    map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
+    map(t, rr_page_start(), rr_page_size(), prot, flags,
+        offset_pages * page_size(), file_name,
         fstat.st_dev, fstat.st_ino);
   }
   mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;

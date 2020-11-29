@@ -470,7 +470,6 @@ void GdbServer::dispatch_debugger_request(Session& session,
             }
           }
           LOG(warn) << "No mapping found";
-          dbg->reply_pread(nullptr, 0, EIO);
         }
       }
       LOG(warn) << "Unknown file descriptor requested";

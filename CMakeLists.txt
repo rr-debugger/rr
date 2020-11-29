@@ -327,6 +327,25 @@ include_directories("${PROJECT_SOURCE_DIR}/third-party/brotli/include")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
+set(RR_PAGE_FILES
+  rr_page.S
+)
+set(RR_PAGE_SOURCE_FILES
+  ${RR_PAGE_FILES}
+  rr_page_instructions.S
+  rr_page.ld
+)
+add_library(rrpage)
+foreach(file ${RR_PAGE_FILES})
+  target_sources(rrpage PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
+  set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
+                              PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
+endforeach(file)
+set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -nostartfiles -nostdlib ${LINKER_FLAGS}")
+set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
+# CMake seems to have trouble generating the link line without this
+set_target_properties(rrpage PROPERTIES LINKER_LANGUAGE C)
+
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # raw_syscall.S must be before overrides.c, which must be last.
 set(PRELOAD_FILES
@@ -396,39 +415,6 @@ foreach(generated_file ${GENERATED_FILES})
 endforeach(generated_file)
 
 add_custom_target(Generated DEPENDS ${GENERATED_FILES})
-
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
-                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
-                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64"
-                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
-                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
-                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay"
-                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-
-add_custom_target(Pages DEPENDS
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64"
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay")
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
                           "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
@@ -574,7 +560,7 @@ else()
   post_build_executable(rr)
   set(RR_BIN rr)
 endif()
-add_dependencies(rr Generated Pages)
+add_dependencies(rr Generated)
 
 option(strip "Strip debug info from rr binary")
 
@@ -606,6 +592,8 @@ endif()
 
 target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
+  -Wl,-no-as-needed
+  rrpage
 )
 
 add_executable(rr_exec_stub src/exec_stub.c)
@@ -649,6 +637,14 @@ foreach(file ${PRELOAD_SOURCE_FILES})
           DESTINATION ${CMAKE_INSTALL_DATADIR}/rr/src/preload)
 endforeach(file)
 
+foreach(file ${RR_PAGE_SOURCE_FILES})
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                 "${CMAKE_CURRENT_BINARY_DIR}/share/rr/src/preload/${file}"
+                 COPYONLY)
+  install(FILES src/preload/${file}
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/rr/src/preload)
+endforeach(file)
+
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/rr-collect-symbols.py"
                "${CMAKE_CURRENT_BINARY_DIR}/bin/rr-collect-symbols.py"
                COPYONLY)
@@ -668,7 +664,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
-install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
+install(TARGETS ${RR_BIN} rrpreload rrpage rr_exec_stub
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
@@ -679,6 +675,24 @@ install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_32BIT AND rr_64BIT)
+  add_library(rrpage_32)
+
+  foreach(file ${RR_PAGE_SOURCE_FILES})
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/preload/${file}"
+                   COPYONLY)
+  endforeach(file)
+
+  foreach(file ${RR_PAGE_FILES})
+    target_sources(rrpage_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/preload/${file}")
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/preload/${file}"
+                                PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
+  endforeach(file)
+
+  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -nostartfiles -nostdlib ${LINKER_FLAGS}")
+  set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
+  set_target_properties(rrpage_32 PROPERTIES LINKER_LANGUAGE C)
+
   add_library(rrpreload_32)
 
   foreach(file ${PRELOAD_SOURCE_FILES})
@@ -1134,6 +1148,7 @@ set(BASIC_TESTS
 
 set(BASIC_CPP_TESTS
   std_random
+  unwind_rr_page
 )
 
 # A "test with program" consists of a foo.c source file and a foo.run driver
