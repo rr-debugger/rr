@@ -545,6 +545,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_40_80_f6_81)
 	call __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_40_80_f6_81)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_49_89_ca)
+	mov %rcx, %r10
+	call __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_49_89_ca)
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits

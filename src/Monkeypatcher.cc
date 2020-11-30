@@ -508,7 +508,8 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
                bytes_count >=
                    hook.patch_region_length +
                        (size_t)rr::syscall_instruction_length(arch) &&
-               memcmp(bytes, hook.patch_region_bytes,
+               memcmp(bytes + MAXIMUM_LOOKBACK - rr::syscall_instruction_length(arch) - hook.patch_region_length,
+                      hook.patch_region_bytes,
                       hook.patch_region_length) == 0) {
       if (entering_syscall) {
         // A patch that uses bytes before the syscall can't be done when

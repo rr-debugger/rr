@@ -633,6 +633,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c1_31_d2(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_c3_nop(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_40_80_f6_81(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_49_89_ca(void);
 
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
@@ -723,6 +724,12 @@ static void __attribute__((constructor)) init_process(void) {
       4,
       { 0x40, 0x80, 0xf6, 0x81 },
       (uintptr_t)_syscall_hook_trampoline_40_80_f6_81 },
+    /* DynamoRIO has 'mov r10, rcx' followed by 'syscall' */
+    {
+      PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      3,
+      { 0x49, 0x89, 0xca, },
+      (uintptr_t)_syscall_hook_trampoline_49_89_ca },
   };
 #elif defined(__aarch64__)
   struct syscall_patch_hook syscall_patch_hooks[] = {};
