@@ -357,6 +357,7 @@ set(PRELOAD_FILES
 set(PRELOAD_SOURCE_FILES
   ${PRELOAD_FILES}
   preload_interface.h
+  rrcalls.h
   syscallbuf.h
 )
 add_library(rrpreload)
@@ -378,6 +379,7 @@ set(AUDIT_SOURCE_FILES
   rtld-audit.h
   stap-note-iter.h
   ../preload/preload_interface.h
+  ../preload/rrcalls.h
 )
 add_library(rraudit)
 foreach(file ${AUDIT_FILES})
@@ -808,6 +810,7 @@ set(BASIC_TESTS
   cwd_inaccessible
   daemon
   desched_blocking_poll
+  detach_state
   deterministic_sigsys
   direct
   dup
@@ -1462,6 +1465,7 @@ if(BUILD_TESTS)
     get_filename_component(testname ${test} NAME)
 
     add_executable(${testname} src/test/${test}.c)
+    target_include_directories(${testname} PRIVATE src/preload)
     post_build_executable(${testname})
     set_source_files_properties(src/test/${test}.c
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
@@ -1571,7 +1575,7 @@ if(BUILD_TESTS)
   # This sucks but I can't find a better way to get CMake to build
   # the same source file in two different ways.
   if(rr_32BIT AND rr_64BIT)
-    foreach(header util.h nsutils.h ptrace_util.h)
+    foreach(header util.h nsutils.h ptrace_util.h util_internal.h)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${header}"
                     "${CMAKE_CURRENT_BINARY_DIR}/32/${header}"
                     COPYONLY)

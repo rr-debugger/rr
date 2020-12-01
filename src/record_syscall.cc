@@ -3310,7 +3310,9 @@ static void record_ranges(RecordTask* t,
 static pid_t do_detach_teleport(RecordTask *t)
 {
   DiversionSession session;
-  std::string exe_path(find_exec_stub(t->arch()));
+  // Use the old task's exe path to make sure that /proc/<pid>/exe looks right
+  // for the teleported task.
+  std::string exe_path(t->proc_exe_path());
   std::vector<std::string> argv, env;
   ScopedFd error_fd;
   int tracee_fd_number = t->session().tracee_fd_number();
@@ -3323,7 +3325,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   LOG(debug) << "Detached task with tid " << new_tid;
   session.on_create(new_t);
   session.set_tracee_fd_number(tracee_fd_number);
-  new_t->os_exec_stub(t->arch());
+  new_t->os_exec(t->arch(), exe_path);
   session.post_exec();
   new_t->post_exec(exe_path);
   new_t->post_exec_syscall();
@@ -4739,7 +4741,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       pid_t new_tid = do_detach_teleport(t);
 
       // Cause the actual task to exit
-      regs.set_syscallno(SYS_exit_group);
+      regs.set_syscallno(syscall_number_for_exit_group(t->arch()));
       regs.set_arg1(0);
       regs.set_original_syscallno(-1);
       regs.set_ip(regs.ip() - syscall_instruction_length(t->arch()));
