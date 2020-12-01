@@ -10,7 +10,7 @@ static pthread_barrier_t barrier;
 
 static int sockfds[2];
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 static void fin_intr_sleep(int secs) {
@@ -92,6 +92,7 @@ int main(void) {
   socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfds);
 
   pthread_barrier_init(&barrier, NULL, 2);
+  pthread_mutex_init(&lock, NULL);
   pthread_create(&reader, NULL, reader_thread, NULL);
 
   pthread_barrier_wait(&barrier);

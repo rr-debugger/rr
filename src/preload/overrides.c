@@ -42,6 +42,10 @@ int pthread_mutex_init(pthread_mutex_t* mutex,
   int ret;
   pthread_mutexattr_t realattr;
 
+  if (!attr) {
+    return __pthread_mutex_init(mutex, NULL);
+  }
+
   /* We wish to enforce the use of plain (no PI) mutex to avoid
    * needing to handle PI futex() operations.
    * We also wish to ensure that pthread_mutexattr_getprotocol()
