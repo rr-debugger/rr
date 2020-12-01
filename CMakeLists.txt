@@ -653,14 +653,6 @@ install(PROGRAMS scripts/signal-rr-recording.sh
                  scripts/rr-collect-symbols.py
   DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64
-              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay
-              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64
-              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay
-              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32
-              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/rr)
-
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
