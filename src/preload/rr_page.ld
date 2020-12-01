@@ -21,9 +21,9 @@ SECTIONS
   .gnu.version    : { *(.gnu.version) } :header
   .gnu.version_d  : { *(.gnu.version_d) } :header
   .gnu.version_r  : { *(.gnu.version_r) } :header
-  . = CONSTANT (MAXPAGESIZE);
+  . = 0x1000;
   .text : { *(.text) } :text
-  . = 2*CONSTANT (MAXPAGESIZE);
+  . = 0x2000;
   .replay.text : { *(.replay.text) } :replay
   /DISCARD/ : { *(.debug_* ) }
 }
