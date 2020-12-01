@@ -366,6 +366,7 @@ foreach(file ${PRELOAD_FILES})
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles ${LINKER_FLAGS}")
+set_target_properties(rrpreload PROPERTIES INSTALL_RPATH "\$ORIGIN")
 
 set(AUDIT_FILES
   rtld-audit.c
@@ -700,6 +701,7 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles ${LINKER_FLAGS}")
+  set_target_properties(rrpreload_32 PROPERTIES INSTALL_RPATH "\$ORIGIN")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}
   )
