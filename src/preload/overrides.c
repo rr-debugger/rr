@@ -48,7 +48,7 @@ int pthread_mutex_init(pthread_mutex_t* mutex,
    * still returns the requested protocol.
    * So we copy the attribute and force PTHREAD_PRIO_NONE.
    */
-  memcpy(&realattr, &attr, sizeof(realattr));
+  memcpy(&realattr, attr, sizeof(realattr));
   ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
   if (ret) {
     return ret;
