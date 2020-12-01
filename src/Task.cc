@@ -315,6 +315,12 @@ std::string Task::proc_stat_path() {
   return path;
 }
 
+std::string Task::proc_exe_path() {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/exe", tid);
+  return path;
+}
+
 struct stat Task::stat_fd(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
@@ -3623,9 +3629,8 @@ void Task::did_handle_ptrace_exit_event() {
   handled_ptrace_exit_event = true;
 }
 
-void Task::os_exec_stub(SupportedArch exec_arch)
+void Task::os_exec(SupportedArch exec_arch, std::string filename)
 {
-  std::string stub_filename = find_exec_stub(exec_arch);
   // Setup memory and registers for the execve call. We may not have to save
   // the old values since they're going to be wiped out by execve. We can
   // determine this by checking if this address space has any tasks with a
@@ -3647,7 +3652,7 @@ void Task::os_exec_stub(SupportedArch exec_arch)
   remote_ptr<void> remote_mem = floor_page_size(regs.sp());
 
   // Determine how much memory we'll need
-  size_t filename_size = stub_filename.size() + 1;
+  size_t filename_size = filename.size() + 1;
   size_t total_size = filename_size + sizeof(size_t);
   if (memory_task != this) {
     saved_data = read_mem(remote_mem.cast<uint8_t>(), total_size);
@@ -3661,7 +3666,7 @@ void Task::os_exec_stub(SupportedArch exec_arch)
   regs.set_arg2(remote_mem);
   regs.set_arg3(remote_mem);
   remote_ptr<void> filename_addr = remote_mem + sizeof(size_t);
-  write_bytes_helper(filename_addr, filename_size, stub_filename.c_str());
+  write_bytes_helper(filename_addr, filename_size, filename.c_str());
   regs.set_arg1(filename_addr);
   /* The original_syscallno is execve in the old architecture. The kernel does
    * not update the original_syscallno when the architecture changes across
@@ -3675,7 +3680,7 @@ void Task::os_exec_stub(SupportedArch exec_arch)
 
   LOG(debug) << "Beginning execve" << this->regs();
   enter_syscall();
-  ASSERT(this, !stop_sig()) << "Stub exec failed on entry";
+  ASSERT(this, !stop_sig()) << "exec failed on entry";
   /* Complete the syscall. The tid of the task will be the thread-group-leader
    * tid, no matter what tid it was before.
    */
@@ -3686,14 +3691,14 @@ void Task::os_exec_stub(SupportedArch exec_arch)
   LOG(debug) << this->status() << " " << this->regs();
   if (this->regs().syscall_result()) {
     errno = -this->regs().syscall_result();
-    if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
+    if (access(filename.c_str(), 0) == -1 && errno == ENOENT &&
         exec_arch == x86) {
-      FATAL() << "Cannot find exec stub " << stub_filename
+      FATAL() << "Cannot find " << filename
               << " to replay this 32-bit process; you probably built rr with "
                  "disable32bit";
     }
     errno = -this->regs().syscall_result();
-    ASSERT(this, false) << "Exec of stub " << stub_filename << " failed";
+    ASSERT(this, false) << "Exec of " << filename << " failed";
   }
 
   // Restore any memory if required. We need to do this through memory_task,

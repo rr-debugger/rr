@@ -218,6 +218,11 @@ public:
   std::string proc_stat_path();
 
   /**
+   * Return the path of /proc/<pid>/exe
+   */
+  std::string proc_exe_path();
+
+  /**
    * Stat |fd| in the context of this task's fd table.
    */
   struct stat stat_fd(int fd);
@@ -924,7 +929,10 @@ public:
     return was_reaped;
   }
 
-  void os_exec_stub(SupportedArch arch);
+  void os_exec(SupportedArch arch, std::string filename);
+  void os_exec_stub(SupportedArch arch) {
+      os_exec(arch, find_exec_stub(arch));
+  }
 
   /**
    * Try to make the current task look exactly like some `other` task
