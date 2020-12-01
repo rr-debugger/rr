@@ -609,6 +609,8 @@ public:
    */
   std::vector<WatchConfig> consume_watchpoint_changes();
 
+  bool consume_executable_mappings_changed();
+
   void set_shm_size(remote_ptr<void> addr, size_t bytes) {
     shm_sizes[addr] = bytes;
   }
@@ -662,6 +664,8 @@ public:
   }
 
   bool syscallbuf_enabled() const { return syscallbuf_enabled_; }
+
+  bool executable_mappings_changed() const { return executable_mappings_changed_; }
 
   /**
    * We'll map a page of memory here into every exec'ed process for our own
@@ -1144,6 +1148,8 @@ private:
    * 0 if no such event has occurred.
    */
   FrameTime first_run_event_;
+
+  bool executable_mappings_changed_;
 
   std::set<remote_ptr<uint16_t>> stap_semaphores;
 

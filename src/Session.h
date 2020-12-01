@@ -39,7 +39,8 @@ struct BreakStatus {
         breakpoint_hit(false),
         singlestep_complete(false),
         approaching_ticks_target(false),
-        task_exit(false) {}
+        task_exit(false),
+        executable_mappings_changed(false) {}
   BreakStatus(const BreakStatus& other)
       : task(other.task),
         watchpoints_hit(other.watchpoints_hit),
@@ -49,7 +50,8 @@ struct BreakStatus {
         breakpoint_hit(other.breakpoint_hit),
         singlestep_complete(other.singlestep_complete),
         approaching_ticks_target(other.approaching_ticks_target),
-        task_exit(other.task_exit) {}
+        task_exit(other.task_exit),
+        executable_mappings_changed(other.executable_mappings_changed) {}
   const BreakStatus& operator=(const BreakStatus& other) {
     task = other.task;
     watchpoints_hit = other.watchpoints_hit;
@@ -60,6 +62,7 @@ struct BreakStatus {
     singlestep_complete = other.singlestep_complete;
     approaching_ticks_target = other.approaching_ticks_target;
     task_exit = other.task_exit;
+    executable_mappings_changed = other.executable_mappings_changed;
     return *this;
   }
 
@@ -81,6 +84,8 @@ struct BreakStatus {
   bool approaching_ticks_target;
   // True when we stopped because |task| is about to exit.
   bool task_exit;
+  // True when there were executable mapping changes to notify gdb.
+  bool executable_mappings_changed;
 
   // True when we stopped because we hit a software or hardware breakpoint at
   // |task|'s current ip().
@@ -377,6 +382,8 @@ protected:
 
   BreakStatus diagnose_debugger_trap(Task* t, RunCommand run_command);
   void check_for_watchpoint_changes(Task* t, BreakStatus& break_status);
+
+  void check_for_executable_mappings_changed(Task* t, BreakStatus& break_status);
 
   void copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs);
 

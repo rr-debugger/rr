@@ -1832,6 +1832,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     debug_memory(t);
 
     check_for_watchpoint_changes(t, result.break_status);
+    check_for_executable_mappings_changed(t, result.break_status);
     check_approaching_ticks_target(t, constraints, result.break_status);
   }
 

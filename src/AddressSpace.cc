@@ -880,6 +880,10 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
                                                const MemoryRange& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
+    if (!executable_mappings_changed_ && prot & PROT_EXEC) {
+      executable_mappings_changed_ = true;
+    }
+
     Mapping m = move(mm);
     remove_from_map(m.map);
 
@@ -1258,6 +1262,18 @@ void AddressSpace::unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes) {
   num_bytes = ceil_page_size(num_bytes);
   if (!num_bytes) {
     return;
+  }
+
+  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+    auto& km = it.current();
+    if (   !km.fsname().empty()
+        && !km.is_heap() && !km.is_stack() && !km.is_vvar()
+        && km.prot() & PROT_EXEC)
+    {
+      if (!executable_mappings_changed_ && km.prot() & PROT_EXEC) {
+        executable_mappings_changed_ = true;
+      }
+    }
   }
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
@@ -1641,7 +1657,8 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       do_breakpoint_fault_addr_(nullptr),
       stopping_breakpoint_table_(nullptr),
       stopping_breakpoint_table_entry_size_(0),
-      first_run_event_(0) {
+      first_run_event_(0),
+      executable_mappings_changed_(false) {
   // TODO: this is a workaround of
   // https://github.com/rr-debugger/rr/issues/1113 .
   if (session_->done_initial_exec()) {
@@ -1681,7 +1698,8 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       saved_auxv_(o.saved_auxv_),
       saved_interpreter_base_(o.saved_interpreter_base_),
       saved_ld_path_(o.saved_ld_path_),
-      first_run_event_(0) {
+      first_run_event_(0),
+      executable_mappings_changed_(o.executable_mappings_changed_) {
   for (auto& m : mem) {
     // The original address space continues to have exclusive ownership of
     // all local mappings.
@@ -1833,6 +1851,14 @@ vector<WatchConfig> AddressSpace::get_watchpoints_internal(
 
 vector<WatchConfig> AddressSpace::consume_watchpoint_changes() {
   return get_watchpoints_internal(CHANGED_WATCHPOINTS);
+}
+
+bool AddressSpace::consume_executable_mappings_changed() {
+  if (executable_mappings_changed_) {
+    executable_mappings_changed_ = false;
+    return true;
+  }
+  return false;
 }
 
 vector<WatchConfig> AddressSpace::all_watchpoints() {

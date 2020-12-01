@@ -922,6 +922,13 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
   remote_ptr<void> watch_addr;
   char watch[1024];
   watch[0] = '\0';
+  if (dbg->features().target_wine && break_status.executable_mappings_changed) {
+    snprintf(watch, sizeof(watch) - 1, "library:;");
+    do_stop = true;
+    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+    stop_siginfo.si_signo = SIGTRAP;
+    LOG(debug) << "Notify GDB about a shared library change";
+  }
   if (!break_status.watchpoints_hit.empty()) {
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));

@@ -337,6 +337,11 @@ void Session::check_for_watchpoint_changes(Task* t, BreakStatus& break_status) {
   break_status.watchpoints_hit = t->vm()->consume_watchpoint_changes();
 }
 
+void Session::check_for_executable_mappings_changed(Task* t, BreakStatus& break_status) {
+  assert_fully_initialized();
+  break_status.executable_mappings_changed = t->vm()->consume_executable_mappings_changed();
+}
+
 void Session::assert_fully_initialized() const {
   DEBUG_ASSERT(!clone_completion && "Session not fully initialized");
 }
