@@ -292,7 +292,11 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
       fname = RRPAGE_LIB_FILENAME;
       break;
     case x86:
+#if defined(__x86_64__)
       fname = RRPAGE_LIB_FILENAME_32;
+#else
+      fname = RRPAGE_LIB_FILENAME;
+#endif
       break;
   }
 
