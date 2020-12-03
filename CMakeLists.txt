@@ -706,6 +706,8 @@ if(rr_32BIT AND rr_64BIT)
   set_target_properties(rrpreload_32 PROPERTIES INSTALL_RPATH "\$ORIGIN")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}
+    -Wl,-no-as-needed
+    rrpage_32
   )
 
   add_library(rraudit_32)
