@@ -7,6 +7,20 @@
 
 extern "C" void *_Unwind_FindEnclosingFunction(void *);
 
+#ifdef __i386__
+void callback(uint64_t env, char* name, map_properties_t* props) {
+  uintptr_t* ip = (uintptr_t*)env;
+  if (strstr(name, "[vdso]") != 0) {
+    if (*ip >= props->start && *ip < props->end) {
+      /* This test does not work when built for i386 and using no syscall buffering.
+         Because then ip is in [vdso] which seems not to be in the list of the dynamic loader. */
+      atomic_puts("skipping. EXIT-SUCCESS");
+      exit(0);
+    }
+  }
+}
+#endif
+
 void catcher(__attribute__((unused)) int signum,
              __attribute__((unused)) siginfo_t* siginfo_ptr,
              void* ucontext_ptr) {
@@ -14,6 +28,8 @@ void catcher(__attribute__((unused)) int signum,
     uintptr_t ip;
 #ifdef __i386__
     ip = ctx->uc_mcontext.gregs[REG_EIP];
+    FILE* maps_file = fopen("/proc/self/maps", "r");
+    iterate_maps((uintptr_t)&ip, callback, maps_file);
 #elif defined(__x86_64__)
     ip = ctx->uc_mcontext.gregs[REG_RIP];
 #elif defined(__aarch64__)
