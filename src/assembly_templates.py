@@ -142,6 +142,10 @@ templates = {
         Field('trampoline_relative_addr', 4)
     ),
 
+    'X64CallMonkeypatch': AssemblyTemplate(
+        RawBytes(0xe8),         # call $relative_addr
+        Field('relative_addr', 4),
+    ),
     'X64JumpMonkeypatch': AssemblyTemplate(
         RawBytes(0xe9),         # jmp $relative_addr
         Field('relative_addr', 4),
@@ -192,11 +196,13 @@ templates = {
         RawBytes(0xd9, 0x74, 0x24, 0xe0),                               # fstenv -32(%rsp)
         RawBytes(0x48, 0xc7, 0x44, 0x24, 0xf4, 0x00, 0x00, 0x00, 0x00), # movq $0,-12(%rsp)
         RawBytes(0xd9, 0x64, 0x24, 0xe0),                               # fldenv -32(%rsp)
-        RawBytes(0x53),                   # push %rbx
+        RawBytes(0x48, 0x87, 0x1c, 0x24), # xchg (%rsp),%rbx
+        # r11 is destroyed anyways by _dl_runtime_resolve, so we can use it here.
+        RawBytes(0x49, 0x89, 0xdb),       # mov %rbx,%r11
         RawBytes(0x48, 0x89, 0xe3),       # mov %rsp,%rbx
         RawBytes(0x48, 0x83, 0xe4, 0xc0), # and $0xffffffffffffffc0,%rsp
-        RawBytes(0xe9),                   # jmp $relative_addr
-        Field('relative_addr', 4),
+        RawBytes(0x41, 0x53),             # push %r11
+        RawBytes(0xc3),                   # ret
     ),
     'X64EndBr': AssemblyTemplate(
         RawBytes(0xf3, 0x0f, 0x1e, 0xfa)

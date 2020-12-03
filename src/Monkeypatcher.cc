@@ -1135,41 +1135,34 @@ static void patch_dl_runtime_resolve(Monkeypatcher& patcher,
     return;
   }
 
-  uint8_t jump_patch[X64JumpMonkeypatch::size];
-  // We're patching in a relative jump, so we need to compute the offset from
-  // the end of the jump to our actual destination.
-  auto jump_patch_start = addr.cast<uint8_t>();
-  auto jump_patch_end = jump_patch_start + sizeof(jump_patch);
+  uint8_t call_patch[X64CallMonkeypatch::size];
+  // We're patching in a relative call, so we need to compute the offset from
+  // the end of the call to our actual destination.
+  auto call_patch_start = addr.cast<uint8_t>();
+  auto call_patch_end = call_patch_start + sizeof(call_patch);
 
-  remote_ptr<uint8_t> extended_jump_start =
+  remote_ptr<uint8_t> extended_call_start =
       allocate_extended_jump<X64DLRuntimeResolvePrelude>(
-          t, patcher.extended_jump_pages, jump_patch_end);
-  if (extended_jump_start.is_null()) {
+          t, patcher.extended_jump_pages, call_patch_end);
+  if (extended_call_start.is_null()) {
     return;
   }
   uint8_t stub_patch[X64DLRuntimeResolvePrelude::size];
-  int64_t return_offset = jump_patch_start.as_int() +
-    X64DLRuntimeResolve::size -
-    (extended_jump_start.as_int() + X64DLRuntimeResolvePrelude::size);
-  if (return_offset != (int32_t)return_offset) {
-    LOG(warn) << "Return out of range";
-    return;
-  }
-  X64DLRuntimeResolvePrelude::substitute(stub_patch, (int32_t)return_offset);
-  write_and_record_bytes(t, extended_jump_start, stub_patch);
+  X64DLRuntimeResolvePrelude::substitute(stub_patch);
+  write_and_record_bytes(t, extended_call_start, stub_patch);
 
-  intptr_t jump_offset = extended_jump_start - jump_patch_end;
-  int32_t jump_offset32 = (int32_t)jump_offset;
-  ASSERT(t, jump_offset32 == jump_offset)
+  intptr_t call_offset = extended_call_start - call_patch_end;
+  int32_t call_offset32 = (int32_t)call_offset;
+  ASSERT(t, call_offset32 == call_offset)
       << "allocate_extended_jump didn't work";
-  X64JumpMonkeypatch::substitute(jump_patch, jump_offset32);
-  write_and_record_bytes(t, jump_patch_start, jump_patch);
+  X64CallMonkeypatch::substitute(call_patch, call_offset32);
+  write_and_record_bytes(t, call_patch_start, call_patch);
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
-  uint8_t nops[X64DLRuntimeResolve::size - sizeof(jump_patch)];
+  uint8_t nops[X64DLRuntimeResolve::size - sizeof(call_patch)];
   memset(nops, NOP, sizeof(nops));
-  write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops,
+  write_and_record_mem(t, call_patch_start + sizeof(call_patch), nops,
                        sizeof(nops));
 }
 
