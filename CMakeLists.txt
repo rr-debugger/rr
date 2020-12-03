@@ -1591,6 +1591,14 @@ if(BUILD_TESTS)
                                   PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
 
+    foreach(test ${BASIC_CPP_TESTS})
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
+                     "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
+                     COPYONLY)
+      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
+    endforeach(test)
+
     foreach(file x86/cpuid_loop.S x86/util.h)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
@@ -1599,9 +1607,13 @@ if(BUILD_TESTS)
                                   PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(file)
 
-    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
+    foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${TESTS_WITH_PROGRAM})
       get_filename_component(testname ${test} NAME)
-      add_executable(${testname}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+      if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+        add_executable(${testname}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+      else()
+        add_executable(${testname}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
+      endif()
       target_include_directories(${testname}_32 PRIVATE src/preload)
       post_build_executable(${testname}_32)
       add_dependencies(${testname}_32 Generated)
@@ -1636,7 +1648,7 @@ if(BUILD_TESTS)
               DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
     endif(INSTALL_TESTSUITE)
 
-    foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
+    foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
       get_filename_component(testname ${test} NAME)
       add_test(${test}-32
         bash source_dir/src/test/basic_test.run ${testname}_32 "" bin_dir)
