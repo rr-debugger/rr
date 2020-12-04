@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/personality.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -3486,6 +3487,24 @@ static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &k
   }
 }
 
+const __rlimit_resource all_rlimits[] = {
+  RLIMIT_AS,
+  RLIMIT_CORE,
+  RLIMIT_CPU,
+  RLIMIT_DATA,
+  RLIMIT_FSIZE,
+  RLIMIT_LOCKS,
+  RLIMIT_MEMLOCK,
+  RLIMIT_MSGQUEUE,
+  RLIMIT_NICE,
+  RLIMIT_NOFILE,
+  RLIMIT_NPROC,
+  RLIMIT_RSS,
+  RLIMIT_RTTIME,
+  RLIMIT_SIGPENDING,
+  RLIMIT_STACK
+};
+
 void Task::dup_from(Task *other) {
   std::vector<KernelMapping> mappings;
   KernelMapping stack_mapping;
@@ -3568,6 +3587,16 @@ void Task::dup_from(Task *other) {
       remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
       remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
     }
+
+    // Copy rlimits
+    struct rlimit limit;
+    for (size_t i = 0; i < (sizeof(all_rlimits)/sizeof(all_rlimits[0])); ++i) {
+      int err = ::prlimit(other->tid, all_rlimits[i], NULL, &limit);
+      ASSERT(other, err == 0);
+      err = ::prlimit(this->tid, all_rlimits[i], &limit, NULL);
+      ASSERT(this, err == 0);
+    }
+
     struct prctl_mm_map map;
     memset(&map, 0, sizeof(prctl_mm_map));
 
