@@ -10,6 +10,14 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
     if (pid == 0) {
         readlink("/proc/self/exe", path1, sizeof(path1));
 
+        // Check that /proc/self/mem gets remapped
+        uintptr_t newval = 1;
+        volatile uintptr_t stackval = 0;
+        int fd = open("/proc/self/mem", O_RDWR);
+        test_assert(fd >= 0);
+        test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off64_t)(uintptr_t)&stackval));
+        test_assert(stackval == 1);
+
         // Check that rlimits survive
         struct rlimit lim1, lim2;
         test_assert(0 == getrlimit(RLIMIT_STACK, &lim1));
@@ -28,6 +36,10 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
 
         test_assert(0 == getrlimit(RLIMIT_STACK, &lim2));
         test_assert(0 == memcmp(&lim1, &lim2, sizeof(struct rlimit)));
+
+        newval = 2;
+        test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off64_t)(uintptr_t)&stackval));
+        test_assert(stackval == 2);
 
         readlink("/proc/self/exe", path2, sizeof(path2));
         test_assert(0 == strcmp(path1, path2));

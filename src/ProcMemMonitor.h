@@ -29,6 +29,8 @@ public:
     return FD_CLASS_PROC_MEM;
   }
 
+  bool target_is_task(Task *t);
+
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.
   TaskUid tuid;
