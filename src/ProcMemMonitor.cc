@@ -64,4 +64,8 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
   }
 }
 
+bool ProcMemMonitor::target_is_task(Task *t) {
+  return tuid == t->tuid();
+}
+
 } // namespace rr

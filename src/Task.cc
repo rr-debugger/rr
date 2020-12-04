@@ -39,6 +39,7 @@
 #include "Flags.h"
 #include "MagicSaveDataMonitor.h"
 #include "PreserveFileMonitor.h"
+#include "ProcMemMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "ReplaySession.h"
@@ -3488,21 +3489,9 @@ static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &k
 }
 
 const __rlimit_resource all_rlimits[] = {
-  RLIMIT_AS,
-  RLIMIT_CORE,
-  RLIMIT_CPU,
-  RLIMIT_DATA,
-  RLIMIT_FSIZE,
-  RLIMIT_LOCKS,
-  RLIMIT_MEMLOCK,
-  RLIMIT_MSGQUEUE,
-  RLIMIT_NICE,
-  RLIMIT_NOFILE,
-  RLIMIT_NPROC,
-  RLIMIT_RSS,
-  RLIMIT_RTTIME,
-  RLIMIT_SIGPENDING,
-  RLIMIT_STACK
+  RLIMIT_AS, RLIMIT_CORE, RLIMIT_CPU, RLIMIT_DATA, RLIMIT_FSIZE, RLIMIT_LOCKS,
+  RLIMIT_MEMLOCK, RLIMIT_MSGQUEUE, RLIMIT_NICE, RLIMIT_NOFILE, RLIMIT_NPROC,
+  RLIMIT_RSS, RLIMIT_RTTIME, RLIMIT_SIGPENDING, RLIMIT_STACK
 };
 
 void Task::dup_from(Task *other) {
@@ -3562,7 +3551,15 @@ void Task::dup_from(Task *other) {
       if (fd == session().tracee_fd_number()) {
         continue;
       }
-      ScopedFd here = remote_other.retrieve_fd(fd);
+      // If this is a /proc/self/mem fd, rewrite it for the new task
+      FileMonitor *fd_monitor = other->fd_table()->get_monitor(fd);
+      ScopedFd here;
+      if (fd_monitor && fd_monitor->type() == FileMonitor::ProcMem &&
+          ((ProcMemMonitor *)fd_monitor)->target_is_task(other)) {
+        here = ScopedFd(::dup(this->vm()->mem_fd().get()));
+      } else {
+        here = remote_other.retrieve_fd(fd);
+      }
       int remote_fd_flags = remote_other.infallible_syscall(
         syscall_number_for_fcntl(this->arch()), fd, F_GETFD);
       int remote_fd = remote_this.send_fd(here);
