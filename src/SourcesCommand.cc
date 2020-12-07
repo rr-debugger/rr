@@ -266,20 +266,61 @@ static bool try_auxiliary_file(ElfFileReader& trace_file_reader,
     return false;
   }
   string full_file_name;
+  ScopedFd fd;
   if (aux_file_name.c_str()[0] == '/') {
     full_file_name = aux_file_name;
+    fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+    if (!fd.is_open()) {
+      LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+      return false;
+    }
   } else {
+    // Skip first trying the current directory. That's unlikely to be correct.
+
+    // Try in the same directory as the original file.
     string original_file_dir = original_file_name;
     parent_dir(original_file_dir);
     full_file_name = original_file_dir + "/" + aux_file_name;
     normalize_file_name(full_file_name);
-  }
-
-  ScopedFd fd(full_file_name.c_str(), O_RDONLY);
-  if (!fd.is_open()) {
+    fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+    if (fd.is_open()) {
+      goto found;
+    }
     LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+
+    // Next try in a subdirectory called .debug
+    full_file_name = original_file_dir + "/.debug/" + aux_file_name;
+    normalize_file_name(full_file_name);
+    fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+    if (fd.is_open()) {
+      goto found;
+    }
+    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+
+    // Then try in /usr/lib/debug
+    full_file_name = "/usr/lib/debug/" + aux_file_name;
+    normalize_file_name(full_file_name);
+    fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+    if (fd.is_open()) {
+      goto found;
+    }
+    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+
+    // Try in an appropriate subdirectory of /usr/lib/debug
+    full_file_name = "/usr/lib/debug" + original_file_dir + "/" + aux_file_name;
+    normalize_file_name(full_file_name);
+    fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+    if (fd.is_open()) {
+      goto found;
+    }
+    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+
+    // If none of those worked, give up.
+    LOG(warn) << "Exhausted auxilliary debuginfo search locations for " << aux_file_name;
     return false;
   }
+
+found:
   LOG(info) << "Examining external " << full_file_name;
   ElfFileReader reader(fd);
   if (!reader.ok()) {
