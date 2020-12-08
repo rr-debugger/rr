@@ -86,6 +86,10 @@ static CpuMicroarch compute_cpu_microarch() {
         return AMDZen;
       }
       break;
+    case 0x20f10: // Vermeer (Zen 3)
+      if (ext_family == 0xa) {
+        return AMDZen;
+      }
     default:
       break;
   }
