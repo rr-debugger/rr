@@ -2141,6 +2141,9 @@ static MemoryRange choose_global_exclusion_range() {
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len) {
   static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+  // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
+  // don't hand it out again.
+  static MemoryRange rrpage_so_range = MemoryRange(RR_PAGE_ADDR - page_size(), RR_PAGE_ADDR + page_size());
 
   int bits = random_addr_bits(t->arch());
   uint64_t addr_space_limit = uint64_t(1) << bits;
@@ -2194,6 +2197,9 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
       continue;
     }
     MemoryRange r(addr, ceil_page_size(len));
+    if (r.intersects(rrpage_so_range)) {
+      continue;
+    }
     if (r.intersects(global_exclusion_range)) {
       continue;
     }
