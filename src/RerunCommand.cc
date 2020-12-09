@@ -51,9 +51,9 @@ RerunCommand RerunCommand::singleton(
     "                             Note that this may diverge from the recording\n"
     "                             in some cases.\n"
     "\n"
-    "<REGS> is a comma-separated sequence of 'event','icount','ip','flags',\n"
-    "'gp_x16','xmm_x16','ymm_x16'. For the 'x16' cases, we always output 16,\n"
-    "values, the latter 8 of which are zero for x86-32. GP registers are in\n"
+    "<REGS> is a comma-separated sequence of 'event','icount','ip','ticks',\n"
+    "'flags','gp_x16','xmm_x16','ymm_x16'. For the 'x16' cases, we always output\n"
+    "16 values, the latter 8 of which are zero for x86-32. GP registers are in\n"
     "architectural order (AX,CX,DX,BX,SP,BP,SI,DI,R8-R15). All data is output\n"
     "in little-endian binary format; records are separated by \\n. String\n"
     "instruction repetitions are treated as a single instruction if not\n"
@@ -77,6 +77,7 @@ enum TraceFieldKind {
   TRACE_FIP,               // outputs 64-bit value
   TRACE_TID,               // outputs 32-bit value
   TRACE_MXCSR,             // outputs 32-bit value
+  TRACE_TICKS,             // outputs 64-bit value
 };
 struct TraceField {
   TraceFieldKind kind;
@@ -357,6 +358,11 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
       case TRACE_TID:
         print_value("tid", &t->rec_tid, sizeof(t->rec_tid), flags, out);
         break;
+      case TRACE_TICKS: {
+        Ticks ticks = t->tick_count();
+        print_value("ticks", &ticks, sizeof(ticks), flags, out);
+        break;
+      }
     }
   }
 
@@ -435,6 +441,8 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       out->push_back({ TRACE_MXCSR, 0});
     } else if (reg == "tid") {
       out->push_back({ TRACE_TID, 0 });
+    } else if (reg == "ticks") {
+      out->push_back({ TRACE_TICKS, 0 });
     } else {
       fprintf(stderr, "Unknown register '%s'\n", reg.c_str());
       return false;
