@@ -514,6 +514,17 @@ void RecordTask::init_buffers() { RR_ARCH_FUNCTION(init_buffers_arch, arch()); }
 
 template <typename Arch>
 void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
+  switch (syscallno) {
+    // These syscalls affect the sigmask even if they fail.
+    case Arch::epoll_pwait:
+    case Arch::pselect6:
+    case Arch::pselect6_time64:
+    case Arch::ppoll:
+    case Arch::ppoll_time64:
+      invalidate_sigmask();
+      break;
+  }
+
   if (regs.original_syscallno() == SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO ||
       regs.syscall_failed()) {
     return;
@@ -1201,7 +1212,13 @@ sig_set_t RecordTask::read_sigmask_from_process() {
   // to be restored, not the kernel's current (internal) sigmask, which is what
   // /proc/.../status reports. Always go with what /proc/.../status reports. See
   // https://github.com/torvalds/linux/commit/fcfc2aa0185f4a731d05a21e9f359968fdfd02e7
-  if (!at_may_restart_syscall()) {
+  // XXXkhuey and yet that's not what we actually do here ...
+  if (at_interrupted_non_restartable_signal_modifying_syscall()) {
+    // Mark the sigmask as already invalid. The moment we exit the kernel and run more
+    // of the tracee the sigmask will change, so we need to keep refetching the
+    // sigmask until that happens.
+    invalidate_sigmask();
+  } else if (!at_may_restart_syscall()) {
     sig_set_t mask;
     long ret = fallible_ptrace(PTRACE_GETSIGMASK,
                                remote_ptr<void>(sizeof(sig_set_t)), &mask);
@@ -1217,9 +1234,10 @@ sig_set_t RecordTask::read_sigmask_from_process() {
 
 sig_set_t RecordTask::get_sigmask() {
   if (blocked_sigs_dirty) {
+    // Clear this first, read_sigmask_from_process might set it again.
+    blocked_sigs_dirty = false;
     blocked_sigs = read_sigmask_from_process();
     LOG(debug) << "Refreshed sigmask, now " << HEX(blocked_sigs);
-    blocked_sigs_dirty = false;
   }
   return blocked_sigs;
 }
@@ -1516,6 +1534,13 @@ bool RecordTask::at_may_restart_syscall() const {
   return EV_SYSCALL_INTERRUPTION == ev().type() ||
          (EV_SIGNAL_DELIVERY == ev().type() && prev_ev &&
           EV_SYSCALL_INTERRUPTION == prev_ev->type());
+}
+
+bool RecordTask::at_interrupted_non_restartable_signal_modifying_syscall() const {
+  auto r = regs();
+  // XXXkhuey io_uring_enter (not yet supported) can do this too.
+  return r.syscall_result_signed() == -EINTR &&
+    is_epoll_pwait_syscall(r.original_syscallno(), arch());
 }
 
 bool RecordTask::is_arm_desched_event_syscall() {
