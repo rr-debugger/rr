@@ -3343,6 +3343,12 @@ static pid_t do_detach_teleport(RecordTask *t)
     AutoRemoteSyscalls remote(new_t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
     remote.syscall(syscall_number_for_close(new_t->arch()), tracee_fd_number);
   }
+  // Try to reset the scheduler affinity that we enforced upon the task.
+  // XXX: It would be nice to track what affinity the tracee requested and
+  // restore that.
+  cpu_set_t mask;
+  memset(&mask, 0xFF, sizeof(mask));
+  sched_setaffinity(new_t->tid, sizeof(mask), &mask);
   new_t->detach();
   new_t->did_kill();
   delete new_t;

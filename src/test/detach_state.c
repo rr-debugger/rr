@@ -41,6 +41,25 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
         test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off64_t)(uintptr_t)&stackval));
         test_assert(stackval == 2);
 
+        // Validate that rr reset the scheduler affinity mask.
+        // Unfortunately, we can't just check that it matches that from
+        // before the detach, because rr does not yet emulate the correct
+        // scheduler mask after it changes it. XXX: Adjust this test when
+        // that is fixed.
+        cpu_set_t cpus;
+        test_assert(0 == sched_getaffinity(0, sizeof(cpu_set_t), &cpus));
+        if (CPU_COUNT(&cpus) == 1) {
+            // If only one CPU is set either rr messed with us, or only one
+            // cpu is available for environmental reasons (e.g. only one CPU
+            // is online). To see if that is the case, try resetting the
+            // affinity ourselves and if still only one CPU is allowed, let
+            // that through.
+            memset(&cpus, 0xFF, sizeof(cpu_set_t));
+            test_assert(0 == sched_setaffinity(0, sizeof(cpu_set_t), &cpus));
+            test_assert(0 == sched_getaffinity(0, sizeof(cpu_set_t), &cpus));
+            test_assert(CPU_COUNT(&cpus) == 1);
+        }
+
         readlink("/proc/self/exe", path2, sizeof(path2));
         test_assert(0 == strcmp(path1, path2));
         return 0;
