@@ -49,6 +49,7 @@ enum DWForm {
   DW_FORM_flag_present = 0x19,
   DW_FORM_strx = 0x1a,
   DW_FORM_addrx = 0x1b,
+  DW_FORM_strp_sup = 0x1d,
   DW_FORM_data16 = 0x1e,
   DW_FORM_line_strp = 0x1f,
   DW_FORM_implicit_const = 0x21,
@@ -56,6 +57,7 @@ enum DWForm {
   DW_FORM_strx2 = 0x26,
   DW_FORM_strx3 = 0x27,
   DW_FORM_strx4 = 0x28,
+  DW_FORM_GNU_strp_alt = 0x1f21,
 };
 
 enum DWLnct {
@@ -125,6 +127,7 @@ private:
 
 struct DebugStrSpans {
   DwarfSpan debug_str;
+  DwarfSpan debug_str_sup;
   DwarfSpan debug_str_offsets;
   DwarfSpan debug_line_str;
 };

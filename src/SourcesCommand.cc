@@ -23,6 +23,9 @@ using namespace std;
 
 namespace rr {
 
+const char* DEBUGLINK = "debuglink";
+const char* DEBUGALTLINK = "debugaltlink";
+
 /// Prints JSON containing
 /// "relevant_binaries": an array of strings, trace-relative binary file names.
 ///   These are ELF files in the trace that our collected data is relevant to.
@@ -128,6 +131,7 @@ struct DwoInfo {
 };
 
 static bool process_compilation_units(ElfFileReader& reader,
+                                      ElfFileReader* sup_reader,
                                       const string& trace_relative_name,
                                       const string& original_file_name,
                                       const string& comp_dir_substitution,
@@ -135,16 +139,19 @@ static bool process_compilation_units(ElfFileReader& reader,
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
   DwarfSpan debug_abbrev = reader.dwarf_section(".debug_abbrev");
   DwarfSpan debug_str = reader.dwarf_section(".debug_str");
+  DwarfSpan debug_str_sup = sup_reader ? sup_reader->dwarf_section(".debug_str") : DwarfSpan();
   DwarfSpan debug_str_offsets = reader.dwarf_section(".debug_str_offsets");
   DwarfSpan debug_line = reader.dwarf_section(".debug_line");
   DwarfSpan debug_line_str = reader.dwarf_section(".debug_line_str");
   if (debug_info.empty() || debug_abbrev.empty() ||
-      debug_str.empty() || debug_line.empty())  {
+      (debug_str.empty() && debug_str_sup.empty()) ||
+      debug_line.empty())  {
     return false;
   }
 
   DebugStrSpans debug_strs = {
     debug_str,
+    debug_str_sup,
     debug_str_offsets,
     debug_line_str,
   };
@@ -255,24 +262,20 @@ struct ExternalDebugInfo {
   }
 };
 
-static bool try_auxiliary_file(ElfFileReader& trace_file_reader,
-                               const string& trace_relative_name,
-                               const string& original_file_name,
-                               set<string>* file_names, const string& aux_file_name,
-                               const char* file_type,
-                               vector<DwoInfo>* dwos,
-                               set<ExternalDebugInfo>* external_debug_info) {
+static unique_ptr<ElfFileReader>
+find_auxiliary_file(const string& original_file_name,
+                    const string& aux_file_name,
+                    string& full_file_name) {
   if (aux_file_name.empty()) {
-    return false;
+    return nullptr;
   }
-  string full_file_name;
   ScopedFd fd;
   if (aux_file_name.c_str()[0] == '/') {
     full_file_name = aux_file_name;
     fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
     if (!fd.is_open()) {
       LOG(warn) << "Can't find external debuginfo file " << full_file_name;
-      return false;
+      return nullptr;
     }
   } else {
     // Skip first trying the current directory. That's unlikely to be correct.
@@ -317,27 +320,83 @@ static bool try_auxiliary_file(ElfFileReader& trace_file_reader,
 
     // If none of those worked, give up.
     LOG(warn) << "Exhausted auxilliary debuginfo search locations for " << aux_file_name;
-    return false;
+    return nullptr;
   }
 
 found:
   LOG(info) << "Examining external " << full_file_name;
-  ElfFileReader reader(fd);
-  if (!reader.ok()) {
+  auto reader = make_unique<ElfFileReader>(fd);
+  if (!reader->ok()) {
     LOG(warn) << "Not an ELF file!";
-    return false;
+    return nullptr;
   }
+  return reader;
+}
+
+static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
+                                   ElfFileReader& aux_file_reader,
+                                   ElfFileReader* alt_file_reader,
+                                   const string& trace_relative_name,
+                                   const string& original_file_name,
+                                   set<string>* file_names,
+                                   const string& full_aux_file_name,
+                                   const char* file_type,
+                                   vector<DwoInfo>* dwos,
+                                   set<ExternalDebugInfo>* external_debug_info,
+                                   bool already_used_file) {
   string build_id = trace_file_reader.read_buildid();
   if (build_id.empty()) {
     LOG(warn) << "Main ELF binary has no build ID!";
     return false;
   }
-  if (!process_compilation_units(reader, trace_relative_name, original_file_name, {}, file_names, dwos)) {
+
+  bool did_work = process_compilation_units(aux_file_reader, alt_file_reader,
+                                            trace_relative_name, original_file_name,
+                                            {}, file_names, dwos);
+  if (!did_work) {
     LOG(warn) << "No debuginfo!";
+    /* If we've already used this file we need to insert it into the external_debug_info
+     * set even if it does not have any CUs of its own.
+     */
+    if (!already_used_file) {
+      return false;
+    }
+  }
+  external_debug_info->insert({ full_aux_file_name, build_id, string(file_type) });
+  return did_work;
+}
+
+static bool try_debuglink_file(ElfFileReader& trace_file_reader,
+                               const string& trace_relative_name,
+                               const string& original_file_name,
+                               set<string>* file_names, const string& aux_file_name,
+                               vector<DwoInfo>* dwos,
+                               set<ExternalDebugInfo>* external_debug_info) {
+  string full_file_name;
+  auto reader = find_auxiliary_file(original_file_name, aux_file_name,
+                                    full_file_name);
+  if (!reader) {
     return false;
   }
-  external_debug_info->insert({ full_file_name, build_id, string(file_type) });
-  return true;
+
+  /* A debuglink file can have its own debugaltlink */
+  string full_altfile_name;
+  Debugaltlink debugaltlink = reader->read_debugaltlink();
+  auto altlink_reader = find_auxiliary_file(original_file_name, debugaltlink.file_name,
+                                            full_altfile_name);
+
+  bool has_source_files = process_auxiliary_file(trace_file_reader, *reader, altlink_reader.get(),
+                                                 trace_relative_name, original_file_name,
+                                                 file_names, full_file_name, DEBUGLINK,
+                                                 dwos, external_debug_info, false);
+
+  if (altlink_reader) {
+    has_source_files |= process_auxiliary_file(trace_file_reader, *altlink_reader, nullptr,
+                                               trace_relative_name, original_file_name,
+                                               file_names, full_altfile_name, DEBUGALTLINK,
+                                               dwos, external_debug_info, has_source_files);
+  }
+  return has_source_files;
 }
 
 struct Symlink {
@@ -532,24 +591,43 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
       base_name(trace_relative_name);
     }
     base_name(original_name);
+    Debugaltlink debugaltlink = reader.read_debugaltlink();
+
+    string full_altfile_name;
+    auto altlink_reader = find_auxiliary_file(pair.second, debugaltlink.file_name,
+                                              full_altfile_name);
+
     bool has_source_files;
     LOG(debug) << "Looking for comp_dir substitutions for " << original_name;
     auto it = comp_dir_substitutions.find(original_name);
     if (it != comp_dir_substitutions.end()) {
       LOG(debug) << "\tFound comp_dir substitution " << it->second;
-      has_source_files = process_compilation_units(reader, trace_relative_name, pair.second, it->second, &file_names, &dwos);
+      has_source_files = process_compilation_units(reader, altlink_reader.get(),
+                                                   trace_relative_name, pair.second,
+                                                   it->second, &file_names, &dwos);
     } else {
       LOG(debug) << "\tNone found";
-      has_source_files = process_compilation_units(reader, trace_relative_name, pair.second, {}, &file_names, &dwos);
+      has_source_files = process_compilation_units(reader, altlink_reader.get(),
+                                                   trace_relative_name, pair.second,
+                                                   {}, &file_names, &dwos);
     }
+    /* If the original binary had source files, force the inclusion of any debugaltlink
+     * file, even if it does not itself have compilation units (it may have relevant strings)
+     */
+    const bool original_had_source_files = has_source_files;
 
     Debuglink debuglink = reader.read_debuglink();
-    has_source_files |= try_auxiliary_file(reader, trace_relative_name, pair.second,
-      &file_names, debuglink.file_name, "debuglink", &dwos, &external_debug_info);
+    has_source_files |= try_debuglink_file(reader, trace_relative_name, pair.second,
+                                           &file_names, debuglink.file_name, &dwos,
+                                           &external_debug_info);
 
-    Debugaltlink debugaltlink = reader.read_debugaltlink();
-    has_source_files |= try_auxiliary_file(reader, trace_relative_name, pair.second,
-      &file_names, debugaltlink.file_name, "debugaltlink", &dwos, &external_debug_info);
+    if (altlink_reader) {
+      has_source_files |= process_auxiliary_file(reader, *altlink_reader, nullptr,
+                                                 trace_relative_name, pair.second,
+                                                 &file_names, full_altfile_name,
+                                                 DEBUGALTLINK, &dwos, &external_debug_info,
+                                                 original_had_source_files);
+    }
 
     if (has_source_files) {
       relevant_binary_names.push_back(move(trace_relative_name));

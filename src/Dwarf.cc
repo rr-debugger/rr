@@ -266,6 +266,8 @@ static size_t form_size(DWForm form, size_t address_size, size_t dwarf_size, Dwa
     case DW_FORM_sec_offset: return dwarf_size;
     case DW_FORM_flag_present: return 0;
     case DW_FORM_implicit_const: return 0;
+    case DW_FORM_strp_sup: return dwarf_size;
+    case DW_FORM_GNU_strp_alt: return dwarf_size;
     default:
       LOG(warn) << "form " << form << " not supported!";
       *ok = false;
@@ -352,6 +354,14 @@ static const char* decode_string(const DwarfCompilationUnit& cu, DwarfSpan span,
         return nullptr;
       }
       return debug_strs.debug_str.subspan(offset).read_null_terminated_string(ok);
+    }
+    case DW_FORM_strp_sup:
+    case DW_FORM_GNU_strp_alt: {
+      uint64_t offset = decode_unsigned_literal(span, ok);
+      if (!*ok) {
+        return nullptr;
+      }
+      return debug_strs.debug_str_sup.subspan(offset).read_null_terminated_string(ok);
     }
     case DW_FORM_line_strp: {
       uint64_t offset = decode_unsigned_literal(span, ok);
