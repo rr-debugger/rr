@@ -279,6 +279,7 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
         fclose(gdb_cmd);
       }
     } else {
+      sleep(10);
       force_trace_closure(rr_pid, out);
     }
   }
