@@ -3500,9 +3500,15 @@ void Task::dup_from(Task *other) {
   bool found_stack = false;
   KernelMapping vdso_mapping;
   bool found_vdso = false;
-  for (KernelMapIterator it(other); !it.at_end(); ++it) {
-    auto km = it.current();
-    if (km.is_stack()) {
+
+  for (auto map : other->vm()->maps()) {
+    auto km = map.map;
+    if (map.flags != AddressSpace::Mapping::FLAG_NONE) {
+      // For rr private mappings, just make an anonymous segment of the same size
+      km = KernelMapping(km.start(), km.end(), string(), KernelMapping::NO_DEVICE,
+                           KernelMapping::NO_INODE, km.prot(), km.flags(), 0);
+    }
+    if (km.is_stack() && !found_stack) {
       stack_mapping = km;
       found_stack = true;
     } else {

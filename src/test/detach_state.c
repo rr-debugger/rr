@@ -10,6 +10,19 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
     if (pid == 0) {
         readlink("/proc/self/exe", path1, sizeof(path1));
 
+        // Check that MAP_GROWSDOWN doesn't get erased
+        size_t page_size = sysconf(_SC_PAGESIZE);
+
+        // Let the kernel find us a 512 page gap that's free
+        char *pbase = mmap(NULL, page_size * 512, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        test_assert(pbase != MAP_FAILED);
+        munmap(pbase, 512*page_size);
+
+        volatile char *p = (char *)mmap(pbase + 509 * page_size, page_size * 3, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS | MAP_GROWSDOWN | MAP_FIXED, -1, 0);
+        test_assert(p != MAP_FAILED);
+
         // Check that /proc/self/mem gets remapped
         uintptr_t newval = 1;
         volatile uintptr_t stackval = 0;
@@ -58,6 +71,32 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
             test_assert(0 == sched_setaffinity(0, sizeof(cpu_set_t), &cpus));
             test_assert(0 == sched_getaffinity(0, sizeof(cpu_set_t), &cpus));
             test_assert(CPU_COUNT(&cpus) == 1);
+        }
+
+        atomic_printf("Ptr is %p\n", p);
+
+        // The kernel is picky about MAP_GROWSDOWN. Whether our setup above
+        // works depends on the stack_guard_gap cmdline parameter as well as
+        // kernel versions (prior to 5.0 MAP_GROWSDOWN was disallowed for
+        // access more than 64k bytes beyond the kernel pointer), so check
+        // whether we can expect it to work by explicitly allocating a
+        // MAP_GROWSDOWN page in a subprocess.
+        if (0 == fork()) {
+            test_assert(MAP_FAILED !=
+                (char *)mmap(pbase + 509 * page_size, page_size * 3, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS | MAP_GROWSDOWN | MAP_FIXED, -1, 0));
+            *p = 1;
+            *(p - 1) = 1;
+            return 0;
+        }
+
+        int status;
+        wait(&status);
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            *p = 1;
+            *(p - 1) = 1;
+        } else {
+            atomic_printf("Skipping MAP_GROWSDOWN due to kernel configuration");
         }
 
         readlink("/proc/self/exe", path2, sizeof(path2));
