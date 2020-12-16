@@ -377,7 +377,7 @@ enum {
 #endif
 
 #ifndef RLIMIT_RTTIME
-#define RLIMIT_RTTIME 16
+#define RLIMIT_RTTIME 15
 #endif
 
 } // namespace rr
