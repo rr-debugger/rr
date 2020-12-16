@@ -376,6 +376,10 @@ enum {
 #define CLONE_PIDFD 0x1000
 #endif
 
+#ifndef RLIMIT_RTTIME
+#define RLIMIT_RTTIME 16
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */

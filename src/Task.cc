@@ -3488,10 +3488,11 @@ static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &k
   }
 }
 
-const __rlimit_resource all_rlimits[] = {
-  RLIMIT_AS, RLIMIT_CORE, RLIMIT_CPU, RLIMIT_DATA, RLIMIT_FSIZE, RLIMIT_LOCKS,
-  RLIMIT_MEMLOCK, RLIMIT_MSGQUEUE, RLIMIT_NICE, RLIMIT_NOFILE, RLIMIT_NPROC,
-  RLIMIT_RSS, RLIMIT_RTTIME, RLIMIT_SIGPENDING, RLIMIT_STACK
+const int all_rlimits[] = {
+  (int)RLIMIT_AS, (int)RLIMIT_CORE, (int)RLIMIT_CPU, (int)RLIMIT_DATA,
+  (int)RLIMIT_FSIZE, (int)RLIMIT_LOCKS, (int)RLIMIT_MEMLOCK,
+  (int)RLIMIT_MSGQUEUE, (int)RLIMIT_NICE, (int)RLIMIT_NOFILE, (int)RLIMIT_NPROC,
+  (int)RLIMIT_RSS, (int)RLIMIT_RTTIME, (int)RLIMIT_SIGPENDING, (int)RLIMIT_STACK
 };
 
 void Task::dup_from(Task *other) {
@@ -3594,9 +3595,11 @@ void Task::dup_from(Task *other) {
     // Copy rlimits
     struct rlimit limit;
     for (size_t i = 0; i < (sizeof(all_rlimits)/sizeof(all_rlimits[0])); ++i) {
-      int err = ::prlimit(other->tid, all_rlimits[i], NULL, &limit);
+      int err = syscall(SYS_prlimit64, (uintptr_t)other->tid,
+        (uintptr_t)all_rlimits[i], (uintptr_t)NULL, (uintptr_t)&limit);
       ASSERT(other, err == 0);
-      err = ::prlimit(this->tid, all_rlimits[i], &limit, NULL);
+      err = syscall(SYS_prlimit64, (uintptr_t)this->tid,
+        (uintptr_t)all_rlimits[i], (uintptr_t)&limit, (uintptr_t)NULL);
       ASSERT(this, err == 0);
     }
 
