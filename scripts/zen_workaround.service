@@ -1,0 +1,28 @@
+# systemd service for AMD Zen `rr` workaround
+# See https://github.com/rr-debugger/rr/wiki/Zen for more details
+# To install:
+#   - Save this file as `/etc/systemd/system/zen_workaround.service`
+#   - run `sudo systemctl enable zen_workaround` to enable on startup
+#   - run `sudo systemctl start zen_workaround` to manually start it immediately
+#   - run `systemctl status zen_workaround` to ensure that it completed successfully on your hardware
+#
+# This script will auto-download the `zen_workaround.py` script if it doesn't already exist,
+# and stores the script in `/tmp/zen_workaround` by default.  Feel free to modify this script
+# to look in a different, more persistent folder if you don't want the auto-downloading.
+[Unit]
+Description           = Startup script for rr zen workaround
+
+[Service]
+Environment           =DIR='/tmp/zen_workaround' URL='https://github.com/rr-debugger/rr/raw/master/scripts/zen_workaround.py'
+# Step to download `zen_workaround.py` if it doesn't already exist
+ExecStartPre          =-/bin/sh -c "mkdir -p ${DIR}; [ ! -f ${DIR}/zen_workaround.py ] && curl -L ${URL} -o ${DIR}/zen_workaround.py && chmod +x ${DIR}/zen_workaround.py"
+
+# Step to actually run `zen_workaround.py`.
+ExecStart             =+/bin/sh -c "${DIR}/zen_workaround.py"
+
+# Only run this once, report it as "(active)" even after we've exited.
+Type                  = oneshot
+RemainAfterExit       = yes
+
+[Install]
+WantedBy             = default.target
