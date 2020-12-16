@@ -57,6 +57,10 @@
 
 .section .text
 .align 0x1000
+
+.global rr_page_start
+rr_page_start:
+
 #define STARTPROC(name) #name:; .cfi_startproc
 #define CFI_ENDPROC .cfi_endproc
 #include "rr_page_instructions.S"
