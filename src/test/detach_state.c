@@ -5,7 +5,13 @@
 char path1[PATH_MAX];
 char path2[PATH_MAX];
 
-int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) {
+int main(int argc, char **argv) {
+    if (argc == 2) {
+        test_assert(strcmp(argv[1], "--inner") == 0);
+        return 0;
+    }
+    test_assert(argc == 1);
+
     pid_t pid = fork();
     if (pid == 0) {
         readlink("/proc/self/exe", path1, sizeof(path1));
@@ -73,8 +79,6 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
             test_assert(CPU_COUNT(&cpus) == 1);
         }
 
-        atomic_printf("Ptr is %p\n", p);
-
         // The kernel is picky about MAP_GROWSDOWN. Whether our setup above
         // works depends on the stack_guard_gap cmdline parameter as well as
         // kernel versions (prior to 5.0 MAP_GROWSDOWN was disallowed for
@@ -101,6 +105,18 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
 
         readlink("/proc/self/exe", path2, sizeof(path2));
         test_assert(0 == strcmp(path1, path2));
+
+        // Check that we can exec without having to clear LD_PRELOAD
+        if (fork() == 0) {
+            // NULL here drops LD_PRELOAD
+            char* execv_argv[] = {"/proc/self/exe", "--inner", NULL};
+            execve("/proc/self/exe", execv_argv, NULL);
+            test_assert(0 && "Exec should not have failed");
+        }
+
+        wait(&status);
+        test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
         return 0;
     }
 

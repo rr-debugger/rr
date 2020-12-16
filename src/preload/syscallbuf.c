@@ -54,6 +54,7 @@
 #include <asm/siginfo.h>
 #include <asm/stat.h>
 #include <asm/statfs.h>
+#include <sys/mman.h>
 #include <linux/eventpoll.h>
 #include <linux/futex.h>
 #include <linux/fcntl.h>
@@ -593,6 +594,12 @@ static void init_thread(void) {
 // so declared this prototype manually
 extern const char* getenv(const char*);
 
+// The start of the rr page as seen by the dynamic linker. If this matches
+// RR_PAGE_START, it's likely that we're running under rr, but in any case,
+// we know that RR_PAGE_START will have a valid rr page that we can use
+// for syscalls.
+extern char rr_page_start;
+
 /**
  * Initialize process-global buffering state, if enabled.
  * NOTE: constructors go into a special section by default so this won't
@@ -741,6 +748,16 @@ static void __attribute__((constructor)) init_process(void) {
     return;
   }
 
+  // Check if the rr page is mapped. We avoid a syscall if the dynamic linker
+  // tells us that it placed the rr page at the valid address (which will be
+  // the common case).
+  if ((uintptr_t)&rr_page_start != RR_PAGE_ADDR &&
+      msync((void*)RR_PAGE_ADDR, RR_PAGE_SIZE, MS_ASYNC) != 0) {
+    // The RR page is not mapped - this process is not rr traced.
+    buffer_enabled = 0;
+    return;
+  }
+
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
   if (!buffer_enabled) {
@@ -777,10 +794,20 @@ static void __attribute__((constructor)) init_process(void) {
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
   int err = privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
   if (err != 0) {
-    fatal("Failed to communicated with rr tracer.\n"
-          "Perhaps a restrictive seccomp filter is in effect (e.g. docker?)?\n"
-          "Adjust the seccomp filter to allow syscalls above 1000, disable it,\n"
-          "or try using `rr record -n` (slow).");
+    // Check if the rr tracer is present by looking for the thread local page
+    // (mapped just after the rr page). If it is not present, we were
+    // preloaded without rr listening, which is allowed (e.g. after detach).
+    // Otherwise give an intelligent error message indicating that our connection
+    // to rr is broken.
+    if (msync((void*)RR_PAGE_ADDR + RR_PAGE_SIZE, RR_PAGE_SIZE, MS_ASYNC) == 0) {
+      fatal("Failed to communicated with rr tracer.\n"
+            "Perhaps a restrictive seccomp filter is in effect (e.g. docker?)?\n"
+            "Adjust the seccomp filter to allow syscalls above 1000, disable it,\n"
+            "or try using `rr record -n` (slow).");
+    } else {
+      buffer_enabled = 0;
+      return;
+    }
   }
 
   real_pthread_mutex_init = dlsym(RTLD_NEXT, "pthread_mutex_init");
