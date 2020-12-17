@@ -3451,9 +3451,17 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
 static void apply_mm_map(AutoRemoteSyscalls& remote, const struct prctl_mm_map& map)
 {
   AutoRestoreMem remote_mm_map(remote, (const uint8_t*)&map, sizeof(map));
-  remote.infallible_syscall(syscall_number_for_prctl(remote.task()->arch()), PR_SET_MM,
+  int result = remote.syscall(syscall_number_for_prctl(remote.task()->arch()), PR_SET_MM,
                             PR_SET_MM_MAP, remote_mm_map.get().as_int(),
                             sizeof(map));
+  if (result == -EINVAL &&
+      (map.start_brk <= map.end_data || map.brk <= map.end_data)) {
+    CLEAN_FATAL() << "The linux kernel prohibits duplication of this task's memory map," <<
+                " because the brk segment is located below the data segment. Sorry.";
+  }
+  else if (result != 0) {
+    FATAL() << "Failed to set target task memory map. Error was " << errno_name(-result);
+  }
 }
 
 static void copy_mem_mapping(Task* from, Task* to, const KernelMapping& km) {
