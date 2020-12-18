@@ -326,10 +326,9 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
 
     // Now that we're in a sane state, ask the Moneypatcher to try and patch
     // that.
-    if (!t->vm()->monkeypatcher().try_patch_vsyscall_caller(t, ret_addr)) {
-      FATAL() << "The tracee issues a vsyscall, but we failed to moneypatch the\n"
-              << "caller. Recording will not succeed. Exiting.";
-    }
+    bool patch_ok = t->vm()->monkeypatcher().try_patch_vsyscall_caller(t, ret_addr);
+    ASSERT(t, patch_ok) << "The tracee issues a vsyscall, but we failed to moneypatch the\n"
+            << "caller. Recording will not succeed. Exiting.";
 
     // Reset to the start of the region and continue
     regs = t->regs();
