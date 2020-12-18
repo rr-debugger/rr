@@ -2,6 +2,10 @@
  #name:; .cfi_startproc
 #define CFI_ENDPROC .cfi_endproc
 
+// Older libs don't use the __vdso symbols, but try to look for the syscall
+// names directly. Follow the kernel vdso and make them weak aliases
+#define WEAK_ALIAS(sym, target) .weak sym; .set sym, target
+
 #if defined(__x86_64__)
 
 #define SYSCALL(which) \
@@ -27,6 +31,12 @@ CFI_ENDPROC
 STARTPROC_GLOBAL(__vdso_gettimeofday)
 SYSCALL(96)
 CFI_ENDPROC
+
+WEAK_ALIAS(clock_getres, __vdso_clock_getres)
+WEAK_ALIAS(getcpu, __vdso_getcpu)
+WEAK_ALIAS(time, __vdso_time)
+WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
+WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 
 #elif defined(__i386__)
 
@@ -72,6 +82,12 @@ CFI_ENDPROC
 STARTPROC_GLOBAL(__vdso_gettimeofday)
 SYSCALL(78)
 CFI_ENDPROC
+
+WEAK_ALIAS(clock_getres, __vdso_clock_getres)
+WEAK_ALIAS(time, __vdso_time)
+WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
+WEAK_ALIAS(clock_gettime64, __vdso_clock_gettime64)
+WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 
 #else
 
