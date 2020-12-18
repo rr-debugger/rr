@@ -3348,7 +3348,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   // restore that.
   cpu_set_t mask;
   memset(&mask, 0xFF, sizeof(mask));
-  sched_setaffinity(new_t->tid, sizeof(mask), &mask);
+  syscall(SYS_sched_setaffinity, new_t->tid, sizeof(mask), &mask);
   new_t->detach();
   new_t->did_kill();
   delete new_t;
