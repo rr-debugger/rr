@@ -2997,24 +2997,7 @@ static void prepare_mmap_register_params(RecordTask* t) {
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
 #endif
-  int fd = r.arg5_signed();
-  size_t offset = r.arg6();
-  size_t length = r.arg2();
-  intptr_t flags = r.arg4_signed();
-  FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
-  if (fd > 0 && fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
-    LOG(debug) << "Got request to map rr page";
-    if (offset == 0 && !(flags & MAP_FIXED) && length <= 2*page_size()) {
-      // If the dynamic linker allows us to map the rr page anywhere, ask to
-      // map it at the address we need it to be to match RR_PAGE_ADDR.
-      // N.B. rr_page.ld sets this layout. If the layout is edited, this may
-      // need to be adjusted.
-      r.set_arg1(RR_PAGE_ADDR - page_size());
-      r.set_arg2(page_size());
-      r.set_arg4(flags | MAP_FIXED);
-    }
-  }
-  else if (t->session().enable_chaos() &&
+  if (t->session().enable_chaos() &&
       !(r.arg4_signed() & mask_flag) && r.arg1() == 0) {
     // No address hint was provided. Randomize the allocation address.
     size_t len = r.arg2();
@@ -5349,23 +5332,6 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
     ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
     return;
-  }
-
-  FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
-  if (fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
-    LOG(debug) << "Processing mmap of rr page";
-    if (offset_pages == 1 && length <= page_size() &&
-        addr == RR_PAGE_ADDR && t->vm()->has_rr_page()) {
-      // If this is a remap of the rr page at the RR_PAGE_ADDR, skip all further
-      // processing. We silently already did this just after exec.
-      KernelMapping rr_page_mapping =
-          t->vm()->mapping_of(AddressSpace::rr_page_start()).map;
-      auto d = t->trace_writer().write_mapped_region(t, rr_page_mapping,
-        rr_page_mapping.fake_stat(), rr_page_mapping.fsname(),
-        vector<TraceRemoteFd>(), TraceWriter::RR_BUFFER_MAPPING);
-      ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
-      return;
-    }
   }
 
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";

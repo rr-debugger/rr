@@ -3,6 +3,7 @@
 #include "Monkeypatcher.h"
 
 #include <limits.h>
+#include <linux/auxvec.h>
 
 #include <sstream>
 
@@ -532,38 +533,31 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
     // after the syscall. False positives are OK.
     // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
     bool found_potential_interfering_branch = false;
-    // If this was a VDSO syscall we patched, we don't have to worry about
-    // this check since the function doesn't do anything except execute our
-    // syscall and return.
-    // Otherwise the Linux 4.12 VDSO triggers the interfering-branch check.
-    if (!patched_vdso_syscalls.count(
-            ip.decrement_by_syscall_insn_length(arch))) {
-      size_t max_bytes, warn_offset;
-      uint8_t* search_bytes;
-      if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
-        max_bytes = bytes_count;
-        search_bytes = bytes;
-        warn_offset = MAXIMUM_LOOKBACK;
-      } else {
-        max_bytes = following_bytes_count;
-        search_bytes = following_bytes;
-        warn_offset = 0;
-      }
+    size_t max_bytes, warn_offset;
+    uint8_t* search_bytes;
+    if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+      max_bytes = bytes_count;
+      search_bytes = bytes;
+      warn_offset = MAXIMUM_LOOKBACK;
+    } else {
+      max_bytes = following_bytes_count;
+      search_bytes = following_bytes;
+      warn_offset = 0;
+    }
 
-      for (size_t i = 0; i + 2 <= max_bytes; ++i) {
-        uint8_t b = search_bytes[i];
-        // Check for short conditional or unconditional jump
-        if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
-          int offset = i + 2 + (int8_t)search_bytes[i + 1];
-          if ((hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS)
-                  ? (offset >= 0 && offset < hook.patch_region_length)
-                  : offset == 0) {
-            LOG(debug) << "Found potential interfering branch at "
-                       << ip.to_data_ptr<uint8_t>() + i - warn_offset;
-            // We can't patch this because it would jump straight back into
-            // the middle of our patch code.
-            found_potential_interfering_branch = true;
-          }
+    for (size_t i = 0; i + 2 <= max_bytes; ++i) {
+      uint8_t b = search_bytes[i];
+      // Check for short conditional or unconditional jump
+      if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
+        int offset = i + 2 + (int8_t)search_bytes[i + 1];
+        if ((hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS)
+                ? (offset >= 0 && offset < hook.patch_region_length)
+                : offset == 0) {
+          LOG(debug) << "Found potential interfering branch at "
+                      << ip.to_data_ptr<uint8_t>() + i - warn_offset;
+          // We can't patch this because it would jump straight back into
+          // the middle of our patch code.
+          found_potential_interfering_branch = true;
         }
       }
     }
@@ -615,81 +609,6 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   return false;
 }
 
-class VdsoReader : public ElfReader {
-public:
-  VdsoReader(RecordTask* t) : ElfReader(t->arch()) {
-    size = t->vm()->vdso().size();
-    map = new uint8_t[size];
-    t->read_bytes_helper(t->vm()->vdso().start(), size, map);
-  }
-  virtual ~VdsoReader() {
-    delete[] map;
-  }
-};
-
-/**
- * Return true iff |addr| points to a known |__kernel_vsyscall()|
- * implementation.
- */
-static bool is_kernel_vsyscall(RecordTask* t, remote_ptr<void> addr) {
-  uint8_t impl[X86SysenterVsyscallImplementationAMD::size];
-  t->read_bytes(addr, impl);
-  return X86SysenterVsyscallImplementation::match(impl) ||
-         X86SysenterVsyscallImplementationAMD::match(impl);
-}
-
-static const uintptr_t MAX_VDSO_SIZE = 16384;
-static const uintptr_t VDSO_ABSOLUTE_ADDRESS = 0xffffe000;
-
-/**
- * Return the address of a recognized |__kernel_vsyscall()|
- * implementation in |t|'s address space.
- */
-static remote_ptr<void> locate_and_verify_kernel_vsyscall(
-    RecordTask* t, ElfReader& reader, const SymbolTable& syms) {
-  remote_ptr<void> kernel_vsyscall = nullptr;
-  // It is unlikely but possible that multiple, versioned __kernel_vsyscall
-  // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
-  // catch that case, because only one of the versioned symbols will
-  // actually match what we expect to see, and the matching one might be
-  // the last one.  Therefore, we have this separate flag to alert us to
-  // this possibility.
-  bool seen_kernel_vsyscall = false;
-
-  for (size_t i = 0; i < syms.size(); ++i) {
-    if (syms.is_name(i, "__kernel_vsyscall")) {
-      uintptr_t file_offset;
-      if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
-        continue;
-      }
-      // The symbol values can be absolute or relative addresses.
-      if (file_offset >= VDSO_ABSOLUTE_ADDRESS) {
-        file_offset -= VDSO_ABSOLUTE_ADDRESS;
-      }
-      if (file_offset > MAX_VDSO_SIZE) {
-        // With 4.2.8-300.fc23.x86_64, execve_loop_32 seems to once in a while
-        // see a VDSO with a crazy file offset in it which is a duplicate
-        // __kernel_vsyscall. Bizzarro. Ignore it.
-        continue;
-      }
-      ASSERT(t, !seen_kernel_vsyscall);
-      seen_kernel_vsyscall = true;
-      // The ELF information in the VDSO assumes that the VDSO
-      // is always loaded at a particular address.  The kernel,
-      // however, subjects the VDSO to ASLR, which means that
-      // we have to adjust the offsets properly.
-      auto vdso_start = t->vm()->vdso().start();
-      remote_ptr<void> candidate = vdso_start + file_offset;
-
-      if (is_kernel_vsyscall(t, candidate)) {
-        kernel_vsyscall = candidate;
-      }
-    }
-  }
-
-  return kernel_vsyscall;
-}
-
 // VDSOs are filled with overhead critical functions related to getting the
 // time and current CPU.  We need to ensure that these syscalls get redirected
 // into actual trap-into-the-kernel syscalls so rr can intercept them.
@@ -700,134 +619,18 @@ static void patch_after_exec_arch(RecordTask* t, Monkeypatcher& patcher);
 template <typename Arch>
 static void patch_at_preload_init_arch(RecordTask* t, Monkeypatcher& patcher);
 
-struct named_syscall {
-  const char* name;
-  int syscall_number;
-};
-
-static void erase_section(RecordTask* t, VdsoReader& reader, const char* name) {
-  SectionOffsets offsets = reader.find_section_file_offsets(name);
-  if (offsets.end > offsets.start) {
-    vector<uint8_t> zeroes;
-    zeroes.resize(offsets.end - offsets.start);
-    memset(zeroes.data(), 0, zeroes.size());
-    write_and_record_bytes(t,
-        t->vm()->vdso().start() + offsets.start,
-        offsets.end - offsets.start, zeroes.data());
-  }
-}
-
-static void obliterate_debug_info(RecordTask* t, VdsoReader& reader) {
-  erase_section(t, reader, ".eh_frame");
-  erase_section(t, reader, ".eh_frame_hdr");
-  erase_section(t, reader, ".note");
-}
-
-// Monkeypatch x86-32 vdso syscalls immediately after exec. The vdso syscalls
-// will cause replay to fail if called by the dynamic loader or some library's
-// static constructors, so we can't wait for our preload library to be
-// initialized. Fortunately we're just replacing the vdso code with real
-// syscalls so there is no dependency on the preload library at all.
 template <>
 void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
+  (void)patcher;
   setup_preload_library_path<X86Arch>(t);
   setup_audit_library_path<X86Arch>(t);
 
   if (!t->vm()->has_vdso()) {
-    patch_auxv_vdso(t);
-    return;
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
+  } else {
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 2*RR_PAGE_SIZE);
+    patch_auxv_vdso(t, X86Arch::RR_AT_SYSINFO, RR_PAGE_ADDR - 1*RR_PAGE_SIZE);
   }
-
-  VdsoReader reader(t);
-  auto syms = reader.read_symbols(".dynsym", ".dynstr");
-  patcher.x86_vsyscall = locate_and_verify_kernel_vsyscall(t, reader, syms);
-  if (!patcher.x86_vsyscall) {
-    FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
-               "recognized.\n"
-               "    Syscall buffering is now effectively disabled.  If you're "
-               "OK with\n"
-               "    running rr without syscallbuf, then run the recorder "
-               "passing the\n"
-               "    --no-syscall-buffer arg.\n"
-               "    If you're *not* OK with that, file an issue.";
-  }
-
-  // Patch __kernel_vsyscall to use int 80 instead of sysenter.
-  // During replay we may remap the VDSO to a new address, and the sysenter
-  // instruction would return to the old address, so we must make sure sysenter
-  // is never used.
-  uint8_t patch[X86SysenterVsyscallUseInt80::size];
-  X86SysenterVsyscallUseInt80::substitute(patch);
-  write_and_record_bytes(t, patcher.x86_vsyscall, patch);
-  LOG(debug) << "monkeypatched __kernel_vsyscall to use int $80";
-
-  auto vdso_start = t->vm()->vdso().start();
-
-  static const named_syscall syscalls_to_monkeypatch[] = {
-#define S(n) { "__vdso_" #n, X86Arch::n }
-    S(clock_gettime), S(gettimeofday), S(time), S(clock_getres), S(clock_gettime64)
-#undef S
-  };
-
-  uintptr_t max_file_offset = 0;
-  for (size_t i = 0; i < syms.size(); ++i) {
-    for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
-      if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
-        uintptr_t file_offset;
-        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
-          continue;
-        }
-        if (file_offset > MAX_VDSO_SIZE) {
-          // With 4.3.3-301.fc23.x86_64, once in a while we
-          // see a VDSO symbol with a crazy file offset in it which is a
-          // duplicate of another symbol. Bizzarro. Ignore it.
-          continue;
-        }
-        if (file_offset > max_file_offset) {
-          max_file_offset = file_offset;
-        }
-      }
-    }
-  }
-
-  uintptr_t shared_address = vdso_start.as_int() + max_file_offset + X86VsyscallMonkeypatch::size;
-
-  for (size_t i = 0; i < syms.size(); ++i) {
-    for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
-      if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
-        uintptr_t file_offset;
-        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
-          continue;
-        }
-        if (file_offset > MAX_VDSO_SIZE) {
-          continue;
-        }
-
-        uintptr_t absolute_address = vdso_start.as_int() + file_offset;
-
-        uint8_t patch[X86VsyscallMonkeypatch::size];
-        uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
-        X86VsyscallMonkeypatch::substitute(patch, syscall_number,
-          shared_address - (absolute_address + X86VsyscallMonkeypatch::size - 1));
-
-        write_and_record_bytes(t, absolute_address, patch);
-        LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
-                   << " to syscall "
-                   << syscalls_to_monkeypatch[j].syscall_number;
-      }
-    }
-  }
-
-  if (max_file_offset > 0) {
-    uint8_t patch[X86VsyscallMonkeypatchShared::size];
-    X86VsyscallMonkeypatchShared::substitute(patch);
-    write_and_record_bytes(t, shared_address, patch);
-    LOG(debug) << "monkeypatched shared stub";
-    // Record the location of the syscall instruction
-    patcher.patched_vdso_syscalls.insert(remote_code_ptr(shared_address + 8));
-  }
-
-  obliterate_debug_info(t, reader);
 }
 
 // Monkeypatch x86 vsyscall hook only after the preload library
@@ -843,45 +646,10 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
     return;
   }
 
-  auto kernel_vsyscall = patcher.x86_vsyscall;
-
-  // Luckily, linux is happy for us to scribble directly over
-  // the vdso mapping's bytes without mprotecting the region, so
-  // we don't need to prepare remote syscalls here.
-  remote_ptr<void> syscallhook_vsyscall_entry =
-      params.syscallhook_vsyscall_entry;
-
-  uint8_t patch[X86SysenterVsyscallSyscallHook::size];
-
-  if (safe_for_syscall_patching(kernel_vsyscall.as_int(),
-                                kernel_vsyscall.as_int() + sizeof(patch), t)) {
-    // We're patching in a relative jump, so we need to compute the offset from
-    // the end of the jump to our actual destination.
-    X86SysenterVsyscallSyscallHook::substitute(
-        patch,
-        syscallhook_vsyscall_entry.as_int() -
-            (kernel_vsyscall + sizeof(patch)).as_int());
-    write_and_record_bytes(t, kernel_vsyscall, patch);
-    LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
-               << HEX(syscallhook_vsyscall_entry.as_int());
-  } else {
-    if (!Flags::get().suppress_environment_warnings) {
-      fprintf(stderr, "Unable to patch __kernel_vsyscall because a LD_PRELOAD "
-                      "thread is blocked in it; recording will be slow\n");
-    }
-    LOG(debug) << "Unable to patch __kernel_vsyscall because a LD_PRELOAD "
-                  "thread is blocked in it";
-  }
-
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
                                         params.syscall_patch_hooks);
 }
 
-// Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
-// will cause replay to fail if called by the dynamic loader or some library's
-// static constructors, so we can't wait for our preload library to be
-// initialized. Fortunately we're just replacing the vdso code with real
-// syscalls so there is no dependency on the preload library at all.
 template <>
 void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X64Arch>(t);
@@ -895,73 +663,10 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   }
 
   if (!t->vm()->has_vdso()) {
-    patch_auxv_vdso(t);
-    return;
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
+  } else {
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 2*RR_PAGE_SIZE);
   }
-
-  auto vdso_start = t->vm()->vdso().start();
-  size_t vdso_size = t->vm()->vdso().size();
-
-  VdsoReader reader(t);
-  auto syms = reader.read_symbols(".dynsym", ".dynstr");
-
-  static const named_syscall syscalls_to_monkeypatch[] = {
-#define S(n) { "__vdso_" #n, X64Arch::n }
-    S(clock_gettime), S(clock_getres), S(gettimeofday), S(time), S(getcpu),
-#undef S
-  };
-
-  for (auto& syscall : syscalls_to_monkeypatch) {
-    for (size_t i = 0; i < syms.size(); ++i) {
-      if (syms.is_name(i, syscall.name)) {
-        uintptr_t file_offset;
-        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
-          LOG(debug) << "Can't convert address " << HEX(syms.addr(i))
-                     << " to offset";
-          continue;
-        }
-        uint64_t file_offset_64 = file_offset;
-        // Absolutely-addressed symbols in the VDSO claim to start here.
-        static const uint64_t vdso_static_base = 0xffffffffff700000LL;
-        static const uint64_t vdso_max_size = 0xffffLL;
-        uint64_t sym_offset = file_offset_64 & vdso_max_size;
-
-        // In 4.4.6-301.fc23.x86_64 we occasionally see a grossly invalid
-        // address, se.g. 0x11c6970 for __vdso_getcpu. :-(
-        if ((file_offset_64 >= vdso_static_base &&
-             file_offset_64 < vdso_static_base + vdso_size) ||
-            file_offset_64 < vdso_size) {
-          uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
-
-          uint8_t patch[X64VsyscallMonkeypatch::size];
-          uint32_t syscall_number = syscall.syscall_number;
-          X64VsyscallMonkeypatch::substitute(patch, syscall_number);
-
-          write_and_record_bytes(t, absolute_address, patch);
-          // Record the location of the syscall instruction, skipping the
-          // "mov $syscall_number,%eax".
-          patcher.patched_vdso_syscalls.insert(
-              remote_code_ptr(absolute_address + 5));
-          LOG(debug) << "monkeypatched " << syscall.name << " to syscall "
-                     << syscall.syscall_number << " at "
-                     << HEX(absolute_address) << " (" << HEX(file_offset)
-                     << ")";
-
-          // With 4.4.6-301.fc23.x86_64, once in a while we see a VDSO symbol
-          // with an incorrect file offset (a small integer) in it
-          // which is a duplicate of a previous symbol. Bizzarro. So, stop once
-          // we see a valid value for the symbol.
-          break;
-        } else {
-          LOG(debug) << "Ignoring odd file offset " << HEX(file_offset)
-                     << "; vdso_static_base=" << HEX(vdso_static_base)
-                     << ", size=" << vdso_size;
-        }
-      }
-    }
-  }
-
-  obliterate_debug_info(t, reader);
 }
 
 template <>
@@ -977,51 +682,9 @@ void patch_after_exec_arch<ARM64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   }
 
   if (!t->vm()->has_vdso()) {
-    patch_auxv_vdso(t);
-    return;
-  }
-
-  auto vdso_start = t->vm()->vdso().start();
-
-  VdsoReader reader(t);
-  auto syms = reader.read_symbols(".dynsym", ".dynstr");
-
-  static const named_syscall syscalls_to_monkeypatch[] = {
-#define S(n) { "__kernel_" #n, ARM64Arch::n }
-    S(rt_sigreturn), S(gettimeofday), S(clock_gettime), S(clock_getres),
-#undef S
-  };
-
-  for (auto& syscall : syscalls_to_monkeypatch) {
-    for (size_t i = 0; i < syms.size(); ++i) {
-      if (syms.is_name(i, syscall.name)) {
-        uintptr_t file_offset;
-        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
-          LOG(debug) << "Can't convert address " << HEX(syms.addr(i))
-                     << " to offset";
-          continue;
-        }
-
-        uint64_t file_offset_64 = file_offset;
-        static const uint64_t vdso_max_size = 0xffffLL;
-        uint64_t sym_offset = file_offset_64 & vdso_max_size;
-        uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
-
-        uint8_t patch[ARM64VdsoMonkeypatch::size];
-        uint32_t syscall_number = syscall.syscall_number;
-        ARM64VdsoMonkeypatch::substitute(patch, syscall_number);
-
-        write_and_record_bytes(t, absolute_address, patch);
-        // Record the location of the syscall instruction, skipping the
-        // "mov $syscall_number,x8".
-        patcher.patched_vdso_syscalls.insert(
-            remote_code_ptr(absolute_address + 4));
-        LOG(debug) << "monkeypatched " << syscall.name << " to syscall "
-                    << syscall.syscall_number << " at "
-                    << HEX(absolute_address) << " (" << HEX(file_offset)
-                    << ")";
-      }
-    }
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
+  } else {
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR + RR_PAGE_SIZE);
   }
 }
 

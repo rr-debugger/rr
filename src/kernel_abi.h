@@ -1902,6 +1902,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   // PTRACE_ARCH_PRCTL does not exist on x86
   static const int PTRACE_SYSEMU = Arch64::PTRACE_SYSEMU;
   static const int PTRACE_SYSEMU_SINGLESTEP = Arch64::PTRACE_SYSEMU_SINGLESTEP;
+  static const int RR_AT_SYSINFO = 32;
 
   struct user_regs_struct {
     int32_t ebx;

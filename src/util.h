@@ -66,7 +66,7 @@ std::string read_ld_path(Task* t, remote_ptr<void> interpreter_base);
  */
 std::vector<std::string> read_env(Task* t);
 
-void patch_auxv_vdso(RecordTask* t);
+void patch_auxv_vdso(RecordTask* t, uintptr_t search, uintptr_t new_entry);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
