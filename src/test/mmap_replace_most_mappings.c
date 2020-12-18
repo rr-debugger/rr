@@ -20,7 +20,8 @@ void callback(uint64_t env, char* name, map_properties_t* props) {
   if (contains_symbol(props, &main) ||
       /* env is on the stack - this prevents it from being unmapped if
          the kernel gets confused by syscallbuf's stack switching */
-      contains_symbol(props, &env) || props->start == RR_PAGE_ADDR ||
+      contains_symbol(props, &env) ||
+      (props->start <= RR_PAGE_ADDR && RR_PAGE_ADDR < props->end) ||
       strcmp(name, "[stack]") == 0) {
     return;
   }

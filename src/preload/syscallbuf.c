@@ -47,6 +47,7 @@
 
 #include <dlfcn.h>
 #include <limits.h>
+#include <sys/auxv.h>
 #include <asm/errno.h>
 #include <asm/ioctls.h>
 #include <asm/poll.h>
@@ -594,12 +595,6 @@ static void init_thread(void) {
 // so declared this prototype manually
 extern const char* getenv(const char*);
 
-// The start of the rr page as seen by the dynamic linker. If this matches
-// RR_PAGE_START, it's likely that we're running under rr, but in any case,
-// we know that RR_PAGE_START will have a valid rr page that we can use
-// for syscalls.
-extern char rr_page_start;
-
 /**
  * Initialize process-global buffering state, if enabled.
  * NOTE: constructors go into a special section by default so this won't
@@ -748,10 +743,9 @@ static void __attribute__((constructor)) init_process(void) {
     return;
   }
 
-  // Check if the rr page is mapped. We avoid a syscall if the dynamic linker
-  // tells us that it placed the rr page at the valid address (which will be
-  // the common case).
-  if ((uintptr_t)&rr_page_start != RR_PAGE_ADDR &&
+  // Check if the rr page is mapped. We avoid a syscall if it looks like
+  // rr places librrpage as the vdso
+  if (getauxval(AT_SYSINFO_EHDR) != RR_PAGE_ADDR - 3*RR_PAGE_SIZE &&
       msync((void*)RR_PAGE_ADDR, RR_PAGE_SIZE, MS_ASYNC) != 0) {
     // The RR page is not mapped - this process is not rr traced.
     buffer_enabled = 0;

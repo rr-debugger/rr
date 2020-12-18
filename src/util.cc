@@ -126,14 +126,14 @@ std::string read_ld_path(Task* t, remote_ptr<void> interpreter_base) {
   return t->vm()->mapping_of(interpreter_base).map.fsname();
 }
 
-template <typename Arch> void patch_auxv_vdso_arch(RecordTask* t) {
+template <typename Arch> void patch_auxv_vdso_arch(RecordTask* t, uintptr_t search, uintptr_t new_entry_native) {
   auto stack_ptr = auxv_ptr<Arch>(t);
   std::vector<uint8_t> v = read_auxv_arch<Arch>(t, stack_ptr);
   size_t wsize = sizeof(typename Arch::unsigned_word);
   for (int i = 0; (i + 1)*wsize*2 <= v.size(); ++i) {
-    if (*((typename Arch::unsigned_word*)(v.data() + i*2*wsize)) == AT_SYSINFO_EHDR) {
-      auto entry_ptr = stack_ptr + i*2;
-      typename Arch::unsigned_word new_entry = AT_IGNORE;
+    if (*((typename Arch::unsigned_word*)(v.data() + i*2*wsize)) == search) {
+      auto entry_ptr = stack_ptr + i*2 + 1;
+      typename Arch::unsigned_word new_entry = new_entry_native;
       t->write_mem(entry_ptr, new_entry);
       t->record_local(entry_ptr, &new_entry);
       return;
@@ -142,8 +142,8 @@ template <typename Arch> void patch_auxv_vdso_arch(RecordTask* t) {
   return;
 }
 
-void patch_auxv_vdso(RecordTask* t) {
-  RR_ARCH_FUNCTION(patch_auxv_vdso_arch, t->arch(), t);
+void patch_auxv_vdso(RecordTask* t, uintptr_t search, uintptr_t new_entry) {
+  RR_ARCH_FUNCTION(patch_auxv_vdso_arch, t->arch(), t, search, new_entry);
 }
 
 template <typename Arch> static vector<string> read_env_arch(Task* t) {

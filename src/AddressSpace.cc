@@ -305,13 +305,17 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
     FATAL() << "Failed to locate " << fname;
   }
   path += fname;
-  size_t offset_pages = t->session().is_recording() ? 1 : 2;
+  size_t offset_pages = t->session().is_recording() ? 2 : 3;
 
   {
     ScopedFd page(path.c_str(), O_RDONLY);
     ASSERT(t, page.is_open()) << "Failed to open rrpage library " << path;
     long child_fd = remote.send_fd(page.get());
     ASSERT(t, child_fd >= 0);
+    if (t->session().is_recording()) {
+      remote.infallible_mmap_syscall(rr_page_start() - 2*rr_page_size(), 2*rr_page_size(), prot, flags,
+                                    child_fd, 0);
+    }
     remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
                                    child_fd, offset_pages);
 
@@ -323,8 +327,13 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
     map(t, rr_page_start(), rr_page_size(), prot, flags,
         offset_pages * page_size(), file_name,
         fstat.st_dev, fstat.st_ino);
+    mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
+    if (t->session().is_recording()) {
+      map(t, rr_page_start() - 2*rr_page_size(), 2*rr_page_size(), prot, flags,
+          0, file_name,
+          fstat.st_dev, fstat.st_ino);
+    }
   }
-  mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
 
   if (t->session().is_recording()) {
     // brk() will not have been called yet so the brk area is empty.

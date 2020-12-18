@@ -55,13 +55,19 @@
     ret
 #endif
 
-.section .text
+.section .vdso.text, "a", @progbits
+.align 0x1000
+
+#include "rr_vdso.S"
+
+.section .record.text, "a", @progbits
 .align 0x1000
 
 .global rr_page_start
 rr_page_start:
 
 #define STARTPROC(name) #name:; .cfi_startproc
+#define STARTPROC_GLOBAL(name) .global #name; #name:; .cfi_startproc
 #define CFI_ENDPROC .cfi_endproc
 #include "rr_page_instructions.S"
 
