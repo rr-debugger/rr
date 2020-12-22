@@ -9,7 +9,7 @@ PHDRS
 }
 SECTIONS
 {
-  . = 0x6fffe000 + SIZEOF_HEADERS;
+  . = 0x70000000 - 0x3000 + SIZEOF_HEADERS;
   .eh_frame_hdr   : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) } :header :eh_frame
   .eh_frame       : { KEEP (*(.eh_frame)) *(.eh_frame.*) } :header :eh_frame
   .note.gnu.build-id  : { *(.note.gnu.build-id) } :header :note
@@ -21,7 +21,15 @@ SECTIONS
   .gnu.version    : { *(.gnu.version) } :header
   .gnu.version_d  : { *(.gnu.version_d) } :header
   .gnu.version_r  : { *(.gnu.version_r) } :header
-  .vdso.text : { *(.vdso.text) } : text
+  . = 0x70000000 - 0x2000;
+  /* This space in .sh_placeholder is reserved for the section table
+     symtab/strtab, which ordinarily go after the text sections,
+     but we need to have before the rr page.
+     We move it there in a post-processing step, since linker
+     scripts can't specify these locations for legacy reasons */
+  .sh_placeholder : { *(.sh_placeholder) } :header
+  . = 0x70000000 - 0x1000;
+  .vdso.text : { *(.vdso.text) } :text
   . = 0x70000000;
   .record.text : { *(.record.text) } :text
   . = 0x70001000;
