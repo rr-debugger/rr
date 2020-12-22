@@ -4,21 +4,21 @@
 // contains syscall instructions at known ip values. These values must be fixed
 // for all processes in a given rr session, since rr cannot adjust the seccomp
 // filter that makes use of these values once it has been set. `librrpage.so`
-// contains this page, and rr will attmept to have the dynamic linker map it
-// such that the dynamic-linker-loaded copy of the rr page will be at the same
-// address as the copy unconditionally loaded by rr such that debuggers and
-// internal unwinders don't get confused by the presence of a random code page.
-// Should the mapping not succeed for whatever reason, rr will still use its
-// internal copy of the rr page.
+// contains this page, and rr will map it in place at process start and inform
+// the process about it by passing it as the address of the vdso. This way
+// the tracee's unwinders, as well as GDB will load the librrpage.so symbols and
+// unwind info and function correctly if execution is stopped in these locations.
 //
-// The `librrpage.so` file is made up of three pages:
-// 1: The ELF header, symbol/string table, and eh_frame sections
-// 2: The rr page to be used during recording
-// 3: The rr page to be used during replay
+// The `librrpage.so` file is made up of five pages:
+// 1: The ELF header, dynamic symbol/string table, and eh_frame sections
+// 2: The ELF section, symbol string tables (moved here in a post-processing step)
+// 3: A fake vdso that rr will ask the kernel to treat as the real vdso
+// 4: The rr page to be used during recording
+// 5: The rr page to be used during replay
 //
-// librrpage.so itself is set up to request the dynamic linker to only map the
-// first two pages. During replay, rr will map the third page in place of the
-// second. Note however, that we only have one copy of the eh_frame and symbol
+// During record, rr will map the first four pages of librrpage.so only.
+// During replay, rr will replace the record page by the replay page.
+// Note however, that we only have one copy of the eh_frame and symbol
 // information - we expect all offsets and unwind instructions to match between
 // the record and replay versions (anything else would likely result in
 // divergences anyway)
@@ -54,6 +54,10 @@
     brk #0; \
     ret
 #endif
+
+.section .sh_placeholder, "a"
+.align 0x1000
+.fill 0x1000, 1, 0xff
 
 .section .vdso.text, "a", @progbits
 .align 0x1000

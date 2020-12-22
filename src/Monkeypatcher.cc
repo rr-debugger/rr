@@ -628,7 +628,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   if (!t->vm()->has_vdso()) {
     patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
   } else {
-    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 2*RR_PAGE_SIZE);
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 3*RR_PAGE_SIZE);
     patch_auxv_vdso(t, X86Arch::RR_AT_SYSINFO, RR_PAGE_ADDR - 1*RR_PAGE_SIZE);
   }
 }
@@ -665,7 +665,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   if (!t->vm()->has_vdso()) {
     patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
   } else {
-    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 2*RR_PAGE_SIZE);
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 3*RR_PAGE_SIZE);
   }
 }
 
@@ -684,7 +684,7 @@ void patch_after_exec_arch<ARM64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   if (!t->vm()->has_vdso()) {
     patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
   } else {
-    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR + RR_PAGE_SIZE);
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 3*RR_PAGE_SIZE);
   }
 }
 
