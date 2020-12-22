@@ -3557,8 +3557,9 @@ void Task::dup_from(Task *other) {
       LOG(debug) << "Creating mapping " << km << " for " << tid;
       create_mapping(this, remote_this, km);
       LOG(debug) << "Copying mapping into " << tid;
-      // XXX: If this maps a file, recreate it as such
-      copy_mem_mapping(other, this, km);
+      if (!(km.flags() & MAP_SHARED)) {
+        copy_mem_mapping(other, this, km);
+      }
     }
     AutoRemoteSyscalls remote_other(other);
     std::vector<int> all_fds = read_all_proc_fds(other->tid);
