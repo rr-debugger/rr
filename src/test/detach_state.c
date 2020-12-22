@@ -19,6 +19,17 @@ int main(int argc, char **argv) {
         // Check that MAP_GROWSDOWN doesn't get erased
         size_t page_size = sysconf(_SC_PAGESIZE);
 
+        // Map a shared page
+        char filename[] = "/dev/shm/rr-test-XXXXXX";
+        int shmemfd = mkstemp(filename);
+        test_assert(shmemfd >= 0);
+        ftruncate(shmemfd, page_size);
+
+        int* wpage = mmap(NULL, page_size, PROT_WRITE, MAP_SHARED, shmemfd, 0);
+        int* rpage = mmap(NULL, page_size, PROT_READ, MAP_SHARED, shmemfd, 0);
+        *wpage = 1;
+        munmap(wpage, page_size);
+
         // Let the kernel find us a 512 page gap that's free
         char *pbase = mmap(NULL, page_size * 512, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -116,6 +127,9 @@ int main(int argc, char **argv) {
 
         wait(&status);
         test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
+        test_assert(*rpage == 1);
+        unlink(filename);
 
         return 0;
     }
