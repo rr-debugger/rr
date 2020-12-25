@@ -3602,7 +3602,7 @@ void Task::dup_from(Task *other) {
     }
 
     // Copy rlimits
-    struct rlimit limit;
+    struct rlimit64 limit;
     for (size_t i = 0; i < (sizeof(all_rlimits)/sizeof(all_rlimits[0])); ++i) {
       int err = syscall(SYS_prlimit64, (uintptr_t)other->tid,
         (uintptr_t)all_rlimits[i], (uintptr_t)NULL, (uintptr_t)&limit);
