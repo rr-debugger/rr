@@ -4332,6 +4332,19 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
         }
 
+        case PR_SET_MM:{
+          switch ((unsigned long)regs.arg2()) {
+            case PR_SET_MM_MAP_SIZE:
+              syscall_state.reg_parameter(3, sizeof(unsigned int));
+              break;
+
+            default:
+              syscall_state.expect_errno = EINVAL;
+              break;
+          }
+        }
+        break;
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;
