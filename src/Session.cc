@@ -4,7 +4,6 @@
 
 #include <linux/limits.h>
 #include <linux/unistd.h>
-#include <sys/prctl.h>
 #include <syscall.h>
 #include <sys/wait.h>
 

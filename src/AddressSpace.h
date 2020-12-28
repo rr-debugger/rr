@@ -29,8 +29,6 @@
 #include "remote_code_ptr.h"
 #include "util.h"
 
-struct prctl_mm_map;
-
 namespace rr {
 
 class AutoRemoteSyscalls;
@@ -759,7 +757,7 @@ public:
   std::string saved_ld_path() { return saved_ld_path_;}
   void save_ld_path(Task* t, remote_ptr<void>);
 
-  void read_mm_map(Task* t, struct prctl_mm_map* map);
+  void read_mm_map(Task* t, NativeArch::prctl_mm_map* map);
 
   /**
    * Reads the /proc/<pid>/maps entry for a specific address. Does no caching.

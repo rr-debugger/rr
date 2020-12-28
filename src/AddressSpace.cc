@@ -495,7 +495,7 @@ void AddressSpace::save_ld_path(Task* t, remote_ptr<void> interpreter_base) {
   saved_ld_path_ = read_ld_path(t, interpreter_base);
 }
 
-void AddressSpace::read_mm_map(Task* t, struct prctl_mm_map* map) {
+void AddressSpace::read_mm_map(Task* t, NativeArch::prctl_mm_map* map) {
   char buf[PATH_MAX+1024];
   {
     string proc_stat = t->proc_stat_path();
@@ -512,7 +512,7 @@ void AddressSpace::read_mm_map(Task* t, struct prctl_mm_map* map) {
   // We don't change /proc/pid/exe, since we're unlikely to have CAP_SYS_ADMIN
   map->exe_fd = -1;
   // auxv is restored separately
-  map->auxv = NULL;
+  map->auxv.val = 0;
   map->auxv_size = 0;
   // All of these fields of /proc/pid/stat, we don't use (currently)
   char state;

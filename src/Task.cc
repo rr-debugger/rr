@@ -14,7 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/personality.h>
-#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -3448,7 +3447,7 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
                real_file_name, device, inode, nullptr, &km);
 }
 
-static void apply_mm_map(AutoRemoteSyscalls& remote, const struct prctl_mm_map& map)
+static void apply_mm_map(AutoRemoteSyscalls& remote, const NativeArch::prctl_mm_map& map)
 {
   AutoRestoreMem remote_mm_map(remote, (const uint8_t*)&map, sizeof(map));
   int result = remote.syscall(syscall_number_for_prctl(remote.task()->arch()), PR_SET_MM,
@@ -3619,8 +3618,8 @@ void Task::dup_from(Task *other) {
       ASSERT(this, err == 0);
     }
 
-    struct prctl_mm_map map;
-    memset(&map, 0, sizeof(prctl_mm_map));
+    NativeArch::prctl_mm_map map;
+    memset(&map, 0, sizeof(map));
 
     other->vm()->read_mm_map(other, &map);
     apply_mm_map(remote_this, map);
