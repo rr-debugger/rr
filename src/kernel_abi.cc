@@ -34,6 +34,7 @@
 #include <stdint.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <sys/prctl.h>
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>

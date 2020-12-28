@@ -5,7 +5,6 @@
 #include "ReplaySession.h"
 
 #include <linux/futex.h>
-#include <sys/prctl.h>
 #include <syscall.h>
 
 #include <algorithm>
