@@ -2121,6 +2121,14 @@ static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   return MemoryRange(start, km.end());
 }
 
+static bool overlaps_asan_usage(const MemoryRange& r) {
+  MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
+                          remote_ptr<void>((uintptr_t)0x10007fff8000LL));
+  MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
+                                      remote_ptr<void>((uintptr_t)0x640000000000LL));
+  return r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved);
+}
+
 // Choose a 4TB range to exclude from random mappings. This makes room for
 // advanced trace analysis tools that require a large address range in tracees
 // that is never mapped.
@@ -2130,12 +2138,17 @@ static MemoryRange choose_global_exclusion_range() {
   }
 
   const uint64_t range_size = uint64_t(4)*1024*1024*1024*1024;
-  int bits = random_addr_bits(x86_64);
-  uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-  uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
-  r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
-  remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
-  return MemoryRange(addr, (uintptr_t)range_size);
+  while (true) {
+    int bits = random_addr_bits(x86_64);
+    uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+    uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
+    r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
+    remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
+    MemoryRange ret(addr, (uintptr_t)range_size);
+    if (!overlaps_asan_usage(ret)) {
+      return ret;
+    }
+  }
 }
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
@@ -2205,11 +2218,7 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     }
     if (t->session().asan_active() && sizeof(size_t) == 8) {
       LOG(debug) << "Checking ASAN shadow";
-      MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
-                              remote_ptr<void>((uintptr_t)0x10007fff8000LL));
-      MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
-                                          remote_ptr<void>((uintptr_t)0x640000000000LL));
-      if (r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved)) {
+      if (overlaps_asan_usage(r)) {
         continue;
       }
     }
