@@ -1245,6 +1245,7 @@ set(TESTS_WITH_PROGRAM
   mmap_tmpfs
   mmap_write
   mmap_write_private
+  morestack_unwind
   mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
