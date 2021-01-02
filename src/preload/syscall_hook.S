@@ -456,6 +456,14 @@ CFA_AT_RSP_OFFSET(16)
 RSP_IS_RSP_PLUS_OFFSET(8)
 RIP_IS_DEREF_RSP(0)
 callq _syscall_hook_trampoline
+/* GDB likes to override valid CFI with its own heuristics if the current
+   instruction is a retq. This becomes a problem here, because GDB will set
+   a breakpoint at the next instruction after the callq when continuing out of
+   `_syscall_hook_trampoline`. This `nop` makes said instruction not a retq,
+   thus preventing that GDB heuristic from kicking in and letting GDB realize
+   that it did in fact manage to step out of the `_syscall_hook_trampoline`
+   frame. */
+nop
 retq
 .cfi_endproc
 .size __morestack, .-__morestack
