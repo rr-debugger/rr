@@ -518,11 +518,25 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
   }
 }
 
+/**
+ * Something segfaulted - this is probably a bug in rr. Try to at least
+ * give a stacktrace.
+ */
+static void handle_SIGSEGV(__attribute__((unused)) int sig) {
+  static const char msg[] =
+    "rr itself crashed (SIGSEGV). This shouldn't happen!\n";
+  write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+  notifying_abort();
+}
+
 static void install_signal_handlers(void) {
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = handle_SIGTERM;
   sigaction(SIGTERM, &sa, nullptr);
+
+  sa.sa_handler = handle_SIGSEGV;
+  sigaction(SIGSEGV, &sa, nullptr);
 
   sa.sa_handler = SIG_IGN;
   sigaction(SIGHUP, &sa, nullptr);
