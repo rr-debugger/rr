@@ -3513,9 +3513,16 @@ void Task::dup_from(Task *other) {
   for (auto map : other->vm()->maps()) {
     auto km = map.map;
     if (map.flags != AddressSpace::Mapping::FLAG_NONE) {
+      if (map.flags & (AddressSpace::Mapping::IS_THREAD_LOCALS |
+                       AddressSpace::Mapping::IS_RR_PAGE)) {
+        // While under rr control this task already has an rr page and
+        // a thread locals shared segment, don't mess with them.
+        continue;
+      }
       // For rr private mappings, just make an anonymous segment of the same size
       km = KernelMapping(km.start(), km.end(), string(), KernelMapping::NO_DEVICE,
-                           KernelMapping::NO_INODE, km.prot(), km.flags(), 0);
+                           KernelMapping::NO_INODE, km.prot(),
+                           (km.flags() & ~MAP_SHARED) | MAP_PRIVATE, 0);
     }
     if (km.is_stack() && !found_stack) {
       stack_mapping = km;
@@ -3551,7 +3558,7 @@ void Task::dup_from(Task *other) {
   {
     AutoRemoteSyscalls remote_this(this);
     for (auto &km : mappings) {
-      if (km.start() == vm()->rr_page_start() || km.is_vsyscall()) {
+      if (km.is_vsyscall()) {
         continue;
       }
       LOG(debug) << "Creating mapping " << km << " for " << tid;
@@ -3619,6 +3626,7 @@ void Task::dup_from(Task *other) {
     apply_mm_map(remote_this, map);
   }
   copy_state(other->capture_state());
+  activate_preload_thread_locals();
 }
 
 /**
