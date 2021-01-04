@@ -3449,10 +3449,46 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
 
 static void apply_mm_map(AutoRemoteSyscalls& remote, const NativeArch::prctl_mm_map& map)
 {
-  AutoRestoreMem remote_mm_map(remote, (const uint8_t*)&map, sizeof(map));
-  int result = remote.syscall(syscall_number_for_prctl(remote.task()->arch()), PR_SET_MM,
-                            PR_SET_MM_MAP, remote_mm_map.get().as_int(),
-                            sizeof(map));
+  unsigned int expected_size = 0;
+  int result = prctl(PR_SET_MM, PR_SET_MM_MAP_SIZE, &expected_size, 0, 0);
+  if (result != 0) {
+    FATAL() << "Failed to get expected MM_MAP_SIZE. Error was " << errno_name(-result);
+  }
+
+  const void* pmap = NULL;
+  int pmap_size = 0;
+
+  /* Expected size matches native prctl_mm_map */
+  if (expected_size == sizeof(map)) {
+    pmap = &map;
+    pmap_size = sizeof(map);
+  }
+
+#if defined(__i386__)
+  /* A 64-bit kernel expects a "64-bit sized" prctl_mm_map
+     even from a 32-bit process. */
+  X64Arch::prctl_mm_map map64;
+  if (expected_size == sizeof(map64)) {
+    LOG(warn) << "Kernel expects different sized MM_MAP. Using 64-bit prctl_mm_map.";
+    memcpy(&map64, &map, sizeof(map));
+    map64.auxv.val = map.auxv.val;
+    map64.auxv_size = map.auxv_size;
+    map64.exe_fd = map.exe_fd;
+
+    pmap = &map64;
+    pmap_size = sizeof(map64);
+  }
+#endif
+
+  /* Are we prepared for the requested structure size? */
+  if (pmap == NULL || pmap_size == 0) {
+    FATAL() << "Kernel expects MM_MAP of size " << expected_size;
+  }
+
+  AutoRestoreMem remote_mm_map(remote, (const uint8_t*)pmap, pmap_size);
+  result = remote.syscall(syscall_number_for_prctl(remote.task()->arch()), PR_SET_MM,
+                          PR_SET_MM_MAP, remote_mm_map.get().as_int(),
+                          pmap_size);
   if (result == -EINVAL &&
       (map.start_brk <= map.end_data || map.brk <= map.end_data)) {
     CLEAN_FATAL() << "The linux kernel prohibits duplication of this task's memory map," <<
