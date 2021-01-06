@@ -1321,6 +1321,10 @@ Completion ReplaySession::patch_vsyscall(ReplayTask* t, const StepConstraints& c
   bool added = t->vm()->add_breakpoint(vsyscall_entry, BKPT_INTERNAL);
   ASSERT(t, added);
   auto complete = continue_or_step(t, constraints, ticks_request, RESUME_CONT);
+  TrapReasons reasons;
+  if (complete == COMPLETE && t->stop_sig() == SIGTRAP) {
+    reasons = t->compute_trap_reasons();
+  }
   t->vm()->remove_breakpoint(vsyscall_entry, BKPT_INTERNAL);
 
   if (complete == INCOMPLETE) {
@@ -1335,7 +1339,9 @@ Completion ReplaySession::patch_vsyscall(ReplayTask* t, const StepConstraints& c
 
   ASSERT(t, t->stop_sig() == SIGTRAP)
       << "Replay got unexpected signal (or none) " << t->stop_sig();
-  ASSERT(t, t->regs().ip().undo_executed_bkpt(t->arch()) == vsyscall_entry);
+  if (!reasons.breakpoint || t->ip().undo_executed_bkpt(t->arch()) != vsyscall_entry) {
+    return INCOMPLETE;
+  }
 
   t->apply_all_data_records_from_trace();
   Registers r = t->regs();

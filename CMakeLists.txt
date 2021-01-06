@@ -1424,6 +1424,7 @@ set(TESTS_WITHOUT_PROGRAM
   unwind_on_signal
   vfork_exec
   vfork_break_parent
+  vsyscall_singlestep
   watch_code
   watchpoint_cond
   when
