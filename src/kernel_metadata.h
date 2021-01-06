@@ -52,6 +52,10 @@ bool is_sigreturn(int syscall, SupportedArch arch);
  */
 std::string errno_name(int err);
 
+/* Same as errno_name, but returns a pointer to static memory or NULL if
+allocation would be required. Suitable for use in volatile contexts */
+const char *errno_name_cstr(int err);
+
 /**
  * Return the symbolic name (e.g. "SI_USER") for an si_code.
  */
