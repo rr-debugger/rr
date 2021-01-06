@@ -529,6 +529,10 @@ static inline struct timeval to_timeval(double t) {
 /* Slow but simple pop-count implementation. */
 int pop_count(uint64_t v);
 
+/* A version of fatal that uses no allocation/thread resource and is thus
+  safe to use in volatile contexts */
+void SAFE_FATAL(int err, const char *msg);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

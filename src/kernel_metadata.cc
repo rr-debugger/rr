@@ -175,7 +175,7 @@ bool is_sigreturn(int syscallno, SupportedArch arch) {
          is_rt_sigreturn_syscall(syscallno, arch);
 }
 
-string errno_name(int err) {
+const char *errno_name_cstr(int err) {
   switch (err) {
     case 0:
       return "SUCCESS";
@@ -310,12 +310,18 @@ string errno_name(int err) {
       CASE(ENOTRECOVERABLE);
       CASE(ERFKILL);
       CASE(EHWPOISON);
-    default: {
-      char buf[100];
-      snprintf(buf, sizeof(buf), "errno(%d)", err);
-      return string(buf);
-    }
+    default: return NULL;
   }
+}
+
+string errno_name(int err) {
+  const char *name = errno_name_cstr(err);
+  if (name == NULL) {
+    char buf[100];
+    snprintf(buf, sizeof(buf), "errno(%d)", err);
+    return string(buf);
+  }
+  return string(name);
 }
 
 string sicode_name(int code, int sig) {

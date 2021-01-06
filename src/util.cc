@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
+#include <sys/uio.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 
@@ -2129,5 +2130,28 @@ int pop_count(uint64_t v) {
   }
   return ret;
 }
+
+void SAFE_FATAL(int err, const char *msg)
+{
+  static char prefix[] = "FATAL (errno = ";
+  const char *errstr = errno_name_cstr(err);
+  char buf[100];
+  if (errstr == NULL) {
+    snprintf(buf, sizeof(buf), "errno(%d)", err);
+    errstr = buf;
+  }
+  static char bridge[] = "): ";
+  static char nl[] = "\n";
+  struct iovec out[5] = {
+    {.iov_base = prefix, .iov_len=sizeof(prefix)},
+    {.iov_base = (char*)errstr, .iov_len=strlen(errstr)},
+    {.iov_base = bridge, .iov_len=sizeof(errstr)},
+    {.iov_base = (char*)msg, .iov_len=strlen(msg)},
+    {.iov_base = nl, .iov_len=sizeof(nl)}
+  };
+  ::writev(STDERR_FILENO, out, sizeof(out)/sizeof(struct iovec));
+  abort();
+}
+
 
 } // namespace rr
