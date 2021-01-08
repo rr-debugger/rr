@@ -138,7 +138,7 @@ template <typename Arch> static void setup_audit_library_path(RecordTask* t) {
 void Monkeypatcher::init_dynamic_syscall_patching(
     RecordTask* t, int syscall_patch_hook_count,
     remote_ptr<struct syscall_patch_hook> syscall_patch_hooks) {
-  if (syscall_patch_hook_count) {
+  if (syscall_patch_hook_count && syscall_hooks.empty()) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
 }
@@ -247,7 +247,7 @@ bool Monkeypatcher::is_jump_stub_instruction(remote_code_ptr ip) {
     return false;
   }
   --it;
-  return it->first <= pp && pp < it->first + it->second;
+  return it->first <= pp && pp < it->first + it->second.size;
 }
 
 /**
@@ -304,7 +304,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                               hook.hook_address);
   write_and_record_bytes(t, extended_jump_start, stub_patch);
 
-  patcher.syscallbuf_stubs[extended_jump_start] = ExtendedJumpPatch::size;
+  patcher.syscallbuf_stubs[extended_jump_start] = { &hook, ExtendedJumpPatch::size };
 
   intptr_t jump_offset = extended_jump_start - jump_patch_end;
   int32_t jump_offset32 = (int32_t)jump_offset;
@@ -358,6 +358,114 @@ bool patch_syscall_with_hook_arch<ARM64Arch>(Monkeypatcher&,
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,
                                     const syscall_patch_hook& hook) {
   RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook);
+}
+
+template <typename ExtendedJumpPatch>
+static void match_extended_jump_patch(uint8_t patch[],
+ uint64_t *return_addr);
+
+template <>
+void match_extended_jump_patch<X64SyscallStubExtendedJump>(
+      uint8_t patch[], uint64_t *return_addr) {
+  uint32_t return_addr_lo, return_addr_hi;
+  uint64_t jmp_target;
+  X64SyscallStubExtendedJump::match(patch, &return_addr_lo, &return_addr_hi, &jmp_target);
+  *return_addr = return_addr_lo | (((uint64_t)return_addr_hi) << 32);
+}
+
+template <>
+void match_extended_jump_patch<X86SyscallStubExtendedJump>(
+      uint8_t patch[], uint64_t *return_addr) {
+  uint32_t return_addr_32, jmp_target_relative;
+  X86SyscallStubExtendedJump::match(patch, &return_addr_32, &jmp_target_relative);
+  *return_addr = return_addr_32;
+}
+
+template <typename ReplacementPatch>
+static void substitute_replacement_patch(uint8_t *buffer, uint64_t patch_addr,
+                                     uint64_t jmp_target);
+
+template <>
+void substitute_replacement_patch<X64SyscallStubRestore>(uint8_t *buffer, uint64_t patch_addr,
+                                  uint64_t jmp_target) {
+  (void)patch_addr;
+  X64SyscallStubRestore::substitute(buffer, jmp_target);
+}
+
+template <>
+void substitute_replacement_patch<X86SyscallStubRestore>(uint8_t *buffer, uint64_t patch_addr,
+                                  uint64_t jmp_target) {
+  int64_t offset =
+      jmp_target -
+      (patch_addr + X86SyscallStubRestore::trampoline_relative_addr_end);
+  // An offset that appears to be > 2GB is OK here, since EIP will just
+  // wrap around.
+  X86SyscallStubRestore::substitute(buffer, (uint32_t)offset);
+}
+
+template <typename ExtendedJumpPatch, typename ReplacementPatch>
+static void unpatch_extended_jumps(Monkeypatcher& patcher,
+                                   Task* t) {
+  for (auto patch : patcher.syscallbuf_stubs) {
+    const syscall_patch_hook &hook = *patch.second.hook;
+    ASSERT(t, patch.second.size == ExtendedJumpPatch::size);
+    uint8_t bytes[ExtendedJumpPatch::size];
+    t->read_bytes_helper(patch.first, sizeof(bytes), bytes);
+    uint64_t return_addr;
+    match_extended_jump_patch<ExtendedJumpPatch>(bytes, &return_addr);
+
+    std::vector<uint8_t> syscall = rr::syscall_instruction(t->arch());
+
+    // Replace with
+    //  extended_jump:
+    //    <syscall> (unless PATCH_SYSCALL_INSTRUCTION_IS_LAST)
+    //    <original bytes>
+    //    <syscall> (if PATCH_SYSCALL_INSTRUCTION_IS_LAST)
+    //    jmp *(return_addr)
+    // As long as there are not relative branches or anything, this should
+    // always be correct.
+    ASSERT(t, hook.patch_region_length + ReplacementPatch::size + syscall.size() <
+              ExtendedJumpPatch::size);
+    uint8_t *ptr = bytes;
+    if (!(hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST)) {
+      memcpy(ptr, syscall.data(), syscall.size());
+      ptr += syscall.size();
+    }
+    memcpy(ptr, hook.patch_region_bytes, hook.patch_region_length);
+    ptr += hook.patch_region_length;
+    if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+      memcpy(ptr, syscall.data(), syscall.size());
+      ptr += syscall.size();
+    }
+    substitute_replacement_patch<ReplacementPatch>(ptr,
+      patch.first.as_int()+(ptr-bytes), return_addr);
+    t->write_bytes_helper(patch.first, sizeof(bytes), bytes);
+  }
+}
+
+template <typename Arch>
+static void unpatch_syscalls_arch(Monkeypatcher &patcher, Task *t);
+
+template <>
+void unpatch_syscalls_arch<X86Arch>(Monkeypatcher &patcher, Task *t) {
+  return unpatch_extended_jumps<X86SyscallStubExtendedJump,
+                                X86SyscallStubRestore>(patcher, t);
+}
+
+template <>
+void unpatch_syscalls_arch<X64Arch>(Monkeypatcher &patcher, Task *t) {
+  return unpatch_extended_jumps<X64SyscallStubExtendedJump,
+                                X64SyscallStubRestore>(patcher, t);
+}
+
+template <>
+void unpatch_syscalls_arch<ARM64Arch>(Monkeypatcher &patcher, Task *t) {
+  (void)patcher; (void)t;
+  FATAL() << "Unimplemented";
+}
+
+void Monkeypatcher::unpatch_syscalls_in(Task *t) {
+  RR_ARCH_FUNCTION(unpatch_syscalls_arch, t->arch(), *this, t);
 }
 
 static string bytes_to_string(uint8_t* bytes, size_t size) {

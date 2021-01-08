@@ -98,7 +98,10 @@ templates = {
         RawBytes(0xe9),                               # jmp $trampoline_relative_addr
         Field('trampoline_relative_addr', 4)
     ),
-
+    'X86SyscallStubRestore': AssemblyTemplate(
+        RawBytes(0xe9),                               # jmp $trampoline_relative_addr
+        Field('trampoline_relative_addr', 4)
+    ),
     'X64CallMonkeypatch': AssemblyTemplate(
         RawBytes(0xe8),         # call $relative_addr
         Field('relative_addr', 4),
@@ -126,6 +129,10 @@ templates = {
         Field('return_addr_hi', 4),
         RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
         Field('jump_target', 8),
+    ),
+    'X64SyscallStubRestore': AssemblyTemplate(
+        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
+        Field('return_addr', 8),
     ),
     'X64DLRuntimeResolve': AssemblyTemplate(
         RawBytes(0x53),                   # push %rbx
