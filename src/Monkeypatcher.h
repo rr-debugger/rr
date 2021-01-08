@@ -65,6 +65,14 @@ public:
   bool try_patch_syscall(RecordTask* t, bool entering_syscall = true);
 
   /**
+   * Replace all extended jumps by syscalls again. Note that we do not try to
+   * patch the original locations, since we don't know what the tracee may have
+   * done with them in the meantime, we only patch the extended jump stubs,
+   * which the tracee isn't allowed to touch.
+   */
+  void unpatch_syscalls_in(Task *t);
+
+  /**
    * Try to patch the vsyscall-entry pattern occurring right before ret_addr
    * to instead point into the corresponding entry points in the vdso.
    * Returns true if the patching succeeded, false if it doesn't. The tasks
@@ -93,7 +101,6 @@ public:
   void patch_after_mmap(RecordTask* t, remote_ptr<void> start, size_t size,
                         size_t offset_pages, int child_fd, MmapMode mode);
 
-  remote_ptr<void> x86_vsyscall;
   /**
    * The list of pages we've allocated to hold our extended jumps.
    */
@@ -106,10 +113,17 @@ public:
 
   bool is_jump_stub_instruction(remote_code_ptr p);
 
+  struct patched_syscall {
+    // Pointer to hook inside the syscall_hooks array, which gets initialized
+    // once and is fixed afterwars.
+    const syscall_patch_hook *hook;
+    size_t size;
+  };
+
   /**
    * Addresses/lengths of syscallbuf stubs.
    */
-  std::map<remote_ptr<uint8_t>, size_t> syscallbuf_stubs;
+  std::map<remote_ptr<uint8_t>, patched_syscall> syscallbuf_stubs;
 
 private:
   /**

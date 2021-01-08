@@ -3326,6 +3326,7 @@ static pid_t do_detach_teleport(RecordTask *t)
     AutoRemoteSyscalls remote(new_t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
     remote.syscall(syscall_number_for_close(new_t->arch()), tracee_fd_number);
   }
+  t->vm()->monkeypatcher().unpatch_syscalls_in(new_t);
   // Try to reset the scheduler affinity that we enforced upon the task.
   // XXX: It would be nice to track what affinity the tracee requested and
   // restore that.
