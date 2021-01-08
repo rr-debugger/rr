@@ -694,6 +694,23 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         TraceReader::VALIDATE, TraceReader::CURRENT_TIME_ONLY, &extra_fds,
         &skip_monitoring_mapped_fd);
 
+      if (t->session().has_trace_quirk(TraceReader::SpecialLibRRpage)) {
+        FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
+        if (fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
+          if (offset_pages == 0 && !(flags & MAP_FIXED) &&
+              length <= 2*page_size() && addr == (RR_PAGE_ADDR - page_size())) {
+            // We only mapped the first page during record. Do the same here
+            length = page_size();
+          }
+          if (offset_pages == 1 && length == page_size() &&
+              addr == RR_PAGE_ADDR && t->vm()->has_rr_page()) {
+            // We skipped this during recording. Setting length to zero here
+            // will have the same effect.
+            length = 0;
+          }
+        }
+      }
+
       if (data.source == TraceReader::SOURCE_FILE &&
           data.file_size_bytes > data.data_offset_bytes) {
         struct stat real_file;

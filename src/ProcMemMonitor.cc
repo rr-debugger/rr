@@ -40,7 +40,7 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
 
   // In prior versions of rr, we recorded this directly into the trace.
   // If so, there's nothing to do here.
-  if (t->session().is_replaying() && t->session().as_replay()->explicit_proc_mem()) {
+  if (t->session().is_replaying() && t->session().as_replay()->has_trace_quirk(TraceReader::ExplicitProcMem)) {
     return;
   }
 

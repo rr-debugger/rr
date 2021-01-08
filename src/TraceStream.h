@@ -429,8 +429,15 @@ public:
 
   SupportedArch arch() const { return arch_; }
 
-  // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
-  bool explicit_proc_mem() const { return explicit_proc_mem_; }
+  enum TraceQuirks {
+    // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
+    ExplicitProcMem = 0x1,
+    // Whether this trace requires the special librrpage replay behavior
+    // added in 3aaf792 and later removed.
+    SpecialLibRRpage = 0x2
+  };
+
+  int quirks() const { return quirks_; }
 
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
@@ -448,7 +455,7 @@ private:
   bool clear_fip_fdp_;
   int rrcall_base_;
   SupportedArch arch_;
-  bool explicit_proc_mem_;
+  int quirks_;
 };
 
 extern std::string trace_save_dir();

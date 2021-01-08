@@ -90,9 +90,17 @@ struct Header {
     # rr sets FIP/FDP to zero at each recorded event.
     clearFipFdp @14 :Bool = false;
   }
-  # Whether the version of rr that recorded this, explicitly recorded
-  # modifications made through /proc/<pid>/<mem>
-  explicitProcMem @11 :Bool = true;
+  # These flags guard rr behavior differences that ensure old rr traces can
+  # be sucessfully replayed on newer replayers
+  quirks :group {
+    # Whether the version of rr that recorded this, explicitly recorded
+    # modifications made through /proc/<pid>/<mem>
+    explicitProcMem @11 :Bool = true;
+
+    # Whether the version of rr that recorded this (may have) had special
+    # record behavior for librrpage.so
+    specialLibrrpage @15 :Bool = true;
+  }
 }
 
 # A file descriptor belonging to a task

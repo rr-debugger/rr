@@ -4,6 +4,7 @@
 #define RR_RR_PAGE_MONITOR_H_
 
 #include "FileMonitor.h"
+#include "TraceStream.h"
 
 namespace rr {
 
@@ -18,6 +19,9 @@ public:
 
   virtual Type type() override { return RRPage; }
 };
+
+static_assert(TraceReader::SpecialLibRRpage != 0,
+  "Remember to delete this if support for the quirk is ever dropped");
 
 } // namespace rr
 
