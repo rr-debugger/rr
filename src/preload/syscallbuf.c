@@ -47,7 +47,6 @@
 
 #include <dlfcn.h>
 #include <limits.h>
-#include <sys/auxv.h>
 #include <asm/errno.h>
 #include <asm/ioctls.h>
 #include <asm/poll.h>
@@ -595,6 +594,12 @@ static void init_thread(void) {
 // so declared this prototype manually
 extern const char* getenv(const char*);
 
+// getauxval is from glibc 2.16 (2012) - don't asssume it exists.
+unsigned long getauxval(unsigned long type) __attribute__((weak));
+#ifndef AT_SYSINFO_EHDR
+#define AT_SYSINFO_EHDR 33
+#endif
+
 /**
  * Initialize process-global buffering state, if enabled.
  * NOTE: constructors go into a special section by default so this won't
@@ -745,7 +750,7 @@ static void __attribute__((constructor)) init_process(void) {
 
   // Check if the rr page is mapped. We avoid a syscall if it looks like
   // rr places librrpage as the vdso
-  if (getauxval(AT_SYSINFO_EHDR) != RR_PAGE_ADDR - 3*RR_PAGE_SIZE &&
+  if ((!getauxval || (getauxval(AT_SYSINFO_EHDR) != RR_PAGE_ADDR - 3*RR_PAGE_SIZE)) &&
       msync((void*)RR_PAGE_ADDR, RR_PAGE_SIZE, MS_ASYNC) != 0) {
     // The RR page is not mapped - this process is not rr traced.
     buffer_enabled = 0;
