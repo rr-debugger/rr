@@ -2064,6 +2064,12 @@ void Task::did_waitpid(WaitStatus status) {
         // cs segment register and checking if that segment is a long mode segment
         // (Linux always uses GDT entries for this, which are globally the same).
         SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
+
+        if (a == x86_64 && NativeArch::arch() == x86) {
+          FATAL() << "Sorry, tracee " << tid << " is executing in x86-64 mode"
+                  << " and that's not supported with a 32-bit rr.";
+        }
+
         if (a != registers.arch()) {
           registers.set_arch(a);
           registers.set_from_ptrace(ptrace_regs);
