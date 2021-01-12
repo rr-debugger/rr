@@ -143,6 +143,9 @@ static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
       fprintf(out, "  TraceTaskEvent::EXIT tid=%d status=%d\n", event.tid(),
           event.exit_status().get());
       break;
+    case TraceTaskEvent::DETACH:
+      fprintf(out, "  TraceTaskEvent::DETACH tid=%d\n", event.tid());
+      break;
     default:
       FATAL() << "Unknown TraceTaskEvent";
       break;
