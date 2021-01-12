@@ -78,3 +78,9 @@
  * process tree, such that it may run without seccomp.
  */
 #define SYS_rrcall_detach_teleport (RR_CALL_BASE + 9)
+/**
+ * Requests that rr reset the time slice signal to the
+ * requested period. Used for testing interaction corner
+ * cases between the time slice signal and other rr behavior.
+ */
+#define SYS_rrcall_arm_time_slice (RR_CALL_BASE + 10)

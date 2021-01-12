@@ -4778,6 +4778,29 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
+    case SYS_rrcall_arm_time_slice: {
+      Registers r = t->regs();
+      bool arguments_are_zero = true;
+      for (int i = 2; i <= 6; ++i) {
+        arguments_are_zero &= r.arg(i) == 0;
+      }
+      // Ticks request of zero is invalid for the moment
+      // for purposes of this syscall. In the future we
+      // want to have it mean to simulate a timeslice expiry
+      // at the end of this syscall, but we have no use for
+      // that at the moment.
+      if (r.arg(1) == 0 || r.arg(1) > (uintptr_t)MAX_TICKS_REQUEST ||
+          !arguments_are_zero) {
+        syscall_state.emulate_result((uintptr_t)-EINVAL);
+        syscall_state.expect_errno = ENOSYS;
+        return PREVENT_SWITCH;
+      }
+      t->tick_request_override = (TicksRequest)r.arg(1);
+      syscall_state.emulate_result(0);
+      syscall_state.expect_errno = ENOSYS;
+      return PREVENT_SWITCH;
+    }
+
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:

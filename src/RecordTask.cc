@@ -196,7 +196,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       waiting_for_reap(false),
       waiting_for_zombie(false),
       waiting_for_ptrace_exit(false),
-      retry_syscall_patching(false) {
+      retry_syscall_patching(false),
+      tick_request_override((TicksRequest)0) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.

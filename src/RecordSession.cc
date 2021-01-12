@@ -796,6 +796,13 @@ void RecordSession::task_continue(const StepState& step_state) {
       }
     }
 
+    // Override requested by the tracee for testing purposes
+    if (t->tick_request_override != (TicksRequest)0) {
+      ASSERT(t, !t->next_pmc_interrupt_is_for_user);
+      ticks_request = t->tick_request_override;
+      t->tick_request_override = (TicksRequest)0;
+    }
+
     bool singlestep = is_ptrace_any_singlestep(t->arch(),
       t->emulated_ptrace_cont_command);
     if (singlestep && is_at_syscall_instruction(t, t->ip())) {

@@ -751,6 +751,10 @@ public:
 
   // When exiting a syscall, we should call MonkeyPatcher::try_patch_syscall again.
   bool retry_syscall_patching;
+
+  // Set if the tracee requested an override of the ticks request.
+  // Used for testing.
+  TicksRequest tick_request_override;
 };
 
 } // namespace rr
