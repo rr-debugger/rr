@@ -275,6 +275,7 @@ private:
   Registers initial_regs;
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
+  bool initial_at_seccomp;
   remote_ptr<void> fixed_sp;
   std::vector<uint8_t> replaced_bytes;
   WaitStatus restore_wait_status;
