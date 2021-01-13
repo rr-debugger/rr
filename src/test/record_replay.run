@@ -1,4 +1,5 @@
 source `dirname $0`/util.sh
+TIMEOUT=300
 record record_replay_subject$bitness
 just_record rr "--suppress-environment-warnings replay -a $workdir/*-0"
 replay
