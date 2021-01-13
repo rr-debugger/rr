@@ -210,9 +210,16 @@ function skip_if_no_syscall_buf {
     fi
 }
 
-function skip_if_32_bit {
-    if [[ "_32" == $bitness ]] || [[ "$(uname -m)" =~ i[3-6]86 ]]; then
-        echo NOTE: Skipping 32-bit "'$TESTNAME'"
+function skip_if_test_32_bit {
+    if [[ "_32" == $bitness ]]; then
+        echo NOTE: Skipping "'$TESTNAME'" because 32-bit test
+        exit 0
+    fi
+}
+
+function skip_if_rr_32_bit {
+    if [[ "$(file $RESOURCE_PATH/lib/rr/librrpage.so | grep 32-bit -c)" == "1" ]]; then
+        echo NOTE: Skipping "'$TESTNAME'" because 32-bit rr
         exit 0
     fi
 }
