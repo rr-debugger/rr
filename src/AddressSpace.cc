@@ -305,7 +305,9 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
     FATAL() << "Failed to locate " << fname;
   }
   path += fname;
-  size_t offset_pages = t->session().is_recording() ? 3 : 4;
+  size_t offset_pages = t->session().is_recording() ?
+    RRPAGE_RECORD_PAGE_OFFSET : RRPAGE_REPLAY_PAGE_OFFSET;
+  size_t offset_bytes = offset_pages*rr_page_size();
 
   {
     ScopedFd page(path.c_str(), O_RDONLY);
@@ -313,7 +315,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
     long child_fd = remote.send_fd(page.get());
     ASSERT(t, child_fd >= 0);
     if (t->session().is_recording()) {
-      remote.infallible_mmap_syscall(rr_page_start() - 3*rr_page_size(), 3*rr_page_size(), prot, flags,
+      remote.infallible_mmap_syscall(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
                                     child_fd, 0);
     }
     remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
@@ -329,7 +331,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
         fstat.st_dev, fstat.st_ino);
     mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
     if (t->session().is_recording()) {
-      map(t, rr_page_start() - 3*rr_page_size(), 3*rr_page_size(), prot, flags,
+      map(t, rr_page_start() - offset_bytes, offset_bytes, prot, flags,
           0, file_name,
           fstat.st_dev, fstat.st_ino);
     }
