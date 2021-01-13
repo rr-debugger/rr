@@ -82,11 +82,17 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       initial_regs(t->regs()),
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
+      initial_at_seccomp(t->ptrace_event() == PTRACE_EVENT_SECCOMP),
       restore_wait_status(t->status()),
       new_tid_(-1),
       scratch_mem_was_mapped(false),
       use_singlestep_path(false),
       enable_mem_params_(enable_mem_params) {
+  if (initial_at_seccomp) {
+    // This should only ever happen during recording - we don't use the
+    // seccomp traps during replay.
+    ASSERT(t, t->session().is_recording());
+  }
   // We support two paths for syscalls:
   // -- a fast path using a privileged untraced syscall and PTRACE_SINGLESTEP.
   // This only requires a single task-wait.
@@ -206,6 +212,20 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   regs.set_sp(initial_sp);
   // Restore stomped registers.
   t->set_regs(regs);
+  // If we were sitting at a seccomp trap, try to get back there by resuming
+  // here. Since the original register contents caused a seccomp trap,
+  // re-running the syscall with the same registers should put us right back
+  // to this same seccomp trap.
+  if (initial_at_seccomp && t->ptrace_event() != PTRACE_EVENT_SECCOMP) {
+    RecordTask* rt = static_cast<RecordTask*>(t);
+    while (true) {
+      rt->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
+      if (rt->ptrace_event())
+        break;
+      rt->stash_sig();
+    }
+    ASSERT(rt, rt->ptrace_event() == PTRACE_EVENT_SECCOMP);
+  }
   t->set_status(restore_wait_status);
 }
 
@@ -278,7 +298,11 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       ASSERT(t, false) << "Unexpected status " << t->status();
     }
   } else {
-    t->enter_syscall();
+    if (initial_at_seccomp && t->ptrace_event() == PTRACE_EVENT_SECCOMP) {
+      LOG(debug) << "Skipping enter_syscall - already at seccomp stop";
+    } else {
+      t->enter_syscall();
+    }
     LOG(debug) << "Used enter_syscall; status=" << t->status();
     // proceed to syscall exit
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
