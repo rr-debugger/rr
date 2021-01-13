@@ -826,6 +826,12 @@ public:
   int stopping_breakpoint_table_entry_size() { return stopping_breakpoint_table_entry_size_; }
 
   // Also sets brk_ptr.
+  enum {
+    RRVDSO_PAGE_OFFSET = 2,
+    RRPAGE_RECORD_PAGE_OFFSET = 3,
+    RRPAGE_REPLAY_PAGE_OFFSET = 4
+  };
+
   void map_rr_page(AutoRemoteSyscalls& remote);
   void unmap_all_but_rr_page(AutoRemoteSyscalls& remote);
 

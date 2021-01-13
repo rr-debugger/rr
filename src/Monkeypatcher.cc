@@ -628,8 +628,10 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   if (!t->vm()->has_vdso()) {
     patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
   } else {
-    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 3*RR_PAGE_SIZE);
-    patch_auxv_vdso(t, X86Arch::RR_AT_SYSINFO, RR_PAGE_ADDR - 1*RR_PAGE_SIZE);
+    size_t librrpage_base = RR_PAGE_ADDR - AddressSpace::RRPAGE_RECORD_PAGE_OFFSET*RR_PAGE_SIZE;
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, librrpage_base);
+    patch_auxv_vdso(t, X86Arch::RR_AT_SYSINFO, librrpage_base +
+      AddressSpace::RRVDSO_PAGE_OFFSET*RR_PAGE_SIZE);
   }
 }
 
@@ -665,7 +667,8 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   if (!t->vm()->has_vdso()) {
     patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
   } else {
-    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 3*RR_PAGE_SIZE);
+    size_t librrpage_base = RR_PAGE_ADDR - AddressSpace::RRPAGE_RECORD_PAGE_OFFSET*RR_PAGE_SIZE;
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, librrpage_base);
   }
 }
 
@@ -684,7 +687,8 @@ void patch_after_exec_arch<ARM64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   if (!t->vm()->has_vdso()) {
     patch_auxv_vdso(t, AT_SYSINFO_EHDR, AT_IGNORE);
   } else {
-    patch_auxv_vdso(t, AT_SYSINFO_EHDR, RR_PAGE_ADDR - 3*RR_PAGE_SIZE);
+    size_t librrpage_base = RR_PAGE_ADDR - AddressSpace::RRPAGE_RECORD_PAGE_OFFSET*RR_PAGE_SIZE;
+    patch_auxv_vdso(t, AT_SYSINFO_EHDR, librrpage_base);
   }
 }
 
