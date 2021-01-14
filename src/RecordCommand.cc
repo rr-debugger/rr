@@ -577,7 +577,7 @@ static RecordSession* static_session;
 // later.
 void force_close_record_session() {
   if (static_session) {
-    static_session->terminate_recording();
+    static_session->terminate_recording(false);
   }
 }
 
@@ -660,7 +660,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
     }
   } while (step_result.status == RecordSession::STEP_CONTINUE && !term_requested);
 
-  session->terminate_recording();
+  session->terminate_recording(term_requested > 0);
   static_session = nullptr;
 
   switch (step_result.status) {

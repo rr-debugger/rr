@@ -122,7 +122,7 @@ public:
    * Flush buffers and write a termination record to the trace. Don't call
    * record_step() after this.
    */
-  void terminate_recording();
+  void terminate_recording(bool do_sigterm_detached);
 
   /**
    * Close trace output without flushing syscall buffers or writing
@@ -193,6 +193,11 @@ public:
    * killed.
    */
   void kill_all_record_tasks();
+
+  /**
+   * Send SIGTERM to all detached tasks and wait for them to finish.
+   */
+  void term_detached_tasks();
 
 private:
   RecordSession(const std::string& exe_path,
