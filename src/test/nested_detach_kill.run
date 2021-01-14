@@ -1,0 +1,35 @@
+source `dirname $0`/util.sh
+
+NEST_EXE=nested_detach_wait
+SLEEP_EXE=term_trace_syscall
+SYNC_TOKEN=sleeping
+WAIT_SECS=1
+
+mkdir $workdir/inner
+RECORD_ARGS="--env=_RR_TRACE_DIR=$workdir/inner"
+save_exe "$NEST_EXE"
+save_exe "$SLEEP_EXE"
+touch record.out
+just_record $NEST_EXE-$nonce "$(which rr) record --nested=detach $PWD/$SLEEP_EXE-$nonce" &
+
+echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
+until grep -q $SYNC_TOKEN record.out; do
+    sleep 0
+done
+
+rrpid=$(parent_pid_of $(pidof $NEST_EXE-$nonce))
+echo "  done.  Delivering SIGTERM to $rrpid ..."
+kill -TERM $rrpid
+
+echo "  done."
+
+# Wait for 'record' to actually terminate.
+wait
+
+# Replay outer
+replay
+# Replay inner
+cd $workdir/inner
+workdir=$PWD
+replay
+check_replay_token $SYNC_TOKEN

@@ -2391,7 +2391,7 @@ RecordSession::RecordResult RecordSession::record_step() {
   return result;
 }
 
-void RecordSession::terminate_recording() {
+void RecordSession::terminate_recording(bool do_sigterm_detached) {
   RecordTask* t = scheduler().current();
   if (t) {
     t->maybe_flush_syscallbuf();
@@ -2402,6 +2402,40 @@ void RecordSession::terminate_recording() {
   kill_all_record_tasks();
   t = nullptr; // t is now deallocated
   close_trace_writer(TraceWriter::CLOSE_OK);
+  // We finish our own recording first before trying to SIGTERM tasks that we
+  // detached; That way, if these tasks don't finish and we get SIGTERM'd
+  // again, we won't leave behind a corrupt trace.
+  if (do_sigterm_detached) {
+    term_detached_tasks();
+  }
+  while (!task_map.empty()) {
+    Task* t = task_map.rbegin()->second;
+    delete t;
+  }
+  assert(task_map.empty());
+}
+
+void RecordSession::term_detached_tasks() {
+  // Send SIGTERM to all detached child tasks first, so they may clean up
+  // in parallel.
+  for (auto& v : task_map) {
+    RecordTask* t = static_cast<RecordTask*>(v.second);
+    if (!t->detached_proxy) {
+      continue;
+    }
+    ::kill(t->rec_tid, SIGTERM);
+  }
+  for (auto& v : task_map) {
+    RecordTask* t = static_cast<RecordTask*>(v.second);
+    if (!t->detached_proxy) {
+      continue;
+    }
+    int status;
+    pid_t ret = ::waitpid(t->rec_tid, &status, WEXITED);
+    if (ret != t->rec_tid) {
+      LOG(warn) << "Unexpected wait status " << WaitStatus(status) << " while waiting for detached child " << t->rec_tid;
+    }
+  }
 }
 
 void RecordSession::kill_all_record_tasks() {
@@ -2451,11 +2485,6 @@ void RecordSession::kill_all_record_tasks() {
       }
     }
   }
-  while (!task_map.empty()) {
-    Task* t = task_map.rbegin()->second;
-    delete t;
-  }
-  assert(task_map.empty());
 }
 
 void RecordSession::close_trace_writer(TraceWriter::CloseStatus status) {
