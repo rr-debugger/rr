@@ -645,8 +645,8 @@ Switchable TaskSyscallState::done_preparing_internal(Switchable sw) {
         << "`" << t->ev().Syscall().syscall_name()
         << "' needed a scratch buffer of size " << scratch - t->scratch_ptr
         << ", but only " << t->usable_scratch_size()
-        << " was available.  Disabling context switching: deadlock may follow.";
-    switchable = PREVENT_SWITCH;
+        << " was available.  Allowing the syscall to proceed without scratch, which may race.";
+    return switchable;
   }
   if (switchable == PREVENT_SWITCH || param_list.empty()) {
     return switchable;
