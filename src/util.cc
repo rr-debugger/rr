@@ -1093,6 +1093,10 @@ bool cpuid_compatible(const vector<CPUIDRecord>& trace_records) {
 }
 
 bool cpu_has_xsave_fip_fdp_quirk() {
+  CPUIDData features = cpuid(CPUID_GETFEATURES, 0);
+  if ((features.ecx & XSAVE_FEATURE_FLAG) == 0) {
+    return false;
+  }
 #if defined(__i386__) || defined(__x86_64__)
   uint64_t xsave_buf[576/sizeof(uint64_t)] __attribute__((aligned(64)));
   xsave_buf[1] = 0;

@@ -193,6 +193,7 @@ enum cpuid_requests {
   CPUID_INTELBRANDSTRINGEND,
 };
 
+const int XSAVE_FEATURE_FLAG = 1 << 26;
 const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;
 const int HLE_FEATURE_FLAG = 1 << 4;
