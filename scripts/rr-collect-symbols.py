@@ -162,9 +162,20 @@ def collect_filesystem(path):
                     subprocess.check_call(["cp", "--preserve", "-f", "--reflink=auto", file, dst])
                     altref = find_altref(file)
                     if altref:
-                        altref_file = os.path.join(os.path.dirname(file), altref.decode('utf-8'))
+                        altref = altref.decode('utf-8')
+                        altref_file = os.path.join(os.path.dirname(file), altref)
                         dst = "%s/%s.sup"%(dir, build_id[2:])
                         subprocess.check_call(["cp", "--preserve", "-f", "--reflink=auto", altref_file, dst])
+                        if altref.startswith("../../.dwz/"):
+                            mkdir_p("%s/debug/.dwz"%trace_dir)
+                            dst = "%s/debug/.dwz/%s"%(trace_dir, altref[11:])
+                            src = "../.build-id/%s/%s.sup"%(build_id[:2], build_id[2:])
+                            subprocess.check_call(["ln", "-sf", src, dst])
+                        if altref.startswith("../.dwz/"):
+                            mkdir_p("%s/debug/.build-id/.dwz"%trace_dir)
+                            dst = "%s/debug/.build-id/.dwz/%s"%(trace_dir, altref[8:])
+                            src = "../%s/%s.sup"%(build_id[:2], build_id[2:])
+                            subprocess.check_call(["ln", "-sf", src, dst])
 
 if re.search("^[^:/]+:", source):
     collect_archive(source)
