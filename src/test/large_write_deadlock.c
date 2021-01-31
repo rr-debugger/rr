@@ -13,7 +13,7 @@ int main(void) {
   pipe(pipe_fds);
   child = fork();
   if (!child) {
-    memset(buf, sizeof(buf), 1);
+    memset(buf, 1, sizeof(buf));
     write(pipe_fds[1], buf, sizeof(buf));
     return 77;
   }
