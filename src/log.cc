@@ -118,7 +118,6 @@ static void init_log_globals() {
     log_buffer_size = atoi(buffer);
     if (log_buffer_size) {
       log_buffer = unique_ptr<deque<char>>(new deque<char>());
-      atexit(flush_log_buffer);
     }
   }
 
@@ -347,6 +346,7 @@ CleanFatalOstream::CleanFatalOstream(const char* file, int line,
 CleanFatalOstream::~CleanFatalOstream() {
   cerr << endl;
   flush_log_stream();
+  flush_log_buffer();
   exit(1);
 }
 
