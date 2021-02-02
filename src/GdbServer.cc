@@ -439,7 +439,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       }
       {
         auto it = memory_files.find(read_req.fd);
-        if (it != memory_files.end()) {
+        if (it != memory_files.end() && timeline.is_running()) {
           // Search our mmap stream for a record that can satisfy this request
           TraceReader tmp_reader(timeline.current_session().trace_reader());
           tmp_reader.rewind();
