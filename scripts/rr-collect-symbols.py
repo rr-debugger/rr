@@ -166,12 +166,17 @@ def collect_filesystem(path):
                         altref_file = os.path.join(os.path.dirname(file), altref)
                         dst = "%s/%s.sup"%(dir, build_id[2:])
                         subprocess.check_call(["cp", "--preserve", "-f", "--reflink=auto", altref_file, dst])
-                        if altref.startswith("../../.dwz/"):
+                        if altref.startswith("../../../.dwz/"):
+                            mkdir_p("%s/.dwz"%trace_dir)
+                            dst = "%s/.dwz/%s"%(trace_dir, altref[14:])
+                            src = "../debug/.build-id/%s/%s.sup"%(build_id[:2], build_id[2:])
+                            subprocess.check_call(["ln", "-sf", src, dst])
+                        elif altref.startswith("../../.dwz/"):
                             mkdir_p("%s/debug/.dwz"%trace_dir)
                             dst = "%s/debug/.dwz/%s"%(trace_dir, altref[11:])
                             src = "../.build-id/%s/%s.sup"%(build_id[:2], build_id[2:])
                             subprocess.check_call(["ln", "-sf", src, dst])
-                        if altref.startswith("../.dwz/"):
+                        elif altref.startswith("../.dwz/"):
                             mkdir_p("%s/debug/.build-id/.dwz"%trace_dir)
                             dst = "%s/debug/.build-id/.dwz/%s"%(trace_dir, altref[8:])
                             src = "../%s/%s.sup"%(build_id[:2], build_id[2:])
