@@ -200,6 +200,7 @@ static void ethtool(int sockfd, struct ifreq* req) {
     struct ethtool_perm_addr et;
     uint8_t data[32];
   }* et_perm_addr;
+  struct ethtool_value* et_glink;
   int i;
   int err;
   int ret;
@@ -361,6 +362,12 @@ static void ethtool(int sockfd, struct ifreq* req) {
       atomic_printf("%02x ", et_perm_addr->data[i]);
     }
     atomic_printf("\n");
+  }
+
+  ALLOCATE_GUARD(et_glink, 'r');
+  GENERIC_ETHTOOL_REQUEST_BY_NAME(et_glink, ETHTOOL_GLINK);
+  if (-1 != ret) {
+    atomic_printf("interface is %s\n", et_glink->data ? "up" : "down");
   }
 }
 

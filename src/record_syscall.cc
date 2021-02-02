@@ -1492,6 +1492,9 @@ template <typename Arch> void prepare_ethtool_ioctl(RecordTask* t, TaskSyscallSt
     case ETHTOOL_GWOL:
       syscall_state.mem_ptr_parameter<ethtool_wolinfo>(payload, IN_OUT);
       break;
+    case ETHTOOL_GLINK:
+      syscall_state.mem_ptr_parameter<ethtool_value>(payload, IN_OUT);
+      break;
     case ETHTOOL_GREGS: {
       auto buf = t->read_mem(buf_ptr.cast<ethtool_regs>(), &ok);
       if (ok) {
