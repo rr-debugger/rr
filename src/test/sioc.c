@@ -201,6 +201,7 @@ static void ethtool(int sockfd, struct ifreq* req) {
     uint8_t data[32];
   }* et_perm_addr;
   struct ethtool_value* et_glink;
+  struct ethtool_rxnfc* et_rxnfc;
   int i;
   int err;
   int ret;
@@ -368,6 +369,12 @@ static void ethtool(int sockfd, struct ifreq* req) {
   GENERIC_ETHTOOL_REQUEST_BY_NAME(et_glink, ETHTOOL_GLINK);
   if (-1 != ret) {
     atomic_printf("interface is %s\n", et_glink->data ? "up" : "down");
+  }
+
+  ALLOCATE_GUARD(et_rxnfc, 's');
+  GENERIC_ETHTOOL_REQUEST_BY_NAME(et_rxnfc, ETHTOOL_GRXRINGS);
+  if (-1 != ret) {
+    atomic_printf("interface has %d RX rings/queues\n", (__u32)et_rxnfc->data);
   }
 }
 
