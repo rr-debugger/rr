@@ -1862,6 +1862,30 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     __kernel_ulong_t __unused4;
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::semid64_ds, struct semid64_ds);
+
+  struct ethtool_rx_flow_spec {
+    uint32_t flow_type;
+    char h_u[52];
+    char h_ext[20];
+    char m_u[52];
+    char m_ext[20];
+    uint64_t ring_cookie;
+    uint32_t location;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::ethtool_rx_flow_spec, struct ethtool_rx_flow_spec);
+
+  struct ethtool_rxnfc {
+    uint32_t cmd;
+    uint32_t flow_type;
+    uint64_t data;
+    struct ethtool_rx_flow_spec fs;
+    union {
+      uint32_t rule_cnt;
+      uint32_t rss_context;
+    };
+    uint32_t rule_locs[0];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::ethtool_rxnfc, struct ethtool_rxnfc);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
@@ -2055,6 +2079,30 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     __kernel_ulong_t __unused4;
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::semid64_ds, struct semid64_ds);
+
+  struct __attribute__((packed)) ethtool_rx_flow_spec {
+    uint32_t flow_type;
+    char h_u[52];
+    char h_ext[20];
+    char m_u[52];
+    char m_ext[20];
+    uint64_t ring_cookie;
+    uint32_t location;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::ethtool_rx_flow_spec, struct ethtool_rx_flow_spec);
+
+  struct __attribute__((packed)) ethtool_rxnfc {
+    uint32_t cmd;
+    uint32_t flow_type;
+    uint64_t data;
+    struct ethtool_rx_flow_spec fs;
+    union {
+      uint32_t rule_cnt;
+      uint32_t rss_context;
+    };
+    uint32_t rule_locs[0];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::ethtool_rxnfc, struct ethtool_rxnfc);
 };
 
 // Archs that inherit Linux's "generic" data structures
@@ -2178,6 +2226,30 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
   };
 
   RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::semid64_ds, struct semid64_ds);
+
+  struct ethtool_rx_flow_spec {
+    uint32_t flow_type;
+    char h_u[52];
+    char h_ext[20];
+    char m_u[52];
+    char m_ext[20];
+    uint64_t ring_cookie;
+    uint32_t location;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::ethtool_rx_flow_spec, struct ethtool_rx_flow_spec);
+
+  struct ethtool_rxnfc {
+    uint32_t cmd;
+    uint32_t flow_type;
+    uint64_t data;
+    struct ethtool_rx_flow_spec fs;
+    union {
+      uint32_t rule_cnt;
+      uint32_t rss_context;
+    };
+    uint32_t rule_locs[0];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::ethtool_rxnfc, struct ethtool_rxnfc);
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
