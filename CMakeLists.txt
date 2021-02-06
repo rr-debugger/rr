@@ -964,8 +964,6 @@ set(BASIC_TESTS
   pid_ns_reap
   pid_ns_segv
   pidfd
-  pthread_pi_mutex
-  pthread_rwlocks
   poll_sig_race
   ppoll
   prctl
@@ -981,6 +979,9 @@ set(BASIC_TESTS
   protect_rr_fds
   prw
   pthread_condvar_locking
+  pthread_mutex_timedlock
+  pthread_pi_mutex
+  pthread_rwlocks
   x86/ptrace
   ptrace_attach_null_status
   ptrace_attach_running

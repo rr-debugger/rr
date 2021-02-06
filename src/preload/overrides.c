@@ -80,6 +80,9 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
   /* No __pthread_mutex_timedlock stub exists, so we have to use the
    * indirect call no matter what.
    */
+  if (!real_pthread_mutex_timedlock) {
+    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+  }
   return real_pthread_mutex_timedlock(mutex, abstime);
 }
 
