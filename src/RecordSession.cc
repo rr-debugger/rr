@@ -2193,7 +2193,7 @@ static string lookup_by_path(const string& name) {
     // bit for RDRAND support.
     env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
     // Disable Qt's use of RDRAND/RDSEED/RTM
-    env.push_back("QT_NO_CPU_FEATURE=rdrand rdseed rtm");
+    env.push_back("QT_NO_CPU_FEATURE=rdrnd rdseed rtm");
     // Disable systemd's use of RDRAND
     env.push_back("SYSTEMD_RDRAND=0");
   }
