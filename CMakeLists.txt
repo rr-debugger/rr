@@ -661,7 +661,7 @@ install(PROGRAMS scripts/signal-rr-recording.sh
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
-install(TARGETS ${RR_BIN} rrpreload rrpage rr_exec_stub
+install(TARGETS ${RR_BIN} rrpreload rrpage rraudit rr_exec_stub
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
@@ -746,7 +746,7 @@ if(rr_32BIT AND rr_64BIT)
   set_target_properties(rr_exec_stub_32
                         PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32 ${LINKER_FLAGS}")
 
-  install(TARGETS rrpreload_32 rraudit_32 rr_exec_stub_32
+  install(TARGETS rrpreload_32 rrpage_32 rraudit_32 rr_exec_stub_32
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
