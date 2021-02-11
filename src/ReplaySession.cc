@@ -759,7 +759,8 @@ static void guard_unexpected_signal(ReplayTask* t) {
 
   if (t->stop_sig()) {
     ASSERT(t, false) << "Replay got unrecorded signal "
-                     << signal_name(t->stop_sig()) << " while awaiting signal";
+                     << signal_name(t->stop_sig()) << " while awaiting signal"
+                     << "\n" << t->get_siginfo();
   } else if (t->status().is_syscall()) {
     ASSERT(t, false) << "Replay got unrecorded syscall "
                      << syscall_name(t->regs().original_syscallno(), t->arch())
@@ -1135,7 +1136,8 @@ Completion ReplaySession::emulate_deterministic_signal(
   }
   ASSERT(t, t->stop_sig() == sig)
       << "Replay got unrecorded signal " << signal_name(t->stop_sig())
-      << " (expecting " << signal_name(sig) << ")";
+      << " (expecting " << signal_name(sig) << ")"
+      << "\n" << t->get_siginfo();
   check_ticks_consistency(t, ev);
 
   if (EV_INSTRUCTION_TRAP == ev.type()) {
