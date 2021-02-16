@@ -13,6 +13,7 @@ SECTIONS
   .eh_frame_hdr   : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) } :header :eh_frame
   .eh_frame       : { KEEP (*(.eh_frame)) *(.eh_frame.*) } :header :eh_frame
   .note.gnu.build-id  : { *(.note.gnu.build-id) } :header :note
+  .note.gnu.property : { *(.note.gnu.property) } :header :note
   .hash           : { *(.hash) } :header
   .gnu.hash       : { *(.gnu.hash) } :header
   .dynsym         : { *(.dynsym) } :header
