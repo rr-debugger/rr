@@ -186,13 +186,16 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
     *disabled_txcp = false;
   }
   attr->pinned = group_fd == -1;
-  int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, PERF_FLAG_FD_CLOEXEC);
+  auto perf_event_open_w_attr = [tid,group_fd](struct perf_event_attr* attr) {
+      return syscall(__NR_perf_event_open, attr, tid, -1, group_fd, PERF_FLAG_FD_CLOEXEC);
+    };
+  int fd = perf_event_open_w_attr(attr);
   if (0 >= fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
       (attr->config & IN_TXCP)) {
     // The kernel might not support IN_TXCP, so try again without it.
     struct perf_event_attr tmp_attr = *attr;
     tmp_attr.config &= ~IN_TXCP;
-    fd = syscall(__NR_perf_event_open, &tmp_attr, tid, -1, group_fd, PERF_FLAG_FD_CLOEXEC);
+    fd = perf_event_open_w_attr(&tmp_attr);
     if (fd >= 0) {
       if (disabled_txcp) {
         *disabled_txcp = true;
