@@ -212,15 +212,28 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
     }
   }
   if (0 >= fd) {
-    if (errno == EACCES) {
-      FATAL() << "Permission denied to use 'perf_event_open'; are perf events "
-                 "enabled? Try 'perf record'.";
+    switch(errno) {
+      case EACCES:
+        FATAL() << "Permission denied to use 'perf_event_open'; are perf events "
+          "enabled? Try 'perf record'.";
+        break;
+      case ENODEV: // fallthrough
+      case ENOENT:
+        if (attr->type == PERF_TYPE_HARDWARE && attr->config == PERF_COUNT_HW_CPU_CYCLES) {
+          LOG(warn) << "hardware cpu-cycles event is unavailable. Falling back to cpu-clock-ticks";
+          attr->type   = PERF_TYPE_SOFTWARE;
+          attr->config = PERF_COUNT_SW_CPU_CLOCK;
+          fd = perf_event_open_w_attr(attr);
+          if (fd == -1)
+            FATAL() << "Unable to open cpu-cycles nor cpu-clock-ticks event";
+        } else {
+          FATAL() << "Unable to open performance counter with 'perf_event_open'; "
+                     "are perf events enabled? Try 'perf record'.";
+        }
+        break;
     }
-    if (errno == ENOENT) {
-      FATAL() << "Unable to open performance counter with 'perf_event_open'; "
-                 "are perf events enabled? Try 'perf record'.";
-    }
-    FATAL() << "Failed to initialize counter";
+    if (fd == -1)
+      FATAL() << "Failed to initialize counter";
   }
   return fd;
 }
