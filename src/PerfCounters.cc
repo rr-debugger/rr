@@ -214,8 +214,17 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
                  "enabled? Try 'perf record'.";
     }
     if (errno == ENOENT) {
+      /*
+       * Note: PERF_COUNT_HW_CPU_CYCLES is known to have a software replacement
+       * counter that could be used. But we do not use that because usually
+       * PERF_COUNT_HW_CPU_CYCLES is the best supported hw counter, and we have yet
+       * to see a system, which would meet all the other requirements in terms of hw
+       * counters and yet would lack PERF_COUNT_HW_CPU_CYCLES.
+       */
       FATAL() << "Unable to open performance counter with 'perf_event_open'; "
-                 "are perf events enabled? Try 'perf record'.";
+                 "are perf events enabled? Please check out "
+                 "https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system%3F "
+                 "to make sure your system meets requirements.";
     }
     FATAL() << "Failed to initialize counter";
   }
