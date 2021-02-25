@@ -210,11 +210,11 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   }
   if (0 >= fd) {
     if (errno == EACCES) {
-      FATAL() << "Permission denied to use 'perf_event_open'; are hardware perf events "
+      CLEAN_FATAL() << "Permission denied to use 'perf_event_open'; are hardware perf events "
                  "available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
     }
     if (errno == ENOENT) {
-      FATAL() << "Unable to open performance counter with 'perf_event_open'; "
+      CLEAN_FATAL() << "Unable to open performance counter with 'perf_event_open'; "
                  "are hardware perf events available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
     }
     FATAL() << "Failed to initialize counter";
