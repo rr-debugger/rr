@@ -57,7 +57,8 @@ PackCommand PackCommand::singleton(
     "the trace directory and none of them are links to files outside the\n"
     "trace directory. This makes the trace directory independent of changes\n"
     "to other files and ready to be transported elsewhere (e.g. by packaging\n"
-    "it into a ZIP or tar archive).\n");
+    "it into a ZIP or tar archive).\n
+    "Be careful sharing traces with others; they may contain sensitive information.\n");
 
 struct PackFlags {
   /* If true, insert symlinks into the trace dir which point to the original
