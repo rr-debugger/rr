@@ -612,9 +612,21 @@ Ticks PerfCounters::read_ticks(Task* t) {
       uint64_t minus_measure_val = read_counter(fd_minus_ticks_measure);
       interrupt_val -= minus_measure_val;
     }
-    ASSERT(t, !counting_period || interrupt_val <= adjusted_counting_period)
-        << "Detected " << interrupt_val << " ticks, expected no more than "
-        << adjusted_counting_period;
+    if (t->session().is_recording()) {
+      if (counting_period && interrupt_val > adjusted_counting_period) {
+        LOG(warn) << "Recorded ticks of " << interrupt_val
+          << " overshot requested ticks target by " << interrupt_val - counting_period
+          << " ticks.\n"
+           "On AMD systems this is known to occur occasionally for unknown reasons.\n"
+           "Recording should continue normally. Please report any unexpected rr failures\n"
+           "received after this warning, any conditions that reliably reproduce it,\n"
+           "or sightings of this warning on non-AMD systems.";
+      }
+    } else {
+      ASSERT(t, !counting_period || interrupt_val <= adjusted_counting_period)
+          << "Detected " << interrupt_val << " ticks, expected no more than "
+          << adjusted_counting_period;
+    }
     return interrupt_val;
   }
 
