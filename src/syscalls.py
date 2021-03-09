@@ -1459,6 +1459,13 @@ fchmodat = EmulatedSyscall(x86=306, x64=268, generic=53)
 # page....
 faccessat = EmulatedSyscall(x86=307, x64=269, generic=48)
 
+#  int faccessat2(int dirfd, const char *pathname, int mode, int flags)
+#
+# The faccessat2() system call operates in exactly the same way as
+# access(2), except for the differences described in this manual
+# page...
+faccessat2 = EmulatedSyscall(x86=439, x64=439, generic=439)
+
 pselect6 = IrregularEmulatedSyscall(x86=308, x64=270, generic=72)
 
 ppoll = IrregularEmulatedSyscall(x86=309, x64=271, generic=73)
