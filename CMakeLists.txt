@@ -151,7 +151,7 @@ if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND rr_32BIT)
   # try_compile won't accept LINK_FLAGS, so do this manually.
   file(WRITE "${CMAKE_BINARY_DIR}/test32.c" "int main() { return 0; }")
   execute_process(COMMAND ${CMAKE_C_COMPILER} -o ${CMAKE_BINARY_DIR}/test32 ${CMAKE_BINARY_DIR}/test32.c -m32
-			RESULT_VARIABLE COMPILER_32BIT_RESULT)
+                  RESULT_VARIABLE COMPILER_32BIT_RESULT)
   if(NOT (COMPILER_32BIT_RESULT EQUAL 0))
     message(FATAL_ERROR "Your toolchain doesn't support 32-bit cross-compilation. Install the required packages or pass -Ddisable32bit=ON to cmake.")
   endif()
@@ -306,8 +306,8 @@ endif()
 
 foreach(py_module ${REQUIRED_PYTHON_MODULES})
   execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c"
-			"import ${py_module}"
-			RESULT_VARIABLE module_status)
+                  "import ${py_module}"
+                  RESULT_VARIABLE module_status)
   if(module_status)
     message(FATAL_ERROR "Couldn't find required Python module ${py_module}.")
   endif()
@@ -415,10 +415,10 @@ foreach(generated_file ${GENERATED_FILES})
                               PROPERTIES GENERATED true HEADER_FILE_ONLY true)
   add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
                      COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
-		               "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
-		     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
-		       "${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.py"
-		       "${CMAKE_CURRENT_SOURCE_DIR}/src/assembly_templates.py")
+                             "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
+                     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
+                             "${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.py"
+                             "${CMAKE_CURRENT_SOURCE_DIR}/src/assembly_templates.py")
 endforeach(generated_file)
 
 add_custom_target(Generated DEPENDS ${GENERATED_FILES})
