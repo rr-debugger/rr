@@ -13,6 +13,8 @@ int main(void) {
   test_assert(0 == access(file_path, W_OK));
   test_assert(0 == fchmodat(AT_FDCWD, file_path, 0400, 0));
   test_assert(0 == access(file_path, R_OK));
+  test_assert(0 == faccessat(AT_FDCWD, file_path, 0400, AT_SYMLINK_NOFOLLOW) || errno == ENOSYS);
+  test_assert(0 == faccessat2(AT_FDCWD, file_path, 0400, AT_SYMLINK_NOFOLLOW) || errno == ENOSYS);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
