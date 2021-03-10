@@ -1720,6 +1720,9 @@ pidfd_open = EmulatedSyscall(x86=434, x64=434, generic=434)
 clone3 = UnsupportedSyscall(x86=435, x64=435, generic=435)
 openat2 = UnsupportedSyscall(x86=437, x64=437, generic=437)
 pidfd_getfd = UnsupportedSyscall(x86=438, x64=438, generic=438)
+process_madvise = UnsupportedSyscall(x86=440, x64=440, generic=440)
+epoll_pwait2 = UnsupportedSyscall(x86=441, x64=441, generic=441)
+mount_setattr = UnsupportedSyscall(x86=442, x64=442, generic=442)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219, generic=128)
