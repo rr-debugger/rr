@@ -4771,6 +4771,19 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
       return ALLOW_SWITCH;
     }
+    case SYS_rrcall_current_time: {
+      // Since this is "user" facing, we follow best practices for regular
+      // syscalls and make sure that unused arguments (in this case all of them)
+      // are zero.
+      bool arguments_are_zero = true;
+      Registers r = t->regs();
+      for (int i = 1; i <= 6; ++i) {
+        arguments_are_zero &= r.arg(i) == 0;
+      }
+      syscall_state.emulate_result(arguments_are_zero ? t->trace_time() : (uintptr_t)-EINVAL);
+      syscall_state.expect_errno = ENOSYS;
+      return PREVENT_SWITCH;
+    }
 
     case Arch::brk:
     case Arch::munmap:

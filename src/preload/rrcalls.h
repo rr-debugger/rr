@@ -78,3 +78,7 @@
  * process tree, such that it may run without seccomp.
  */
 #define SYS_rrcall_detach_teleport (RR_CALL_BASE + 9)
+/**
+ * Requests the current rr tick.
+ */
+#define SYS_rrcall_current_time (RR_CALL_BASE + 10)
