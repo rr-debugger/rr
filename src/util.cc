@@ -1968,6 +1968,7 @@ ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset
     }
     buf = static_cast<const char*>(buf) + ret;
     written += ret;
+    offset += ret;
     size -= ret;
   }
   return written;
