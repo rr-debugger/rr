@@ -49,7 +49,7 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
     return;
   }
 
-  auto* target = (t->session().find_address_space(auid));
+  auto* target = t->session().find_address_space(auid);
   if (!target) {
     return;
   }
