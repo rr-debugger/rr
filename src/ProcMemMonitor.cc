@@ -25,7 +25,7 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
     if (!*end) {
       Task* target = t->session().find_task(tid);
       if (target) {
-        tuid = target->tuid();
+        auid = target->vm()->uid();
       }
     }
   }
@@ -49,23 +49,25 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
     return;
   }
 
-  auto* target = static_cast<ReplayTask*>(t->session().find_task(tuid));
+  auto* target = (t->session().find_address_space(auid));
   if (!target) {
     return;
   }
 
+  auto* task = static_cast<ReplayTask*>(*target->task_set().begin());
+
   for (auto& r : ranges) {
     auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
     remote_ptr<uint8_t> target_addr = offset;
-    target->write_mem(target_addr, bytes.data(), r.length);
-    target->vm()->maybe_update_breakpoints(target, target_addr,
-                                           r.length);
+    task->write_mem(target_addr, bytes.data(), r.length);
+    target->maybe_update_breakpoints(task, target_addr,
+                                     r.length);
     offset += r.length;
   }
 }
 
-bool ProcMemMonitor::target_is_task(Task *t) {
-  return tuid == t->tuid();
+bool ProcMemMonitor::target_is_vm(AddressSpace *vm) {
+  return auid == vm->uid();
 }
 
 } // namespace rr

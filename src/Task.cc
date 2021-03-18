@@ -3619,7 +3619,7 @@ void Task::dup_from(Task *other) {
       FileMonitor *fd_monitor = other->fd_table()->get_monitor(fd);
       ScopedFd here;
       if (fd_monitor && fd_monitor->type() == FileMonitor::ProcMem &&
-          ((ProcMemMonitor *)fd_monitor)->target_is_task(other)) {
+          ((ProcMemMonitor *)fd_monitor)->target_is_vm(other->vm().get())) {
         here = ScopedFd(::dup(this->vm()->mem_fd().get()));
       } else {
         here = remote_other.retrieve_fd(fd);
