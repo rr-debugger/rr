@@ -597,7 +597,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // If we use the breakpoint optimization, we must get a SIGTRAP before
       // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
       if (syscall_bp_vm) {
-        FATAL()
+        ASSERT(t, false)
             << "Expected syscall_bp_vm to be clear but it's " << syscall_bp_vm->leader_tid()
             << "'s address space with a breakpoint at " << syscall_bp_addr
             << " while we're at " << t->ip();
