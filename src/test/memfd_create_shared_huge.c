@@ -7,6 +7,9 @@
 #define MEMFD_SIZE (2LL * 1024 * 1024 * 1024)
 
 int main(void) {
+#if defined(__i386__)
+  atomic_puts("Skipping test on 32 bit");
+#else
   int fd;
 
   /* There's no libc helper for this syscall. */
@@ -29,7 +32,7 @@ int main(void) {
       test_assert(0 == close(fd));
     }
   }
-
+#endif
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
