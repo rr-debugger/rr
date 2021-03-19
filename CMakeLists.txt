@@ -906,6 +906,7 @@ set(BASIC_TESTS
   membarrier
   memfd_create
   memfd_create_shared
+  memfd_create_shared_huge
   mincore
   mknod
   mlock
