@@ -12,7 +12,7 @@ void catcher(__attribute__((unused)) int signum,
              __attribute__((unused)) siginfo_t* siginfo_ptr,
              __attribute__((unused)) void* ucontext_ptr) {
   caught_sig = signum;
-  test_assert(gettid() == getpid());
+  test_assert(sys_gettid() == getpid());
 }
 
 void* receiver(__attribute__((unused)) void* name) {
