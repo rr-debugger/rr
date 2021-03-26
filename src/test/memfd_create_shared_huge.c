@@ -28,6 +28,7 @@ int main(void) {
       *(uint32_t*)p1 = 0xdeadbeef;
       /* Map it again */
       p2 = mmap(0, MEMFD_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+      test_assert(p2 != MAP_FAILED);
       test_assert(*(uint32_t*)p2 == 0xdeadbeef);
       test_assert(0 == close(fd));
     }
