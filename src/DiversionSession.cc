@@ -93,6 +93,20 @@ static void process_syscall_arch(Task* t, int syscallno) {
       t->set_regs(r);
       return;
     }
+
+    case Arch::gettid: {
+      Registers r = t->regs();
+      r.set_syscall_result(t->rec_tid);
+      t->set_regs(r);
+      return;
+    }
+
+    case Arch::getpid: {
+      Registers r = t->regs();
+      r.set_syscall_result(t->tgid());
+      t->set_regs(r);
+      return;
+    }
   }
 
   LOG(debug) << "Executing syscall " << syscall_name(syscallno, t->arch());
