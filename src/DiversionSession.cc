@@ -96,14 +96,14 @@ static void process_syscall_arch(Task* t, int syscallno) {
 
     case Arch::gettid: {
       Registers r = t->regs();
-      r.set_syscall_result(t->rec_tid);
+      r.set_syscall_result(t->own_namespace_tid());
       t->set_regs(r);
       return;
     }
 
     case Arch::getpid: {
       Registers r = t->regs();
-      r.set_syscall_result(t->tgid());
+      r.set_syscall_result(t->thread_group()->tgid_own_namespace);
       t->set_regs(r);
       return;
     }

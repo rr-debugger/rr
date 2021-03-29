@@ -72,7 +72,6 @@ public:
   virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
                                      int /*sig*/) override;
   virtual void did_wait() override;
-  virtual pid_t own_namespace_tid() override { return own_namespace_rec_tid; }
 
   std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
@@ -713,8 +712,6 @@ public:
   // The memory cell the kernel will clear and notify on exit,
   // if our clone parent requested it.
   remote_ptr<int> tid_futex;
-  /* This is the recorded tid of the tracee *in its own pid namespace*. */
-  pid_t own_namespace_rec_tid;
   // Signal delivered by the kernel when this task terminates, or zero
   int termination_signal;
 

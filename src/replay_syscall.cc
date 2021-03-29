@@ -262,6 +262,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   ReplayTask* new_task = static_cast<ReplayTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid, rec_tid));
+  new_task->own_namespace_rec_tid = tte.own_ns_tid();
 
   if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an

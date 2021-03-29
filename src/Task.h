@@ -384,9 +384,10 @@ public:
   virtual void did_wait() {}
   /**
    * Return the pid of the task in its own pid namespace.
-   * Only RecordTasks actually change pid namespaces.
+   * Only RecordTasks actually change pid namespaces, but
+   * this value is stored and present during replay too.
    */
-  virtual pid_t own_namespace_tid() { return tid; }
+  pid_t own_namespace_tid() { return own_namespace_rec_tid; }
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust
@@ -839,6 +840,8 @@ public:
    * recording, it's synonymous with |tid|, and during replay
    * it's the tid that was recorded. */
   pid_t rec_tid;
+  /* This is the recorded tid of the tracee *in its own pid namespace*. */
+  pid_t own_namespace_rec_tid;
 
   size_t syscallbuf_size;
   /* Points at the tracee's mapping of the buffer. */
