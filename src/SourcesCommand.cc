@@ -345,6 +345,7 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
                                    set<string>* file_names,
                                    const string& full_aux_file_name,
                                    const char* file_type,
+                                   const map<string, string>& comp_dir_substitutions,
                                    vector<DwoInfo>* dwos,
                                    set<ExternalDebugInfo>* external_debug_info,
                                    bool already_used_file) {
@@ -354,9 +355,22 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
     return false;
   }
 
-  bool did_work = process_compilation_units(aux_file_reader, alt_file_reader,
-                                            trace_relative_name, original_file_name,
-                                            {}, file_names, dwos);
+  bool did_work;
+  string original_name = original_file_name;
+  base_name(original_name);
+  auto it = comp_dir_substitutions.find(original_name);
+  if (it != comp_dir_substitutions.end()) {
+    LOG(debug) << "\tFound comp_dir substitution " << it->second;
+    did_work = process_compilation_units(aux_file_reader, alt_file_reader,
+                                         trace_relative_name, original_file_name,
+                                         it->second, file_names, dwos);
+  } else {
+    LOG(debug) << "\tNone found";
+    did_work = process_compilation_units(aux_file_reader, alt_file_reader,
+                                         trace_relative_name, original_file_name,
+                                         {}, file_names, dwos);
+  }
+
   if (!did_work) {
     LOG(warn) << "No debuginfo!";
     /* If we've already used this file we need to insert it into the external_debug_info
@@ -374,6 +388,7 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
                                const string& trace_relative_name,
                                const string& original_file_name,
                                set<string>* file_names, const string& aux_file_name,
+                               const map<string, string>& comp_dir_substitutions,
                                vector<DwoInfo>* dwos,
                                set<ExternalDebugInfo>* external_debug_info) {
   string full_file_name;
@@ -392,12 +407,14 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
   bool has_source_files = process_auxiliary_file(trace_file_reader, *reader, altlink_reader.get(),
                                                  trace_relative_name, original_file_name,
                                                  file_names, full_file_name, DEBUGLINK,
+                                                 comp_dir_substitutions,
                                                  dwos, external_debug_info, false);
 
   if (altlink_reader) {
     has_source_files |= process_auxiliary_file(trace_file_reader, *altlink_reader, nullptr,
                                                trace_relative_name, original_file_name,
                                                file_names, full_altfile_name, DEBUGALTLINK,
+                                               comp_dir_substitutions,
                                                dwos, external_debug_info, has_source_files);
   }
   return has_source_files;
@@ -622,14 +639,16 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
 
     Debuglink debuglink = reader.read_debuglink();
     has_source_files |= try_debuglink_file(reader, trace_relative_name, pair.second,
-                                           &file_names, debuglink.file_name, &dwos,
+                                           &file_names, debuglink.file_name,
+                                           comp_dir_substitutions, &dwos,
                                            &external_debug_info);
 
     if (altlink_reader) {
       has_source_files |= process_auxiliary_file(reader, *altlink_reader, nullptr,
                                                  trace_relative_name, pair.second,
                                                  &file_names, full_altfile_name,
-                                                 DEBUGALTLINK, &dwos, &external_debug_info,
+                                                 DEBUGALTLINK, comp_dir_substitutions,
+                                                 &dwos, &external_debug_info,
                                                  original_had_source_files);
     }
 
