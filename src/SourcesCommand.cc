@@ -27,7 +27,7 @@ const char* DEBUGLINK = "debuglink";
 const char* DEBUGALTLINK = "debugaltlink";
 
 /// Prints JSON containing
-/// "relevant_binaries": an array of strings, trace-relative binary file names.
+/// "relevant_binaries": an array of strings, trace-relative binary file names (or build-ids, for explicit-sources).
 ///   These are ELF files in the trace that our collected data is relevant to.
 /// "external_debug_info": an array of objects, {"path":<path>, "build_id":<build-id>, "type":<type>}
 ///   These are ELF files in the filesystem that contain separate debuginfo. "build-id" is the
@@ -44,6 +44,8 @@ const char* DEBUGALTLINK = "debugaltlink";
 ///   These symlinks that exist in the filesystem that are relevant to the source file paths.
 /// "files": a map from VCS directory name to array of source files relative to that directory
 ///   An empty VCS directory name means files not under any VCS.
+/// "comp_dir_substitutions": a map from trace-relative binary file names (or build-ids, for explicit-sources) to
+/// the compilation-dir-override.
 class SourcesCommand : public Command {
 public:
   virtual int run(vector<string>& args) override;
@@ -589,11 +591,17 @@ static bool starts_with(const string& s, const string& prefix) {
   return strncmp(s.c_str(), prefix.c_str(), prefix.size()) == 0;
 }
 
+struct OutputCompDirSubstitution {
+  string trace_relative_name;
+  string substitution;
+};
+
 static int sources(const map<string, string>& binary_file_names, const map<string, string>& comp_dir_substitutions, bool is_explicit) {
   vector<string> relevant_binary_names;
   set<string> file_names;
   set<ExternalDebugInfo> external_debug_info;
   vector<DwoInfo> dwos;
+  vector<OutputCompDirSubstitution> output_comp_dir_substitutions;
   for (auto& pair : binary_file_names) {
     string trace_relative_name = pair.first;
     string original_name = pair.second;
@@ -623,6 +631,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
     auto it = comp_dir_substitutions.find(original_name);
     if (it != comp_dir_substitutions.end()) {
       LOG(debug) << "\tFound comp_dir substitution " << it->second;
+      output_comp_dir_substitutions.push_back({ trace_relative_name, it->second });
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
                                                    it->second, &file_names, &dwos);
@@ -698,6 +707,14 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
            i == relevant_binary_names.size() - 1 ? "" : ",");
   }
   printf("  ],\n");
+  printf("  \"comp_dir_substitutions\":{\n");
+  for (size_t i = 0; i < output_comp_dir_substitutions.size(); ++i) {
+    auto& sub = output_comp_dir_substitutions[i];
+    printf("    \"%s\": \"%s\"%s\n", json_escape(sub.trace_relative_name).c_str(),
+           json_escape(sub.substitution).c_str(),
+           i == output_comp_dir_substitutions.size() - 1 ? "" : ",");
+  }
+  printf("  },\n");
   printf("  \"external_debug_info\":[\n");
   size_t index = 0;
   for (auto& ext : external_debug_info) {
