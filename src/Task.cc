@@ -2514,6 +2514,7 @@ pid_t Task::pid_of_pidfd(int fd) {
 Task::CapturedState Task::capture_state() {
   CapturedState state;
   state.rec_tid = rec_tid;
+  state.own_namespace_rec_tid = own_namespace_rec_tid;
   state.fdtable_identity = uintptr_t(fds.get());
   state.serial = serial;
   state.tguid = thread_group()->tguid();
@@ -2597,6 +2598,7 @@ void Task::copy_state(const CapturedState& state) {
   wait_status = state.wait_status;
 
   ticks = state.ticks;
+  own_namespace_rec_tid = state.own_namespace_rec_tid;
 }
 
 remote_ptr<const struct syscallbuf_record> Task::next_syscallbuf_record() {

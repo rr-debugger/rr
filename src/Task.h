@@ -881,6 +881,7 @@ public:
     uint64_t cloned_file_data_offset;
     ThreadLocals thread_locals;
     pid_t rec_tid;
+    pid_t own_namespace_rec_tid;
     uint32_t serial;
     ThreadGroupUid tguid;
     int desched_fd_child;
