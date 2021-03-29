@@ -60,8 +60,8 @@ SourcesCommand SourcesCommand::singleton(
     "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
     "                             substitute PATH in place of the path stored\n"
     "                             in the library's DW_AT_comp_dir property\n"
-    "                             for all compilation units.
-    "                             LIBRARY is the basename of the original file name,
+    "                             for all compilation units.\n"
+    "                             LIBRARY is the basename of the original file name,\n"
     "                             e.g. libc-2.32.so\n");
 
 class ExplicitSourcesCommand : public Command {
@@ -82,8 +82,8 @@ ExplicitSourcesCommand ExplicitSourcesCommand::singleton(
     "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
     "                             substitute PATH in place of the path stored\n"
     "                             in the library's DW_AT_comp_dir property\n"
-    "                             for all compilation units.
-    "                             LIBRARY is the basename of the original file name,
+    "                             for all compilation units.\n"
+    "                             LIBRARY is the basename of the original file name,\n"
     "                             e.g. libc-2.32.so\n");
 
 static void parent_dir(string& s) {
