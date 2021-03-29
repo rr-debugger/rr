@@ -95,15 +95,19 @@ static void process_syscall_arch(Task* t, int syscallno) {
     }
 
     case Arch::gettid: {
+      auto tid = t->own_namespace_tid();
+      LOG(debug) << "Emulating gettid with " << tid;
       Registers r = t->regs();
-      r.set_syscall_result(t->own_namespace_tid());
+      r.set_syscall_result(tid);
       t->set_regs(r);
       return;
     }
 
     case Arch::getpid: {
+      auto pid = t->thread_group()->tgid_own_namespace;
+      LOG(debug) << "Emulating getpid with " << pid;
       Registers r = t->regs();
-      r.set_syscall_result(t->thread_group()->tgid_own_namespace);
+      r.set_syscall_result(pid);
       t->set_regs(r);
       return;
     }
