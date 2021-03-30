@@ -4456,6 +4456,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case KEYCTL_ASSUME_AUTHORITY:
         case KEYCTL_SESSION_TO_PARENT:
         case KEYCTL_INVALIDATE:
+        case KEYCTL_GET_PERSISTENT:
           break;
 
         case KEYCTL_DESCRIBE:
