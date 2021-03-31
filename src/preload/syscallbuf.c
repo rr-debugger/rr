@@ -104,6 +104,10 @@ struct btrfs_ioctl_clone_range_args {
 #define MADV_FREE 8
 #endif
 
+#ifndef GRND_NONBLOCK
+#define GRND_NONBLOCK 1
+#endif
+
 /* NB: don't include any other local headers here. */
 
 #ifdef memcpy
@@ -1676,6 +1680,31 @@ static long sys_futex(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_getrandom(const struct syscall_info* call) {
+  void* buf = (void*)call->args[0];
+  size_t buf_len = (size_t)call->args[1];
+  unsigned int flags = (unsigned int)call->args[2];
+  const int syscallno = SYS_getrandom;
+
+  void* ptr = prep_syscall();
+  void* buf2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (buf && buf_len > 0) {
+    buf2 = ptr;
+    ptr += buf_len;
+  }
+  if (!start_commit_buffered_syscall(call->no, ptr, (flags & GRND_NONBLOCK) ? WONT_BLOCK : MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(call->no, buf2, buf_len, flags);
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  return commit_raw_syscall(call->no, ptr, ret);
+}
+
 static long sys_generic_getdents(const struct syscall_info* call) {
   int fd = (int)call->args[0];
   void* buf = (void*)call->args[1];
@@ -3218,6 +3247,7 @@ case SYS_epoll_pwait:
     CASE_GENERIC_NONBLOCKING(getgid);
     CASE_GENERIC_NONBLOCKING(getpid);
     CASE_GENERIC_NONBLOCKING(getppid);
+    CASE(getrandom);
     CASE(getrusage);
     CASE_GENERIC_NONBLOCKING(gettid);
     CASE(gettimeofday);
