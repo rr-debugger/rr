@@ -1350,6 +1350,11 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     header.setUuid(Data::Reader(uuid->bytes, sizeof(TraceUuid::bytes)));
   }
   header.setOk(status == CLOSE_OK);
+  header.setChaosMode(chaos_mode ? trace::ChaosMode::KNOWN_TRUE : trace::ChaosMode::KNOWN_FALSE);
+  MemoryRange exclusion_range = AddressSpace::get_global_exclusion_range();
+  header.setExclusionRangeStart(exclusion_range.start().as_int());
+  header.setExclusionRangeEnd(exclusion_range.end().as_int());
+
   try {
     writePackedMessageToFd(version_fd, header_msg);
   } catch (...) {
@@ -1514,6 +1519,23 @@ TraceReader::TraceReader(const string& dir)
     clear_fip_fdp_ = x86data.getClearFipFdp();
   }
 
+  switch (header.getChaosMode()) {
+    case trace::ChaosMode::UNKNOWN:
+      chaos_mode_known_ = false;
+      chaos_mode_ = false;
+      break;
+    case trace::ChaosMode::KNOWN_TRUE:
+      chaos_mode_known_ = true;
+      chaos_mode_ = true;
+      break;
+    case trace::ChaosMode::KNOWN_FALSE:
+      chaos_mode_known_ = true;
+      chaos_mode_ = false;
+      break;
+  }
+  exclusion_range_ = MemoryRange(remote_ptr<void>(header.getExclusionRangeStart()),
+                                 remote_ptr<void>(header.getExclusionRangeEnd()));
+
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
   global_time = 0;
@@ -1539,6 +1561,9 @@ TraceReader::TraceReader(const TraceReader& other)
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
   rrcall_base_ = other.rrcall_base_;
   arch_ = other.arch_;
+  chaos_mode_ = other.chaos_mode_;
+  chaos_mode_known_ = other.chaos_mode_known_;
+  exclusion_range_ = other.exclusion_range_;
   quirks_ = other.quirks_;
   clear_fip_fdp_ = other.clear_fip_fdp_;
 }

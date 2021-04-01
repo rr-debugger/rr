@@ -81,6 +81,18 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
   }
   fputs("\n  ],\n", out);
 
+  bool chaos_mode_known;
+  bool chaos_mode = trace.chaos_mode(&chaos_mode_known);
+  if (chaos_mode_known) {
+    fprintf(out, "  \"chaosMode\":%s,\n", chaos_mode ? "true" : "false");
+    if (chaos_mode) {
+      MemoryRange exclusion_range = trace.exclusion_range();
+      fprintf(out, "  \"exclusionRange\": { \"start\": %llu, \"end\": %llu },\n",
+             (unsigned long long)exclusion_range.start().as_int(),
+             (unsigned long long)exclusion_range.end().as_int());
+    }
+  }
+
   ReplaySession::Flags flags;
   flags.redirect_stdio = false;
   flags.share_private_mappings = false;

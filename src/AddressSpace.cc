@@ -2162,9 +2162,14 @@ static MemoryRange choose_global_exclusion_range() {
   }
 }
 
+MemoryRange AddressSpace::get_global_exclusion_range() {
+  static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+  return global_exclusion_range;
+}
+
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len) {
-  static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+  MemoryRange global_exclusion_range = get_global_exclusion_range();
   // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
   // don't hand it out again.
   static MemoryRange rrpage_so_range = MemoryRange(RR_PAGE_ADDR - page_size(), RR_PAGE_ADDR + page_size());

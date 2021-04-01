@@ -46,6 +46,12 @@ enum CpuTriState {
   knownFalse @2;
 }
 
+enum ChaosMode {
+  unknown @0;
+  knownTrue @1;
+  knownFalse @2;
+}
+
 # The 'version' file contains an ASCII version number followed by a newline.
 # The version number is currently 85 and increments only when there's a
 # backwards-incompatible change. See TRACE_VERSION.
@@ -101,6 +107,11 @@ struct Header {
     # record behavior for librrpage.so
     specialLibrrpage @15 :Bool = true;
   }
+  # Are we known to be in chaos mode? Useful for debugging.
+  chaosMode @16 :ChaosMode = unknown;
+  # If in chaos mode, what was the global exclusion range. Useful for debugging.
+  exclusionRangeStart @17 :RemotePtr;
+  exclusionRangeEnd @18 :RemotePtr;
 }
 
 # A file descriptor belonging to a task

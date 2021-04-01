@@ -152,7 +152,8 @@ public:
 
   void set_enable_chaos(bool enable_chaos) {
     scheduler().set_enable_chaos(enable_chaos);
-    this->enable_chaos_ = enable_chaos;
+    enable_chaos_ = enable_chaos;
+    trace_out.set_chaos_mode(enable_chaos);
   }
   bool enable_chaos() const { return enable_chaos_; }
 

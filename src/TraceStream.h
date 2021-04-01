@@ -14,6 +14,7 @@
 #include "CompressedReader.h"
 #include "CompressedWriter.h"
 #include "Event.h"
+#include "MemoryRange.h"
 #include "TaskishUid.h"
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
@@ -245,6 +246,7 @@ public:
   void set_fdp_exception_only_quirk(bool value) { fdp_exception_only_quirk_ = value; }
   void set_clear_fip_fdp(bool value) { clear_fip_fdp_ = value; }
   bool clear_fip_fdp() const { return clear_fip_fdp_; }
+  void set_chaos_mode(bool value) { chaos_mode = value; }
 
   enum CloseStatus {
     /**
@@ -304,6 +306,7 @@ private:
   bool fdp_exception_only_quirk_;
   bool clear_fip_fdp_;
   bool supports_file_data_cloning_;
+  bool chaos_mode;
 };
 
 class TraceReader : public TraceStream {
@@ -429,6 +432,14 @@ public:
 
   SupportedArch arch() const { return arch_; }
 
+  bool chaos_mode(bool* known) const {
+    *known = chaos_mode_known_;
+    return chaos_mode_;
+  }
+  MemoryRange exclusion_range() const {
+    return exclusion_range_;
+  }
+
   enum TraceQuirks {
     // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
     ExplicitProcMem = 0x1,
@@ -450,9 +461,12 @@ private:
   TicksSemantics ticks_semantics_;
   double monotonic_time_;
   std::unique_ptr<TraceUuid> uuid_;
+  MemoryRange exclusion_range_;
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
   bool clear_fip_fdp_;
+  bool chaos_mode_known_;
+  bool chaos_mode_;
   int rrcall_base_;
   SupportedArch arch_;
   int quirks_;
