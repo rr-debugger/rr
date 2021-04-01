@@ -11,7 +11,7 @@ void check_pid(void) {
 }
 
 void check_tid(void) {
-  assert(tid == gettid());
+  assert(tid == sys_gettid());
   atomic_puts("SUCCESS");
 }
 
@@ -19,7 +19,7 @@ void breakpoint(void) {}
 
 static void* thread(__attribute__((unused)) void* dontcare) {
   pid = getpid();
-  tid = gettid();
+  tid = sys_gettid();
 
   breakpoint();
   breakpoint();
