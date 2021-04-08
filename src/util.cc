@@ -1003,11 +1003,34 @@ static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
     return results;
   }
 
+  char vendor[12];
+  memcpy(&vendor[0], &vendor_string.out.ebx, 4);
+  memcpy(&vendor[4], &vendor_string.out.edx, 4);
+  memcpy(&vendor[8], &vendor_string.out.ecx, 4);
+  bool is_amd = strncmp(vendor, "AuthenticAMD", sizeof(vendor)) == 0;
+
   CPUIDRecord extended_info = cpuid_record(CPUID_INTELEXTENDED, UINT32_MAX);
   results.push_back(extended_info);
-  int extended_info_max = min(up_to, extended_info.out.eax);
-  for (int extended = CPUID_INTELEXTENDED + 1; extended <= extended_info_max;
+  uint32_t extended_info_max = min(up_to, extended_info.out.eax);
+  for (uint32_t extended = CPUID_INTELEXTENDED + 1; extended <= extended_info_max;
        ++extended) {
+    if (is_amd) {
+      if (extended == CPUID_AMD_CACHE_TOPOLOGY) {
+        for (int level = 0;; ++level) {
+          CPUIDRecord rec = cpuid_record(extended, level);
+          results.push_back(rec);
+          if (!(rec.out.eax & 0x1f)) {
+            // CacheType: null, no more caches
+            break;
+          }
+        }
+        continue;
+      } else if (extended == CPUID_AMD_PLATFORM_QOS) {
+        cpuid_record(extended, 0);
+        cpuid_record(extended, 1);
+        continue;
+      }
+    }
     results.push_back(cpuid_record(extended, UINT32_MAX));
   }
 
