@@ -881,6 +881,15 @@ static CPUIDRecord cpuid_record(uint32_t eax, uint32_t ecx) {
   return result;
 }
 
+bool is_cpu_vendor_amd(CPUIDData vendor_string)
+{
+  char vendor[12];
+  memcpy(&vendor[0], &vendor_string.ebx, 4);
+  memcpy(&vendor[4], &vendor_string.edx, 4);
+  memcpy(&vendor[8], &vendor_string.ecx, 4);
+  return strncmp(vendor, "AuthenticAMD", sizeof(vendor)) == 0;
+}
+
 static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
   vector<CPUIDRecord> results;
   CPUIDRecord vendor_string = cpuid_record(CPUID_GETVENDORSTRING, UINT32_MAX);
@@ -1003,11 +1012,7 @@ static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
     return results;
   }
 
-  char vendor[12];
-  memcpy(&vendor[0], &vendor_string.out.ebx, 4);
-  memcpy(&vendor[4], &vendor_string.out.edx, 4);
-  memcpy(&vendor[8], &vendor_string.out.ecx, 4);
-  bool is_amd = strncmp(vendor, "AuthenticAMD", sizeof(vendor)) == 0;
+  bool is_amd = is_cpu_vendor_amd(vendor_string.out);
 
   CPUIDRecord extended_info = cpuid_record(CPUID_INTELEXTENDED, UINT32_MAX);
   results.push_back(extended_info);

@@ -421,6 +421,14 @@ bool ReplaySession::handle_unrecorded_cpuid_fault(
   Registers r = t->regs();
   const CPUIDRecord* rec = find_cpuid_record(records, r.ax(), r.cx());
   if (rec) {
+    if (rec->ecx_in == UINT32_MAX &&
+        (r.ax() == CPUID_AMD_CACHE_TOPOLOGY || r.ax() == CPUID_AMD_PLATFORM_QOS)) {
+      const CPUIDRecord* rec2 = find_cpuid_record(records, CPUID_GETVENDORSTRING, 0);
+      if (!rec2 || is_cpu_vendor_amd(rec2->out)) {
+        LOG(error) << "Can't find extended AMD CPUID records. Replay will likely fail. " <<
+          "Please re-record the trace with an up-to-date version of rr.";
+      }
+    }
     r.set_cpuid_output(rec->out.eax, rec->out.ebx, rec->out.ecx, rec->out.edx);
   } else {
     LOG(warn) << "Can't find CPUID record for request AX=" << HEX(r.ax())
