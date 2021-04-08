@@ -213,6 +213,12 @@ struct CPUIDData {
 CPUIDData cpuid(uint32_t code, uint32_t subrequest);
 
 /**
+ * Check whether the given result of cpuid(CPUID_GETVENDORSTRING) indicates
+ * an AMD processor.
+ */
+bool is_cpu_vendor_amd(CPUIDData vendor_string);
+
+/**
  * Check OSXSAVE flag.
  */
 bool xsave_enabled();
