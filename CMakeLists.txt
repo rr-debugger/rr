@@ -1169,6 +1169,7 @@ set(BASIC_CPP_TESTS
 # Alphabetical, please.
 set(TESTS_WITH_PROGRAM
   abort_nonmain
+  alternate_thread_diversion
   args
   async_kill_with_threads
   async_kill_with_threads_main_running

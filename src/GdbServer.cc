@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <sstream>
@@ -188,9 +189,15 @@ static GdbThreadId get_threadid(Task* t) {
   return GdbThreadId(t->tgid(), t->rec_tid);
 }
 
+static bool matches_threadid(const GdbThreadId& tid,
+                             const GdbThreadId& target) {
+  return (target.pid <= 0 || target.pid == tid.pid) &&
+         (target.tid <= 0 || target.tid == tid.tid);
+}
+
 static bool matches_threadid(Task* t, const GdbThreadId& target) {
-  return (target.pid <= 0 || target.pid == t->tgid()) &&
-         (target.tid <= 0 || target.tid == t->rec_tid);
+  GdbThreadId tid = get_threadid(t);
+  return matches_threadid(tid, target);
 }
 
 static WatchType watchpoint_type(GdbRequestType req) {
@@ -770,6 +777,27 @@ void GdbServer::dispatch_debugger_request(Session& session,
   }
 }
 
+static bool any_action_targets_match(const Session& session,
+                                     const TaskUid& tuid,
+                                     const vector<GdbContAction>& actions) {
+  GdbThreadId tid = get_threadid(session, tuid);
+  return any_of(actions.begin(), actions.end(), [tid](GdbContAction action) {
+    return matches_threadid(tid, action.target);
+  });
+}
+
+static Task* find_first_task_matching_target(
+    const Session& session, const vector<GdbContAction>& actions) {
+  const Session::TaskMap& tasks = session.tasks();
+  auto it = find_first_of(
+      tasks.begin(), tasks.end(),
+      actions.begin(), actions.end(),
+      [](Session::TaskMap::value_type task_pair, GdbContAction action) {
+        return matches_threadid(task_pair.second, action.target);
+      });
+  return it != tasks.end() ? it->second : nullptr;
+}
+
 bool GdbServer::diverter_process_debugger_requests(
     DiversionSession& diversion_session, uint32_t& diversion_refcount,
     GdbRequest* req) {
@@ -777,6 +805,29 @@ bool GdbServer::diverter_process_debugger_requests(
     *req = dbg->get_request();
 
     if (req->is_resume_request()) {
+      const vector<GdbContAction>& actions = req->cont().actions;
+      DEBUG_ASSERT(actions.size() > 0);
+      // GDB may ask us to resume more than one task, so we have to
+      // choose one. We give priority to the task last resumed, as
+      // this is likely to be the context in which GDB is executing
+      // code; selecting any other task runs the risk of resuming
+      // replay, denying the diverted code an opportunity to complete
+      // and end the diversion session.
+      if (!any_action_targets_match(diversion_session, last_continue_tuid,
+                                    actions)) {
+        // If none of the resumption targets match the task last
+        // resumed, we simply choose any matching task. This ensures
+        // that GDB (and the user) can choose an arbitrary thread to
+        // serve as the context of the code being evaluated.
+        // TODO: maybe it makes sense to try and select the matching
+        // task that was most recently resumed, or possibly the
+        // matching task with an event in the replay trace nearest to
+        // 'now'.
+        Task* task =
+            find_first_task_matching_target(diversion_session, actions);
+        DEBUG_ASSERT(task != nullptr);
+        last_continue_tuid = task->tuid();
+      }
       return diversion_refcount > 0;
     }
 
@@ -1008,6 +1059,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
   DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
   uint32_t diversion_refcount = 1;
   TaskUid saved_query_tuid = last_query_tuid;
+  TaskUid saved_continue_tuid = last_continue_tuid;
 
   while (diverter_process_debugger_requests(*diversion_session,
                                             diversion_refcount, &req)) {
@@ -1052,6 +1104,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
   diversion_session->kill_all_tasks();
 
   last_query_tuid = saved_query_tuid;
+  last_continue_tuid = saved_continue_tuid;
   return req;
 }
 
