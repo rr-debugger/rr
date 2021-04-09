@@ -2168,34 +2168,45 @@ MemoryRange AddressSpace::get_global_exclusion_range() {
 }
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
-                                                           size_t len) {
+                                                           size_t len, remote_ptr<void> hint) {
   MemoryRange global_exclusion_range = get_global_exclusion_range();
   // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
   // don't hand it out again.
   static MemoryRange rrpage_so_range = MemoryRange(RR_PAGE_ADDR - page_size(), RR_PAGE_ADDR + page_size());
 
+  // Ignore the hint half the time.
+  if (hint && (random() & 1)) {
+    hint = nullptr;
+  }
+
   int bits = random_addr_bits(t->arch());
   uint64_t addr_space_limit = uint64_t(1) << bits;
   while (true) {
     remote_ptr<void> addr;
-    // Half the time, try to allocate at a completely random address. The other
-    // half of the time, we'll try to allocate immediately before or after a
-    // randomly chosen existing mapping.
-    if (random() % 2) {
-      // Some of these addresses will not be mappable. That's fine, the
-      // kernel will fall back to a valid address if the hint is not valid.
-      uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-      addr = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
+    if (hint) {
+      addr = hint;
+      // Don't try using the hint again.
+      hint = nullptr;
     } else {
-      ASSERT(t, !mem.empty());
-      int map_index = random() % mem.size();
-      int map_count = 0;
-      for (const auto& m : maps()) {
-        if (map_count == map_index) {
-          addr = m.map.start();
-          break;
+      // Half the time, try to allocate at a completely random address. The other
+      // half of the time, we'll try to allocate immediately before or after a
+      // randomly chosen existing mapping.
+      if (random() % 2) {
+        // Some of these addresses will not be mappable. That's fine, the
+        // kernel will fall back to a valid address if the hint is not valid.
+        uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+        addr = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
+      } else {
+        ASSERT(t, !mem.empty());
+        int map_index = random() % mem.size();
+        int map_count = 0;
+        for (const auto& m : maps()) {
+          if (map_count == map_index) {
+            addr = m.map.start();
+            break;
+          }
+          ++map_count;
         }
-        ++map_count;
       }
     }
 

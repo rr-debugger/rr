@@ -3003,15 +3003,14 @@ static void prepare_mmap_register_params(RecordTask* t) {
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
 #endif
-  if (t->session().enable_chaos() &&
-      !(r.arg4_signed() & mask_flag) && r.arg1() == 0) {
-    // No address hint was provided. Randomize the allocation address.
+  if (t->session().enable_chaos() && !(r.arg4_signed() & mask_flag)) {
+    // Not MAP_FIXED. Randomize the allocation address.
     size_t len = r.arg2();
     if (r.arg4_signed() & MAP_GROWSDOWN) {
       // Ensure stacks can grow to the minimum size we choose
       len = max<size_t>(AddressSpace::chaos_mode_min_stack_size(), len);
     }
-    remote_ptr<void> addr = t->vm()->chaos_mode_find_free_memory(t, len);
+    remote_ptr<void> addr = t->vm()->chaos_mode_find_free_memory(t, len, r.arg1());
     if (!addr.is_null()) {
       r.set_arg1(addr + len - r.arg2());
       // Note that we don't set MAP_FIXED here. If anything goes wrong (e.g.
