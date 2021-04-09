@@ -1682,7 +1682,7 @@ pkey_alloc = UnsupportedSyscall(x86=381, x64=330, generic=289)
 pkey_free = UnsupportedSyscall(x86=382, x64=331, generic=290)
 statx = EmulatedSyscall(x86=383, x64=332, generic=291, arg5="typename Arch::statx_struct")
 io_pgetevents = UnsupportedSyscall(x86=385, x64=333, generic=292)
-rseq = UnsupportedSyscall(x86=386, x64=334, generic=293)
+rseq = IrregularEmulatedSyscall(x86=386, x64=334, generic=293)
 
 clock_gettime64 = EmulatedSyscall(x86=403, arg2="typename Arch::Arch64::timespec")
 clock_settime64 = UnsupportedSyscall(x86=404)
