@@ -1745,6 +1745,12 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::pid_t>(3);
       return PREVENT_SWITCH;
 
+    case TIOCGSERIAL:
+      syscall_state.reg_parameter<typename Arch::serial_struct>(3);
+      return PREVENT_SWITCH;
+    case TIOCSSERIAL:
+      return PREVENT_SWITCH;
+
     case SNDRV_CTL_IOCTL_PVERSION:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;

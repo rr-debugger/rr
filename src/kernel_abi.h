@@ -622,6 +622,28 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(termio);
 
+  struct serial_struct {
+    signed_int type;
+    signed_int line;
+    unsigned_int port;
+    signed_int irq;
+    signed_int flags;
+    signed_int xmit_fifo_size;
+    signed_int custom_divisor;
+    signed_int baud_base;
+    unsigned_short close_delay;
+    char io_type;
+    char reserved_char[1];
+    signed_int hub6;
+    unsigned_short closing_wait;
+    unsigned_short closing_wait2;
+    ptr<unsigned char> iomem_base;
+    unsigned_short iomem_reg_shift;
+    unsigned_int port_high;
+    unsigned_long iomap_base;
+  };
+  RR_VERIFY_TYPE(serial_struct);
+
   struct winsize {
     unsigned_short ws_row;
     unsigned_short ws_col;
