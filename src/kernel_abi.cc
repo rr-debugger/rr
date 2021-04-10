@@ -20,6 +20,7 @@
 #include <linux/net.h>
 #include <linux/netfilter/x_tables.h>
 #include <linux/sem.h>
+#include <linux/serial.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>
 #include <linux/sysctl.h>
