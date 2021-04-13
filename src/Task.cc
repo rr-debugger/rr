@@ -163,22 +163,28 @@ void Task::wait_exit() {
    * for this we add `| WNOWAIT` to prevent dequeing the event and simply take
    * it as an indication that the task has execed.
    */
-  int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
-  if (ret == 0) {
-    ASSERT(this, info.si_pid == tid) << "Expected " << tid << " got " << info.si_pid;
-    if (WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXIT) {
-      // It's possible that the earlier exit event was synthetic, in which
-      // case we're only now catching up to the real process exit. In that
-      // case, just ask the process to actually exit. (TODO: We may want to
-      // catch this earlier).
-      return proceed_to_exit(true);
+  while (true) {
+    int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
+    if (ret == 0) {
+      ASSERT(this, info.si_pid == tid) << "Expected " << tid << " got " << info.si_pid;
+      if (WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXIT) {
+        // It's possible that the earlier exit event was synthetic, in which
+        // case we're only now catching up to the real process exit. In that
+        // case, just ask the process to actually exit. (TODO: We may want to
+        // catch this earlier).
+        return proceed_to_exit(true);
+      }
+      ASSERT(this, WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC)
+        << "Expected PTRACE_EVENT_EXEC, got " << WaitStatus(info);
+      // The kernel will do the reaping for us in this case
+      was_reaped = true;
+      break;
+    } else if (ret == -1 && errno == EINTR) {
+      continue;
+    } else {
+      ASSERT(this, ret == -1 && errno == ECHILD) << "Got ret=" << ret << " errno=" << errno;
+      break;
     }
-    ASSERT(this, WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC)
-      << "Expected PTRACE_EVENT_EXEC, got " << WaitStatus(info);
-    // The kernel will do the reaping for us in this case
-    was_reaped = true;
-  } else {
-    ASSERT(this, ret == -1 && errno == ECHILD) << "Got ret=" << ret << " errno=" << errno;
   }
 }
 
