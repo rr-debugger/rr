@@ -105,18 +105,20 @@ static void base_name(string& s) {
 }
 
 // file_name cannot be null, but the others can be.
-static void resolve_file_name(const char* original_file_dir,
-                              const char* comp_dir, const char* rel_dir,
-                              const char* file_name, set<string>* file_names) {
+static string resolve_file_name(const char* original_file_dir,
+                                const char* comp_dir, const char* rel_dir,
+                                const char* file_name) {
   const char* names[] = { original_file_dir, comp_dir, rel_dir, file_name };
-  ssize_t first_absolute = -1;
+  // Find the last path on the list that is absolute, and start
+  // resolution from there.
+  ssize_t absolute_path_index = -1;
   for (ssize_t i = 0; i < 4; ++i) {
     if (names[i] && names[i][0] == '/') {
-      first_absolute = i;
+      absolute_path_index = i;
     }
   }
-  string s = first_absolute >= 0 ? "" : "/";
-  for (size_t i = (first_absolute >= 0 ? first_absolute : 0); i < 4; ++i) {
+  string s = absolute_path_index >= 0 ? "" : "/";
+  for (size_t i = (absolute_path_index >= 0 ? absolute_path_index : 0); i < 4; ++i) {
     if (!names[i]) {
       continue;
     }
@@ -125,7 +127,7 @@ static void resolve_file_name(const char* original_file_dir,
     }
     s += names[i];
   }
-  file_names->insert(move(s));
+  return s;
 }
 
 struct DwoInfo {
@@ -135,6 +137,14 @@ struct DwoInfo {
   string comp_dir;
   uint64_t id;
 };
+
+static string resolve_dwo_name(const string& original_file_name,
+                               const char* comp_dir,
+                               const char* dwo_name) {
+  string original_dir = original_file_name;
+  parent_dir(original_dir);
+  return resolve_file_name(original_dir.c_str(), comp_dir, NULL, dwo_name);
+}
 
 static bool process_compilation_units(ElfFileReader& reader,
                                       ElfFileReader* sup_reader,
@@ -210,11 +220,12 @@ static bool process_compilation_units(ElfFileReader& reader,
         }
       }
       if (has_dwo_id) {
+        string s = resolve_dwo_name(original_file_name, comp_dir, dwo_name);
         string c;
         if (comp_dir) {
           c = comp_dir;
         }
-        dwos->push_back({ dwo_name, trace_relative_name, move(c), dwo_id });
+        dwos->push_back({ s, trace_relative_name, move(c), dwo_id });
       } else {
         LOG(warn) << "DW_AT_GNU_dwo_name but not DW_AT_GNU_dwo_id";
       }
@@ -224,7 +235,7 @@ static bool process_compilation_units(ElfFileReader& reader,
       continue;
     }
     if (source_file_name) {
-      resolve_file_name(original_file_dir.c_str(), comp_dir, nullptr, source_file_name, file_names);
+      file_names->insert(move(resolve_file_name(original_file_dir.c_str(), comp_dir, nullptr, source_file_name)));
     }
     intptr_t stmt_list = cu.die().section_ptr_attr(DW_AT_stmt_list, &ok);
     if (stmt_list < 0 || !ok) {
@@ -240,7 +251,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         continue;
       }
       const char* dir = lines.directories()[f.directory_index];
-      resolve_file_name(original_file_dir.c_str(), comp_dir, dir, f.file_name, file_names);
+      file_names->insert(move(resolve_file_name(original_file_dir.c_str(), comp_dir, dir, f.file_name)));
     }
   } while (!debug_info.empty());
 
