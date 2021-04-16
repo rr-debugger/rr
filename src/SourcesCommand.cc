@@ -135,6 +135,7 @@ struct DwoInfo {
   string trace_file;
   // Could be an empty string
   string comp_dir;
+  string full_path;
   uint64_t id;
 };
 
@@ -225,7 +226,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         if (comp_dir) {
           c = comp_dir;
         }
-        dwos->push_back({ s, trace_relative_name, move(c), dwo_id });
+        dwos->push_back({ dwo_name, trace_relative_name, move(c), s, dwo_id });
       } else {
         LOG(warn) << "DW_AT_GNU_dwo_name but not DW_AT_GNU_dwo_id";
       }
@@ -740,8 +741,9 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
   printf("  \"dwos\":[\n");
   index = 0;
   for (auto& d : dwos) {
-    printf("    { \"name\":\"%s\", \"trace_file\":\"%s\", ",
+    printf("    { \"name\":\"%s\", \"full_path\":\"%s\", \"trace_file\":\"%s\", ",
            json_escape(d.name).c_str(),
+           json_escape(d.full_path).c_str(),
            json_escape(d.trace_file).c_str());
     if (!d.comp_dir.empty()) {
       printf("\"comp_dir\":\"%s\", ", json_escape(d.comp_dir).c_str());
