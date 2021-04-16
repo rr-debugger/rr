@@ -4,13 +4,14 @@
 #include "util_internal.h"
 
 #ifdef __x86_64__
-void __attribute__((naked)) generate_tick(long generate) {
-  __asm__ __volatile("test %%rdi, %%rdi\n\t"
+extern void generate_tick(long generate);
+
+__asm__(
+"generate_tick:\n\t"
+  "test %rdi, %rdi\n\t"
   "jnz 1f\n\t"
   "ud2\n\t"
-  "1: retq\n\t" :: "D"(generate));
-  (void)generate;
-}
+  "1: retq\n\t");
 
 static void test_vsyscall_timeslice_sig(void)
 {

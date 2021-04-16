@@ -12,7 +12,7 @@ static void* run_thread(__attribute__((unused)) void* p) {
   return NULL;
 }
 
-int main(__attribute__((unused)) int argc) {
+int main(void) {
   int i;
   pthread_t thread;
   struct timespec ts = { 0, 10000000 };
