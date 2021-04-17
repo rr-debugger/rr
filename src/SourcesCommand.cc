@@ -723,10 +723,20 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
     while (!vcs_stack.empty() && !starts_with(f, *vcs_stack.back())) {
       vcs_stack.pop_back();
     }
-    while (vcs_dir_iterator != vcs_dirs.end() && starts_with(f, *vcs_dir_iterator)) {
-      vcs_stack.push_back(&*vcs_dir_iterator);
-      vcs_dirs_vector.push_back(&*vcs_dir_iterator);
-      ++vcs_dir_iterator;
+    while (vcs_dir_iterator != vcs_dirs.end()) {
+      if (starts_with(f, *vcs_dir_iterator)) {
+        vcs_stack.push_back(&*vcs_dir_iterator);
+        vcs_dirs_vector.push_back(&*vcs_dir_iterator);
+        ++vcs_dir_iterator;
+        continue;
+      }
+      if (*vcs_dir_iterator < f) {
+        // Skip this VCS dir because all of its files must have been
+        // skipped (not found).
+        ++vcs_dir_iterator;
+        continue;
+      }
+      break;
     }
     if (vcs_stack.empty()) {
       if (!pushed_empty_string) {
