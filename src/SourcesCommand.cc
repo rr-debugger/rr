@@ -88,12 +88,14 @@ ExplicitSourcesCommand ExplicitSourcesCommand::singleton(
     "                             LIBRARY is the basename of the original file name,\n"
     "                             e.g. libc-2.32.so\n");
 
-static void parent_dir(string& s) {
+static void dir_name(string& s) {
   size_t p = s.rfind('/');
-  if (p == string::npos) {
+  if (p == string::npos || (p == 0 && s.size() == 1)) {
     s.clear();
   } else if (p > 0) {
     s.resize(p);
+  } else {
+    s.resize(1);
   }
 }
 
@@ -104,30 +106,66 @@ static void base_name(string& s) {
   }
 }
 
+static bool is_absolute(string& s) {
+  return s[0] == '/';
+}
+
+static void prepend_path(const char* prefix, string& s) {
+  size_t len = strlen(prefix);
+  if (!len) {
+    return;
+  }
+  if (prefix[len - 1] == '/') {
+    s = string(prefix) + s;
+  } else {
+    s = string(prefix) + '/' + s;
+  }
+}
+
+// Resolve a file name relative to a compilation directory and relative directory.
 // file_name cannot be null, but the others can be.
-static string resolve_file_name(const char* original_file_dir,
+// Takes into accout the original file name as follows:
+// -- if comp_dir, rel_dir or file_name are absolute, or original_file_name is NULL,
+// then ignore original_file_name.
+// The result is just the result of combining comp_dir/rel_dir/file_name.
+// -- otherwise they're all relative to some build directory. We hypothesize
+// the build directory is some ancestor directory of original_file_name.
+// We try making comp_dir/rel_dir/file_name relative to each ancestor directory
+// of original_file_name, and if we find a file there, we return that name.
+static string resolve_file_name(const char* original_file_name,
                                 const char* comp_dir, const char* rel_dir,
                                 const char* file_name) {
-  const char* names[] = { original_file_dir, comp_dir, rel_dir, file_name };
-  // Find the last path on the list that is absolute, and start
-  // resolution from there.
-  ssize_t absolute_path_index = -1;
-  for (ssize_t i = 0; i < 4; ++i) {
-    if (names[i] && names[i][0] == '/') {
-      absolute_path_index = i;
+  string path = file_name;
+  if (is_absolute(path)) {
+    return path;
+  }
+  if (rel_dir) {
+    prepend_path(rel_dir, path);
+    if (is_absolute(path)) {
+      return path;
     }
   }
-  string s = absolute_path_index >= 0 ? "" : "/";
-  for (size_t i = (absolute_path_index >= 0 ? absolute_path_index : 0); i < 4; ++i) {
-    if (!names[i]) {
-      continue;
+  if (comp_dir) {
+    prepend_path(comp_dir, path);
+    if (is_absolute(path)) {
+      return path;
     }
-    if (!s.empty() && s.back() != '/') {
-      s.push_back('/');
-    }
-    s += names[i];
   }
-  return s;
+  if (!original_file_name) {
+    return path;
+  }
+  string original(original_file_name);
+  while (true) {
+    dir_name(original);
+    if (original.empty()) {
+      return path;
+    }
+    string candidate = original + "/" + path;
+    int ret = access(candidate.c_str(), F_OK);
+    if (!ret) {
+      return candidate;
+    }
+  }
 }
 
 struct DwoInfo {
@@ -138,14 +176,6 @@ struct DwoInfo {
   string full_path;
   uint64_t id;
 };
-
-static string resolve_dwo_name(const string& original_file_name,
-                               const char* comp_dir,
-                               const char* dwo_name) {
-  string original_dir = original_file_name;
-  parent_dir(original_dir);
-  return resolve_file_name(original_dir.c_str(), comp_dir, NULL, dwo_name);
-}
 
 static bool process_compilation_units(ElfFileReader& reader,
                                       ElfFileReader* sup_reader,
@@ -172,9 +202,6 @@ static bool process_compilation_units(ElfFileReader& reader,
     debug_str_offsets,
     debug_line_str,
   };
-
-  string original_file_dir = original_file_name;
-  parent_dir(original_file_dir);
 
   DwarfAbbrevs abbrevs(debug_abbrev);
   do {
@@ -221,12 +248,12 @@ static bool process_compilation_units(ElfFileReader& reader,
         }
       }
       if (has_dwo_id) {
-        string s = resolve_dwo_name(original_file_name, comp_dir, dwo_name);
+        string full_name = resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, dwo_name);
         string c;
         if (comp_dir) {
           c = comp_dir;
         }
-        dwos->push_back({ dwo_name, trace_relative_name, move(c), s, dwo_id });
+        dwos->push_back({ dwo_name, trace_relative_name, move(c), full_name, dwo_id });
       } else {
         LOG(warn) << "DW_AT_GNU_dwo_name but not DW_AT_GNU_dwo_id";
       }
@@ -236,7 +263,7 @@ static bool process_compilation_units(ElfFileReader& reader,
       continue;
     }
     if (source_file_name) {
-      file_names->insert(move(resolve_file_name(original_file_dir.c_str(), comp_dir, nullptr, source_file_name)));
+      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, source_file_name));
     }
     intptr_t stmt_list = cu.die().section_ptr_attr(DW_AT_stmt_list, &ok);
     if (stmt_list < 0 || !ok) {
@@ -252,7 +279,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         continue;
       }
       const char* dir = lines.directories()[f.directory_index];
-      file_names->insert(move(resolve_file_name(original_file_dir.c_str(), comp_dir, dir, f.file_name)));
+      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, dir, f.file_name));
     }
   } while (!debug_info.empty());
 
@@ -300,7 +327,7 @@ find_auxiliary_file(const string& original_file_name,
 
     // Try in the same directory as the original file.
     string original_file_dir = original_file_name;
-    parent_dir(original_file_dir);
+    dir_name(original_file_dir);
     full_file_name = original_file_dir + "/" + aux_file_name;
     normalize_file_name(full_file_name);
     fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
@@ -534,7 +561,7 @@ static string resolve_symlinks(const string& path,
       string target;
       if (buf[0] != '/') {
         target = base;
-        parent_dir(target);
+        dir_name(target);
         if (target.size() > 1) {
           target.push_back('/');
         }
