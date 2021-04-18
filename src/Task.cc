@@ -218,15 +218,17 @@ WaitStatus Task::kill() {
   */
   LOG(debug) << "Sending SIGKILL to " << tid;
   int ret = syscall(SYS_tgkill, real_tgid(), tid, SIGKILL);
-  DEBUG_ASSERT(ret == 0);
+  ASSERT(this, ret == 0);
   int raw_status = -1;
   int wait_ret = ::waitpid(tid, &raw_status, __WALL | WUNTRACED);
   WaitStatus status = WaitStatus(raw_status);
   LOG(debug) << " -> " << status;
   bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
-  DEBUG_ASSERT(wait_ret == tid &&
-    (is_exit_event || status.type() == WaitStatus::FATAL_SIGNAL ||
-      status.type() == WaitStatus::EXIT));
+  ASSERT(this, wait_ret == tid) << "Expected " << tid << " got " << wait_ret;
+  ASSERT(this,
+      is_exit_event || status.type() == WaitStatus::FATAL_SIGNAL ||
+      status.type() == WaitStatus::EXIT)
+      << "Expected exit or fatal signal for " << tid << " got " << status;
   did_kill();
   if (is_exit_event) {
     /* If this is the exit event, we can detach here and the task will
