@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record target_wine$bitness
+debug target_wine --target-wine
