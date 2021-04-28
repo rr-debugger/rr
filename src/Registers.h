@@ -424,7 +424,7 @@ public:
    * Modify the processor's single step flag. On x86 this is the TF flag in the
    * eflags register.
    */
-  bool x86_singlestep_flag();
+  bool x86_singlestep_flag() const;
   void clear_x86_singlestep_flag();
 
   /**
@@ -441,7 +441,7 @@ public:
    * likely already be clear, and we'd take a single step exception without
    * ever having executed any userspace instructions whatsoever.
    */
-  bool aarch64_singlestep_flag();
+  bool aarch64_singlestep_flag() const;
   void set_aarch64_singlestep_flag();
 
   void print_register_file(FILE* f) const;

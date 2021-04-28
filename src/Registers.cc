@@ -659,7 +659,7 @@ void Registers::set_from_trace(SupportedArch a, const void* data,
   memcpy(&u.arm64regs, data, sizeof(u.arm64regs));
 }
 
-bool Registers::aarch64_singlestep_flag() {
+bool Registers::aarch64_singlestep_flag() const {
   switch (arch()) {
     case aarch64:
       return pstate() & AARCH64_DBG_SPSR_SS;
@@ -679,7 +679,7 @@ void Registers::set_aarch64_singlestep_flag() {
   }
 }
 
-bool Registers::x86_singlestep_flag() {
+bool Registers::x86_singlestep_flag() const {
   switch (arch()) {
     case x86:
     case x86_64:
