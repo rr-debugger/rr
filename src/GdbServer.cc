@@ -338,6 +338,7 @@ static bool is_in_patch_stubs(Task* t, remote_code_ptr ip) {
 
 void GdbServer::maybe_intercept_mem_request(Task* target, const GdbRequest& req,
                                             vector<uint8_t>* result) {
+  DEBUG_ASSERT(req.mem_.len >= result->size());
   /* Crazy hack!
    * When gdb tries to read the word at the top of the stack, and we're in our
    * dynamically-generated stub code, tell it the value is zero, so that gdb's
@@ -348,7 +349,7 @@ void GdbServer::maybe_intercept_mem_request(Task* target, const GdbRequest& req,
    */
   size_t size = word_size(target->arch());
   if (target->regs().sp().as_int() >= req.mem_.addr &&
-      target->regs().sp().as_int() + size <= req.mem_.addr + req.mem_.len &&
+      target->regs().sp().as_int() + size <= req.mem_.addr + result->size() &&
       is_in_patch_stubs(target, target->ip())) {
     memset(result->data() + target->regs().sp().as_int() - req.mem_.addr, 0,
            size);
