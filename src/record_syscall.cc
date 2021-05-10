@@ -5620,6 +5620,9 @@ static string extra_expected_errno_info(RecordTask* t,
         case Arch::madvise:
           ss << "; unknown madvise(" << (int)t->regs().arg3() << ")";
           break;
+        case Arch::bpf:
+          ss << "; unknown bpf(cmd=" << (int)t->regs().arg1() << ")";
+          break;
       }
       break;
     case EIO:
