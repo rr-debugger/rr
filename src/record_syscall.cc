@@ -2038,6 +2038,8 @@ static Switchable prepare_bpf(RecordTask* t,
     case BPF_MAP_UPDATE_ELEM:
     case BPF_MAP_DELETE_ELEM:
       return PREVENT_SWITCH;
+    case BPF_OBJ_GET:
+      return ALLOW_SWITCH;
     case BPF_PROG_LOAD: {
       auto argsp =
           syscall_state.reg_parameter<typename Arch::bpf_attr>(2, IN);

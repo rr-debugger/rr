@@ -785,6 +785,7 @@ set(BASIC_TESTS
   big_buffers
   block
   block_open
+  bpf
   brk
   brk2
   capget
