@@ -9,6 +9,8 @@ Please contribute!  Make sure to review the [pull request checklist](/CONTRIBUTI
 
 If you find rr useful, please [add a testimonial](https://github.com/rr-debugger/rr/wiki/Testimonials).
 
+rr development is sponsored by [Pernosco](https://pernos.co) and was originated by [Mozilla](https://www.mozilla.org).
+
 # System requirements
 
 * Linux kernel ≥ 3.11 is required (for `PTRACE_SETSIGMASK`).
