@@ -1671,7 +1671,7 @@ arch_prctl = IrregularEmulatedSyscall(x86=384, x64=158)
 
 bpf = IrregularEmulatedSyscall(x86=357, x64=321, generic=280)
 execveat = UnsupportedSyscall(x86=358, x64=322, generic=281)
-userfaultfd = UnsupportedSyscall(x86=374, x64=323, generic=282)
+userfaultfd = IrregularEmulatedSyscall(x86=374, x64=323, generic=282)
 membarrier = EmulatedSyscall(x86=375, x64=324, generic=283)
 mlock2 = UnsupportedSyscall(x86=376, x64=325, generic=284)
 copy_file_range = IrregularEmulatedSyscall(x86=377, x64=326, generic=285)

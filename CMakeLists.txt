@@ -1141,6 +1141,7 @@ set(BASIC_TESTS
   unexpected_exit_pid_ns
   unjoined_thread
   unshare
+  userfaultfd
   utimes
   vfork_flush
   vfork_shared

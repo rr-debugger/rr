@@ -3950,6 +3950,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::userfaultfd: {
+      // Pretend the kernel doesn't support this.
+      Registers r = regs;
+      r.set_arg1(0xffffffff);
+      t->set_regs(r);
+      syscall_state.emulate_result(-ENOSYS);
+      return PREVENT_SWITCH;
+    }
+
     case Arch::memfd_create: {
       string name = t->read_c_str(remote_ptr<char>(regs.arg1()));
       if (is_blacklisted_memfd(name.c_str())) {
@@ -6154,13 +6163,14 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::io_setup:
     case Arch::madvise:
     case Arch::memfd_create:
+    case Arch::mprotect:
     case Arch::pread64:
     case Arch::preadv:
     case Arch::ptrace:
     case Arch::read:
     case Arch::readv:
     case Arch::sched_setaffinity:
-    case Arch::mprotect: {
+    case Arch::userfaultfd: {
       // Restore the registers that we may have altered.
       Registers r = t->regs();
       r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
