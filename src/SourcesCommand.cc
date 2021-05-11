@@ -332,7 +332,13 @@ find_auxiliary_file(const string& original_file_name,
     normalize_file_name(full_file_name);
     fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
     if (fd.is_open()) {
-      goto found;
+      // Debian/Ubuntu built /lib/x86_64-linux-gnu/ld-2.31.so with a
+      // .gnu_debuglink of "ld-2.31.so", expecting it to be found at
+      // /usr/lib/debug/lib/x86_64-linux-gnu/ld-2.31.so. So we need to make
+      // sure we aren't using the binary file as its own debuginfo.
+      if (real_path(original_file_name) != real_path(full_file_name)) {
+        goto found;
+      }
     }
     LOG(warn) << "Can't find external debuginfo file " << full_file_name;
 
@@ -378,6 +384,36 @@ found:
   return reader;
 }
 
+static unique_ptr<ElfFileReader>
+find_auxiliary_file_by_buildid(ElfFileReader& trace_file_reader, string& full_file_name) {
+  string build_id = trace_file_reader.read_buildid();
+  if (build_id.empty()) {
+    LOG(warn) << "Main ELF binary has no build ID!";
+    return nullptr;
+  }
+  if (build_id.size() < 3) {
+    LOG(warn) << "Build ID is too short!";
+    return nullptr;
+  }
+
+  string path = "/usr/lib/debug/.build-id/" + build_id.substr(0, 2) + "/" + build_id.substr(2) + ".debug";
+  ScopedFd fd(path.c_str(), O_RDONLY);
+  if (!fd.is_open()) {
+    LOG(info) << "Can't find external debuginfo file " << path;
+    return nullptr;
+  }
+
+  LOG(info) << "Examining external by buildid " << path;
+  auto reader = make_unique<ElfFileReader>(fd);
+  if (!reader->ok()) {
+    LOG(warn) << "Not an ELF file!";
+    return nullptr;
+  }
+  full_file_name = path;
+  return reader;
+}
+
+// Traverse the compilation units of an auxiliary file to collect their source files
 static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
                                    ElfFileReader& aux_file_reader,
                                    ElfFileReader* alt_file_reader,
@@ -436,7 +472,10 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
   auto reader = find_auxiliary_file(original_file_name, aux_file_name,
                                     full_file_name);
   if (!reader) {
-    return false;
+    reader = find_auxiliary_file_by_buildid(trace_file_reader, full_file_name);
+    if (!reader) {
+      return false;
+    }
   }
 
   /* A debuglink file can have its own debugaltlink */
