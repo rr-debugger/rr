@@ -544,29 +544,10 @@ else()
   set(CMAKE_INSTALL_INCLUDEDIR "include")
 endif()
 
-option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
-
-if(RR_BUILD_SHARED)
-  add_library(rr ${RR_SOURCES})
-  set_target_properties(rr PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
-  add_executable(rrbin src/main.cc)
-  set(RR_BIN rrbin)
-  post_build_executable(rrbin)
-  set_target_properties(rrbin PROPERTIES ENABLE_EXPORTS true OUTPUT_NAME rr)
-  set_target_properties(rrbin PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-  set_target_properties(rrbin PROPERTIES INSTALL_RPATH_USE_LINK_PATH true)
-  set_target_properties(brotli PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  target_link_libraries(rrbin rr)
-  install(TARGETS rr
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-else()
-  add_executable(rr ${RR_SOURCES} src/main.cc)
-  set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
-  post_build_executable(rr)
-  set(RR_BIN rr)
-endif()
+add_executable(rr ${RR_SOURCES} src/main.cc)
+set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
+post_build_executable(rr)
+set(RR_BIN rr)
 add_dependencies(rr Generated)
 
 option(strip "Strip debug info from rr binary")
@@ -593,9 +574,6 @@ else()
 endif()
 
 set_target_properties(rr PROPERTIES LINK_FLAGS "${RR_MAIN_LINKER_FLAGS}")
-if(RR_BUILD_SHARED)
-  set_target_properties(rrbin PROPERTIES LINK_FLAGS "${RR_MAIN_LINKER_FLAGS}")
-endif()
 
 target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
