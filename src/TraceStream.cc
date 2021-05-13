@@ -417,6 +417,11 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
     w.setTid(r.rec_tid);
     w.setAddr(r.addr.as_int());
     w.setSize(r.size);
+    auto holes = w.initHoles(r.holes.size());
+    for (size_t j = 0; j < r.holes.size(); ++j) {
+      holes[j].setOffset(r.holes[j].offset);
+      holes[j].setSize(r.holes[j].size);
+    }
   }
   raw_recs.clear();
   frame.setArch(to_trace_arch(t->arch()));
@@ -533,7 +538,14 @@ TraceFrame TraceReader::read_frame() {
   for (size_t i = 0; i < raw_recs.size(); ++i) {
     // Build list in reverse order so we can efficiently pull records from it
     auto w = mem_writes[raw_recs.size() - 1 - i];
-    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()) };
+    auto holes = w.getHoles();
+    vector<WriteHole> h;
+    h.resize(holes.size());
+    for (size_t j = 0; j < h.size(); ++j) {
+      const auto& hole = holes[j];
+      h[j] = { hole.getOffset(), hole.getSize() };
+    }
+    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()), h };
   }
 
   TraceFrame ret;
@@ -1152,10 +1164,14 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                        map.getFileOffsetBytes());
 }
 
-void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,
-                            remote_ptr<void> addr) {
+void TraceWriter::write_raw_header(pid_t rec_tid, size_t total_len,
+                                   remote_ptr<void> addr,
+                                   const std::vector<WriteHole>& holes = std::vector<WriteHole>()) {
+  raw_recs.push_back({ addr, total_len, rec_tid, holes });
+}
+
+void TraceWriter::write_raw_data(const void* d, size_t len) {
   auto& data = writer(RAW_DATA);
-  raw_recs.push_back({ addr, len, rec_tid });
   data.write(d, len);
 }
 
@@ -1174,8 +1190,44 @@ bool TraceReader::read_raw_data_for_frame(RawData& d) {
   auto& rec = raw_recs[raw_recs.size() - 1];
   d.rec_tid = rec.rec_tid;
   d.addr = rec.addr;
+
   d.data.resize(rec.size);
-  reader(RAW_DATA).read((char*)d.data.data(), rec.size);
+  auto hole_iter = rec.holes.begin();
+  uintptr_t offset = 0;
+  while (offset < d.data.size()) {
+    uintptr_t end = rec.size;
+    if (hole_iter != rec.holes.end()) {
+      if (offset == hole_iter->offset) {
+        memset(d.data.data() + offset, 0, hole_iter->size);
+        ++hole_iter;
+        offset += hole_iter->size;
+        continue;
+      }
+      end = hole_iter->offset;
+    }
+    reader(RAW_DATA).read((char*)d.data.data() + offset, end - offset);
+    offset = end;
+  }
+
+  raw_recs.pop_back();
+  return true;
+}
+
+bool TraceReader::read_raw_data_for_frame_with_holes(RawDataWithHoles& d) {
+  if (raw_recs.empty()) {
+    return false;
+  }
+  auto& rec = raw_recs[raw_recs.size() - 1];
+  d.rec_tid = rec.rec_tid;
+  d.addr = rec.addr;
+  d.holes = move(rec.holes);
+  size_t data_size = rec.size;
+  for (auto& h : d.holes) {
+    data_size -= h.size;
+  }
+  d.data.resize(data_size);
+  reader(RAW_DATA).read((char*)d.data.data(), data_size);
+
   raw_recs.pop_back();
   return true;
 }

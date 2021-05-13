@@ -1652,22 +1652,45 @@ void RecordTask::record_remote_writable(remote_ptr<void> addr,
 }
 
 ssize_t RecordTask::record_remote_fallible(remote_ptr<void> addr,
-                                          ssize_t num_bytes) {
-  ASSERT(this, num_bytes >= 0);
-
-  if (record_remote_by_local_map(addr, num_bytes)) {
-    return num_bytes;
-  }
-
+                                           uintptr_t num_bytes,
+                                           const std::vector<WriteHole>& holes) {
+  auto hole_iter = holes.begin();
+  uintptr_t offset = 0;
   vector<uint8_t> buf;
-  ssize_t nread = 0;
-  if (!addr.is_null()) {
-    buf.resize(num_bytes);
-    nread = read_bytes_fallible(addr, num_bytes, buf.data());
-    buf.resize(max<ssize_t>(0, nread));
+  while (offset < num_bytes) {
+    if (hole_iter != holes.end() && hole_iter->offset == offset) {
+      offset += hole_iter->size;
+      ++hole_iter;
+      continue;
+    }
+
+    uintptr_t bytes = min(uintptr_t(4*1024*1024), num_bytes - offset);
+    if (hole_iter != holes.end()) {
+      ASSERT(this, hole_iter->offset > offset);
+      bytes = min(bytes, hole_iter->offset - offset);
+    }
+    if (record_remote_by_local_map(addr + offset, bytes)) {
+      offset += bytes;
+      continue;
+    }
+
+    if (addr) {
+      buf.resize(bytes);
+      ssize_t nread = read_bytes_fallible(addr + offset, bytes, buf.data());
+      if (nread <= 0) {
+        if (offset == 0) {
+          return nread;
+        }
+        break;
+      }
+      trace_writer().write_raw_data(buf.data(), nread);
+      offset += nread;
+    } else {
+      offset += bytes;
+    }
   }
-  trace_writer().write_raw(rec_tid, buf.data(), buf.size(), addr);
-  return nread;
+  trace_writer().write_raw_header(rec_tid, offset, addr, holes);
+  return offset;
 }
 
 void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,

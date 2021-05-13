@@ -875,6 +875,7 @@ set(BASIC_TESTS
   keyctl
   kill_newborn
   kill_ptracee
+  large_hole
   large_write_deadlock
   legacy_ugid
   x86/lsl

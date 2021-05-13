@@ -557,14 +557,46 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                            device, inode, nullptr, &recorded_km, emu_file);
 }
 
+static void write_mapped_data_with_holes(ReplayTask* t, const TraceReader::RawDataWithHoles& buf) {
+  unique_ptr<AutoRemoteSyscalls> remote;
+  size_t data_offset = 0;
+  size_t addr_offset = 0;
+  auto holes_iter = buf.holes.begin();
+  while (data_offset < buf.data.size() || holes_iter != buf.holes.end()) {
+    if (holes_iter != buf.holes.end() && holes_iter->offset == addr_offset) {
+      t->write_zeroes(&remote, buf.addr + addr_offset, holes_iter->size);
+      addr_offset += holes_iter->size;
+      ++holes_iter;
+      continue;
+    }
+    size_t data_end = buf.data.size();
+    if (holes_iter != buf.holes.end()) {
+      data_end = holes_iter->offset - addr_offset;
+    }
+    t->write_bytes_helper(buf.addr + addr_offset, data_end - data_offset, buf.data.data() + data_offset,
+                          nullptr);
+    addr_offset += data_end - data_offset;
+    data_offset = data_end;
+  }
+}
+
 static void write_mapped_data(ReplayTask* t,
                               remote_ptr<void> rec_addr,
                               size_t size,
                               TraceReader::MappedData& data) {
   switch (data.source) {
-  case TraceReader::SOURCE_TRACE:
-    t->set_data_from_trace();
+  case TraceReader::SOURCE_TRACE: {
+    TraceReader::RawDataWithHoles buf;
+    ASSERT(t, t->trace_reader().read_raw_data_for_frame_with_holes(buf));
+    ASSERT(t, buf.addr == rec_addr);
+    // Note that this gets called for remaps and shared maps that refer to the same pages
+    // as previous maps and so the data we're recording might not be the initial data
+    // for those pages, but it is the inital data *for this mapping*.
+    write_mapped_data_with_holes(t, buf);
+    t->vm()->maybe_update_breakpoints(t, rec_addr.cast<uint8_t>(),
+                                      buf.data.size());
     break;
+  }
   case TraceReader::SOURCE_FILE: {
     ScopedFd file(data.file_name.c_str(), O_RDONLY);
     ASSERT(t, file.is_open()) << "Can't open " << data.file_name;

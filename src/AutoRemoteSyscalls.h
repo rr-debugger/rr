@@ -289,8 +289,6 @@ private:
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
-  void* operator new(size_t) = delete;
-  void operator delete(void*) = delete;
 };
 
 } // namespace rr

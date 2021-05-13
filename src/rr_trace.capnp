@@ -195,10 +195,18 @@ struct TaskEvent {
   }
 }
 
+struct WriteHole {
+  offset @0 :UInt64;
+  size @1 :UInt64;
+}
+
 struct MemWrite {
   tid @0 :Tid;
   addr @1 :RemotePtr;
   size @2 :UInt64;
+  # A list of regions where zeroes are written. These are not
+  # present in the compressed data.
+  holes @3 :List(WriteHole);
 }
 
 enum Arch {

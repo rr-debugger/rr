@@ -28,6 +28,11 @@ class KernelMapping;
 class RecordTask;
 struct TraceUuid;
 
+struct WriteHole {
+  uint64_t offset;
+  uint64_t size;
+};
+
 /**
  * TraceStream stores all the data common to both recording and
  * replay.  TraceWriter deals with recording-specific logic, and
@@ -45,6 +50,7 @@ public:
     remote_ptr<void> addr;
     size_t size;
     pid_t rec_tid;
+    std::vector<WriteHole> holes;
   };
 
   /**
@@ -213,8 +219,13 @@ public:
    * 'addr' is the address in the tracee where the data came from/will be
    * restored to.
    */
-  void write_raw(pid_t tid, const void* data, size_t len,
-                 remote_ptr<void> addr);
+  void write_raw(pid_t tid, const void* data, size_t len, remote_ptr<void> addr) {
+    write_raw_data(data, len);
+    write_raw_header(tid, len, addr, std::vector<WriteHole>());
+  }
+  void write_raw_data(const void* data, size_t len);
+  void write_raw_header(pid_t tid, size_t total_len, remote_ptr<void> addr,
+                        const std::vector<WriteHole>& holes);
 
   /**
    * Write a task event (clone or exec record) to the trace.
@@ -313,12 +324,22 @@ class TraceReader : public TraceStream {
 public:
   /**
    * A parcel of recorded tracee data.  |data| contains the data read
-   * from |addr| in the tracee.
+   * from |addr| in the tracee. `data` contains zeroes for holes.
    */
   struct RawData {
     std::vector<uint8_t> data;
     remote_ptr<void> addr;
     pid_t rec_tid;
+  };
+
+  /**
+   * Like RawData, but returns positions of holes. `data` excludes holes.
+   */
+  struct RawDataWithHoles {
+    std::vector<uint8_t> data;
+    remote_ptr<void> addr;
+    pid_t rec_tid;
+    std::vector<WriteHole> holes;
   };
 
   /**
@@ -361,8 +382,17 @@ public:
   /**
    * Reads the next raw data record for last-read frame. If there are no more
    * raw data records for this frame, return false.
+   * Holes are filled with zeroes in the output buffer.
    */
   bool read_raw_data_for_frame(RawData& d);
+
+  /**
+   * Reads the next raw data record for last-read frame. If there are no more
+   * raw data records for this frame, return false.
+   * Returns hole metadata so you can do something smarter with it than
+   * explicitly filling with zeroes.
+   */
+  bool read_raw_data_for_frame_with_holes(RawDataWithHoles& d);
 
   /**
    * Like read_raw_data_for_frame, but doesn't actually read the data bytes.

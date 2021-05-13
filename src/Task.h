@@ -729,6 +729,13 @@ public:
                         void* data, size_t size);
 
   /**
+   * Writes zeroes to the given memory range.
+   * For efficiency tries using MADV_REMOVE via `remote`. Caches
+   * an AutoRemoteSyscalls in `*remote`.
+   */
+  void write_zeroes(std::unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size);
+
+  /**
    * Don't use these helpers directly; use the safer and more
    * convenient variants above.
    *
@@ -749,6 +756,13 @@ public:
   void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                           const void* buf, bool* ok = nullptr,
                           uint32_t flags = 0);
+  /**
+   * |flags| is bits from WriteFlags.
+   * Returns number of bytes written.
+   */
+  ssize_t write_bytes_helper_no_notifications(remote_ptr<void> addr, ssize_t buf_size,
+                                              const void* buf, bool* ok = nullptr,
+                                              uint32_t flags = 0);
 
   SupportedArch detect_syscall_arch();
 

@@ -2914,21 +2914,31 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
     return;
   }
 
+  ssize_t nwritten = write_bytes_helper_no_notifications(addr, buf_size, buf, ok, flags);
+  if (nwritten > 0) {
+    vm()->notify_written(addr, nwritten, flags);
+  }
+}
+
+ssize_t Task::write_bytes_helper_no_notifications(remote_ptr<void> addr, ssize_t buf_size,
+                                                  const void* buf, bool* ok, uint32_t flags) {
+  ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
+  if (0 == buf_size) {
+    return 0;
+  }
+
   if (uint8_t* local_addr = as->local_mapping(addr, buf_size)) {
     memcpy(local_addr, buf, buf_size);
-    return;
+    return buf_size;
   }
 
   if (!as->mem_fd().is_open()) {
     ssize_t nwritten =
         write_bytes_ptrace(addr, buf_size, static_cast<const uint8_t*>(buf));
-    if (nwritten > 0) {
-      vm()->notify_written(addr, nwritten, flags);
-    }
     if (ok && nwritten < buf_size) {
       *ok = false;
     }
-    return;
+    return nwritten;
   }
 
   errno = 0;
@@ -2936,7 +2946,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   // See comment in read_bytes_helper().
   if (0 == nwritten && 0 == errno) {
     open_mem_fd();
-    return write_bytes_helper(addr, buf_size, buf, ok, flags);
+    return write_bytes_helper_no_notifications(addr, buf_size, buf, ok, flags);
   }
   if (errno == EPERM) {
     FATAL() << "Can't write to /proc/" << tid << "/mem\n"
@@ -2952,9 +2962,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
         << "Should have written " << buf_size << " bytes to " << addr
         << ", but only wrote " << nwritten;
   }
-  if (nwritten > 0) {
-    vm()->notify_written(addr, nwritten, flags);
-  }
+  return nwritten;
 }
 
 uint64_t Task::write_ranges(const vector<FileMonitor::Range>& ranges,
@@ -2972,6 +2980,49 @@ uint64_t Task::write_ranges(const vector<FileMonitor::Range>& ranges,
     }
   }
   return result;
+}
+
+void Task::write_zeroes(unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size) {
+  if (!size) {
+    return;
+  }
+
+  bool remove_ok = true;
+  remote_ptr<void> initial_addr = addr;
+  size_t initial_size = size;
+  vector<uint8_t> zeroes;
+  while (size > 0) {
+    size_t bytes;
+    remote_ptr<void> first_page = ceil_page_size(addr);
+    if (addr < first_page) {
+      bytes = min<size_t>(first_page - addr, size);
+    } else {
+      if (remove_ok) {
+        remote_ptr<void> last_page = floor_page_size(addr + size);
+        if (first_page < last_page) {
+          if (!*remote) {
+            *remote = make_unique<AutoRemoteSyscalls>(this);
+          }
+          int ret = (*remote)->syscall(syscall_number_for_madvise(arch()), first_page, last_page - first_page, MADV_REMOVE);
+          if (ret == 0) {
+            addr = last_page;
+            size -= last_page - first_page;
+            continue;
+          }
+          // Don't try MADV_REMOVE again
+          remove_ok = false;
+        }
+      }
+      bytes = min<size_t>(4*1024*1024, size);
+    }
+    zeroes.resize(bytes);
+    memset(zeroes.data(), 0, bytes);
+    ssize_t written = write_bytes_helper_no_notifications(addr, bytes, zeroes.data(), nullptr, 0);
+    ASSERT(this, written == (ssize_t)bytes);
+    addr += bytes;
+    size -= bytes;
+  }
+  vm()->notify_written(initial_addr, initial_size, 0);
 }
 
 const TraceStream* Task::trace_stream() const {

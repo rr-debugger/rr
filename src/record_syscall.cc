@@ -5351,6 +5351,37 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   return our_mapping_writable;
 }
 
+static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, uint64_t size) {
+  vector<WriteHole> ret;
+  ScopedFd fd = t->open_fd(desc, O_RDONLY);
+  if (!fd.is_open()) {
+    return ret;
+  }
+  uint64_t file_end = offset + size;
+  while (offset < file_end) {
+    off64_t r = lseek(fd, offset, SEEK_HOLE);
+    if (r < 0) {
+      // SEEK_HOLE not supported?
+      return ret;
+    }
+    uint64_t hole = (uint64_t)r;
+    ASSERT(t, hole >= offset);
+    if (hole >= file_end) {
+      return ret;
+    }
+    r = lseek(fd, hole, SEEK_DATA);
+    if (r < 0) {
+      // ????
+      return ret;
+    }
+    uint64_t data = min((uint64_t)r, file_end);
+    ASSERT(t, data > hole);
+    ret.push_back({ hole, data - hole });
+    offset = data;
+  }
+  return ret;
+}
+
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                          int fd, off_t offset_pages) {
   if (t->regs().syscall_failed()) {
@@ -5423,7 +5454,8 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
     off64_t nbytes = min(end, (off64_t)km.size());
-    ssize_t nread = t->record_remote_fallible(addr, nbytes);
+    vector<WriteHole> holes = find_holes(t, fd, km.file_offset_bytes(), (uint64_t)nbytes);
+    ssize_t nread = t->record_remote_fallible(addr, nbytes, holes);
     if (!adjusted_size && nread != nbytes) {
       // If we adjusted the size, we're not guaranteed that the bytes we're
       // reading are actually valid (it could actually have been a zero-sized
