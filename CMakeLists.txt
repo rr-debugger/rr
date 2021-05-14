@@ -1059,6 +1059,7 @@ set(BASIC_TESTS
   setsid
   setuid
   shared_exec
+  shared_monitor
   shared_write
   shm
   shm_unmap
