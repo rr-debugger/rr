@@ -3551,6 +3551,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case Arch::SETOWN_EX:
         case Arch::GETSIG:
         case Arch::SETSIG:
+        case Arch::NOTIFY:
         case Arch::SETPIPE_SZ:
         case Arch::GETPIPE_SZ:
         case Arch::ADD_SEALS:

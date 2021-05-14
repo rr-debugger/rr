@@ -815,9 +815,10 @@ set(BASIC_TESTS
   fadvise
   fanotify
   fatal_sigsegv_thread
-  fcntl_dupfd
   x86/fault_in_code_page
+  fcntl_dupfd
   fcntl_misc
+  fcntl_notify
   fcntl_owner_ex
   fcntl_rw_hints
   fcntl_seals
