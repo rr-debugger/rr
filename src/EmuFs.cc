@@ -28,25 +28,62 @@ EmuFile::~EmuFile() {
 EmuFile::shr_ptr EmuFile::clone(EmuFs& owner) {
   auto f = EmuFile::create(owner, orig_path.c_str(), device(), inode(), size_);
 
-  uint64_t data[65536 / sizeof(uint64_t)];
+  // We could try using FICLONE but tmpfs doesn't support that yet so let's just
+  // not bother for now.
+
+  // Avoid copying holes.
+  vector<uint8_t> buf;
   uint64_t offset = 0;
   while (offset < size_) {
-    ssize_t amount = min<uint64_t>(size_ - offset, sizeof(data));
-    ssize_t ret = pread64(fd(), data, amount, offset);
-    if (ret <= 0) {
-      FATAL() << "Couldn't read all the data";
+    ssize_t ret = lseek(fd(), offset, SEEK_HOLE);
+    if (ret < 0) {
+      ret = size_;
+    } else {
+      if (uint64_t(ret) < offset) {
+        FATAL() << "lseek returned hole before requested offset";
+      }
     }
-    // There could have been a short read
-    amount = ret;
-    uint8_t* data_ptr = reinterpret_cast<uint8_t*>(data);
-    while (amount > 0) {
-      ret = pwrite64(f->fd(), data_ptr, amount, offset);
+    uint64_t hole = ret;
+    // Copy data
+    while (offset < hole) {
+      loff_t off_in = offset;
+      loff_t off_out = offset;
+      ssize_t ncopied = syscall(NativeArch::copy_file_range, file.get(), &off_in,
+                                f->fd().get(), &off_out, hole - offset, 0);
+      if (ncopied >= 0) {
+        if (ncopied == 0) {
+          FATAL() << "Didn't copy anything";
+        }
+        offset += ncopied;
+        continue;
+      }
+
+      ssize_t amount = min<uint64_t>(hole - offset, 4*1024*1024);
+      buf.resize(amount);
+      ret = pread64(fd(), buf.data(), amount, offset);
       if (ret <= 0) {
+        FATAL() << "Couldn't read all the data";
+      }
+      ssize_t written = pwrite_all_fallible(f->fd(), buf.data(), ret, offset);
+      if (written < ret) {
         FATAL() << "Couldn't write all the data";
       }
-      amount -= ret;
-      data_ptr += ret;
-      offset += ret;
+      offset += written;
+    }
+    if (offset < size_) {
+      // Look for the end of the hole, if any
+      ret = lseek(fd(), offset, SEEK_DATA);
+      if (ret < 0) {
+        if (errno != ENXIO) {
+          FATAL() << "Couldn't find data";
+        }
+        break;
+      }
+      if (uint64_t(ret) <= offset) {
+        FATAL() << "Zero sized hole?";
+      }
+      // Skip the hole
+      offset = ret;
     }
   }
 
