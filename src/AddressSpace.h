@@ -531,7 +531,7 @@ public:
              remote_ptr<void> new_addr, size_t new_num_bytes);
 
   /**
-   * Notify that data will be (or may be) written to this address space by rr or
+   * Notify that data was written to this address space by rr or
    * by the kernel.
    * |flags| can contain values from Task::WriteFlags.
    */
