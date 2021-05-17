@@ -606,6 +606,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   uint8_t* following_bytes = &bytes[MAXIMUM_LOOKBACK];
 
   intptr_t syscallno = r.original_syscallno();
+  bool success = false;
   for (auto& hook : syscall_hooks) {
     bool matches_hook = false;
     if ((!(hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
@@ -687,7 +688,12 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
         return false;
       }
 
-      LOG(debug) << "Patched syscall at " << ip << " syscall "
+      // Get out of executing the current syscall before we patch it.
+      if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
+        return false;
+      }
+
+      LOG(debug) << "Patching syscall at " << ip << " syscall "
                  << syscall_name(syscallno, t->arch()) << " tid " << t->tid
                  << " bytes "
                  << bytes_to_string(
@@ -695,26 +701,24 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
                         min(bytes_count,
                             sizeof(syscall_patch_hook::patch_region_bytes)));
 
-      // Get out of executing the current syscall before we patch it.
-      if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
-        return false;
-      }
-
-      patch_syscall_with_hook(*this, t, hook);
-
-      // Return to caller, which resume normal execution.
-      return true;
+      success = patch_syscall_with_hook(*this, t, hook);
+      break;
     }
   }
-  LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
-             << syscall_name(syscallno, t->arch()) << " tid " << t->tid
-             << " bytes "
-             << bytes_to_string(
-                    following_bytes,
-                    min(bytes_count,
-                        sizeof(syscall_patch_hook::patch_region_bytes)));
-  tried_to_patch_syscall_addresses.insert(ip);
-  return false;
+
+  if (!success) {
+    LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
+               << syscall_name(syscallno, t->arch()) << " tid " << t->tid
+               << " bytes "
+               << bytes_to_string(
+                      following_bytes,
+                      min(bytes_count,
+                          sizeof(syscall_patch_hook::patch_region_bytes)));
+    tried_to_patch_syscall_addresses.insert(ip);
+    return false;
+  }
+
+  return true;
 }
 
 // VDSOs are filled with overhead critical functions related to getting the
