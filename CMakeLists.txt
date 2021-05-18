@@ -1074,6 +1074,7 @@ set(BASIC_TESTS
   sigtrap
   simple_threads_stress
   sioc
+  small_holes
   sock_names_opts
   spinlock_priorities
   splice
