@@ -5371,8 +5371,11 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
     }
     r = lseek(fd, hole, SEEK_DATA);
     if (r < 0) {
-      // ????
-      return ret;
+      if (errno == ENXIO) {
+        r = file_end;
+      } else {
+        return ret;
+      }
     }
     uint64_t data = min((uint64_t)r, file_end);
     ASSERT(t, data > hole);
