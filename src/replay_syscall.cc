@@ -571,7 +571,7 @@ static void write_mapped_data_with_holes(ReplayTask* t, const TraceReader::RawDa
     }
     size_t data_end = buf.data.size();
     if (holes_iter != buf.holes.end()) {
-      data_end = holes_iter->offset - addr_offset;
+      data_end = data_offset + holes_iter->offset - addr_offset;
     }
     t->write_bytes_helper(buf.addr + addr_offset, data_end - data_offset, buf.data.data() + data_offset,
                           nullptr);
