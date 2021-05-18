@@ -1678,9 +1678,6 @@ ssize_t RecordTask::record_remote_fallible(remote_ptr<void> addr,
       buf.resize(bytes);
       ssize_t nread = read_bytes_fallible(addr + offset, bytes, buf.data());
       if (nread <= 0) {
-        if (offset == 0) {
-          return nread;
-        }
         break;
       }
       trace_writer().write_raw_data(buf.data(), nread);
