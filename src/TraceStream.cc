@@ -1370,6 +1370,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setTicksSemantics(
     to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
+  header.setRequiredForwardCompatibilityVersion(FORWARD_COMPATIBILITY_VERSION);
   header.setPreloadThreadLocalsRecorded(true);
   header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
 
@@ -1538,6 +1539,7 @@ TraceReader::TraceReader(const string& dir)
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   rrcall_base_ = header.getRrcallBase();
+  required_forward_compatibility_version_ = header.getRequiredForwardCompatibilityVersion();
   quirks_ = 0;
   {
     auto quirks = header.getQuirks();
@@ -1618,6 +1620,7 @@ TraceReader::TraceReader(const TraceReader& other)
   exclusion_range_ = other.exclusion_range_;
   quirks_ = other.quirks_;
   clear_fip_fdp_ = other.clear_fip_fdp_;
+  required_forward_compatibility_version_ = other.required_forward_compatibility_version_;
 }
 
 TraceReader::~TraceReader() {}

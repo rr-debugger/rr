@@ -61,6 +61,8 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
 
   fprintf(out, "  \"cpuidFaulting\":%s,\n", trace.uses_cpuid_faulting() ? "true" : "false");
 
+  fprintf(out, "  \"requiredForwardCompatibilityVersion\":%d,\n", trace.required_forward_compatibility_version());
+
   const char* semantics;
   switch (trace.ticks_semantics()) {
     case TICKS_RETIRED_CONDITIONAL_BRANCHES: semantics = "rcb"; break;

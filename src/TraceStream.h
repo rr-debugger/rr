@@ -22,6 +22,11 @@
 
 namespace rr {
 
+/**
+ * Bump this when rr changes mean that traces produced by new rr can't be replayed by old rr.
+ */
+const int FORWARD_COMPATIBILITY_VERSION = 1;
+
 struct CPUIDRecord;
 struct DisableCPUIDFeatures;
 class KernelMapping;
@@ -480,6 +485,8 @@ public:
 
   int quirks() const { return quirks_; }
 
+  int required_forward_compatibility_version() const { return required_forward_compatibility_version_; }
+
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -498,6 +505,7 @@ private:
   bool chaos_mode_known_;
   bool chaos_mode_;
   int rrcall_base_;
+  int required_forward_compatibility_version_;
   SupportedArch arch_;
   int quirks_;
 };
