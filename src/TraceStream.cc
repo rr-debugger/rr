@@ -42,9 +42,8 @@ namespace rr {
 // version number doesn't track the rr version number, because changes
 // to the trace format will be rare.
 //
-// NB: if you *do* change the trace format for whatever reason, you
-// MUST increment this version number.  Otherwise users' old traces
-// will become unreplayable and they won't know why.
+// We don't plan to ever change this again. Instead, we use CapnpProto
+// to define the trace format in an extensible way (see rr_trace.capnp).
 //
 #define TRACE_VERSION 85
 
