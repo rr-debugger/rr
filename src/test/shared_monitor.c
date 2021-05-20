@@ -3,7 +3,7 @@
 #include "util.h"
 
 int main(void) {
-  int fd = memfd_create("temp", 0);
+  int fd = syscall(SYS_memfd_create, "temp", 0);
   char buf[4096];
   int size = sizeof(buf);
   int ret;
