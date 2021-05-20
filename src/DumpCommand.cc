@@ -258,8 +258,20 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       TraceReader::RawDataMetadata data;
       while (process_raw_data && trace.read_raw_data_metadata_for_frame(data)) {
         if (flags.dump_recorded_data_metadata) {
-          fprintf(out, "  { tid:%d, addr:%p, length:%p }\n", data.rec_tid,
+          fprintf(out, "  { tid:%d, addr:%p, length:%p", data.rec_tid,
                   (void*)data.addr.as_int(), (void*)data.size);
+          if (!data.holes.empty()) {
+            fputs(", holes:[", out);
+            bool first = true;
+            for (auto& h : data.holes) {
+              if (!first) {
+                fputs(", ", out);
+              }
+              fprintf(out, "%p-%p", (void*)h.offset, (void*)(h.offset + h.size));
+            }
+            fputs("]", out);
+          }
+          fputs(" }\n", out);
         }
       }
       if (!flags.raw_dump) {
