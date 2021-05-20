@@ -5351,6 +5351,7 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   return our_mapping_writable;
 }
 
+// The returned hole offsets are relative to 'offset'
 static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, uint64_t size) {
   vector<WriteHole> ret;
   ScopedFd fd = t->open_fd(desc, O_RDONLY);
@@ -5379,7 +5380,7 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
     }
     uint64_t data = min((uint64_t)r, file_end);
     ASSERT(t, data > hole);
-    ret.push_back({ hole, data - hole });
+    ret.push_back({ hole - offset, data - hole });
     offset = data;
   }
   return ret;
