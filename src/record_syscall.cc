@@ -5358,6 +5358,7 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
   if (!fd.is_open()) {
     return ret;
   }
+  uint64_t file_start = offset;
   uint64_t file_end = offset + size;
   while (offset < file_end) {
     off64_t r = lseek(fd, offset, SEEK_HOLE);
@@ -5380,7 +5381,7 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
     }
     uint64_t data = min((uint64_t)r, file_end);
     ASSERT(t, data > hole);
-    ret.push_back({ hole - offset, data - hole });
+    ret.push_back({ hole - file_start, data - hole });
     offset = data;
   }
   return ret;
