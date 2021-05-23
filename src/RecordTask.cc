@@ -1667,7 +1667,7 @@ ssize_t RecordTask::record_remote_fallible(remote_ptr<void> addr,
     uintptr_t bytes = min(uintptr_t(4*1024*1024), num_bytes - offset);
     if (hole_iter != holes.end()) {
       ASSERT(this, hole_iter->offset > offset);
-      bytes = min(bytes, hole_iter->offset - offset);
+      bytes = min(bytes, uintptr_t(hole_iter->offset) - offset);
     }
     if (record_remote_by_local_map(addr + offset, bytes)) {
       offset += bytes;
