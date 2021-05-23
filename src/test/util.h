@@ -30,6 +30,7 @@
 #include <linux/audit.h>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
+#include <linux/fiemap.h>
 #include <linux/filter.h>
 #include <linux/fs.h>
 #include <linux/futex.h>
