@@ -898,8 +898,9 @@ bool GdbServer::diverter_process_debugger_requests(
 }
 
 static bool is_last_thread_exit(const BreakStatus& break_status) {
+  // The task set may be empty if the task has already exited.
   return break_status.task_exit &&
-         break_status.task->thread_group()->task_set().size() == 1;
+         break_status.task->thread_group()->task_set().size() <= 1;
 }
 
 static Task* is_in_exec(ReplayTimeline& timeline) {
@@ -955,19 +956,33 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     stop_siginfo = *break_status.signal;
     LOG(debug) << "Stopping for signal " << stop_siginfo;
   }
-  if (is_last_thread_exit(break_status) && dbg->features().reverse_execution) {
-    do_stop = true;
-    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
-    if (req.cont().run_direction == RUN_FORWARD) {
-      // The exit of the last task in a thread group generates a fake SIGKILL,
-      // when reverse-execution is enabled, because users often want to run
-      // backwards from the end of the task.
-      stop_siginfo.si_signo = SIGKILL;
-      LOG(debug) << "Stopping for synthetic SIGKILL";
-    } else {
-      // The start of the debuggee task-group should trigger a silent stop.
-      stop_siginfo.si_signo = 0;
-      LOG(debug) << "Stopping at start of execution while running backwards";
+  if (is_last_thread_exit(break_status)) {
+    if (break_status.task->session().is_diversion()) {
+      // If the last task of a diversion session has exited, we need
+      // to make sure GDB knows it's unrecoverable. There's no good
+      // way to do this: a stop is insufficient, but an inferior exit
+      // typically signals the end of a debugging session. Using the
+      // latter approach appears to work, but stepping through GDB's
+      // processing of the event seems to indicate it isn't really
+      // supposed to. FIXME.
+      LOG(debug) << "Last task of diversion exiting. "
+                 << "Notifying exit with synthetic SIGKILL";
+      dbg->notify_exit_signal(SIGKILL);
+      return;
+    } else if (dbg->features().reverse_execution) {
+      do_stop = true;
+      memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+      if (req.cont().run_direction == RUN_FORWARD) {
+        // The exit of the last task in a thread group generates a fake SIGKILL,
+        // when reverse-execution is enabled, because users often want to run
+        // backwards from the end of the task.
+        stop_siginfo.si_signo = SIGKILL;
+        LOG(debug) << "Stopping for synthetic SIGKILL";
+      } else {
+        // The start of the debuggee task-group should trigger a silent stop.
+        stop_siginfo.si_signo = 0;
+        LOG(debug) << "Stopping at start of execution while running backwards";
+      }
     }
   }
   Task* t = break_status.task;
@@ -1090,6 +1105,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
+      maybe_notify_stop(req, result.break_status);
       req = GdbRequest(DREQ_NONE);
       break;
     }

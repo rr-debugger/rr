@@ -142,6 +142,8 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
     handle_ptrace_exit_event(t);
     result.status = DIVERSION_EXITED;
+    result.break_status.task = t;
+    result.break_status.task_exit = true;
     return result;
   }
 
