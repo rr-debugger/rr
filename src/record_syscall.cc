@@ -9,6 +9,7 @@
 #include <linux/capability.h>
 #include <linux/elf.h>
 #include <linux/ethtool.h>
+#include <linux/fiemap.h>
 #include <linux/fs.h>
 #include <linux/futex.h>
 #include <linux/hidraw.h>
@@ -2002,6 +2003,14 @@ static Switchable prepare_ioctl(RecordTask* t,
       auto args = t->read_mem(argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, data),
                                       args.wLength);
+      return PREVENT_SWITCH;
+    }
+    case IOCTL_MASK_SIZE(FS_IOC_FIEMAP): {
+      auto argsp = remote_ptr<typename Arch::fiemap>(t->regs().arg3());
+      auto args = t->read_mem(argsp);
+      size = sizeof(typename Arch::fiemap) +
+             sizeof(typename Arch::fiemap_extent) * args.fm_extent_count;
+      syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
     }
   }

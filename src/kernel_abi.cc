@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
+#include <linux/fiemap.h>
 #include <linux/filter.h>
 #include <linux/futex.h>
 #include <linux/if_bonding.h>

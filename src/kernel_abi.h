@@ -1708,6 +1708,26 @@ struct BaseArch : public wordsize,
     __u32 exe_fd;
   };
   RR_VERIFY_TYPE(prctl_mm_map);
+
+  struct fiemap_extent {
+    __u64 fe_logical;
+    __u64 fe_physical;
+    __u64 fe_length;
+    __u64 fe_reserved64[2];
+    __u32 fe_flags;
+    __u32 fe_reserved[3];
+  };
+  RR_VERIFY_TYPE(fiemap_extent);
+  struct fiemap {
+    __u64 fm_start;
+    __u64 fm_length;
+    __u32 fm_flags;
+    __u32 fm_mapped_extents;
+    __u32 fm_extent_count;
+    __u32 fm_reserved;
+    struct fiemap_extent fm_extents[0];
+  };
+  RR_VERIFY_TYPE(fiemap);
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
