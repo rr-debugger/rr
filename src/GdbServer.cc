@@ -1091,11 +1091,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     }
 
     Task* t = diversion_session->find_task(last_continue_tuid);
-    if (!t) {
-      diversion_refcount = 0;
-      req = GdbRequest(DREQ_NONE);
-      break;
-    }
+    DEBUG_ASSERT(t != nullptr);
 
     int signal_to_deliver;
     RunCommand command =
