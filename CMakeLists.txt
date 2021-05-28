@@ -946,6 +946,7 @@ set(BASIC_TESTS
   pid_ns_reap
   pid_ns_segv
   pidfd
+  pkeys
   poll_sig_race
   ppoll
   prctl

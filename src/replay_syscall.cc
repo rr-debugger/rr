@@ -1127,6 +1127,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     switch (non_negative_syscall(sys)) {
       case Arch::madvise:
       case Arch::mprotect:
+      case Arch::pkey_mprotect:
       case Arch::sigreturn:
       case Arch::rt_sigreturn:
         break;
@@ -1214,19 +1215,21 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::modify_ldt:
+    case Arch::pkey_mprotect:
     case Arch::set_thread_area: {
       // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
       Registers r = t->regs();
-      r.set_syscallno(sys);
+      int modified_sys = sys == Arch::pkey_mprotect ? Arch::mprotect : sys;
+      r.set_syscallno(modified_sys);
       r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
       t->set_regs(r);
-      if (sys == Arch::mprotect) {
+      if (modified_sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
       t->enter_syscall();
       t->exit_syscall();
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
-      if (sys == Arch::mprotect) {
+      if (modified_sys == Arch::mprotect) {
         Registers r2 = t->regs();
         r2.set_arg1(r.arg1());
         r2.set_arg2(r.arg2());

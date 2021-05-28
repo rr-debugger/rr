@@ -4725,6 +4725,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       prepare_mmap_register_params(t);
       return PREVENT_SWITCH;
 
+    case Arch::pkey_mprotect:
     case Arch::mprotect:
       // Since we're stripping MAP_GROWSDOWN from kernel mmap calls, we need
       // to implement PROT_GROWSDOWN ourselves.
@@ -6211,6 +6212,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::madvise:
     case Arch::memfd_create:
     case Arch::mprotect:
+    case Arch::pkey_mprotect:
     case Arch::pread64:
     case Arch::preadv:
     case Arch::ptrace:

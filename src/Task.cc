@@ -570,7 +570,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   // failing.
   // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
   // note its usage here.
-  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())) {
+  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())
+      && !is_pkey_mprotect_syscall(syscallno, regs.arch())) {
     return;
   }
 
@@ -584,6 +585,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       return;
     }
 
+    case Arch::pkey_mprotect:
     case Arch::mprotect: {
       remote_ptr<void> addr = regs.orig_arg1();
       size_t num_bytes = regs.arg2();

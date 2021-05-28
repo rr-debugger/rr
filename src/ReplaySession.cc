@@ -1099,8 +1099,15 @@ void ReplaySession::check_ticks_consistency(ReplayTask* t, const Event& ev) {
 }
 
 static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
-  return ev.deterministic == DETERMINISTIC_SIG &&
-    ev.siginfo.si_signo != SIGBUS;
+  if (ev.siginfo.si_signo == SIGBUS) {
+    return false;
+  }
+  if (ev.siginfo.si_signo == SIGSEGV && ev.siginfo.si_code == SEGV_PKUERR) {
+    // We don't set up memory protection key state, so pkey-triggered signals
+    // won't happen.
+    return false;
+  }
+  return ev.deterministic == DETERMINISTIC_SIG;
 }
 
 /**
