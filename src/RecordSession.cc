@@ -1579,8 +1579,11 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // A SIGSTOP requires us to allow switching to another task.
       // So does a fatal, core-dumping signal, since we need to allow other
       // tasks to proceed to their exit events.
-      bool is_fatal = t->ev().Signal().disposition == DISPOSITION_FATAL;
       bool is_deterministic = t->ev().Signal().deterministic == DETERMINISTIC_SIG;
+      // Signals that would normally be fatal are just ignored for init processes,
+      // unless they're deterministic.
+      bool is_fatal = t->ev().Signal().disposition == DISPOSITION_FATAL &&
+        (!t->is_container_init() || is_deterministic);
       Switchable can_switch = ((is_fatal && is_coredumping_signal(sig)) || sig == SIGSTOP) ?
         ALLOW_SWITCH : PREVENT_SWITCH;
 
@@ -1622,15 +1625,16 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                       RecordTask::ALLOW_RESET_SYSCALLBUF, &r);
       // Don't actually set_regs(r), the kernel does these modifications.
 
-      // If the task is a container init, the kernel will ignore injection
-      // of fatal signals. Usually, the kernel removes the killable-protection
-      // when a determinisic fatal signal gets executed, but (due to what is
-      // arguably a bug) when a ptracer is attached, this does not happen.
-      // If we try to inject it here, the kernel will just ignore it,
-      // and we'll go around again. As a hack, we detach here, in the
-      // expectation that the deterministic instruction will run again and
-      // actually kill the task now that it isn't under ptrace control anymore.
-      if (t->is_container_init() && is_fatal && is_deterministic) {
+      if (t->is_container_init() && is_fatal) {
+        // Nondeterministic signals were already filtered out.
+        ASSERT(t, is_deterministic);
+        // Usually, the kernel removes the killable-protection from an init process
+        // when a determinisic fatal signal gets executed, but (due to what is
+        // arguably a bug) when a ptracer is attached, this does not happen.
+        // If we try to inject it here, the kernel will just ignore it,
+        // and we'll go around again. As a hack, we detach here, in the
+        // expectation that the deterministic instruction will run again and
+        // actually kill the task now that it isn't under ptrace control anymore.
         t->destroy_buffers(nullptr, nullptr);
         WaitStatus exit_status = WaitStatus::for_fatal_sig(sig);
         record_exit_trace_event(t, exit_status);

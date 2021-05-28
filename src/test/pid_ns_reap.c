@@ -14,6 +14,7 @@ int main(void) {
   pid_t pid;
   if (-1 == try_setup_ns(CLONE_NEWPID)) {
     /* We may not have permission to set up namespaces, so bail. */
+    atomic_puts("Insufficient permissions, skipping test");
     atomic_puts("EXIT-SUCCESS");
     return 77;
   }

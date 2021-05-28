@@ -1,10 +1,14 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "nsutils.h"
 #include "util.h"
+#include "nsutils.h"
+
+static char ch = 1;
 
 int main(void) {
   pid_t pid;
+  int status;
+  int ret;
   if (-1 == try_setup_ns(CLONE_NEWPID)) {
     // We may not have permission to set up namespaces, so bail.
     atomic_puts("Insufficient permissions, skipping test");
@@ -17,14 +21,18 @@ int main(void) {
   test_assert(pid >= 0);
   if (pid == 0) {
     test_assert(getpid() == 1);
-    crash_null_deref();
-    test_assert(0 && "Shouldn't have gotten here");
+    // This will be nonfatal because we don't have a handler for it.
+    kill(getpid(), SIGQUIT);
+    // Ensure at least one tick
+    if (ch == 1) {
+      ch = 3;
+    }
+    return 55;
   }
 
-  int status;
-  waitpid(pid, &status, __WALL);
-  test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV);
-
+  ret = waitpid(pid, &status, 0);
+  test_assert(ret == pid);
+  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 55);
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

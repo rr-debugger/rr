@@ -814,6 +814,7 @@ set(BASIC_TESTS
   exit_with_syscallbuf_signal
   fadvise
   fanotify
+  fatal_init_signal
   fatal_sigsegv_thread
   x86/fault_in_code_page
   fcntl_dupfd
