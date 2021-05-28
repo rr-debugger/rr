@@ -124,7 +124,7 @@ static const string& gdb_rr_macros() {
        << "python\n"
        << "import re\n"
        << "m = re.compile("
-       << "'[^0-9]*([0-9]+)\.([0-9]+)(\.([0-9]+))?'"
+       << "'[^0-9]*([0-9]+)\\.([0-9]+)(\\.([0-9]+))?'"
        << ").match(gdb.VERSION)\n"
        << "ver = int(m.group(1))*10000 + int(m.group(2))*100\n"
        << "if m.group(4):\n"
