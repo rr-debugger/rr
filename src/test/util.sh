@@ -17,7 +17,9 @@
 #
 # Test runners may set the environment variable $RECORD_ARGS to pass
 # arguments to rr for recording.  This is only useful for tweaking the
-# scheduler, don't use it for anything else.
+# scheduler, don't use it for anything else.  Test runners may also
+# set $REPLAY_ARGS to pass arguments to rr for replay, allowing the
+# use of an alternate GDB, for instance.
 #
 
 #  delay_kill <sig> <delay_secs> <proc>
@@ -277,7 +279,7 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 
 function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
-        $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+        $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags $REPLAY_ARGS 1> replay.out 2> replay.err
 }
 
 function rerun { rerunflags=$1
@@ -296,7 +298,7 @@ function do_ps { psflags=$1
 function debug { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
         python3 $TESTDIR/$expectscript.py \
-        $RR_EXE $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs
+        $RR_EXE $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs $REPLAY_ARGS
     if [[ $? == 0 ]]; then
         passed
     else
