@@ -68,6 +68,7 @@
 #include <sys/file.h>
 #include <sys/fsuid.h>
 #include <sys/inotify.h>
+#include <sys/io.h>
 #include <sys/ioctl.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
