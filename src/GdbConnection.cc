@@ -656,6 +656,7 @@ bool GdbConnection::query(char* payload) {
     multiprocess_supported_ = strstr(args, "multiprocess+") != nullptr;
     hwbreak_supported_ = strstr(args, "hwbreak+") != nullptr;
     swbreak_supported_ = strstr(args, "swbreak+") != nullptr;
+    replay_diversion_supported_ = strstr(args, "vReplayDiversion+") != nullptr;
 
     stringstream supported;
     // Encourage gdb to use very large packets since we support any packet size
@@ -670,7 +671,8 @@ bool GdbConnection::query(char* payload) {
                  ";hwbreak+"
                  ";swbreak+"
                  ";ConditionalBreakpoints+"
-                 ";vContSupported+";
+                 ";vContSupported+"
+                 ";vReplayDiversion+";
     if (features().reverse_execution) {
       supported << ";ReverseContinue+"
                    ";ReverseStep+";
@@ -1038,6 +1040,12 @@ bool GdbConnection::process_vpacket(char* payload) {
       write_packet("");
       return false;
     }
+  }
+
+  if (name == strstr(name, "ReplayDiversion:")) {
+    req = GdbRequest(DREQ_REPLAY_DIVERSION);
+    req.replay_diversion().want_diversion = name[16] == '1';
+    return true;
   }
 
   UNHANDLED_REQ() << "Unhandled gdb vpacket: v" << name;
@@ -1831,6 +1839,19 @@ void GdbConnection::reply_close(int err) {
     send_file_error_reply(err);
   } else {
     write_packet("F0");
+  }
+
+  consume_request();
+}
+
+void GdbConnection::reply_replay_diversion(const char* error_message) {
+  DEBUG_ASSERT(DREQ_REPLAY_DIVERSION == req.type);
+  if (error_message != nullptr) {
+    stringstream ss;
+    ss << "E." << error_message;
+    write_packet(ss.str().c_str());
+  } else {
+    write_packet("OK");
   }
 
   consume_request();

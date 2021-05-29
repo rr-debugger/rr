@@ -142,6 +142,9 @@ enum GdbRequestType {
   DREQ_FILE_PREAD,
   // vFile:close packet, uses params.file_close.
   DREQ_FILE_CLOSE,
+
+  // vReplayDiversion packet, uses .replay_diversion.
+  DREQ_REPLAY_DIVERSION,
 };
 
 enum GdbRestartType {
@@ -185,7 +188,8 @@ struct GdbRequest {
         file_setfs_(other.file_setfs_),
         file_open_(other.file_open_),
         file_pread_(other.file_pread_),
-        file_close_(other.file_close_) {}
+        file_close_(other.file_close_),
+        replay_diversion_(other.replay_diversion_) {}
   GdbRequest& operator=(const GdbRequest& other) {
     this->~GdbRequest();
     new (this) GdbRequest(other);
@@ -245,6 +249,9 @@ struct GdbRequest {
   struct FileClose {
     int fd;
   } file_close_;
+  struct ReplayDiversion {
+    bool want_diversion;
+  } replay_diversion_;
 
   Mem& mem() {
     DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -337,6 +344,14 @@ struct GdbRequest {
   const FileClose& file_close() const {
     DEBUG_ASSERT(type == DREQ_FILE_CLOSE);
     return file_close_;
+  }
+  ReplayDiversion& replay_diversion() {
+    DEBUG_ASSERT(type == DREQ_REPLAY_DIVERSION);
+    return replay_diversion_;
+  }
+  const ReplayDiversion& replay_diversion() const {
+    DEBUG_ASSERT(type == DREQ_REPLAY_DIVERSION);
+    return replay_diversion_;
   }
 
   /**
@@ -554,6 +569,13 @@ public:
   void reply_close(int err);
 
   /**
+   * Respond to a vReplayDiversion packet.  If |error_message| is
+   * NULL, respond with 'OK'; otherwise, use |error_message| as the
+   * reason for a verbose error response.
+   */
+  void reply_replay_diversion(const char* error_message);
+
+  /**
    * Create a checkpoint of the given Session with the given id. Delete the
    * existing checkpoint with that id if there is one.
    */
@@ -602,6 +624,11 @@ public:
 
   bool hwbreak_supported() { return hwbreak_supported_; }
   bool swbreak_supported() { return swbreak_supported_; }
+
+  /**
+   * Returns true if the remote supports vReplayDiversion packets.
+   */
+  bool replay_diversion_supported() { return replay_diversion_supported_; }
 
 private:
   /**
@@ -696,6 +723,7 @@ private:
   bool multiprocess_supported_; // client supports multiprocess extension
   bool hwbreak_supported_; // client supports hwbreak extension
   bool swbreak_supported_; // client supports swbreak extension
+  bool replay_diversion_supported_; // client supports vReplayDiversion extension
 };
 
 } // namespace rr

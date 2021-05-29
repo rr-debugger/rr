@@ -839,8 +839,10 @@ bool GdbServer::diverter_process_debugger_requests(
         return false;
 
       case DREQ_READ_SIGINFO: {
-        LOG(debug) << "Adding ref to diversion session";
-        ++diversion_refcount;
+        if (!dbg->replay_diversion_supported()) {
+          LOG(debug) << "Adding ref to diversion session";
+          ++diversion_refcount;
+        }
         // TODO: maybe share with replayer.cc?
         vector<uint8_t> si_bytes;
         si_bytes.resize(req->mem().len);
@@ -860,14 +862,28 @@ bool GdbServer::diverter_process_debugger_requests(
       }
 
       case DREQ_WRITE_SIGINFO:
-        LOG(debug) << "Removing reference to diversion session ...";
-        DEBUG_ASSERT(diversion_refcount > 0);
-        --diversion_refcount;
-        if (diversion_refcount == 0) {
-          LOG(debug) << "  ... dying at next continue request";
+        if (!dbg->replay_diversion_supported()) {
+          LOG(debug) << "Removing reference to diversion session ...";
+          DEBUG_ASSERT(diversion_refcount > 0);
+          --diversion_refcount;
+          if (diversion_refcount == 0) {
+            LOG(debug) << "  ... dying at next continue request";
+          }
         }
         dbg->reply_write_siginfo();
         continue;
+
+      case DREQ_REPLAY_DIVERSION:
+        if (req->replay_diversion().want_diversion) {
+          dbg->reply_replay_diversion("already-in-diversion");
+          continue;
+        }
+        LOG(debug) << "GDB asked for replay diversion to end";
+        DEBUG_ASSERT(diversion_refcount > 0);
+        diversion_refcount = 0;
+        dbg->reply_replay_diversion(nullptr);
+        *req = GdbRequest(DREQ_NONE);
+        return false;
 
       case DREQ_RR_CMD: {
         DEBUG_ASSERT(req->type == DREQ_RR_CMD);
@@ -1145,12 +1161,30 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
       // siginfo and then incorrectly start a diversion and go haywire :-(.
       // Ideally we'd come up with a better way to detect diversions so that
       // "print $_siginfo" works.
-      req = divert(timeline.current_session());
-      if (req.type == DREQ_NONE) {
+      if (!dbg->replay_diversion_supported()) {
+        req = divert(timeline.current_session());
+        if (req.type == DREQ_NONE) {
+          continue;
+        }
+      } else {
         continue;
       }
       // Carry on to process the request that was rejected by
       // the diversion session
+    }
+
+    if (req.type == DREQ_REPLAY_DIVERSION) {
+      if (req.replay_diversion().want_diversion) {
+        LOG(debug) << "GDB requested diversion";
+        dbg->reply_replay_diversion(nullptr);
+        req = divert(timeline.current_session());
+        if (req.type == DREQ_NONE) {
+            continue;
+        }
+      } else {
+        dbg->reply_replay_diversion("not-in-diversion");
+        continue;
+      }
     }
 
     if (req.is_resume_request()) {
