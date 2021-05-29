@@ -120,6 +120,10 @@ public:
 
   ReplayTimeline& get_timeline() { return timeline; }
 
+  bool remote_supports_replay_diversion() {
+    return dbg != nullptr && dbg->replay_diversion_supported();
+  }
+
 private:
   GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t);
 

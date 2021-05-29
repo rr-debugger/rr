@@ -224,6 +224,10 @@ static vector<string> parse_cmd(string& str) {
 
   if (resp == GdbCommandHandler::cmd_end_diversion()) {
     LOG(debug) << "cmd must run outside of diversion (" << resp << ")";
+    if (gdb_server.remote_supports_replay_diversion()) {
+      return gdb_escape(string() + "Command '" + cmd->name() +
+                        "' cannot run in a replay diversion.\n");
+    }
     return resp;
   }
 
