@@ -546,7 +546,7 @@ statfs = EmulatedSyscall(x86=99, x64=137, generic=43, arg2="struct Arch::statfs"
 # to a statfs structure defined approximately as follows:
 fstatfs = EmulatedSyscall(x86=100, x64=138, generic=44, arg2="struct Arch::statfs")
 
-ioperm = UnsupportedSyscall(x86=101, x64=173)
+ioperm = EmulatedSyscall(x86=101, x64=173)
 
 #  int socketcall(int call, unsigned long *args)
 #

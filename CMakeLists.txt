@@ -870,6 +870,7 @@ set(BASIC_TESTS
   ioctl_pty
   ioctl_sg
   ioctl_tty
+  ioperm
   join_threads
   joystick
   kcmp
