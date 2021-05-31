@@ -37,6 +37,7 @@
 #include <linux/if.h>
 #include <linux/if_packet.h>
 #include <linux/if_tun.h>
+#include <linux/kd.h>
 #include <linux/limits.h>
 #include <linux/mtio.h>
 #include <linux/netlink.h>
@@ -47,6 +48,7 @@
 #include <linux/sockios.h>
 #include <linux/unistd.h>
 #include <linux/videodev2.h>
+#include <linux/vt.h>
 #include <linux/wireless.h>
 #include <mqueue.h>
 #include <poll.h>

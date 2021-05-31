@@ -870,6 +870,7 @@ set(BASIC_TESTS
   ioctl_pty
   ioctl_sg
   ioctl_tty
+  ioctl_vt
   ioperm
   iopl
   join_threads

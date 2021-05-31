@@ -27,6 +27,7 @@
 #include <linux/sysctl.h>
 #include <linux/usbdevice_fs.h>
 #include <linux/videodev2.h>
+#include <linux/vt.h>
 #include <linux/wireless.h>
 #include <poll.h>
 #include <scsi/sg.h>
