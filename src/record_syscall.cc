@@ -19,6 +19,7 @@
 #include <linux/input.h>
 #include <linux/ipc.h>
 #include <linux/joystick.h>
+#include <linux/kd.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -31,6 +32,7 @@
 #include <linux/shm.h>
 #include <linux/sockios.h>
 #include <linux/videodev2.h>
+#include <linux/vt.h>
 #include <linux/wireless.h>
 #include <poll.h>
 #include <sched.h>
@@ -1731,9 +1733,11 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::termio>(3);
       return PREVENT_SWITCH;
 
+    case KDGKBMODE:
     case TIOCINQ:
     case TIOCOUTQ:
     case TIOCGETD:
+    case VT_OPENQRY:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;
 
@@ -1772,13 +1776,18 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::signed_int>(3);
       return PREVENT_SWITCH;
 
-    case SG_IO:
+    case SG_IO: {
       auto argsp = syscall_state.reg_parameter<typename Arch::sg_io_hdr>(3, IN_OUT);
       auto args = t->read_mem(argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, dxferp), args.dxfer_len);
       //cmdp: The user memory pointed to is only read (not written to).
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, sbp), args.mx_sb_len);
       //usr_ptr: This value is not acted upon by the sg driver.
+      return PREVENT_SWITCH;
+    }
+
+    case VT_GETSTATE:
+      syscall_state.reg_parameter<typename Arch::vt_stat>(3);
       return PREVENT_SWITCH;
   }
 

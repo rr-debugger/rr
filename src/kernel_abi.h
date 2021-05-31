@@ -1728,6 +1728,13 @@ struct BaseArch : public wordsize,
     struct fiemap_extent fm_extents[0];
   };
   RR_VERIFY_TYPE(fiemap);
+
+  struct vt_stat {
+    unsigned short v_active;
+    unsigned short v_signal;
+    unsigned short v_state;
+  };
+  RR_VERIFY_TYPE(vt_stat);
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
