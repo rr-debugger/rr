@@ -9,6 +9,7 @@
 #include <linux/capability.h>
 #include <linux/elf.h>
 #include <linux/ethtool.h>
+#include <linux/fb.h>
 #include <linux/fiemap.h>
 #include <linux/fs.h>
 #include <linux/futex.h>
@@ -1788,6 +1789,14 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case VT_GETSTATE:
       syscall_state.reg_parameter<typename Arch::vt_stat>(3);
+      return PREVENT_SWITCH;
+
+    case FBIOGET_FSCREENINFO:
+      syscall_state.reg_parameter<typename Arch::fb_fix_screeninfo>(3);
+      return PREVENT_SWITCH;
+
+    case FBIOGET_VSCREENINFO:
+      syscall_state.reg_parameter<typename Arch::fb_var_screeninfo>(3);
       return PREVENT_SWITCH;
   }
 
