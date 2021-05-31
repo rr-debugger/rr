@@ -866,6 +866,7 @@ set(BASIC_TESTS
   invalid_ioctl
   io
   ioctl
+  ioctl_fb
   ioctl_fs
   ioctl_pty
   ioctl_sg
