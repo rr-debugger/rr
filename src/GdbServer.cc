@@ -900,7 +900,7 @@ bool GdbServer::diverter_process_debugger_requests(
 static bool is_last_thread_exit(const BreakStatus& break_status) {
   // The task set may be empty if the task has already exited.
   return break_status.task_exit &&
-         break_status.task->thread_group()->task_set().size() <= 1;
+         (!break_status.task || break_status.task->thread_group()->task_set().size() <= 1);
 }
 
 static Task* is_in_exec(ReplayTimeline& timeline) {
@@ -957,7 +957,7 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     LOG(debug) << "Stopping for signal " << stop_siginfo;
   }
   if (is_last_thread_exit(break_status)) {
-    if (break_status.task->session().is_diversion()) {
+    if (!break_status.task || break_status.task->session().is_diversion()) {
       // If the last task of a diversion session has exited, we need
       // to make sure GDB knows it's unrecoverable. There's no good
       // way to do this: a stop is insufficient, but an inferior exit
