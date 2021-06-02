@@ -41,6 +41,7 @@ TraceInfoCommand TraceInfoCommand::singleton(
     "  Dump trace header in JSON format.\n");
 
 static int dump_trace_info(const string& trace_dir, FILE* out) {
+  int ret = 0;
   TraceReader trace(trace_dir);
 
   fputs("{\n", out);
@@ -101,10 +102,10 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
   flags.cpu_unbound = true;
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, flags);
 
-  fputs("  \"environ\":[", out);
   while (true) {
     auto result = replay_session->replay_step(RUN_CONTINUE);
     if (replay_session->done_initial_exec()) {
+      fputs("  \"environ\":[", out);
       auto environ = read_env(replay_session->current_task());
       for (size_t i = 0; i < environ.size(); ++i) {
         if (i > 0) {
@@ -112,17 +113,18 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
         }
         fprintf(out, "\n    \"%s\"", json_escape(environ[i]).c_str());
       }
+      fputs("\n  ]\n", out);
       break;
     }
     if (result.status == REPLAY_EXITED) {
       fputs("Replay finished before initial exec!\n", stderr);
-      return 1;
+      ret = 1;
+      break;
     }
   }
-  fputs("\n  ]\n", out);
 
   fputs("}\n", out);
-  return 0;
+  return ret;
 }
 
 int TraceInfoCommand::run(vector<string>& args) {

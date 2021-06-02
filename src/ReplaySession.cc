@@ -1522,8 +1522,14 @@ static void end_task(ReplayTask* t) {
   t->set_regs(r);
   // Enter the syscall.
   t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
-  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
-  t->did_handle_ptrace_exit_event();
+  if (t->session().done_initial_exec()) {
+    ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
+    t->did_handle_ptrace_exit_event();
+  } else {
+    // If we never execed, the trace is totally hosed,
+    // just clean up.
+    t->did_kill();
+  }
   t->detach();
   delete t;
 }
