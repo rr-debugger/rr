@@ -266,7 +266,7 @@ string Session::read_spawned_task_error() const {
 BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   assert_fully_initialized();
   BreakStatus break_status;
-  break_status.task = t;
+  break_status.task_context = TaskContext(t);
 
   int stop_sig = t->stop_sig();
   if (!stop_sig) {

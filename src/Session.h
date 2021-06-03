@@ -12,6 +12,7 @@
 
 #include "AddressSpace.h"
 #include "MonitoredSharedMemory.h"
+#include "Task.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "preload/preload_interface.h"
@@ -31,17 +32,46 @@ class AutoRemoteSyscalls;
 // The following types are used by step() APIs in Session subclasses.
 
 /**
+ * Stores a Task and information about it separately so decisions can
+ * still be made from a Task's context even if it dies.
+ */
+struct TaskContext {
+  TaskContext()
+      : task(nullptr),
+        session(nullptr),
+        thread_group(nullptr) {}
+  explicit TaskContext(Task* task)
+      : task(task),
+        session(task ? &task->session() : nullptr),
+        thread_group(task ? task->thread_group() : nullptr) {}
+  TaskContext(Session* session, std::shared_ptr<ThreadGroup> thread_group)
+      : task(nullptr),
+        session(session),
+        thread_group(thread_group) {}
+
+  // A pointer to a task. This may be |nullptr|. When non-NULL, this
+  // is not necessarily the same as session->current_task() (for
+  // example, when replay switches to a new task after
+  // ReplaySession::replay_step()).
+  Task* task;
+  // The session to which |task| belongs/belonged.
+  Session* session;
+  // The thread group to which |task| belongs/belonged.
+  std::shared_ptr<ThreadGroup> thread_group;
+};
+
+/**
  * In general, multiple break reasons can apply simultaneously.
  */
 struct BreakStatus {
   BreakStatus()
-      : task(nullptr),
+      : task_context(TaskContext()),
         breakpoint_hit(false),
         singlestep_complete(false),
         approaching_ticks_target(false),
         task_exit(false) {}
   BreakStatus(const BreakStatus& other)
-      : task(other.task),
+      : task_context(other.task_context),
         watchpoints_hit(other.watchpoints_hit),
         signal(other.signal
                    ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
@@ -51,7 +81,7 @@ struct BreakStatus {
         approaching_ticks_target(other.approaching_ticks_target),
         task_exit(other.task_exit) {}
   const BreakStatus& operator=(const BreakStatus& other) {
-    task = other.task;
+    task_context = other.task_context;
     watchpoints_hit = other.watchpoints_hit;
     signal = other.signal
                  ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
@@ -63,9 +93,8 @@ struct BreakStatus {
     return *this;
   }
 
-  // The triggering Task. This may be different from session->current_task()
-  // when replay switches to a new task when ReplaySession::replay_step() ends.
-  Task* task;
+  // The triggering TaskContext.
+  TaskContext task_context;
   // List of watchpoints hit; any watchpoint hit causes a stop after the
   // instruction that triggered the watchpoint has completed.
   std::vector<WatchConfig> watchpoints_hit;
@@ -109,6 +138,8 @@ struct BreakStatus {
     return !watchpoints_hit.empty() || signal || breakpoint_hit ||
            singlestep_complete || approaching_ticks_target;
   }
+
+  Task* task() const { return task_context.task; }
 };
 enum RunCommand {
   // Continue until we hit a breakpoint or a new replay event

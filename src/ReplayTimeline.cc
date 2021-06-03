@@ -243,7 +243,7 @@ void ReplayTimeline::mark_after_singlestep(const Mark& from,
             fprintf(stderr, "Probable duplicated state at %d:", (int)m_prev + 1);
             m.ptr->full_print(stderr);
           }
-          ASSERT(result.break_status.task, false)
+          ASSERT(result.break_status.task(), false)
               << " Probable duplicated states leading to " << m << " at index " << i + 1;
         }
         break;
@@ -612,15 +612,15 @@ bool ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
     // no watchpoint hit. Nothing to fix.
     return false;
   }
-  if (!maybe_at_or_after_x86_string_instruction(result.break_status.task)) {
+  if (!maybe_at_or_after_x86_string_instruction(result.break_status.task())) {
     return false;
   }
 
-  TaskUid after_tuid = result.break_status.task->tuid();
-  Ticks after_ticks = result.break_status.task->tick_count();
+  TaskUid after_tuid = result.break_status.task()->tuid();
+  Ticks after_ticks = result.break_status.task()->tick_count();
   LOG(debug) << "Fixing x86-string coalescing quirk from " << before << " to "
              << proto_mark() << " (final cx "
-             << result.break_status.task->regs().cx() << ")";
+             << result.break_status.task()->regs().cx() << ")";
 
   seek_to_proto_mark(before);
 
@@ -640,7 +640,7 @@ bool ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
         if (!result.break_status.data_watchpoints_hit().empty()) {
           LOG(debug) << "Fixed x86-string coalescing quirk; now at "
                      << current_mark_key() << " (new cx "
-                     << result.break_status.task->regs().cx() << ")";
+                     << result.break_status.task()->regs().cx() << ")";
           break;
         }
       } else {
@@ -929,7 +929,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
 static const int stop_count_limit = 20;
 
 static ReplayTask* to_replay_task(const BreakStatus& status) {
-  return static_cast<ReplayTask*>(status.task);
+  return static_cast<ReplayTask*>(status.task());
 }
 
 static bool arch_watch_fires_before_instr(SupportedArch arch) {
@@ -1021,10 +1021,10 @@ ReplayResult ReplayTimeline::reverse_continue(
                             !result.break_status.watchpoints_hit.empty();
       if (avoidable_stop) {
         made_progress_between_stops =
-            avoidable_stop_ip != result.break_status.task->ip() ||
-            avoidable_stop_ticks != result.break_status.task->tick_count();
-        avoidable_stop_ip = result.break_status.task->ip();
-        avoidable_stop_ticks = result.break_status.task->tick_count();
+            avoidable_stop_ip != result.break_status.task()->ip() ||
+            avoidable_stop_ticks != result.break_status.task()->tick_count();
+        avoidable_stop_ip = result.break_status.task()->ip();
+        avoidable_stop_ticks = result.break_status.task()->tick_count();
       }
 
       evaluate_conditions(result);
@@ -1053,10 +1053,11 @@ ReplayResult ReplayTimeline::reverse_continue(
           }
         }
         final_result = result;
-        final_tuid = result.break_status.task ? result.break_status.task->tuid()
-                                              : TaskUid();
-        final_ticks = result.break_status.task
-                          ? result.break_status.task->tick_count()
+        final_tuid = result.break_status.task()
+                         ? result.break_status.task()->tuid()
+                         : TaskUid();
+        final_ticks = result.break_status.task()
+                          ? result.break_status.task()->tick_count()
                           : 0;
         last_stop_is_watch_or_signal = true;
       }
@@ -1065,10 +1066,11 @@ ReplayResult ReplayTimeline::reverse_continue(
       if (is_start_of_reverse_execution_barrier_event()) {
         dest = mark();
         final_result = result;
-        final_result.break_status.task = current->current_task();
+        final_result.break_status.task_context =
+            TaskContext(current->current_task());
         final_result.break_status.task_exit = true;
-        final_tuid = final_result.break_status.task->tuid();
-        final_ticks = result.break_status.task->tick_count();
+        final_tuid = final_result.break_status.task()->tuid();
+        final_ticks = result.break_status.task()->tick_count();
         last_stop_is_watch_or_signal = false;
       }
 
@@ -1084,10 +1086,11 @@ ReplayResult ReplayTimeline::reverse_continue(
         dest = mark();
         LOG(debug) << "Found breakpoint break at " << dest;
         final_result = result;
-        final_tuid = result.break_status.task ? result.break_status.task->tuid()
-                                              : TaskUid();
-        final_ticks = result.break_status.task
-                          ? result.break_status.task->tick_count()
+        final_tuid = result.break_status.task()
+                         ? result.break_status.task()->tuid()
+                         : TaskUid();
+        final_ticks = result.break_status.task()
+                          ? result.break_status.task()->tick_count()
                           : 0;
         last_stop_is_watch_or_signal = false;
       }
@@ -1096,7 +1099,8 @@ ReplayResult ReplayTimeline::reverse_continue(
         LOG(debug) << "Interrupted at " << end;
         seek_to_mark(end);
         final_result = ReplayResult();
-        final_result.break_status.task = current->current_task();
+        final_result.break_status.task_context =
+            TaskContext(current->current_task());
         return final_result;
       }
 
@@ -1138,7 +1142,8 @@ ReplayResult ReplayTimeline::reverse_continue(
   }
   // fix break_status.task since the actual ReplayTask* may have changed
   // since we saved final_result
-  final_result.break_status.task = current->find_task(final_tuid);
+  final_result.break_status.task_context =
+      TaskContext(current->find_task(final_tuid));
   // Hide any singlestepping we did, since a continue operation should
   // never return a singlestep status
   final_result.break_status.singlestep_complete = false;
@@ -1299,8 +1304,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(
             } else if (now == end &&
                        result.break_status.signal &&
                        result.break_status.signal->si_signo == SIGTRAP &&
-                       is_advanced_pc_and_signaled_instruction(result.break_status.task,
-                                                               result.break_status.task->ip())) {
+                       is_advanced_pc_and_signaled_instruction(result.break_status.task(),
+                                                               result.break_status.task()->ip())) {
               LOG(debug) << "   singlestepped exactly to instruction that advances pc and signals (e.g. int3),"
                          << " pretending we stopped earlier.";
               break;
@@ -1309,7 +1314,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
             LOG(debug) << "Setting candidate after step: "
                        << destination_candidate;
             destination_candidate_result = result;
-            destination_candidate_tuid = result.break_status.task->tuid();
+            destination_candidate_tuid = result.break_status.task()->tuid();
             destination_candidate_saw_other_task_break = seen_other_task_break;
             seen_other_task_break = false;
             step_start = now;
@@ -1365,9 +1370,9 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     if (destination_candidate) {
       LOG(debug) << "Found destination " << destination_candidate;
       seek_to_mark(destination_candidate);
-      destination_candidate_result.break_status.task =
-          current->find_task(destination_candidate_tuid);
-      DEBUG_ASSERT(destination_candidate_result.break_status.task);
+      destination_candidate_result.break_status.task_context =
+          TaskContext(current->find_task(destination_candidate_tuid));
+      DEBUG_ASSERT(destination_candidate_result.break_status.task());
       evaluate_conditions(destination_candidate_result);
       return destination_candidate_result;
     }

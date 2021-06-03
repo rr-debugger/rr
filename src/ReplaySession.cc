@@ -1745,7 +1745,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       advance_to_next_trace_frame();
     }
     if (current_step.action == TSTEP_EXIT_TASK) {
-      result.break_status.task = t;
+      result.break_status.task_context = TaskContext(t);
       result.break_status.task_exit = true;
     }
     return result;
@@ -1754,7 +1754,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   fast_forward_status = FastForwardStatus();
 
   // Now we know |t| hasn't died, so save it in break_status.
-  result.break_status.task = t;
+  result.break_status.task_context = TaskContext(t);
 
   /* Advance towards fulfilling |current_step|. */
   if (try_one_trace_step(t, constraints) == INCOMPLETE) {
@@ -1821,7 +1821,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       }
       break;
     case TSTEP_EXIT_TASK:
-      result.break_status.task = nullptr;
+      result.break_status.task_context = TaskContext();
       t = nullptr;
       DEBUG_ASSERT(!result.break_status.any_break());
       break;
