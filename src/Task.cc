@@ -236,8 +236,9 @@ WaitStatus Task::kill() {
       * the exit event, we already reaped it from the ptrace perspective,
       * which implicitly detached.
       */
-    if (ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &raw_status)) {
-      status = WaitStatus(raw_status);
+    unsigned long long_status;
+    if (ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &long_status)) {
+      status = WaitStatus(long_status);
     } else {
       status = WaitStatus::for_fatal_sig(SIGKILL);
     }
