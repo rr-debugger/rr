@@ -140,9 +140,14 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
 
   // An exit might have occurred while processing a previous syscall.
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    // We're about to destroy the task, so capture the context while
+    // we can.
+    TaskContext context(t);
     handle_ptrace_exit_event(t);
+    // This is now a dangling pointer, so clear it.
+    context.task = nullptr;
     result.status = DIVERSION_EXITED;
-    result.break_status.task_context = TaskContext(t);
+    result.break_status.task_context = context;
     result.break_status.task_exit = true;
     return result;
   }
