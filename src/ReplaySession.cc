@@ -1788,7 +1788,11 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
   // If try_one_trace_step set extra-registers already, the values it used from the frame
   // will already have FIP/FDP cleared if necessary. Clearing them again here is fine.
-  if (trace_reader().clear_fip_fdp()) {
+  if (trace_reader().clear_fip_fdp() &&
+      current_step.action != TSTEP_EXIT_TASK)
+      /* TSTEP_EXIT_TASK means the task object got already
+         deleted above in try_one_trace_step/exit_task/end_task. */
+  {
     const ExtraRegisters* maybe_extra = t->extra_regs_fallible();
     if (maybe_extra) {
       ExtraRegisters extra_registers = *maybe_extra;
