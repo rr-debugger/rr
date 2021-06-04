@@ -3694,6 +3694,66 @@ static void copy_mem_mapping(Task* from, Task* to, const KernelMapping& km) {
   }
 }
 
+// https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/fs/proc/task_mmu.c?h=v6.3#n1352
+#define PM_PRESENT (1ULL << 63)
+#define PM_SWAP    (1ULL << 62)
+
+static bool copy_mem_mapping_just_used(Task* from, Task* to, const KernelMapping& km)
+{
+  ScopedFd& fd = from->pagemap_fd();
+  if (!fd.is_open()) {
+    LOG(debug) << "Failed to open " << from->proc_pagemap_path();
+    return false;
+  }
+
+  size_t pagesize = page_size();
+  uint64_t pages_present = 0; // Just for logging
+
+  const int max_buf_size = 65536;
+  vector<uint64_t> buf;
+
+  for (uintptr_t page_offset = 0; page_offset < km.size() / pagesize; page_offset += max_buf_size) {
+    auto page_read_offset = (km.start().as_int() / pagesize + page_offset);
+    size_t page_read_count = min<size_t>(max_buf_size, km.size() / pagesize - page_offset);
+    buf.resize(page_read_count);
+    size_t bytes_read = pread(fd, buf.data(), page_read_count * sizeof(uint64_t), page_read_offset * sizeof(uint64_t));
+    ASSERT(from, bytes_read == page_read_count * sizeof(uint64_t));
+
+    // A chunk was read from pagemap above, now iterate through it to detect
+    // if memory is physically present (bit 63, PM_PRESENT) or in swap (bit 62, PM_SWAP) in Task "from".
+    // If yes, just transfer those pages to the new Task "to".
+    // Also try to find consecutive pages to copy them in one operation.
+    // The file /proc/PID/pagemap consists of 64-bit values, each describing
+    // the state of one page. See https://www.kernel.org/doc/Documentation/vm/pagemap.txt
+
+    for (size_t page = 0; page < page_read_count; ++page) {
+      if (buf[page] & (PM_PRESENT | PM_SWAP)) {
+        auto start = km.start() + (page_offset + page) * pagesize;
+        if (start >= km.end()) {
+          break;
+        }
+        ++pages_present;
+
+        // Check for consecutive used pages
+        while (page + 1 < page_read_count &&
+               buf[page + 1] & (PM_PRESENT | PM_SWAP))
+        {
+          ++page;
+          ++pages_present;
+        }
+
+        auto end = km.start() + (page_offset + page + 1) * pagesize;
+        LOG(debug) << km << " copying start: 0x" << hex << start << " end: 0x" << end
+                   << dec << " pages: " << (end - start) / pagesize;
+        auto pages = km.subrange(start, end);
+        copy_mem_mapping(from, to, pages);
+      }
+    }
+  }
+  LOG(debug) << km << " pages_present: " << pages_present << " pages_total: " << km.size() / pagesize;
+  return true;
+}
+
 static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &km) {
   for (const auto& m : remote.task()->vm()->maps()) {
     if  (m.map.is_vdso() && m.map.start() != km.start()) {
@@ -3781,6 +3841,16 @@ void Task::dup_from(Task *other) {
       create_mapping(this, remote_this, km);
       LOG(debug) << "Copying mapping into " << tid;
       if (!(km.flags() & MAP_SHARED)) {
+        // Make the effort just for bigger mappings, copy smaller as a whole.
+        if ((km.flags() & MAP_ANONYMOUS) &&
+            km.size() >= 0x400000/*4MB*/)
+        {
+          LOG(debug) << "Using copy_mem_mapping_just_used";
+          if (copy_mem_mapping_just_used(other, this, km)) {
+            continue;
+          }
+          LOG(debug) << "Fallback to copy_mem_mapping";
+        }
         copy_mem_mapping(other, this, km);
       }
     }
