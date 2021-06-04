@@ -929,6 +929,7 @@ set(BASIC_TESTS
   daemon
   desched_blocking_poll
   desched_sigkill
+  detach_huge_mmap
   detach_state
   detach_threads
   detach_sigkill
