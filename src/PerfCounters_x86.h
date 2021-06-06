@@ -86,6 +86,8 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x70f10: // Matisse (Zen 2) (UNTESTED)
       if (ext_family == 8) {
         return AMDZen;
+      } else if (ext_family == 3) {
+        return AMDF15R30;
       }
       break;
     case 0x20f10: // Vermeer (Zen 3)
