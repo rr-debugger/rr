@@ -2140,6 +2140,7 @@ std::vector<int> read_all_proc_fds(pid_t tid)
   while (struct dirent *dir = readdir(fddir)) {
     ret.push_back(atoi(dir->d_name));
   }
+  closedir(fddir);
   return ret;
 }
 
