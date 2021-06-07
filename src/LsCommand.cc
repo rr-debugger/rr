@@ -105,6 +105,7 @@ static bool get_folder_size(string dir_name, string& size_str) {
 
     bytes += st.st_size;
   }
+  closedir(dir);
 
   static const char suffixes[] = " KMGT";
   double size = bytes;
