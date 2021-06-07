@@ -907,6 +907,7 @@ int SourcesCommand::run(vector<string>& args) {
   if (!files) {
     FATAL() << "Can't open trace dir";
   }
+  closedir(files);
 
   map<string, string> binary_file_names;
   while (true) {
