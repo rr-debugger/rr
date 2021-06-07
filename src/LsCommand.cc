@@ -172,6 +172,7 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
       traces.back().ctime = st.st_ctim;
     }
   }
+  closedir(dir);
 
   if (flags.sort_by_time) {
     auto compare_by_time = [&](const TraceInfo& at,
