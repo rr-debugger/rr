@@ -1470,8 +1470,10 @@ static int sys_fcntl64_setlkw64(const struct syscall_info* call) {
 }
 
 #if defined(SYS_fcntl64)
+/* 32-bit system */
 static long sys_fcntl64(const struct syscall_info* call)
 #else
+/* 64-bit system */
 static long sys_fcntl(const struct syscall_info* call)
 #endif
 {
@@ -1490,16 +1492,16 @@ static long sys_fcntl(const struct syscall_info* call)
     case F_SETOWN_EX:
       return sys_fcntl64_own_ex(call);
 
-#if F_SETLK != F_SETLK64
     case F_SETLK64:
-#else
+#if !defined(SYS_fcntl64)
+    /* Also uses 64-bit flock format */
     case F_SETLK:
 #endif
       return sys_fcntl64_setlk64(call);
 
-#if F_SETLKW != F_SETLKW64
     case F_SETLKW64:
-#else
+#if !defined(SYS_fcntl64)
+    /* Also uses 64-bit flock format */
     case F_SETLKW:
 #endif
       return sys_fcntl64_setlkw64(call);
