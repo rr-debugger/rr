@@ -59,12 +59,12 @@ static char simple_to_lower(char ch) {
 }
 
 static string simple_to_lower(const string& s) {
-  char* buf = new char[s.size() + 1];
+  std::unique_ptr<char[]> buf(new char[s.size() + 1]);
   for (size_t i = 0; i < s.size(); ++i) {
     buf[i] = simple_to_lower(s[i]);
   }
   buf[s.size()] = 0;
-  return string(buf);
+  return string(buf.get());
 }
 
 #if __has_attribute(require_constant_initialization)
