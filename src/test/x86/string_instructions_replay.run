@@ -1,6 +1,6 @@
 source `dirname $0`/util.sh
 
-TIMEOUT=600
+if [ $TIMEOUT -lt 600 ]; then TIMEOUT=600; fi
 
 record $TESTNAME &
 
