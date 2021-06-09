@@ -1,5 +1,5 @@
 source `dirname $0`/util.sh
-TIMEOUT=300
+if [ $TIMEOUT -lt 300 ]; then TIMEOUT=300; fi
 record record_replay_subject$bitness
 just_record rr "--suppress-environment-warnings replay -a $workdir/*-0"
 replay
