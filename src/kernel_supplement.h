@@ -5,6 +5,7 @@
 
 #define _GNU_SOURCE 1
 
+#include <linux/capability.h>
 #include <linux/if_tun.h>
 #include <linux/mman.h>
 #include <linux/seccomp.h>
@@ -408,6 +409,10 @@ enum {
 
 #ifndef RLIMIT_RTTIME
 #define RLIMIT_RTTIME 15
+#endif
+
+#ifndef CAP_PERFMON
+#define CAP_PERFMON 38
 #endif
 
 } // namespace rr
