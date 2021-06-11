@@ -872,7 +872,7 @@ set(BASIC_TESTS
   ioctl_sg
   ioctl_tty
   ioctl_vt
-  ioperm
+  x86/ioperm
   iopl
   join_threads
   joystick
