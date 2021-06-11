@@ -145,10 +145,16 @@ static void dump_gdb_stacktrace(pid_t child, FILE* out) {
 
 static void force_trace_closure(pid_t child, FILE* out) {
   char cmdline[1024 * 10];
-  sprintf(cmdline, "gdb -p %d -ex 'set confirm off' -ex 'set height 0' -ex "
-                   "'p rr::force_close_record_session()' -ex q </dev/null 2>&1",
+  sprintf(cmdline, "gdb -p %d "
+                   "-ex 'set confirm off' "
+                   "-ex 'set height 0' "
+                   "-ex 'b rr::force_close_record_session' "
+                   "-ex 'p rr::force_close_record_session()' "
+                   "-ex detach "
+                   "-ex q </dev/null 2>&1",
           child);
   dump_popen_cmdline(cmdline, out);
+  sleep(2); /* give the force_close_record_session time to take effect */
 }
 
 static void dump_emergency_debugger(char* gdb_cmd, FILE* out) {
