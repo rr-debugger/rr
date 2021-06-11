@@ -71,7 +71,6 @@
 #include <sys/file.h>
 #include <sys/fsuid.h>
 #include <sys/inotify.h>
-#include <sys/io.h>
 #include <sys/ioctl.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
@@ -111,6 +110,7 @@
 // X86 specific headers
 #if defined(__i386__) || defined(__x86_64__)
 #include <asm/prctl.h>
+#include <sys/io.h>
 #include <x86intrin.h>
 #endif
 
