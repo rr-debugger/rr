@@ -28,6 +28,13 @@
 #define SOL_NETLINK 270
 #endif
 
+#define UNUSED(expr)     \
+  do {                   \
+    if (expr) {          \
+      (void)0;           \
+    }                    \
+  } while (0)
+
 namespace rr {
 
 /*

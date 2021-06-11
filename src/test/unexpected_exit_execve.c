@@ -22,11 +22,12 @@ static int do_child(void) {
 
 /* Do a busy delay loop that changes registers so won't trigger
    rr's spinlock-detection heuristic */
-static void delay(void) {
+static char delay(void) {
 #if defined(__x86_64__) || defined(__i386__)
   asm("mov $10000000,%%ecx\n\t"
       "1: loop 1b\n\t"
       : : : "ecx");
+  return 0;
 #else
   /* Does this actually change registers on ARM??? */
   int i;
@@ -34,6 +35,7 @@ static void delay(void) {
   for (i = 0; i < 10000000; ++i) {
     ch = i % 3;
   }
+  return ch;
 #endif
 }
 

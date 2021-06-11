@@ -1762,6 +1762,9 @@ bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip) {
       !memcmp(insn, int3_insn, sizeof(int3_insn))) {
     return true;
   }
+#else
+  UNUSED(t);
+  UNUSED(ip);
 #endif
   return false;
 }
