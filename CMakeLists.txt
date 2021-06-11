@@ -873,7 +873,7 @@ set(BASIC_TESTS
   ioctl_tty
   ioctl_vt
   x86/ioperm
-  iopl
+  x86/iopl
   join_threads
   joystick
   kcmp
