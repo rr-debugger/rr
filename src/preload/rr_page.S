@@ -33,6 +33,8 @@
 #define TRAP \
     int $3; \
     ret
+#define PAGE_ALIGN \
+    .align 0x1000
 #elif defined(__x86_64__)
 #define CALL \
     syscall; \
@@ -43,6 +45,8 @@
 #define TRAP \
     nop; int $3; \
     ret
+#define PAGE_ALIGN \
+    .align 0x1000
 #elif defined(__aarch64__)
 #define CALL \
     svc #0; \
@@ -53,19 +57,21 @@
 #define TRAP \
     brk #0; \
     ret
+#define PAGE_ALIGN \
+    .align 12
 #endif
 
 .section .sh_placeholder, "a"
-.align 0x1000
+PAGE_ALIGN
 .fill 0x1000, 1, 0xff
 
 .section .vdso.text, "a", @progbits
-.align 0x1000
+PAGE_ALIGN
 
 #include "rr_vdso.S"
 
 .section .record.text, "a", @progbits
-.align 0x1000
+PAGE_ALIGN
 
 .global rr_page_start
 rr_page_start:
@@ -76,7 +82,7 @@ rr_page_start:
 #include "rr_page_instructions.S"
 
 .section .replay.text, "", @progbits
-.align 0x1000
+PAGE_ALIGN
 replay_page:
 // No CFI instructions or symbols for the replay page - we'll implicitly share
 // those of the record copy
