@@ -3,7 +3,7 @@
 #include "util.h"
 
 void callback(uint64_t env, char *name, __attribute__((unused)) map_properties_t* props) {
-  const char search[] = "librrpage.so";
+  const char search[] = "librrpreload.so";
   if (strlen(name) > strlen(search)) {
     if (sizeof(void*) == 4 &&
         strcmp(name + strlen(name) - strlen(search), search) == 0)
