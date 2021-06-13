@@ -319,7 +319,7 @@ public:
   bool has_trace_quirk(TraceReader::TraceQuirks quirk) { return trace_in.quirks() & quirk; }
 
   virtual int tracee_output_fd(int dflt) override {
-    return tracee_output_fd_->is_open() ? tracee_output_fd_->get() : dflt;
+    return tracee_output_fd_.get() ? tracee_output_fd_->get() : dflt;
   }
 
 private:
