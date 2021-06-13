@@ -69,7 +69,8 @@ ReplayCommand ReplayCommand::singleton(
     "  --stats=<N>                display brief stats every N steps (eg 10000).\n"
     "  --serve-files              Serve all files from the trace rather than\n"
     "                             assuming they exist on disk. Debugging will\n"
-    "                             be slower, but be able to tolerate missing files\n");
+    "                             be slower, but be able to tolerate missing files\n"
+    "  --tty <file>               Redirect tracee replay output to <file>\n");
 
 struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
@@ -128,6 +129,8 @@ struct ReplayFlags {
   // to get them from the filesystem
   bool serve_files;
 
+  string tty;
+
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -167,6 +170,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 1, "fullname", NO_PARAMETER },
     { 2, "stats", HAS_PARAMETER },
     { 3, "serve-files", NO_PARAMETER },
+    { 4, "tty", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'i', "interpreter", HAS_PARAMETER }
   };
@@ -252,6 +256,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     case 3:
       flags.serve_files = true;
       break;
+    case 4:
+      flags.tty = opt.value;
+      break;
     case 'u':
       flags.cpu_unbound = true;
       break;
@@ -326,6 +333,7 @@ static pid_t waiting_for_child;
 static ReplaySession::Flags session_flags(const ReplayFlags& flags) {
   ReplaySession::Flags result;
   result.redirect_stdio = flags.redirect;
+  result.redirect_stdio_file = flags.tty;
   result.share_private_mappings = flags.share_private_mappings;
   result.cpu_unbound = flags.cpu_unbound;
   return result;

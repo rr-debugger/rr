@@ -239,6 +239,7 @@ public:
       , cpu_unbound(false) {}
     Flags(const Flags& other) = default;
     bool redirect_stdio;
+    std::string redirect_stdio_file;
     bool share_private_mappings;
     bool cpu_unbound;
   };
@@ -317,6 +318,10 @@ public:
 
   bool has_trace_quirk(TraceReader::TraceQuirks quirk) { return trace_in.quirks() & quirk; }
 
+  virtual int tracee_output_fd(int dflt) override {
+    return tracee_output_fd_->is_open() ? tracee_output_fd_->get() : dflt;
+  }
+
 private:
   ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);
@@ -360,6 +365,7 @@ private:
   void clear_syscall_bp();
 
   std::shared_ptr<EmuFs> emu_fs;
+  std::shared_ptr<ScopedFd> tracee_output_fd_;
   TraceReader trace_in;
   TraceFrame trace_frame;
   ReplayTraceStep current_step;

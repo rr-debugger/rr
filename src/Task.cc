@@ -3159,8 +3159,8 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 }
 
 static void setup_fd_table(Task* t, FdTable& fds, int tracee_socket_fd_number) {
-  fds.add_monitor(t, STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
-  fds.add_monitor(t, STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
+  fds.add_monitor(t, STDOUT_FILENO, new StdioMonitor(t->session().tracee_output_fd(STDOUT_FILENO)));
+  fds.add_monitor(t, STDERR_FILENO, new StdioMonitor(t->session().tracee_output_fd(STDERR_FILENO)));
   fds.add_monitor(t, RR_MAGIC_SAVE_DATA_FD, new MagicSaveDataMonitor());
   fds.add_monitor(t, tracee_socket_fd_number, new PreserveFileMonitor());
 }

@@ -1,0 +1,13 @@
+source `dirname $0`/util.sh
+record simple$bitness
+replay "--tty tty-output"
+
+token=EXIT-SUCCESS
+if [[ "tty-output" != $(grep -l $token tty-output) ]]; then
+    failed ": token '$token' not in tty-output:"
+    echo "--------------------------------------------------"
+    cat tty-output
+    echo "--------------------------------------------------"
+else
+    passed
+fi

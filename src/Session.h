@@ -395,6 +395,10 @@ public:
 
   const ThreadGroupMap& thread_group_map() const { return thread_group_map_; }
 
+  virtual int tracee_output_fd(int dflt) {
+    return dflt;
+  }
+
 protected:
   Session();
   virtual ~Session();

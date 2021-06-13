@@ -171,6 +171,13 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
   ticks_semantics_ = trace_in.ticks_semantics();
   rrcall_base_ = trace_in.rrcall_base();
 
+  if (!flags.redirect_stdio_file.empty()) {
+    tracee_output_fd_ = make_shared<ScopedFd>(flags.redirect_stdio_file.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    if (!tracee_output_fd_->is_open()) {
+      FATAL() << "Can't open/create tracee output file " << flags.redirect_stdio_file;
+    }
+  }
+
   memset(&last_siginfo_, 0, sizeof(last_siginfo_));
   advance_to_next_trace_frame();
 
@@ -201,6 +208,7 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
 ReplaySession::ReplaySession(const ReplaySession& other)
     : Session(other),
       emu_fs(EmuFs::create()),
+      tracee_output_fd_(other.tracee_output_fd_),
       trace_in(other.trace_in),
       trace_frame(other.trace_frame),
       current_step(other.current_step),

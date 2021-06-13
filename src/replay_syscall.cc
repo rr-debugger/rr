@@ -1062,7 +1062,7 @@ static void handle_opened_files(ReplayTask* t, int flags) {
     if (emu_file) {
       file_monitor = new MmappedFileMonitor(t, emu_file);
     } else if (o.path == "terminal") {
-      file_monitor = new StdioMonitor(STDERR_FILENO);
+      file_monitor = new StdioMonitor(t->session().tracee_output_fd(STDERR_FILENO));
     } else if (is_proc_mem_file(o.path.c_str())) {
       file_monitor = new ProcMemMonitor(t, o.path);
     } else if (is_proc_fd_dir(o.path.c_str())) {
