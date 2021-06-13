@@ -1501,7 +1501,7 @@ void Task::flush_regs() {
       registers_dirty = false;
     }
 #else
-    #error "Unknown archietcture"
+    #error "Unknown architecture"
 #endif
   }
 #if defined(__i386__) || defined(__x86_64__)
@@ -1513,7 +1513,7 @@ void Task::flush_regs() {
     uintptr_t syscall = registers.original_syscallno();
     struct iovec vec = { &syscall,
                           sizeof(syscall) };
-    LOG(debug) << "Chaning syscall to " << syscall;
+    LOG(debug) << "Changing syscall to " << syscall;
     if (ptrace_if_alive(PTRACE_SETREGSET, NT_ARM_SYSTEM_CALL, &vec)) {
       orig_syscallno_dirty = false;
     }
