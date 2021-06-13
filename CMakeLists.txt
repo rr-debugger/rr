@@ -364,6 +364,7 @@ set(PRELOAD_SOURCE_FILES
   rrcalls.h
   syscallbuf.h
 )
+if (x86ish)
 add_library(rrpreload)
 foreach(file ${PRELOAD_FILES})
   target_sources(rrpreload PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
@@ -372,6 +373,7 @@ foreach(file ${PRELOAD_FILES})
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles ${LINKER_FLAGS}")
 set_target_properties(rrpreload PROPERTIES INSTALL_RPATH "\$ORIGIN")
+endif()
 
 set(AUDIT_FILES
   rtld-audit.c
@@ -575,9 +577,11 @@ endif()
 
 set_target_properties(rr PROPERTIES LINK_FLAGS "${RR_MAIN_LINKER_FLAGS}")
 
+if (x86ish)
 target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
 )
+endif()
 
 add_executable(rr_exec_stub src/exec_stub.c)
 post_build_executable(rr_exec_stub)
@@ -639,7 +643,11 @@ install(PROGRAMS scripts/signal-rr-recording.sh
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
-install(TARGETS ${RR_BIN} rrpreload rrpage rraudit rr_exec_stub
+set(RR_INSTALL_LIBS rrpage rraudit rr_exec_stub)
+if (x86ish)
+  set(RR_INSTALL_LIBS rrpreload ${RR_INSTALL_LIBS})
+endif()
+install(TARGETS ${RR_BIN} ${RR_INSTALL_LIBS}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
