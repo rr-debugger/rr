@@ -1495,9 +1495,7 @@ void Task::flush_regs() {
       orig_syscallno_dirty = false;
     }
 #elif defined(__aarch64__)
-    struct iovec vec = { &ptrace_regs,
-                          sizeof(ptrace_regs) };
-    if (ptrace_if_alive(PTRACE_SETREGSET, NT_PRSTATUS, &vec)) {
+    if (ptrace_if_alive(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
       registers_dirty = false;
     }
 #else
