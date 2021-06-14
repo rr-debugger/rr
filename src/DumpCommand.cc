@@ -36,7 +36,8 @@ DumpCommand DumpCommand::singleton(
     "dump",
     " rr dump [OPTIONS] [<trace_dir>] [<event-spec>...]\n"
     "  Event specs can be either an event number like `127', or a range\n"
-    "  like `1000-5000'.  By default, all events are dumped.\n"
+    "  like `1000-5000', or `end' for the last record in the trace.\n"
+    "  By default, all events are dumped.\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n"
     "  -e, --task-events          dump task events\n"
     "  -m, --recorded-metadata    dump recorded data metadata\n"
@@ -165,30 +166,21 @@ static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
  * event sets.  No attempt is made to enforce this or normalize specs.
  */
 static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
-                                 FILE* out, const string* spec) {
+                                 FILE* out, const string* spec,
+                                 const unordered_map<FrameTime, TraceTaskEvent>& task_events) {
 
   uint32_t start = 0, end = numeric_limits<uint32_t>::max();
+  bool only_end = false;
 
-  // Try to parse the "range" syntax '[start]-[end]'.
-  if (spec && 2 > sscanf(spec->c_str(), "%u-%u", &start, &end)) {
-    // Fall back on assuming the spec is a single event
-    // number, however it parses out with atoi().
-    start = end = atoi(spec->c_str());
-  }
-
-  unordered_map<FrameTime, TraceTaskEvent> task_events;
-  FrameTime last_time = 0;
-  while (true) {
-    FrameTime time;
-    TraceTaskEvent r = trace.read_task_event(&time);
-    if (time < last_time) {
-      FATAL() << "TraceTaskEvent times non-monotonic";
+  if (spec && *spec == "end") {
+    only_end = true;
+  } else {
+    // Try to parse the "range" syntax '[start]-[end]'.
+    if (spec && 2 > sscanf(spec->c_str(), "%u-%u", &start, &end)) {
+      // Fall back on assuming the spec is a single event
+      // number, however it parses out with atoi().
+      start = end = atoi(spec->c_str());
     }
-    if (r.type() == TraceTaskEvent::NONE) {
-      break;
-    }
-    task_events.insert(make_pair(time, r));
-    last_time = time;
   }
 
   bool process_raw_data =
@@ -198,8 +190,9 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
     if (end < frame.time()) {
       return;
     }
-    if (start <= frame.time() && frame.time() <= end &&
-        (!flags.only_tid || flags.only_tid == frame.tid())) {
+    if (only_end ? trace.at_end() :
+         (start <= frame.time() && frame.time() <= end &&
+           (!flags.only_tid || flags.only_tid == frame.tid()))) {
       if (flags.raw_dump) {
         frame.dump_raw(out);
       } else {
@@ -311,13 +304,28 @@ void dump(const string& trace_dir, const DumpFlags& flags,
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
   }
 
+  unordered_map<FrameTime, TraceTaskEvent> task_events;
+  FrameTime last_time = 0;
+  while (true) {
+    FrameTime time;
+    TraceTaskEvent r = trace.read_task_event(&time);
+    if (time < last_time) {
+      FATAL() << "TraceTaskEvent times non-monotonic";
+    }
+    if (r.type() == TraceTaskEvent::NONE) {
+      break;
+    }
+    task_events.insert(make_pair(time, r));
+    last_time = time;
+  }
+
   if (specs.size() > 0) {
     for (size_t i = 0; i < specs.size(); ++i) {
-      dump_events_matching(trace, flags, out, &specs[i]);
+      dump_events_matching(trace, flags, out, &specs[i], task_events);
     }
   } else {
     // No specs => dump all events.
-    dump_events_matching(trace, flags, out, nullptr /*all events*/);
+    dump_events_matching(trace, flags, out, nullptr /*all events*/, task_events);
   }
 
   if (flags.dump_statistics) {
