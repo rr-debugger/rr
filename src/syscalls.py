@@ -1707,7 +1707,7 @@ sched_rr_get_interval_time64 = UnsupportedSyscall(x86=423)
 
 # x86-64 decided to skip ahead here to catchup
 pidfd_send_signal = UnsupportedSyscall(x86=424, x64=424, generic=424)
-io_uring_setup = UnsupportedSyscall(x86=425, x64=425, generic=425)
+io_uring_setup = IrregularEmulatedSyscall(x86=425, x64=425, generic=425)
 io_uring_enter = UnsupportedSyscall(x86=426, x64=426, generic=426)
 io_uring_register = UnsupportedSyscall(x86=427, x64=427, generic=427)
 open_tree = UnsupportedSyscall(x86=428, x64=428, generic=428)

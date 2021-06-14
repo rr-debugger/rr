@@ -873,6 +873,7 @@ set(BASIC_TESTS
   invalid_fcntl
   invalid_ioctl
   io
+  io_uring
   ioctl
   ioctl_fb
   ioctl_fs

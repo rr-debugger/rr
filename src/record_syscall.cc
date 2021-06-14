@@ -3967,10 +3967,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                  (size_t)regs.arg4()));
       return PREVENT_SWITCH;
 
+    case Arch::io_uring_setup:
     case Arch::io_setup: {
-      // Prevent the io_setup from running and fake an ENOSYS return. We want
-      // to discourage applications from using this API because the async
-      // reads are writes by the kernel that can race with userspace execution.
+      // Prevent the io_setup/io_uring from running and fake an ENOSYS return. We want
+      // to stop applications from using these APIs because we don't support them currently.
       Registers r = regs;
       r.set_arg2(0);
       t->set_regs(r);
@@ -6227,6 +6227,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::futex:
     case Arch::ioctl:
     case Arch::io_setup:
+    case Arch::io_uring_setup:
     case Arch::madvise:
     case Arch::memfd_create:
     case Arch::mprotect:
