@@ -38,6 +38,9 @@ WEAK_ALIAS(time, __vdso_time)
 WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
 WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 
+// Dummy versioned symbol to trigger presence of DT_VERDEF/DT_VERSYM/DT_VERDEFNUM:
+.symver __vdso_time,__vdso_time@VER_1
+
 #elif defined(__i386__)
 
 // __vdso functions use the C calling convention, so
@@ -88,6 +91,9 @@ WEAK_ALIAS(time, __vdso_time)
 WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
 WEAK_ALIAS(clock_gettime64, __vdso_clock_gettime64)
 WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
+
+// Dummy versioned symbol to trigger presence of DT_VERDEF/DT_VERSYM/DT_VERDEFNUM:
+.symver __vdso_time,__vdso_time@VER_1
 
 #else
 

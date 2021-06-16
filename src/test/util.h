@@ -65,6 +65,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/fanotify.h>

@@ -342,7 +342,7 @@ foreach(file ${RR_PAGE_FILES})
   set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
-set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -nostartfiles -nostdlib -Wl,-z,max-page-size=0x1000 ${LINKER_FLAGS}")
+set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-z,max-page-size=0x1000 ${LINKER_FLAGS}")
 set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
 # CMake seems to have trouble generating the link line without this
 set_target_properties(rrpage PROPERTIES LINKER_LANGUAGE C)
@@ -1141,6 +1141,7 @@ set(BASIC_TESTS
   unshare
   userfaultfd
   utimes
+  vdso_parts
   vfork_flush
   vfork_shared
   video_capture
@@ -1319,8 +1320,8 @@ set(TESTS_WITH_PROGRAM
   ttyname
   unexpected_stack_growth
   user_ignore_sig
-  vdso_gettimeofday_stack
   vdso_clock_gettime_stack
+  vdso_gettimeofday_stack
   vdso_time_stack
   vfork
   vfork_read_clone_stress

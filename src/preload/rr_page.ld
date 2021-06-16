@@ -37,3 +37,9 @@ SECTIONS
   .replay.text : { *(.replay.text) } :replay
   /DISCARD/ : { *(.debug_* ) }
 }
+
+VERSION {
+  VER_1 {
+      global:__vdso_time;
+  };
+}
