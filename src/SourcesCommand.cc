@@ -340,7 +340,7 @@ find_auxiliary_file(const string& original_file_name,
         goto found;
       }
     }
-    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+    LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
     // Next try in a subdirectory called .debug
     full_file_name = original_file_dir + "/.debug/" + aux_file_name;
@@ -349,7 +349,7 @@ find_auxiliary_file(const string& original_file_name,
     if (fd.is_open()) {
       goto found;
     }
-    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+    LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
     // Then try in /usr/lib/debug
     full_file_name = "/usr/lib/debug/" + aux_file_name;
@@ -358,7 +358,7 @@ find_auxiliary_file(const string& original_file_name,
     if (fd.is_open()) {
       goto found;
     }
-    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+    LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
     // Try in an appropriate subdirectory of /usr/lib/debug
     full_file_name = "/usr/lib/debug" + original_file_dir + "/" + aux_file_name;
@@ -367,7 +367,7 @@ find_auxiliary_file(const string& original_file_name,
     if (fd.is_open()) {
       goto found;
     }
-    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+    LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
     // If none of those worked, give up.
     LOG(warn) << "Exhausted auxilliary debuginfo search locations for " << aux_file_name;
