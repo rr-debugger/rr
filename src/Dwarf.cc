@@ -45,14 +45,23 @@ template <typename D> struct  __attribute__((packed)) Dwarf5CompilationUnitHeade
   uint8_t unit_type;
   uint8_t address_size;
   typename D::Offset debug_abbrev_offset;
+
+  void install_dwo_id(DwarfCompilationUnit* unit) const {
+    unit->set_dwo_id(0);
+  }
+};
+
+template <typename D> struct  __attribute__((packed)) Dwarf5SkeletonSplitCompilationUnitHeader {
+  typedef D Size;
+  typename D::CompilationUnitPreamble preamble;
+  uint16_t version;
+  uint8_t unit_type;
+  uint8_t address_size;
+  typename D::Offset debug_abbrev_offset;
   uint64_t dwo_id;
 
   void install_dwo_id(DwarfCompilationUnit* unit) const {
-    if (version == 5 && (unit_type == DW_UT_skeleton || unit_type == DW_UT_split_compile)) {
-      unit->set_dwo_id(dwo_id);
-    } else {
-      unit->set_dwo_id(0);
-    }
+    unit->set_dwo_id(dwo_id);
   }
 };
 
@@ -443,7 +452,15 @@ template <typename D> void DwarfCompilationUnit::init_size(DwarfSpan* debug_info
   if (2 <= h->version && h->version <= 4) {
     init<Dwarf4CompilationUnitHeader<D>>(debug_info, abbrevs, ok);
   } else if (h->version == 5) {
-    init<Dwarf5CompilationUnitHeader<D>>(debug_info, abbrevs, ok);
+    auto hh = DwarfSpan(*debug_info).read<Dwarf5CompilationUnitHeader<D>>(ok);
+    if (!ok) {
+      return;
+    }
+    if (hh->unit_type == DW_UT_skeleton || hh->unit_type == DW_UT_split_compile) {
+      init<Dwarf5SkeletonSplitCompilationUnitHeader<D>>(debug_info, abbrevs, ok);
+    } else {
+      init<Dwarf5CompilationUnitHeader<D>>(debug_info, abbrevs, ok);
+    }
   } else {
     LOG(warn) << "Unknown compilation unit version " << h->version;
     *ok = false;
