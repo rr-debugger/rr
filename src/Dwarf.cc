@@ -453,7 +453,7 @@ template <typename D> void DwarfCompilationUnit::init_size(DwarfSpan* debug_info
 template <typename H> void DwarfCompilationUnit::init(DwarfSpan* debug_info, DwarfAbbrevs& abbrevs, bool* ok) {
   DwarfSpan span(*debug_info);
   auto h = span.read<H>(ok);
-  if (!ok) {
+  if (!*ok) {
     return;
   }
   uint64_t length = h->preamble.unit_length;
@@ -465,6 +465,9 @@ template <typename H> void DwarfCompilationUnit::init(DwarfSpan* debug_info, Dwa
   debug_info->consume(length + sizeof(h->preamble));
   DwarfAbbrevSet& abbrev_set = abbrevs.lookup(h->debug_abbrev_offset);
   die_ = make_unique<DwarfDIE>(span, abbrev_set, sizeof(typename H::Size::Offset), h->address_size, ok);
+  if (!*ok) {
+    return;
+  }
   if (die_->tag() != DW_TAG_compile_unit &&
       die_->tag() != DW_TAG_partial_unit &&
       die_->tag() != DW_TAG_skeleton_unit) {
