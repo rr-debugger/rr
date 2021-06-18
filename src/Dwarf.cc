@@ -272,6 +272,15 @@ static size_t form_size(DWForm form, size_t address_size, size_t dwarf_size, Dwa
     case DW_FORM_strx2: return 2;
     case DW_FORM_strx3: return 3;
     case DW_FORM_strx4: return 4;
+    case DW_FORM_string: {
+      auto before = span->size();
+      DwarfSpan a_span(*span);
+      a_span.read_null_terminated_string(ok);
+      if (!ok) {
+        return 0;
+      }
+      return before - a_span.size();
+    }
     case DW_FORM_sec_offset: return dwarf_size;
     case DW_FORM_flag_present: return 0;
     case DW_FORM_implicit_const: return 0;
@@ -394,6 +403,8 @@ static const char* decode_string(const DwarfCompilationUnit& cu, DwarfSpan span,
       }
       return debug_strs.debug_str.subspan(offset).read_null_terminated_string(ok);
     }
+    case DW_FORM_string:
+      return span.read_null_terminated_string(ok);
     default:
       LOG(warn) << "Unknown string form " << form;
       *ok = false;

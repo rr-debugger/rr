@@ -40,6 +40,7 @@ enum DWForm {
   DW_FORM_data2 = 0x05,
   DW_FORM_data4 = 0x06,
   DW_FORM_data8 = 0x07,
+  DW_FORM_string = 0x08,
   DW_FORM_data1 = 0x0b,
   DW_FORM_flag = 0x0c,
   DW_FORM_strp = 0x0e,
