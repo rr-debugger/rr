@@ -122,6 +122,19 @@ static void prepend_path(const char* prefix, string& s) {
   }
 }
 
+struct DirExistsCache {
+  unordered_map<string, bool> cache;
+  bool dir_exists(const string& dir) {
+    auto it = cache.find(dir);
+    if (it != cache.end()) {
+      return it->second;
+    }
+    bool exists = access(dir.c_str(), F_OK) == 0;
+    cache.insert(make_pair(dir, exists));
+    return exists;
+  }
+};
+
 // Resolve a file name relative to a compilation directory and relative directory.
 // file_name cannot be null, but the others can be.
 // Takes into accout the original file name as follows:
@@ -134,7 +147,8 @@ static void prepend_path(const char* prefix, string& s) {
 // of original_file_name, and if we find a file there, we return that name.
 static string resolve_file_name(const char* original_file_name,
                                 const char* comp_dir, const char* rel_dir,
-                                const char* file_name) {
+                                const char* file_name,
+                                DirExistsCache& dir_exists_cache) {
   string path = file_name;
   if (is_absolute(path)) {
     return path;
@@ -161,8 +175,7 @@ static string resolve_file_name(const char* original_file_name,
       return path;
     }
     string candidate = original + "/" + path;
-    int ret = access(candidate.c_str(), F_OK);
-    if (!ret) {
+    if (dir_exists_cache.dir_exists(candidate)) {
       return candidate;
     }
   }
@@ -182,7 +195,8 @@ static bool process_compilation_units(ElfFileReader& reader,
                                       const string& trace_relative_name,
                                       const string& original_file_name,
                                       const string& comp_dir_substitution,
-                                      set<string>* file_names, vector<DwoInfo>* dwos) {
+                                      set<string>* file_names, vector<DwoInfo>* dwos,
+                                      DirExistsCache& dir_exists_cache) {
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
   DwarfSpan debug_abbrev = reader.dwarf_section(".debug_abbrev");
   DwarfSpan debug_str = reader.dwarf_section(".debug_str");
@@ -248,7 +262,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         }
       }
       if (has_dwo_id) {
-        string full_name = resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, dwo_name);
+        string full_name = resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, dwo_name, dir_exists_cache);
         string c;
         if (comp_dir) {
           c = comp_dir;
@@ -263,7 +277,7 @@ static bool process_compilation_units(ElfFileReader& reader,
       continue;
     }
     if (source_file_name) {
-      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, source_file_name));
+      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, source_file_name, dir_exists_cache));
     }
     intptr_t stmt_list = cu.die().section_ptr_attr(DW_AT_stmt_list, &ok);
     if (stmt_list < 0 || !ok) {
@@ -279,7 +293,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         continue;
       }
       const char* dir = lines.directories()[f.directory_index];
-      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, dir, f.file_name));
+      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, dir, f.file_name, dir_exists_cache));
     }
   } while (!debug_info.empty());
 
@@ -425,7 +439,8 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
                                    const map<string, string>& comp_dir_substitutions,
                                    vector<DwoInfo>* dwos,
                                    set<ExternalDebugInfo>* external_debug_info,
-                                   bool already_used_file) {
+                                   bool already_used_file,
+                                   DirExistsCache& dir_exists_cache) {
   string build_id = trace_file_reader.read_buildid();
   if (build_id.empty()) {
     LOG(warn) << "Main ELF binary has no build ID!";
@@ -440,12 +455,12 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
     LOG(debug) << "\tFound comp_dir substitution " << it->second;
     did_work = process_compilation_units(aux_file_reader, alt_file_reader,
                                          trace_relative_name, original_file_name,
-                                         it->second, file_names, dwos);
+                                         it->second, file_names, dwos, dir_exists_cache);
   } else {
     LOG(debug) << "\tNone found";
     did_work = process_compilation_units(aux_file_reader, alt_file_reader,
                                          trace_relative_name, original_file_name,
-                                         {}, file_names, dwos);
+                                         {}, file_names, dwos, dir_exists_cache);
   }
 
   if (!did_work) {
@@ -467,7 +482,8 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
                                set<string>* file_names, const string& aux_file_name,
                                const map<string, string>& comp_dir_substitutions,
                                vector<DwoInfo>* dwos,
-                               set<ExternalDebugInfo>* external_debug_info) {
+                               set<ExternalDebugInfo>* external_debug_info,
+                               DirExistsCache& dir_exists_cache) {
   string full_file_name;
   auto reader = find_auxiliary_file(original_file_name, aux_file_name,
                                     full_file_name);
@@ -488,14 +504,14 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
                                                  trace_relative_name, original_file_name,
                                                  file_names, full_file_name, DEBUGLINK,
                                                  comp_dir_substitutions,
-                                                 dwos, external_debug_info, false);
+                                                 dwos, external_debug_info, false, dir_exists_cache);
 
   if (altlink_reader) {
     has_source_files |= process_auxiliary_file(trace_file_reader, *altlink_reader, nullptr,
                                                trace_relative_name, original_file_name,
                                                file_names, full_altfile_name, DEBUGALTLINK,
                                                comp_dir_substitutions,
-                                               dwos, external_debug_info, has_source_files);
+                                               dwos, external_debug_info, has_source_files, dir_exists_cache);
   }
   return has_source_files;
 }
@@ -680,6 +696,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
   set<ExternalDebugInfo> external_debug_info;
   vector<DwoInfo> dwos;
   vector<OutputCompDirSubstitution> output_comp_dir_substitutions;
+  DirExistsCache dir_exists_cache;
   for (auto& pair : binary_file_names) {
     string trace_relative_name = pair.first;
     string original_name = pair.second;
@@ -712,12 +729,12 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
       output_comp_dir_substitutions.push_back({ trace_relative_name, it->second });
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
-                                                   it->second, &file_names, &dwos);
+                                                   it->second, &file_names, &dwos, dir_exists_cache);
     } else {
       LOG(debug) << "\tNone found";
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
-                                                   {}, &file_names, &dwos);
+                                                   {}, &file_names, &dwos, dir_exists_cache);
     }
     /* If the original binary had source files, force the inclusion of any debugaltlink
      * file, even if it does not itself have compilation units (it may have relevant strings)
@@ -728,7 +745,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
     has_source_files |= try_debuglink_file(reader, trace_relative_name, pair.second,
                                            &file_names, debuglink.file_name,
                                            comp_dir_substitutions, &dwos,
-                                           &external_debug_info);
+                                           &external_debug_info, dir_exists_cache);
 
     if (altlink_reader) {
       has_source_files |= process_auxiliary_file(reader, *altlink_reader, nullptr,
@@ -736,7 +753,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
                                                  &file_names, full_altfile_name,
                                                  DEBUGALTLINK, comp_dir_substitutions,
                                                  &dwos, &external_debug_info,
-                                                 original_had_source_files);
+                                                 original_had_source_files, dir_exists_cache);
     }
 
     if (has_source_files) {
