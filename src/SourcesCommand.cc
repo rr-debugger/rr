@@ -308,13 +308,13 @@ struct ExternalDebugInfo {
     if (path < other.path) {
       return true;
     }
-    if (path == other.path) {
+    if (path > other.path) {
       return false;
     }
     if (build_id < other.build_id) {
       return true;
     }
-    if (build_id == other.build_id) {
+    if (build_id > other.build_id) {
       return false;
     }
     return type < other.type;
@@ -457,7 +457,7 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
                                          trace_relative_name, original_file_name,
                                          it->second, file_names, dwos, dir_exists_cache);
   } else {
-    LOG(debug) << "\tNone found";
+    LOG(debug) << "\tNo comp_dir substitution found";
     did_work = process_compilation_units(aux_file_reader, alt_file_reader,
                                          trace_relative_name, original_file_name,
                                          {}, file_names, dwos, dir_exists_cache);
@@ -731,7 +731,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
                                                    trace_relative_name, pair.second,
                                                    it->second, &file_names, &dwos, dir_exists_cache);
     } else {
-      LOG(debug) << "\tNone found";
+      LOG(debug) << "\tNo comp_dir substitution found";
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
                                                    {}, &file_names, &dwos, dir_exists_cache);
