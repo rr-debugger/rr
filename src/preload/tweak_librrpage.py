@@ -97,7 +97,7 @@ with open(sys.argv[1], 'rb+') as f:
 	write_uptr(is64, f, new_table_offset)
 
 	alloc_offset = new_table_offset + size
-	for n in range(12, 15):
+	for n in range(e_shnum-3, e_shnum):
 		seek_nth_section_sh_offset(f, new_table_offset, e_shentsize, n, sh_offset_offset)
 		sh_offs = read_uptr(is64, f)
 		sh_size = read_uptr(is64, f)
