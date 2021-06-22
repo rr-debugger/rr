@@ -3968,8 +3968,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case Arch::io_uring_setup:
-    case Arch::io_setup: {
-      // Prevent the io_setup/io_uring from running and fake an ENOSYS return. We want
+    case Arch::io_setup:
+    case Arch::rseq: {
+      // Prevent the io_setup/io_uring_setup/rseq from running and fake an ENOSYS return. We want
       // to stop applications from using these APIs because we don't support them currently.
       Registers r = regs;
       r.set_arg2(0);
@@ -6239,6 +6240,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::ptrace:
     case Arch::read:
     case Arch::readv:
+    case Arch::rseq:
     case Arch::sched_setaffinity:
     case Arch::userfaultfd: {
       // Restore the registers that we may have altered.
