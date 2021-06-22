@@ -1723,6 +1723,10 @@ pidfd_getfd = UnsupportedSyscall(x86=438, x64=438, generic=438)
 process_madvise = UnsupportedSyscall(x86=440, x64=440, generic=440)
 epoll_pwait2 = UnsupportedSyscall(x86=441, x64=441, generic=441)
 mount_setattr = UnsupportedSyscall(x86=442, x64=442, generic=442)
+# 443 reserved for quotactl_path
+landlock_create_ruleset = UnsupportedSyscall(x86=444, x64=444, generic=444)
+landlock_add_rule = UnsupportedSyscall(x86=445, x64=445, generic=445)
+landlock_restrict_self = UnsupportedSyscall(x86=446, x64=446, generic=446)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219, generic=128)
