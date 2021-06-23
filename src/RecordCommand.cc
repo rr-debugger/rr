@@ -629,7 +629,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get(),
-      flags.stap_sdt, flags.unmap_vdso);
+      flags.stap_sdt, flags.unmap_vdso, flags.asan);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();
