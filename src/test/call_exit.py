@@ -1,4 +1,16 @@
+import sys
 from util import *
+
+gdb_version = get_gdb_version()
+if gdb_version < 10:
+    # On gdb 9.2 after calling exit(0)
+    # gdb's internal state is confused
+    # about which thread we're on, and
+    # the 'finish' command fails.
+    send_gdb('c')
+    expect_gdb('EXIT-SUCCESS')
+    ok()
+    sys.exit(0)
 
 send_gdb('b main')
 expect_gdb('Breakpoint 1')
