@@ -395,6 +395,12 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #ifndef SECCOMP_FILTER_FLAG_TSYNC
 #define SECCOMP_FILTER_FLAG_TSYNC 1
 #endif
+#ifndef SECCOMP_GET_ACTION_AVAIL
+#define SECCOMP_GET_ACTION_AVAIL 2
+#endif
+#ifndef SECCOMP_GET_NOTIF_SIZES
+#define SECCOMP_GET_NOTIF_SIZES 3
+#endif
 
 /* Old systems don't have linux/kcmp.h */
 #define RR_KCMP_FILE 0

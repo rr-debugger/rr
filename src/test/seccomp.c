@@ -131,11 +131,37 @@ static void* run_thread(__attribute__((unused)) void* p) {
   return NULL;
 }
 
+static void test_get_action_avail(void) {
+  // `SECCOMP_RET_ALLOW` is available since the first version of `SECCOMP_GET_ACTION_AVAIL`
+  uint32_t action = SECCOMP_RET_ALLOW;
+  int ret = syscall(RR_seccomp, SECCOMP_GET_ACTION_AVAIL, 0, &action);
+  test_assert(ret == EINVAL || ret == 0);
+}
+
+static void test_get_notif_sizes(void) {
+  struct {
+    uint16_t seccomp_notif;
+    uint16_t seccomp_notif_resp;
+    uint16_t seccomp_data;
+  } sizes;
+  int ret = syscall(RR_seccomp, SECCOMP_GET_NOTIF_SIZES, 0, &sizes);
+  test_assert(ret == EINVAL || ret == 0);
+  if (ret == 0) {
+    // These were the sizes when `SECCOMP_GET_NOTIF_SIZES` was first added.
+    test_assert(sizes.seccomp_notif >= 80);
+    test_assert(sizes.seccomp_notif_resp >= 24);
+    test_assert(sizes.seccomp_data >= 64);
+  }
+}
+
 int main(void) {
   struct sigaction sa;
   pthread_t thread;
   pthread_t w_thread;
   char ch;
+
+  test_get_action_avail();
+  test_get_notif_sizes();
 
   test_assert(0 == pipe(pipe_fds));
 
