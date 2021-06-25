@@ -4633,6 +4633,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::seccomp:
       switch ((unsigned int)regs.arg1()) {
         case SECCOMP_SET_MODE_STRICT:
+        case SECCOMP_GET_ACTION_AVAIL:
           break;
         case SECCOMP_SET_MODE_FILTER: {
           // Prevent the actual seccomp call. We'll fix this up afterwards.
@@ -4641,6 +4642,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           t->set_regs(r);
           break;
         }
+        case SECCOMP_GET_NOTIF_SIZES:
+          syscall_state.reg_parameter<typename Arch::seccomp_notif_sizes>(3);
+          break;
         default:
           syscall_state.expect_errno = EINVAL;
           break;

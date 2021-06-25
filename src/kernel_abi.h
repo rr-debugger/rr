@@ -623,6 +623,13 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(termio);
 
+  struct seccomp_notif_sizes {
+    uint16_t seccomp_notif;
+    uint16_t seccomp_notif_resp;
+    uint16_t seccomp_data;
+  };
+  RR_VERIFY_TYPE(seccomp_notif_sizes);
+
   struct serial_struct {
     signed_int type;
     signed_int line;
