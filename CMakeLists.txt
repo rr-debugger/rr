@@ -1034,6 +1034,7 @@ set(BASIC_TESTS
   scm_rights
   scratch_read
   seccomp
+  seccomp_cloning
   seccomp_clone_fail
   seccomp_desched
   seccomp_kill_exit

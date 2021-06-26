@@ -280,6 +280,17 @@ static long traced_raw_syscall(const struct syscall_info* call) {
                       RR_PAGE_SYSCALL_TRACED, 0, 0);
 }
 
+/**
+ * Make a raw traced syscall using the params in |call|, privileged.
+ */
+static long privileged_traced_raw_syscall(const struct syscall_info* call) {
+  /* FIXME: pass |call| to avoid pushing these on the stack
+   * again. */
+  return _raw_syscall(call->no, call->args[0], call->args[1], call->args[2],
+                      call->args[3], call->args[4], call->args[5],
+                      RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
+}
+
 #if defined(SYS_fcntl64)
 #define RR_FCNTL_SYSCALL SYS_fcntl64
 #else
@@ -443,9 +454,9 @@ untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
   untraced_replay_assist_syscall1(no, 0)
 
 #define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
-  _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, \
-               (uintptr_t)a4, (uintptr_t)a5,                                   \
-               RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY, 0, 0)
+  untraced_syscall_base(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
+                        (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
+                        RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY)
 #define privileged_untraced_syscall5(no, a0, a1, a2, a3, a4)                   \
   privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define privileged_untraced_syscall4(no, a0, a1, a2, a3)                       \
@@ -457,6 +468,22 @@ untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
 #define privileged_untraced_syscall1(no, a0)                                   \
   privileged_untraced_syscall2(no, a0, 0)
 #define privileged_untraced_syscall0(no) privileged_untraced_syscall1(no, 0)
+
+#define privileged_unrecorded_syscall6(no, a0, a1, a2, a3, a4, a5)               \
+  _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,                  \
+               (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,                      \
+               RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY, 0, 0)
+#define privileged_unrecorded_syscall5(no, a0, a1, a2, a3, a4)                   \
+  privileged_unrecorded_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define privileged_unrecorded_syscall4(no, a0, a1, a2, a3)                       \
+  privileged_unrecorded_syscall5(no, a0, a1, a2, a3, 0)
+#define privileged_unrecorded_syscall3(no, a0, a1, a2)                           \
+  privileged_unrecorded_syscall4(no, a0, a1, a2, 0)
+#define privileged_unrecorded_syscall2(no, a0, a1)                               \
+  privileged_unrecorded_syscall3(no, a0, a1, 0)
+#define privileged_unrecorded_syscall1(no, a0)                                   \
+  privileged_unrecorded_syscall2(no, a0, 0)
+#define privileged_unrecorded_syscall0(no) privileged_unrecorded_syscall1(no, 0)
 
 #define replay_only_syscall6(no, a0, a1, a2, a3, a4, a5)                       \
   _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, \
@@ -473,7 +500,7 @@ untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
 #define replay_only_syscall0(no) replay_only_syscall1(no, 0)
 
 static int privileged_untraced_close(int fd) {
-  return privileged_untraced_syscall1(SYS_close, fd);
+  return privileged_unrecorded_syscall1(SYS_close, fd);
 }
 
 static int privileged_untraced_fcntl(int fd, int cmd, ...) {
@@ -484,7 +511,7 @@ static int privileged_untraced_fcntl(int fd, int cmd, ...) {
   arg = va_arg(ap, void*);
   va_end(ap);
 
-  return privileged_untraced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
+  return privileged_unrecorded_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
 }
 
 /**
@@ -923,18 +950,18 @@ static void arm_desched_event(void) {
    * avoid! :) Although we don't allocate extra space for these
    * ioctl's, we do record that we called them; the replayer
    * knows how to skip over them. */
-  if ((int)privileged_untraced_syscall3(SYS_ioctl,
-                                        thread_locals->desched_counter_fd,
-                                        PERF_EVENT_IOC_ENABLE, 0)) {
+  if ((int)privileged_unrecorded_syscall3(SYS_ioctl,
+                                          thread_locals->desched_counter_fd,
+                                          PERF_EVENT_IOC_ENABLE, 0)) {
     fatal("Failed to ENABLE counter");
   }
 }
 
 static void disarm_desched_event(void) {
   /* See above. */
-  if ((int)privileged_untraced_syscall3(SYS_ioctl,
-                                        thread_locals->desched_counter_fd,
-                                        PERF_EVENT_IOC_DISABLE, 0)) {
+  if ((int)privileged_unrecorded_syscall3(SYS_ioctl,
+                                          thread_locals->desched_counter_fd,
+                                          PERF_EVENT_IOC_DISABLE, 0)) {
     fatal("Failed to DISABLE counter");
   }
 }
@@ -1007,9 +1034,9 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
     pid_t tid = 0;
     uid_t uid = 0;
     if (impose_spurious_desched) {
-      pid = privileged_untraced_syscall0(SYS_getpid);
-      tid = privileged_untraced_syscall0(SYS_gettid);
-      uid = privileged_untraced_syscall0(SYS_getuid);
+      pid = privileged_unrecorded_syscall0(SYS_getpid);
+      tid = privileged_unrecorded_syscall0(SYS_gettid);
+      uid = privileged_unrecorded_syscall0(SYS_getuid);
     }
 
     /* NB: the ordering of the next two statements is
@@ -1042,9 +1069,9 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
       si.si_fd = thread_locals->desched_counter_fd;
       si.si_pid = pid;
       si.si_uid = uid;
-      privileged_untraced_syscall4(SYS_rt_tgsigqueueinfo, pid, tid,
-                                   globals.desched_sig,
-                                   &si);
+      privileged_unrecorded_syscall4(SYS_rt_tgsigqueueinfo, pid, tid,
+                                     globals.desched_sig,
+                                     &si);
     }
   }
   return 1;
@@ -1284,6 +1311,23 @@ static long sys_generic_nonblocking_fd(const struct syscall_info* call) {
   }
   ret = untraced_syscall6(call->no, fd, call->args[1], call->args[2],
                           call->args[3], call->args[4], call->args[5]);
+  return commit_raw_syscall(call->no, ptr, ret);
+}
+
+/**
+ * Call this for syscalls that have no memory effects, don't block, and
+ * have an fd as their first parameter, and should run privileged.
+ */
+static long privileged_sys_generic_nonblocking_fd(const struct syscall_info* call) {
+  int fd = call->args[0];
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
+    return privileged_traced_raw_syscall(call);
+  }
+  ret = privileged_untraced_syscall6(call->no, fd, call->args[1], call->args[2],
+                                     call->args[3], call->args[4], call->args[5]);
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
@@ -2005,7 +2049,7 @@ static int supported_open(const char* file_name, int flags) {
     (flags & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT);
 }
 
-static long sys_readlinkat(const struct syscall_info* call);
+static long sys_readlinkat(const struct syscall_info* call, int privileged);
 
 static int check_file_open_ok(const struct syscall_info* call, int ret, int did_abort) {
   if (did_abort || ret < 0) {
@@ -2016,7 +2060,7 @@ static int check_file_open_ok(const struct syscall_info* call, int ret, int did_
   char link[PATH_MAX];
   struct syscall_info readlink_call =
     { SYS_readlinkat, { -1, (long)buf, (long)link, sizeof(link), 0, 0 } };
-  long link_ret = sys_readlinkat(&readlink_call);
+  long link_ret = sys_readlinkat(&readlink_call, 1);
   if (link_ret >= 0 && link_ret < (ssize_t)sizeof(link)) {
     link[link_ret] = 0;
     if (allow_buffered_open(link)) {
@@ -2272,7 +2316,7 @@ static long sys_read(const struct syscall_info* call) {
       sizeof(void*) == 8 && !(count & 4095)) {
     struct syscall_info lseek_call = { SYS_lseek,
                                        { fd, 0, SEEK_CUR, 0, 0, 0 } };
-    off_t lseek_ret = sys_generic_nonblocking_fd(&lseek_call);
+    off_t lseek_ret = privileged_sys_generic_nonblocking_fd(&lseek_call);
     if (lseek_ret >= 0 && !(lseek_ret & 4095)) {
       struct btrfs_ioctl_clone_range_args ioctl_args;
       int ioctl_ret;
@@ -2291,11 +2335,11 @@ static long sys_read(const struct syscall_info* call) {
                                            { thread_locals->cloned_file_data_fd,
                                              BTRFS_IOC_CLONE_RANGE,
                                              (long)&ioctl_args, 0, 0, 0 } };
-        ioctl_ret = traced_raw_syscall(&ioctl_call);
+        ioctl_ret = privileged_traced_raw_syscall(&ioctl_call);
       } else {
         ioctl_ret =
-            untraced_syscall3(SYS_ioctl, thread_locals->cloned_file_data_fd,
-                              BTRFS_IOC_CLONE_RANGE, &ioctl_args);
+            privileged_untraced_syscall3(SYS_ioctl, thread_locals->cloned_file_data_fd,
+                                         BTRFS_IOC_CLONE_RANGE, &ioctl_args);
         ioctl_ret = commit_raw_syscall(SYS_ioctl, ioctl_ptr, ioctl_ret);
       }
 
@@ -2408,7 +2452,7 @@ static long sys_readlink(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_readlinkat(const struct syscall_info* call) {
+static long sys_readlinkat(const struct syscall_info* call, int privileged) {
   const int syscallno = SYS_readlinkat;
   int dirfd = call->args[0];
   const char* path = (const char*)call->args[1];
@@ -2426,10 +2470,17 @@ static long sys_readlinkat(const struct syscall_info* call) {
     ptr += bufsiz;
   }
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    if (privileged) {
+      return privileged_traced_raw_syscall(call);
+    }
     return traced_raw_syscall(call);
   }
 
-  ret = untraced_syscall4(syscallno, dirfd, path, buf2, bufsiz);
+  if (privileged) {
+    ret = privileged_untraced_syscall4(syscallno, dirfd, path, buf2, bufsiz);
+  } else {
+    ret = untraced_syscall4(syscallno, dirfd, path, buf2, bufsiz);
+  }
   ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
@@ -3291,7 +3342,8 @@ case SYS_epoll_pwait:
 #if defined(SYS_readlink)
     CASE(readlink);
 #endif
-    CASE(readlinkat);
+    case SYS_readlinkat:
+      return sys_readlinkat(call, 0);
 #if defined(SYS_recvfrom)
     CASE(recvfrom);
 #endif
