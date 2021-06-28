@@ -113,6 +113,11 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
 }
 
 void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
+#if defined(__aarch64__)
+  // XXXkhuey this fast path doesn't work on AArch64 yet, go slow instead
+  enable_singlestep_path = false;
+#endif
+
   if (!replaced_bytes.empty()) {
     // XXX what to do here to clean up if the task died unexpectedly?
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),

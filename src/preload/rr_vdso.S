@@ -95,6 +95,8 @@ WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 // Dummy versioned symbol to trigger presence of DT_VERDEF/DT_VERSYM/DT_VERDEFNUM:
 .symver __vdso_time,__vdso_time@VER_1
 
+#elif defined(__aarch64__)
+// XXXkhuey there should probably be something here
 #else
 
 #error "VDSO Hooks not defined for this platform"
