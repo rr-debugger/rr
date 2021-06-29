@@ -3208,8 +3208,6 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
   /* TODO tracees can probably undo some of the setup below
    * ... */
 
-  restore_initial_resource_limits();
-
   /* CLOEXEC so that the original fd here will be closed by the exec that's
    * about to happen.
    */
@@ -3245,6 +3243,10 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
     // signals being sent to these processes by the terminal --- in particular
     // SIGTSTP/SIGINT/SIGWINCH.
     setsid();
+    // Preserve increased resource limits, in case the tracee
+    // increased its limits and we need high limits to apply during replay.
+  } else {
+    restore_initial_resource_limits();
   }
 
   /* Do any architecture specific setup, such as disabling non-deterministic

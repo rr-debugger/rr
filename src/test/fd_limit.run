@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+ulimit -S -n 1024
+compare_test EXIT-SUCCESS

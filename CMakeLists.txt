@@ -1229,6 +1229,7 @@ set(TESTS_WITH_PROGRAM
   exit_race
   exit_status
   x86/explicit_checkpoints
+  fd_limit
   fork_stress
   fork_syscalls
   function_calls
