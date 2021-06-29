@@ -628,7 +628,8 @@ struct BaseArch : public wordsize,
     uint16_t seccomp_notif_resp;
     uint16_t seccomp_data;
   };
-  RR_VERIFY_TYPE(seccomp_notif_sizes);
+  // seccomp_notif_sizes is not present in older kernels
+  // RR_VERIFY_TYPE(seccomp_notif_sizes);
 
   struct serial_struct {
     signed_int type;
