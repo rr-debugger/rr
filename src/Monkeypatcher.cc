@@ -361,24 +361,30 @@ static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,
 }
 
 template <typename ExtendedJumpPatch>
-static void match_extended_jump_patch(uint8_t patch[],
+static bool match_extended_jump_patch(uint8_t patch[],
  uint64_t *return_addr);
 
 template <>
-void match_extended_jump_patch<X64SyscallStubExtendedJump>(
+bool match_extended_jump_patch<X64SyscallStubExtendedJump>(
       uint8_t patch[], uint64_t *return_addr) {
   uint32_t return_addr_lo, return_addr_hi;
   uint64_t jmp_target;
-  X64SyscallStubExtendedJump::match(patch, &return_addr_lo, &return_addr_hi, &jmp_target);
+  if (!X64SyscallStubExtendedJump::match(patch, &return_addr_lo, &return_addr_hi, &jmp_target)) {
+    return false;
+  }
   *return_addr = return_addr_lo | (((uint64_t)return_addr_hi) << 32);
+  return true;
 }
 
 template <>
-void match_extended_jump_patch<X86SyscallStubExtendedJump>(
+bool match_extended_jump_patch<X86SyscallStubExtendedJump>(
       uint8_t patch[], uint64_t *return_addr) {
   uint32_t return_addr_32, jmp_target_relative;
-  X86SyscallStubExtendedJump::match(patch, &return_addr_32, &jmp_target_relative);
+  if (!X86SyscallStubExtendedJump::match(patch, &return_addr_32, &jmp_target_relative)) {
+    return false;
+  }
   *return_addr = return_addr_32;
+  return true;
 }
 
 template <typename ReplacementPatch>
@@ -412,7 +418,9 @@ static void unpatch_extended_jumps(Monkeypatcher& patcher,
     uint8_t bytes[ExtendedJumpPatch::size];
     t->read_bytes_helper(patch.first, sizeof(bytes), bytes);
     uint64_t return_addr;
-    match_extended_jump_patch<ExtendedJumpPatch>(bytes, &return_addr);
+    if (!match_extended_jump_patch<ExtendedJumpPatch>(bytes, &return_addr)) {
+      ASSERT(t, false) << "Failed to match extended jump patch at " << patch.first;
+    }
 
     std::vector<uint8_t> syscall = rr::syscall_instruction(t->arch());
 
