@@ -2227,7 +2227,7 @@ bool Task::try_wait() {
   if (ret == 0) {
     status = WaitStatus(info);
   } else if (ret == -1) {
-    DEBUG_ASSERT(errno == ECHILD);
+    ASSERT(this, errno == ECHILD);
     // Either we died unexpectedly or we were in exec and changed the tid.
     // Try to differentiate the two situations by seeing if there is an exit
     // notification ready for us to de-queue, in which case we synthesize an
@@ -2238,7 +2238,7 @@ bool Task::try_wait() {
       LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     } else {
-      DEBUG_ASSERT(ret == -1 && errno == ECHILD);
+      ASSERT(this, ret == -1 && errno == ECHILD);
       return false;
     }
   }
