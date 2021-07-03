@@ -2238,7 +2238,7 @@ bool Task::try_wait() {
       LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     } else {
-      ASSERT(this, ret == -1 && errno == ECHILD);
+      ASSERT(this, ret == -1 && errno == ECHILD) << "waitpid failed with " << ret;
       return false;
     }
   }
