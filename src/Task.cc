@@ -2029,6 +2029,7 @@ void Task::did_waitpid(WaitStatus status) {
 
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
+  Ticks more_ticks = 0;
 
   if (status.reaped()) {
     was_reaped = true;
@@ -2059,7 +2060,7 @@ void Task::did_waitpid(WaitStatus status) {
     if (status.ptrace_event() != PTRACE_EVENT_EXIT) {
       ASSERT(this, !registers_dirty) << "Registers shouldn't already be dirty (status is " << status << ")";
     }
-    // If the task was not stopped, we don't need to read the registers.
+    // If the task was stopped, we don't need to read the registers.
     // In fact if we didn't start the thread, we may not have flushed dirty
     // registers but still received a PTRACE_EVENT_EXIT, in which case the
     // task's register values are not what they should be.
@@ -2084,12 +2085,19 @@ void Task::did_waitpid(WaitStatus status) {
           registers.set_arch(a);
           registers.set_from_ptrace(ptrace_regs);
         }
+
+        // Only adjust tick count if we were able to read registers.
+        // For example if the task is already reaped we don't have new
+        // register values and we don't want to read a ticks value
+        // that mismatches our registers.
+        more_ticks = hpc.read_ticks(this);
       }
 #elif defined(__aarch64__)
       struct iovec vec = { &ptrace_regs,
                           sizeof(ptrace_regs) };
       if (ptrace_if_alive(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
         registers.set_from_ptrace(ptrace_regs);
+        more_ticks = hpc.read_ticks(this);
       }
 #else
 #error detect architecture here
@@ -2103,7 +2111,6 @@ void Task::did_waitpid(WaitStatus status) {
 
   is_stopped = true;
   wait_status = status;
-  Ticks more_ticks = hpc.read_ticks(this);
   // We stop counting here because there may be things we want to do to the
   // tracee that would otherwise generate ticks.
   hpc.stop_counting();

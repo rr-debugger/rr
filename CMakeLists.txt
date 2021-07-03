@@ -1209,6 +1209,7 @@ set(TESTS_WITH_PROGRAM
   conditional_breakpoint_calls
   conditional_breakpoint_offload
   condvar_stress
+  cont_race
   x86/cpuid_singlestep
   crash
   crash_in_function

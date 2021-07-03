@@ -627,7 +627,13 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         syscall_seccomp_ordering_ = SECCOMP_BEFORE_PTRACE_SYSCALL;
       }
 
-      uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      int seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      if (seccomp_data < 0) {
+        // Process just died. Urk. Just wait for the exit event and pretend this stop never happened!
+        last_task_switchable = ALLOW_SWITCH;
+        step_state->continue_type = DONT_CONTINUE;
+        return true;
+      }
       t->apply_syscall_entry_regs();
       int syscallno = t->regs().original_syscallno();
       if (seccomp_data == SECCOMP_RET_DATA) {
