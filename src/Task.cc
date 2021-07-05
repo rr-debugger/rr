@@ -2220,7 +2220,7 @@ bool Task::try_wait() {
   ASSERT(this, 0 == ret || (-1 == ret && errno == ECHILD)) <<
     "waitid(" << tid << ", NOHANG) failed with "
                          << ret;
-  LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret;
+  LOG(debug) << "waitid(" << tid << ", NOHANG) returns " << ret;
   if (ret == 0 && info.si_pid == 0) {
     return false;
   }
