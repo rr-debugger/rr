@@ -2234,7 +2234,8 @@ bool Task::try_wait() {
     // exit event (but don't actually reap the task, instead leaving that
     // for the generic cleanup code).
     int ret = waitid(P_PID, tid, &info, WEXITED | WNOWAIT | WNOHANG);
-    if (ret == 0 && info.si_pid == tid) {
+    if (ret == 0) {
+      ASSERT(this, info.si_pid == tid) << "Tracee is not in a stopped state and has not exited?";
       LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     } else {
