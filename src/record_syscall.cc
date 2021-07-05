@@ -5400,7 +5400,7 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
       return ret;
     }
     uint64_t hole = (uint64_t)r;
-    ASSERT(t, hole >= offset);
+    ASSERT(t, hole >= offset) << "Found hole at " << hole << " which is before " << offset;
     if (hole >= file_end) {
       return ret;
     }
@@ -5413,7 +5413,8 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
       }
     }
     uint64_t data = min((uint64_t)r, file_end);
-    ASSERT(t, data > hole);
+    ASSERT(t, data > hole) << "Found data at " << data << " which should be after hole " << hole
+      << "; file end " << file_end << ", data offset " << r;
     ret.push_back({ hole - file_start, data - hole });
     offset = data;
   }
