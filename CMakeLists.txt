@@ -957,6 +957,8 @@ set(BASIC_TESTS
   pause
   perf_event
   personality
+  pid_ns_kill_child
+  pid_ns_kill_child_zombie
   pid_ns_reap
   pid_ns_segv
   pidfd

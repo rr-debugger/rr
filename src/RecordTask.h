@@ -559,6 +559,7 @@ public:
   bool is_container_init() const { return tg->tgid_own_namespace == 1; }
 
   bool waiting_for_pid_namespace_tasks_to_exit() const;
+  int process_depth() const;
 
   /**
    * Called when this task is able to receive a SIGCHLD (e.g. because

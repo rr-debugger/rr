@@ -1986,6 +1986,16 @@ bool RecordTask::waiting_for_pid_namespace_tasks_to_exit() const {
   return false;
 }
 
+int RecordTask::process_depth() const {
+  int depth = 0;
+  ThreadGroup* tg = this->tg.get();
+  while (tg) {
+    ++depth;
+    tg = tg->parent();
+  }
+  return depth;
+}
+
 template <typename Arch>
 static void maybe_restore_original_syscall_registers_arch(RecordTask* t,
                                                           void* local_addr) {

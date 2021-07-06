@@ -2476,50 +2476,61 @@ void RecordSession::term_detached_tasks() {
   }
 }
 
+static bool kill_order(RecordTask* t1, RecordTask* t2) {
+  // Non-thread-group leaders are killed before thread-group-leaders
+  if (t1->tid != t1->real_tgid() && t2->tid == t2->real_tgid()) {
+    return true;
+  }
+  // Order by depth in the process parent/child tree to ensure pid-namespace children are killed
+  // before their parents.
+  if (t1->process_depth() > t2->process_depth()) {
+    return true;
+  }
+  return false;
+}
+
 void RecordSession::kill_all_record_tasks() {
   LOG(debug) << "Killing all tasks ...";
-  for (int pass = 0; pass <= 2; ++pass) {
-    /* We delete tasks in three passes. First we complete any coredumps in
-     * progress. Then, we kill every non-thread-group-leader,
-     * lastly we kill every group leader.
-     * Linux expects threads group leaders to survive until the last
-     * member of the thread group has exited, so we accomodate that.
-     */
-    for (auto& v : task_map) {
-      RecordTask* t = static_cast<RecordTask*>(v.second);
+  /* First we complete any coredumps in progress. */
+  vector<RecordTask*> tasks;
+  for (auto& v : task_map) {
+    RecordTask* t = static_cast<RecordTask*>(v.second);
+    if (t->waiting_for_ptrace_exit && !t->seen_ptrace_exit_event) {
+      t->wait();
+      if (!t->already_exited()) {
+        record_exit_trace_event(t, t->status());
+        t->record_exit_event(t->status().fatal_sig());
+      }
+      t->did_kill();
+      t->fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
+    }
+    tasks.push_back(t);
+  }
+  /* Linux expects threads group leaders to survive until the last
+   * member of the thread group has exited, so accomodate that
+   * by killing all non-thread-group-leaders before their
+   * thread-group leaders. We also need to make sure we kill
+   * pid-namespace children before the pid-namespace init process,
+   * since the latter can block on the death of the former.
+   */
+  sort(tasks.begin(), tasks.end(), kill_order);
+  for (auto& t : tasks) {
+    if (t->detached_proxy) {
       // If the task was detached and none of our tasks explicitly waited for
       // it, we let the detached task just run freely (the zombie proxy we
-      // keep around kill get reaped when we destroy the RecordTask itself)
-      if (pass == 0) {
-        if (t->waiting_for_ptrace_exit && !t->seen_ptrace_exit_event) {
-          t->wait();
-          if (!t->already_exited()) {
-            record_exit_trace_event(t, t->status());
-            t->record_exit_event(t->status().fatal_sig());
-          }
-          t->did_kill();
-          t->fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
-        }
-        continue;
-      }
-      if (t->detached_proxy) {
-        continue;
-      }
-      if (t->already_reaped()) {
-        continue;
-      }
-      bool is_group_leader = t->tid == t->real_tgid();
-      if (pass == 1 ? is_group_leader : !is_group_leader) {
-        continue;
-      }
-      if (t->waiting_for_ptrace_exit) {
-        t->reap();
-      } else {
-        WaitStatus status = t->kill();
-        if (!t->already_exited()) {
-          record_exit_trace_event(t, status);
-          t->record_exit_event(status.fatal_sig());
-        }
+      // keep around will get reaped when we destroy the RecordTask itself)
+      continue;
+    }
+    if (t->already_reaped()) {
+      continue;
+    }
+    if (t->waiting_for_ptrace_exit) {
+      t->reap();
+    } else {
+      WaitStatus status = t->kill();
+      if (!t->already_exited()) {
+        record_exit_trace_event(t, status);
+        t->record_exit_event(status.fatal_sig());
       }
     }
   }
