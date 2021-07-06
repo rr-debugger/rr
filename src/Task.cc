@@ -2218,7 +2218,7 @@ bool Task::try_wait() {
   memset(&info, 0, sizeof(siginfo_t));
   int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOHANG);
   ASSERT(this, 0 == ret || (-1 == ret && errno == ECHILD)) <<
-    "waitid(" << tid << ", NOHANG) failed with "
+    "waitid(" << tid << ", WSTOPPED | NOHANG) failed with "
                          << ret;
   LOG(debug) << "waitid(" << tid << ", NOHANG) returns " << ret;
   if (ret == 0 && info.si_pid == 0) {
