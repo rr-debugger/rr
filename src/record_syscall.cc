@@ -5411,6 +5411,9 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
       } else {
         return ret;
       }
+    } else if (r == 0) {
+      // The file has no data.
+      r = file_end;
     }
     uint64_t data = min((uint64_t)r, file_end);
     ASSERT(t, data > hole) << "Found data at " << data << " which should be after hole " << hole
