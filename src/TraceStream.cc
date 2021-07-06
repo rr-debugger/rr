@@ -933,7 +933,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   } else if (starts_with(km.fsname(), "/SYSV")) {
     src.setTrace();
   } else if (origin == SYSCALL_MAPPING &&
-             (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
+             (km.inode() == 0 || km.fsname_strip_deleted() == "/dev/zero")) {
     src.setZero();
   } else if (!starts_with(km.fsname(), "/")) {
     src.setTrace();

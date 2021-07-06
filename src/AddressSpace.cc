@@ -1379,6 +1379,10 @@ static string strip_deleted(const string& s) {
   return s;
 }
 
+string KernelMapping::fsname_strip_deleted() const {
+  return strip_deleted(fsname_);
+}
+
 enum HandleHeap { TREAT_HEAP_AS_ANONYMOUS, RESPECT_HEAP };
 
 static bool normalized_file_names_equal(const KernelMapping& km1,

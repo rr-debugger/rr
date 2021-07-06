@@ -130,6 +130,7 @@ public:
   }
 
   const std::string& fsname() const { return fsname_; }
+  std::string fsname_strip_deleted() const;
   dev_t device() const { return device_; }
   ino_t inode() const { return inode_; }
   int prot() const { return prot_; }

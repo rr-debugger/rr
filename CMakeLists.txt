@@ -806,6 +806,7 @@ set(BASIC_TESTS
   detach_state
   detach_threads
   deterministic_sigsys
+  dev_zero
   direct
   dup
   doublesegv
