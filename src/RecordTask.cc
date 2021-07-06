@@ -1729,7 +1729,7 @@ void RecordTask::log_pending_events() const {
   /* The event at depth 0 is the placeholder event, which isn't
    * useful to log.  Skip it. */
   for (auto it = pending_events.rbegin(); it != pending_events.rend(); ++it) {
-    it->log();
+    LOG(info) << *it;
   }
 }
 

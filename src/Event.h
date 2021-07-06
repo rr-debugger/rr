@@ -332,13 +332,6 @@ struct Event {
   bool is_signal_event() const;
   bool is_syscall_event() const;
 
-  /**
-   * Dump info about this to INFO log.
-   *
-   * Note: usually you want to use |LOG(info) << event;|.
-   */
-  void log() const;
-
   /** Return a string describing this. */
   std::string str() const;
 

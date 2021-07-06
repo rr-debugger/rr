@@ -142,8 +142,6 @@ bool Event::is_syscall_event() const {
   }
 }
 
-void Event::log() const { LOG(info) << *this; }
-
 string Event::str() const {
   stringstream ss;
   ss << type_name();
