@@ -114,9 +114,8 @@ public:
   void force_emulate_ptrace_stop(WaitStatus status);
   /**
    * If necessary, signal the ptracer that this task has exited.
-   * Returns true if we're waiting to be reaped by the ptracer.
    */
-  bool do_ptrace_exit_stop(WaitStatus exit_status);
+  void do_ptrace_exit_stop(WaitStatus exit_status);
   /**
    * Return the exit event.
    */
@@ -557,6 +556,14 @@ public:
 
   // Is this task a container init? (which has special signal behavior)
   bool is_container_init() const { return tg->tgid_own_namespace == 1; }
+
+  /**
+   * Linux requires the invariant that that all members of a thread group
+   * are reaped before the thread group leader. This determines whether or
+   * not we're allowed to attempt reaping this thread or whether doing so
+   * risks deadlock.
+   */
+  bool may_reap();
 
   bool waiting_for_pid_namespace_tasks_to_exit() const;
   int process_depth() const;

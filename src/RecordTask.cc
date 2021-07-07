@@ -767,7 +767,7 @@ void RecordTask::force_emulate_ptrace_stop(WaitStatus status) {
   // return that result immediately.
 }
 
-bool RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
+void RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
   // Notify ptracer of the exit if it's not going to receive it from the
   // kernel because it's not the parent. (The kernel has similar logic to
   // deliver two stops in this case.)
@@ -778,17 +778,24 @@ bool RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
     emulated_stop_type = NOT_STOPPED;
     // This is a bit wrong; this is an exit stop, not a signal/ptrace stop.
     emulate_ptrace_stop(exit_status);
-    return true;
   }
-  return false;
 }
 
 void RecordTask::did_reach_zombie() {
-  if (!already_reaped() && may_reap()) {
-    reap();
-  }
   waiting_for_zombie = false;
-  if (!waiting_for_reap) {
+  // Remove from address-space and fds list since we really aren't associated
+  // with them anymore (and we can't be used to operate on them)
+  as->erase_task(this);
+  fds->erase_task(this);
+
+  if (!already_reaped()) {
+    if (may_reap()) {
+      reap();
+    } else {
+      waiting_for_reap = true;
+    }
+  }
+  if ((already_reaped() || !waiting_for_reap) && !emulated_stop_pending) {
     delete this;
   }
 }
@@ -1969,6 +1976,21 @@ void RecordTask::set_tid_and_update_serial(pid_t tid,
   this->tid = rec_tid = tid;
   serial = session().next_task_serial();
   own_namespace_rec_tid = own_namespace_tid;
+}
+
+bool RecordTask::may_reap() {
+  if (emulated_stop_pending) {
+    // Don't reap until the emulated ptrace stop has been processed.
+    return false;
+  }
+  // Non thread-group-leaders may always be reaped
+  if (tid != real_tgid()) {
+    return true;
+  }
+  if (thread_group()->task_set().size() > 1) {
+    return false;
+  }
+  return true;
 }
 
 bool RecordTask::waiting_for_pid_namespace_tasks_to_exit() const {

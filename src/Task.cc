@@ -119,17 +119,6 @@ void Task::reenable_cpuid_tsc() {
                         PR_SET_TSC, PR_TSC_ENABLE);
 }
 
-bool Task::may_reap() {
-  // Non thread-group-leaders may always be reaped
-  if (tid != real_tgid()) {
-    return true;
-  }
-  if (thread_group()->task_set().size() > 1) {
-    return false;
-  }
-  return true;
-}
-
 void Task::reap() {
   ASSERT(this, !was_reaped);
   LOG(debug) << "Reaping " << tid;

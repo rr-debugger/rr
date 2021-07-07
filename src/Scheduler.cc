@@ -206,8 +206,17 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   ASSERT(t, !must_run_task) << "is_task_runnable called again after it "
                                "returned a task that must run!";
 
-  if (t->waiting_for_reap || t->detached_proxy) {
-    LOG(debug) << "  " << t->tid << " is waiting to be reaped";
+  if (t->detached_proxy) {
+    LOG(debug) << "  " << t->tid << " is waiting a detached proxy";
+    return false;
+  }
+
+  if (t->waiting_for_reap) {
+    if (t->may_reap()) {
+      LOG(debug) << "  " << t->tid << " is waiting to be reaped, and can be reaped";
+      return true;
+    }
+    LOG(debug) << "  " << t->tid << " is waiting to be reaped, but can't be reaped yet";
     return false;
   }
 
@@ -481,6 +490,12 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
 {
   RecordTask* waited = session.find_task(tid);
   if (status.ptrace_event() == PTRACE_EVENT_EXEC) {
+    if (waited && waited->waiting_for_reap) {
+      // We didn't reap this task yet but it's being replaced anyway. Get rid of it
+      // so we can replace it.
+      delete waited;
+      waited = nullptr;
+    }
     if (!waited) {
       // The thread-group-leader died and now the exec'ing thread has
       // changed its thread ID to be thread-group leader.

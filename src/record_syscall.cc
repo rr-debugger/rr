@@ -2116,6 +2116,9 @@ static bool maybe_pause_instead_of_waiting(RecordTask* t, int options) {
     return false;
   }
   RecordTask* child = t->session().find_task(t->in_wait_pid);
+  if (!child) {
+    LOG(debug) << "Child " << t->in_wait_pid << " not found!";
+  }
   if (!child || !t->is_waiting_for_ptrace(child) || t->is_waiting_for(child)) {
     return false;
   }
@@ -6315,12 +6318,9 @@ static void rec_process_syscall_arch(RecordTask* t,
             }
           }
         }
-        if (tracee->waiting_for_reap) {
-          if (tracee->waiting_for_zombie) {
-            tracee->waiting_for_reap = false;
-          } else {
-            delete tracee;
-          }
+        if (tracee->waiting_for_reap || tracee->waiting_for_zombie) {
+          // Have another go at reaping the task
+          tracee->did_reach_zombie();
         }
       }
       break;

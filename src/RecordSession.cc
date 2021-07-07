@@ -238,15 +238,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   }
   record_exit_trace_event(t, exit_status);
   t->record_exit_event(exit_status.fatal_sig());
-  if (t->do_ptrace_exit_stop(exit_status)) {
-    // Keep the RecordTask alive until the ptracer reaps it
-    t->waiting_for_reap = true;
-  }
-  if (!may_wait_exit) {
+  t->do_ptrace_exit_stop(exit_status);
+  if (may_wait_exit) {
+    t->did_reach_zombie();
+  } else {
     t->waiting_for_zombie = true;
-    return true;
   }
-  t->did_reach_zombie();
   return true;
 }
 
@@ -1650,9 +1647,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // On a real affected kernel, we probably would have never gotten here,
         // since the signal we would be seeing was not deterministic, but let's
         // be conservative and still try to emulate the ptrace stop.
-        if (t->do_ptrace_exit_stop(exit_status)) {
-          t->waiting_for_reap = true;
-        }
+        t->do_ptrace_exit_stop(exit_status);
         t->did_kill();
         t->detach();
         // Not really, but we detached, so we're never gonna see that event
@@ -2338,6 +2333,11 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
   RecordTask* t = scheduler().current();
+  if (t->waiting_for_reap) {
+    // Give it another chance to be reaped
+    t->did_reach_zombie();
+    return result;
+  }
   if (prev_task && prev_task->ev().type() == EV_SCHED) {
     if (prev_task != t) {
       // We did do a context switch, so record the SCHED event. Otherwise

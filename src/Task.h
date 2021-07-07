@@ -142,14 +142,6 @@ public:
   void reenable_cpuid_tsc();
 
   /**
-   * Linux requires the invariant that that all members of a thread group
-   * are reaped before the thread group leader. This determines whether or
-   * not we're allowed to attempt reaping this thread or whether doing so
-   * risks deadlock.
-   */
-  bool may_reap();
-
-  /**
    * Reaps a task-exit notification, thus detaching us from the tracee.
    * N.B.: If may_reap is false, this risks a deadlock.
    */
