@@ -126,6 +126,7 @@ public:
   ScopedFd open_debug_file(const std::string& elf_file_name);
 
   static SupportedArch identify_arch(ScopedFd& fd);
+  static bool is_x32_abi(ScopedFd& fd);
 };
 
 } // namespace rr

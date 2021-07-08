@@ -513,4 +513,23 @@ SupportedArch ElfFileReader::identify_arch(ScopedFd& fd) {
   }
 }
 
+bool ElfFileReader::is_x32_abi(ScopedFd& fd) {
+#if defined(__x86_64__)
+  static const int header_prefix_size = 20;
+  char buf[header_prefix_size];
+  ssize_t ret = read_to_end(fd, 0, buf, sizeof(buf));
+  if (ret != (ssize_t)sizeof(buf) || buf[5] != 1) {
+    // Who knows what this is.
+    return false;
+  }
+  if ((buf[18] | (buf[19] << 8)) == 0x3e) {
+    // x32 ABI programs declare themselves with the amd64 architecture but
+    // only 4 byte wide pointers.
+    return buf[4] == 1;
+  }
+#endif
+
+  return false;
+}
+
 } // namespace rr

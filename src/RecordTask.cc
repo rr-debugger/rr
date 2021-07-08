@@ -333,16 +333,6 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
   update_own_namespace_tid();
 }
 
-static string exe_path(RecordTask* t) {
-  char proc_exe[PATH_MAX];
-  snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
-  char exe[PATH_MAX];
-  ssize_t ret = readlink(proc_exe, exe, sizeof(exe) - 1);
-  ASSERT(t, ret >= 0);
-  exe[ret] = 0;
-  return exe;
-}
-
 void RecordTask::post_exec() {
   // Change syscall number to execve *for the new arch*. If we don't do this,
   // and the arch changes, then the syscall number for execve in the old arch/
@@ -355,8 +345,7 @@ void RecordTask::post_exec() {
   ev().Syscall().set_arch(arch());
 
   // The signal mask is inherited across execve so we don't need to invalidate.
-  string exe_file = exe_path(this);
-  Task::post_exec(exe_file);
+  Task::post_exec(this->exe_path());
   if (emulated_ptracer) {
     ASSERT(this, !(emulated_ptracer->arch() == x86 && arch() == x86_64))
         << "We don't support a 32-bit process tracing a 64-bit process";

@@ -69,6 +69,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "DiversionSession.h"
+#include "ElfReader.h"
 #include "Flags.h"
 #include "MmappedFileMonitor.h"
 #include "ProcFdDirMonitor.h"
@@ -5157,6 +5158,20 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
     return;
+  }
+
+  {
+    std::string exe_path = t->proc_exe_path();
+    ScopedFd fd(exe_path.c_str(), O_RDONLY);
+    ASSERT(t, fd.is_open());
+
+    if (ElfFileReader::is_x32_abi(fd)) {
+      // NB: We opened proc_exe_path because exe_path may not be correct in
+      // this namespace, but we want to report something more useful than
+      // /proc/<pid>/exe in the event of a failure.
+      FATAL() << "rr does not support the x32 ABI, but " << t->exe_path()
+              << " is an x32 ABI program.";
+    }
   }
 
   t->post_exec_syscall();

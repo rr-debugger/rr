@@ -215,6 +215,12 @@ public:
   std::string proc_exe_path();
 
   /**
+   * Return the path of the executable (i.e. what
+   * /proc/<pid>/exe points to).
+   */
+  std::string exe_path();
+
+  /**
    * Stat |fd| in the context of this task's fd table.
    */
   struct stat stat_fd(int fd);

@@ -321,6 +321,16 @@ std::string Task::proc_exe_path() {
   return path;
 }
 
+std::string Task::exe_path() {
+  char proc_exe[PATH_MAX];
+  snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", tid);
+  char exe[PATH_MAX];
+  ssize_t ret = readlink(proc_exe, exe, sizeof(exe) - 1);
+  ASSERT(this, ret >= 0);
+  exe[ret] = 0;
+  return exe;
+}
+
 struct stat Task::stat_fd(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
