@@ -189,11 +189,6 @@ static int iterate_events(int final_fd, const char* dir, int write) {
   return count;
 }
 
-static void open_output_fd(void) {
-  out_fd = open("/tmp/ftrace_helper_out", O_RDWR | O_TRUNC | O_CREAT, 0644);
-  check(out_fd >= 0);
-}
-
 static uint64_t file_offset(int fd) {
   off_t offset = lseek(fd, 0, SEEK_CUR);
   check(offset != (off_t)-1);
@@ -234,7 +229,6 @@ static void write_final_output(void) {
   uint64_t cpu_data[2] = { 0, 0 };
   uint64_t cpu_data_offset;
 
-  check(0 == unlink("/tmp/ftrace_helper_out"));
   final_fd = open("/tmp/ftrace_helper_out", O_WRONLY | O_TRUNC | O_CREAT, 0644);
   check(final_fd >= 0);
 
@@ -405,10 +399,10 @@ static void process_control_session(void) {
     if (buf_out_ptr + strlen(buf) >= buf_out + sizeof(buf_out)) {
       break;
     }
-    buf_out_ptr += sprintf(buf_out_ptr, "%s ", buf);
+    buf_out_ptr += sprintf(buf_out_ptr, "%s\n", buf);
   }
 
-  ftrace_pid_fd = open("set_ftrace_pid", O_WRONLY);
+  ftrace_pid_fd = open("set_ftrace_pid", O_WRONLY | O_TRUNC);
   check(ftrace_pid_fd >= 0);
   check(buf_out_ptr - buf_out ==
         write(ftrace_pid_fd, buf_out, buf_out_ptr - buf_out));
@@ -431,6 +425,7 @@ static void process_control_session(void) {
 
   ack_control_message();
   stop_tracing();
+  write_final_output();
 }
 
 int main(int argc, const char** argv) {
@@ -449,7 +444,12 @@ int main(int argc, const char** argv) {
 
   chdir_to_tracing();
   open_control_fd(argv[1]);
-  open_output_fd();
+
+  unlink("/tmp/ftrace_helper_out");
+  out_fd = open("/tmp/ftrace_helper_tmp", O_RDWR | O_TRUNC | O_CREAT, 0644);
+  check(out_fd >= 0);
+  check(0 == unlink("/tmp/ftrace_helper_tmp"));
+
   while (1) {
     process_control_session();
   }
