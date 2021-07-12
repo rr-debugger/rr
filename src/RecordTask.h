@@ -565,6 +565,12 @@ public:
    */
   bool may_reap();
 
+  /**
+   * Reaps a task-exit notification, thus detaching us from the tracee.
+   * N.B.: If may_reap is false, this risks a deadlock.
+   */
+  void reap();
+
   bool waiting_for_pid_namespace_tasks_to_exit() const;
   int process_depth() const;
 

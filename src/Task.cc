@@ -119,23 +119,6 @@ void Task::reenable_cpuid_tsc() {
                         PR_SET_TSC, PR_TSC_ENABLE);
 }
 
-void Task::reap() {
-  ASSERT(this, !was_reaped);
-  LOG(debug) << "Reaping " << tid;
-  siginfo_t info;
-  memset(&info, 0, sizeof(info));
-  int ret = waitid(P_PID, tid, &info, WEXITED | WNOHANG);
-  if (ret != 0) {
-    FATAL() << "Unexpected wait status for tid " << tid;
-  }
-  /* The sid_pid == 0 case here is the same as the case below where we're the
-   * group leader whose pid gets stolen.
-   */
-  DEBUG_ASSERT(info.si_pid == tid ||
-               info.si_pid == 0);
-  was_reaped = true;
-}
-
 void Task::wait_exit() {
   siginfo_t info;
   LOG(debug) << "Waiting for exit of " << tid;

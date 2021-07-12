@@ -142,12 +142,6 @@ public:
   void reenable_cpuid_tsc();
 
   /**
-   * Reaps a task-exit notification, thus detaching us from the tracee.
-   * N.B.: If may_reap is false, this risks a deadlock.
-   */
-  void reap();
-
-  /**
    * Wait for the task to exit, but do not reap/detach yet.
    */
   void wait_exit();
