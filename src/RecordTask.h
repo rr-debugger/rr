@@ -571,6 +571,12 @@ public:
    */
   void reap();
 
+  /**
+   * Return true if the status of this has changed, but don't
+   * block.
+   */
+  bool try_wait();
+
   bool waiting_for_pid_namespace_tasks_to_exit() const;
   int process_depth() const;
 

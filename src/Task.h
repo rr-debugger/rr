@@ -664,11 +664,6 @@ public:
    */
   void wait(double interrupt_after_elapsed = -1);
   /**
-   * Return true if the status of this has changed, but don't
-   * block.
-   */
-  bool try_wait();
-  /**
    * Return true if an unexpected exit was already detected for this task and
    * it is ready to be reported.
    */

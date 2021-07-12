@@ -2189,54 +2189,6 @@ void Task::did_waitpid(WaitStatus status) {
   did_wait();
 }
 
-bool Task::try_wait() {
-  if (wait_unexpected_exit()) {
-    return true;
-  }
-
-  // Check if there is a status change for us
-  WaitStatus status;
-  siginfo_t info;
-  memset(&info, 0, sizeof(siginfo_t));
-  int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOHANG);
-  ASSERT(this, 0 == ret || (-1 == ret && errno == ECHILD)) <<
-    "waitid(" << tid << ", WSTOPPED | NOHANG) failed with "
-                         << ret;
-  LOG(debug) << "waitid(" << tid << ", NOHANG) returns " << ret;
-  if (ret == 0 && info.si_pid == 0) {
-    return false;
-  }
-  if (ret == 0) {
-    status = WaitStatus(info);
-  } else if (ret == -1) {
-    ASSERT(this, errno == ECHILD);
-    // Either we died/are dying unexpectedly, or we were in exec and changed the tid.
-    // Try to differentiate the two situations by seeing if there is an exit
-    // notification ready for us to de-queue, in which case we synthesize an
-    // exit event (but don't actually reap the task, instead leaving that
-    // for the generic cleanup code).
-    int ret = waitid(P_PID, tid, &info, WEXITED | WNOWAIT | WNOHANG);
-    if (ret == 0) {
-      if (info.si_pid == tid) {
-        LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << tid;
-        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-      } else {
-        // This can happen when the task is in zap_pid_ns_processes waiting for all tasks
-        // in the pid-namespace to exit. It's not in a signal stop, but it's also not
-        // ready to be reaped yet, yet we're still tracing it. Don't wait on this
-        // task, we should be able to reap it later.
-        ASSERT(this, info.si_pid == 0);
-        return false;
-      }
-    } else {
-      ASSERT(this, ret == -1 && errno == ECHILD) << "waitpid failed with " << ret;
-      return false;
-    }
-  }
-  did_waitpid(status);
-  return true;
-}
-
 template <typename Arch>
 static void set_tls_from_clone_arch(Task* t, remote_ptr<void> tls) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
