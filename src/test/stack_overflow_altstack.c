@@ -3,7 +3,6 @@
 #include "util.h"
 
 static int depth = 0;
-static char buf[SIGSTKSZ];
 
 static void SEGV_handler(__attribute__((unused)) int sig,
                          __attribute__((unused)) siginfo_t* si,
@@ -31,10 +30,11 @@ int main(void) {
   struct rlimit r = { 500000, 500000 };
   struct sigaction act;
   stack_t stack;
+  size_t stack_size = SIGSTKSZ;
 
   stack.ss_flags = 0;
-  stack.ss_size = sizeof(buf);
-  stack.ss_sp = buf;
+  stack.ss_size = stack_size;
+  stack.ss_sp = mmap(NULL, stack_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   test_assert(0 == sigaltstack(&stack, NULL));
 
   act.sa_sigaction = SEGV_handler;
