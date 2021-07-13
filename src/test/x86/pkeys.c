@@ -2,6 +2,7 @@
 
 #include "util.h"
 
+#ifdef PKEY_DISABLE_ACCESS
 static void wrpkru(unsigned int pkru) {
   unsigned int eax = pkru;
   unsigned int ecx = 0;
@@ -48,3 +49,10 @@ int main(void) {
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
+#else
+int main(void) {
+  atomic_puts("pkeys not supported on the machine compiling this test, skipping");
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}
+#endif
