@@ -401,8 +401,7 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
   // Use an on-stack first segment that should be adequate for most cases. A
   // simple syscall event takes 320 bytes currently. The default Capnproto
   // implementation does a calloc(8192) for the first segment.
-  word buf[reasonable_frame_message_words];
-  memset(buf, 0, sizeof(buf));
+  word buf[reasonable_frame_message_words] = {};
   MallocMessageBuilder frame_msg(buf);
   trace::Frame::Builder frame = frame_msg.initRoot<trace::Frame>();
 
