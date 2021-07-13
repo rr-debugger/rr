@@ -421,6 +421,10 @@ enum {
 #define CAP_PERFMON 38
 #endif
 
+#ifndef SEGV_PKUERR
+#define SEGV_PKUERR 4
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */
