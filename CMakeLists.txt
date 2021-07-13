@@ -1566,8 +1566,11 @@ if(BUILD_TESTS)
     install(TARGETS test_lib
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
     install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/test-monitor
-                     ${CMAKE_CURRENT_BINARY_DIR}/bin/cpuid
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    if (x86ish)
+      install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/cpuid
+              DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    endif(x86ish)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CTestTestfile.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj)
   endif(INSTALL_TESTSUITE)
