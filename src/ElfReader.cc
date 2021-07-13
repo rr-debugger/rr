@@ -513,7 +513,7 @@ SupportedArch ElfFileReader::identify_arch(ScopedFd& fd) {
   }
 }
 
-bool ElfFileReader::is_x32_abi(ScopedFd& fd) {
+bool ElfFileReader::is_x32_abi(__attribute__((unused)) ScopedFd& fd) {
 #if defined(__x86_64__)
   static const int header_prefix_size = 20;
   char buf[header_prefix_size];
