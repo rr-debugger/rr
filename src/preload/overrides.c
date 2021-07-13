@@ -19,11 +19,21 @@
 
 #define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
 
+#define DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE 1
+#ifdef __GLIBC_PREREQ
+#if __GLIBC_PREREQ(2, 34)
+#undef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+#endif
+#endif
+
 static void fix_mutex_kind(pthread_mutex_t* mutex) {
   /* Disable priority inheritance. */
   mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
 }
 
+extern int __pthread_mutex_init(pthread_mutex_t* mutex,
+                                const pthread_mutexattr_t* attr);
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
 /*
  * We need to able to call directly to __pthread_mutex_lock and
  * __pthread_mutex_trylock because setting up indirect function pointers
@@ -32,10 +42,9 @@ static void fix_mutex_kind(pthread_mutex_t* mutex) {
  * to use a pthreads-based implementation). So before our pointers are set
  * up, call these.
  */
-extern int __pthread_mutex_init(pthread_mutex_t* mutex,
-                                const pthread_mutexattr_t* attr);
 extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
 extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
+#endif
 
 int pthread_mutex_init(pthread_mutex_t* mutex,
                        const pthread_mutexattr_t* attr) {
@@ -68,10 +77,14 @@ int pthread_mutex_init(pthread_mutex_t* mutex,
    are later rolled back if the transaction fails. */
 int pthread_mutex_lock(pthread_mutex_t* mutex) {
   fix_mutex_kind(mutex);
-  if (real_pthread_mutex_lock) {
-    return real_pthread_mutex_lock(mutex);
+  if (!real_pthread_mutex_lock) {
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+    return __pthread_mutex_lock(mutex);
+#else
+    real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
+#endif
   }
-  return __pthread_mutex_lock(mutex);
+  return real_pthread_mutex_lock(mutex);
 }
 
 int pthread_mutex_timedlock(pthread_mutex_t* mutex,
@@ -88,10 +101,14 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex) {
   fix_mutex_kind(mutex);
-  if (real_pthread_mutex_trylock) {
-    return real_pthread_mutex_trylock(mutex);
+  if (!real_pthread_mutex_trylock) {
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+    return __pthread_mutex_trylock(mutex);
+#else
+    real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+#endif
   }
-  return __pthread_mutex_trylock(mutex);
+  return real_pthread_mutex_trylock(mutex);
 }
 
 /**
