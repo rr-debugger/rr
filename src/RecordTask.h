@@ -118,8 +118,13 @@ public:
   void do_ptrace_exit_stop(WaitStatus exit_status);
   /**
    * Return the exit event.
+   * If write_child_tid is set, zero out child_tid now if applicable.
    */
-  void record_exit_event(int exitsig = 0);
+  enum WriteChildTid {
+    KERNEL_WRITES_CHILD_TID,
+    WRITE_CHILD_TID,
+  };
+  void record_exit_event(int exitsig = 0, WriteChildTid write_child_tid = KERNEL_WRITES_CHILD_TID);
   /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,

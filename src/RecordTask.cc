@@ -252,9 +252,7 @@ RecordTask::~RecordTask() {
   }
 }
 
-void RecordTask::record_exit_event(int fatal_signo) {
-  // Task::destroy has already done PTRACE_DETACH so the task can complete
-  // exiting.
+void RecordTask::record_exit_event(int fatal_signo, WriteChildTid write_child_tid) {
   // The kernel explicitly only clears the futex if the address space is shared.
   // If the address space has no other users then the futex will not be cleared
   // even if it lives in shared memory which other tasks can read.
@@ -266,6 +264,17 @@ void RecordTask::record_exit_event(int fatal_signo) {
      as->has_mapping(tid_futex)) {
     int val = 0;
     record_local(tid_futex, &val);
+    if (write_child_tid == WRITE_CHILD_TID) {
+      // Write the memory now, otherwise the kernel will write it later and that can
+      // race with the execution of other threads if we don't wait for this
+      // thread to fully exit.
+      // This could fail since the address space might have gone away/been switched
+      // by execve.
+      bool ok = true;
+      write_mem(tid_futex, 0, &ok);
+      // The kernel will do an unconditional futex wake on that location so we don't
+      // need to do it.
+    }
   }
 
   // Write the exit event here so that the value recorded above is captured.
@@ -2051,15 +2060,53 @@ bool RecordTask::try_wait() {
   return true;
 }
 
+static uint64_t read_pid_ns(const RecordTask* t) {
+  char buf[PATH_MAX];
+  sprintf(buf, "/proc/%d/ns/pid", t->tid);
+  char link[PATH_MAX];
+  int ret = readlink(buf, link, sizeof(link));
+  ASSERT(t, ret >= 0);
+  ASSERT(t, ret < (int)sizeof(link));
+  link[ret] = 0;
+  ASSERT(t, strncmp(link, "pid:[", 5) == 0);
+  char* end;
+  uint64_t result = strtoul(link + 5, &end, 10);
+  ASSERT(t, strcmp(end, "]") == 0);
+  return result;
+}
+
 bool RecordTask::waiting_for_pid_namespace_tasks_to_exit() const {
-  if (tg->tgid_own_namespace != 1 || thread_group()->task_set().size() > 1) {
+  if (tg->tgid_own_namespace != 1) {
     return false;
   }
-  // This is the last thread of pid-1 for its namespace. See if there
-  // are any other tasks in the pid namespace. We can just check if there
-  // are any threadgroup children of our threadgroup.
+  // This might be the last live thread for pid-1 in the pid namespace.
+  // Checking that it *is* the last live thread is tricky because other
+  // threads could unexpectedly die asynchronously :-(.
+  // See if there are any other tasks in the pid namespace.
+  // Note that due to setns there can be tasks in the pid namespace
+  // with parents outside the pid namespace other than our thread-group.
+
+  // If there are multiple threads in our threadgroup, they're in our
+  // pid namespace.
+  if (thread_group()->task_set().size() > 1) {
+    return true;
+  }
+  // If we have any child processes then those belong to our pid namespace
+  // (or a descendant).
   for (auto p : session().thread_group_map()) {
     if (p.second->parent() == tg.get()) {
+      return true;
+    }
+  }
+  // If there are any other tasks in the pid namespace at least one must be
+  // directly in the namespace.
+  uint64_t pid_ns = read_pid_ns(this);
+  for (auto it : session().tasks()) {
+    auto rt = static_cast<RecordTask*>(it.second);
+    if (rt == this) {
+      continue;
+    }
+    if (read_pid_ns(rt) == pid_ns) {
       return true;
     }
   }

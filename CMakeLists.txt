@@ -962,6 +962,7 @@ set(BASIC_TESTS
   pid_ns_kill_child_threads
   pid_ns_kill_child_zombie
   pid_ns_kill_threads
+  pid_ns_kill_threads_exit_wait
   pid_ns_reap
   pid_ns_segv
   pidfd

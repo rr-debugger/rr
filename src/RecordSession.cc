@@ -233,11 +233,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // letting this task complete its exit.
   bool may_wait_exit = !is_coredumping_signal(exit_status.fatal_sig()) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
+  t->record_exit_event(exit_status.fatal_sig(),
+    (!t->already_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
   if (!t->already_reaped()) {
     t->proceed_to_exit(may_wait_exit);
   }
   record_exit_trace_event(t, exit_status);
-  t->record_exit_event(exit_status.fatal_sig());
   t->do_ptrace_exit_stop(exit_status);
   if (may_wait_exit) {
     t->did_reach_zombie();
@@ -1643,7 +1644,8 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         t->destroy_buffers(nullptr, nullptr);
         WaitStatus exit_status = WaitStatus::for_fatal_sig(sig);
         record_exit_trace_event(t, exit_status);
-        t->record_exit_event(sig);
+        // Allow writing child_tid now because otherwise the write will race
+        t->record_exit_event(sig, RecordTask::WRITE_CHILD_TID);
         // On a real affected kernel, we probably would have never gotten here,
         // since the signal we would be seeing was not deterministic, but let's
         // be conservative and still try to emulate the ptrace stop.
