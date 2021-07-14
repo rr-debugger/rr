@@ -161,7 +161,7 @@ void Task::wait_exit() {
 }
 
 void Task::proceed_to_exit(bool wait) {
-  LOG(debug) << "Advancing tid " << tid << " to exit";
+  LOG(debug) << "Advancing tid " << tid << " to exit; wait=" << wait;
   int ret = fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
   ASSERT(this, ret == 0 || (ret == -1 && errno == ESRCH))
     << "Got ret=" << ret << " errno=" << errno;

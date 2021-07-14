@@ -237,7 +237,7 @@ RecordTask::~RecordTask() {
          (is_exit_syscall(ev().Syscall().number, ev().Syscall().regs.arch()) ||
           is_exit_group_syscall(ev().Syscall().number,
                                 ev().Syscall().regs.arch()))))) {
-    LOG(warn) << tid << " still has pending events.  From top down:";
+    LOG(info) << tid << " still has pending events.  From top down:";
     log_pending_events();
   }
 
@@ -1969,6 +1969,7 @@ void RecordTask::set_tid_and_update_serial(pid_t tid,
 
 bool RecordTask::may_reap() {
   if (emulated_stop_pending) {
+    LOG(debug) << "Declining to reap " << tid << "; emulated stop pending";
     // Don't reap until the emulated ptrace stop has been processed.
     return false;
   }
@@ -1976,8 +1977,11 @@ bool RecordTask::may_reap() {
   if (tid != real_tgid()) {
     return true;
   }
-  if (thread_group()->task_set().size() > 1) {
-    return false;
+  for (auto it : thread_group()->task_set()) {
+    if (&*it != this) {
+      LOG(debug) << "Declining to reap " << tid << "; leader of non-empty thread-group with active thread " << it->tid;
+      return false;
+    }
   }
   return true;
 }
