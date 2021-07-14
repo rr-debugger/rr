@@ -2323,7 +2323,10 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   result.status = STEP_CONTINUE;
 
-  RecordTask* prev_task = scheduler().current();
+  TaskUid prev_task_tuid;
+  if (scheduler().current()) {
+    prev_task_tuid = scheduler().current()->tuid();
+  }
   auto rescheduled = scheduler().reschedule(last_task_switchable);
   if (rescheduled.interrupted_by_signal) {
     // The scheduler was waiting for some task to become active, but was
@@ -2338,6 +2341,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     t->did_reach_zombie();
     return result;
   }
+  RecordTask* prev_task = find_task(prev_task_tuid);
   if (prev_task && prev_task->ev().type() == EV_SCHED) {
     if (prev_task != t) {
       // We did do a context switch, so record the SCHED event. Otherwise
