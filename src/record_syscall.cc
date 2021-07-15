@@ -1929,6 +1929,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(VIDIOC_G_CTRL):
     case IOCTL_MASK_SIZE(VIDIOC_G_OUTPUT):
     case IOCTL_MASK_SIZE(VIDIOC_S_CTRL):
+    case IOCTL_MASK_SIZE(VIDIOC_G_INPUT):
     case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH):
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;

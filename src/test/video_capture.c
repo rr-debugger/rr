@@ -51,6 +51,13 @@ static int open_device(void) {
     no_v4l2();
   }
 
+  uint32_t input = 0xdeadbeef;
+  ret = ioctl(fd, VIDIOC_G_INPUT, &input);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_G_INPUT\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_G_INPUT returns %d\n", device_name, input);
+  }
   return fd;
 }
 
