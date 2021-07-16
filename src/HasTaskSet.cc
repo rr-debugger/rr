@@ -17,4 +17,13 @@ void HasTaskSet::erase_task(Task* t) {
   tasks.erase(t);
 }
 
+Task* HasTaskSet::first_running_task() const {
+  for (auto t : task_set()) {
+    if (!t->already_exited() && !t->is_dying()) {
+      return t;
+    }
+  }
+  return nullptr;
+}
+
 } // namespace rr

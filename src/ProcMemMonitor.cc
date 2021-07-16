@@ -54,7 +54,10 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
     return;
   }
 
-  auto* task = static_cast<ReplayTask*>(*target->task_set().begin());
+  ReplayTask* task = static_cast<ReplayTask*>(target->first_running_task());
+  if (!task) {
+    return;
+  }
 
   for (auto& r : ranges) {
     auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);

@@ -63,7 +63,7 @@ static bool thread_group_in_exec(Task* t) {
     return false;
   }
   for (Task* tt : t->thread_group()->task_set()) {
-    if (tt == t) {
+    if (tt == t || t->already_exited()) {
       continue;
     }
     RecordTask* rt = static_cast<RecordTask*>(tt);
@@ -1033,10 +1033,11 @@ bool AddressSpace::add_breakpoint(remote_code_ptr addr, BreakpointType type) {
     ssize_t bkpt_size = bkpt_instruction_length(arch());
     // Grab a random task from the VM so we can use its
     // read/write_mem() helpers.
-    Task* t = *task_set().begin();
-    if (bkpt_size !=
-        t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
-                               bkpt_size, overwritten_data)) {
+    Task* t = first_running_task();
+    if (!t ||
+        bkpt_size !=
+            t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
+                                   bkpt_size, overwritten_data)) {
       return false;
     }
     t->write_bytes_helper(addr.to_data_ptr<uint8_t>(), bkpt_size,
@@ -1062,19 +1063,23 @@ void AddressSpace::remove_all_breakpoints() {
 void AddressSpace::suspend_breakpoint_at(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   if (it != breakpoints.end()) {
-    Task* t = *task_set().begin();
-    t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
-      bkpt_instruction_length(arch()), it->second.overwritten_data);
+    Task* t = first_running_task();
+    if (t) {
+      t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
+        bkpt_instruction_length(arch()), it->second.overwritten_data);
+    }
   }
 }
 
 void AddressSpace::restore_breakpoint_at(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   if (it != breakpoints.end()) {
-    Task* t = *task_set().begin();
-    t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
-      bkpt_instruction_length(arch()),
-      breakpoint_insn(arch()));
+    Task* t = first_running_task();
+    if (t) {
+      t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
+        bkpt_instruction_length(arch()),
+        breakpoint_insn(arch()));
+    }
   }
 }
 
@@ -1146,7 +1151,10 @@ bool AddressSpace::restore_watchpoints() {
 
 bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
                                            Watchpoint& watchpoint) {
-  Task* t = *task_set().begin();
+  Task* t = first_running_task();
+  if (!t) {
+    return false;
+  }
   bool valid = true;
   vector<uint8_t> value_bytes = watchpoint.value_bytes;
   for (size_t i = 0; i < value_bytes.size(); ++i) {
@@ -1956,7 +1964,10 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
   if (task_set().empty()) {
     return;
   }
-  Task* t = *task_set().begin();
+  Task* t = first_running_task();
+  if (!t) {
+    return;
+  }
   auto ptr = it->first.to_data_ptr<uint8_t>();
   auto data = it->second.overwritten_data;
   if (bkpt_instruction_length(arch()) == 1) {
@@ -2323,13 +2334,7 @@ void AddressSpace::fd_tables_changed() {
   }
   DEBUG_ASSERT(task_set().size() != 0);
   uint8_t fdt_uniform = true;
-  RecordTask* rt = nullptr;
-  // Find a suitable task
-  for (auto* t : task_set()) {
-    if (!t->is_dying()) {
-      rt = static_cast<RecordTask*>(t);
-    }
-  }
+  RecordTask* rt = static_cast<RecordTask*>(first_running_task());
   if (!rt) {
     return;
   }

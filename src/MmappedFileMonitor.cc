@@ -96,7 +96,7 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
               // If the task here has execed, we may not be able to record its
               // memory any longer, so loop through all tasks in this address
               // space in turn in case any *didn't* exec.
-              if (static_cast<RecordTask*>(tt)->record_remote_fallible(km.intersect(mr)) > 0) {
+              if (!tt->already_exited() && static_cast<RecordTask*>(tt)->record_remote_fallible(km.intersect(mr)) > 0) {
                 break;
               }
             }

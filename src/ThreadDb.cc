@@ -46,7 +46,10 @@ ps_err_e ps_pdread(struct ps_prochandle* h, psaddr_t addr, void* buffer,
   // We need any task associated with the thread group.  Here we assume
   // that all the tasks in the thread group share VM, which is enforced
   // by clone(2).
-  rr::Task* task = *h->thread_group->task_set().begin();
+  rr::Task* task = h->thread_group->first_running_task();
+  if (!task) {
+    return PS_ERR;
+  }
   task->read_bytes_helper(uaddr, len, buffer, &ok);
   LOG(debug) << "ps_pdread " << ok;
   return ok ? PS_OK : PS_ERR;

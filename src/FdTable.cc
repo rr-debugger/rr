@@ -151,6 +151,9 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
       return;
     }
     RecordTask* rt = static_cast<RecordTask*>(t);
+    if (rt->already_exited()) {
+      continue;
+    }
 
     AddressSpace* vm = rt->vm().get();
     if (vms_updated.find(vm) != vms_updated.end()) {
