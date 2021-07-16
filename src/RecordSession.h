@@ -119,10 +119,9 @@ public:
   RecordResult record_step();
 
   /**
-   * Flush buffers and write a termination record to the trace. Don't call
-   * record_step() after this.
+   * SIGKILL all tracees.
    */
-  void terminate_recording(bool do_sigterm_detached);
+  void terminate_tracees();
 
   /**
    * Close trace output without flushing syscall buffers or writing
@@ -190,12 +189,6 @@ public:
   virtual TraceStream* trace_stream() override { return &trace_out; }
 
   /**
-   * Like kill_all_tasks, but makes sure to record the exits of the task we
-   * killed.
-   */
-  void kill_all_record_tasks();
-
-  /**
    * Send SIGTERM to all detached tasks and wait for them to finish.
    */
   void term_detached_tasks();
@@ -235,7 +228,6 @@ private:
   void desched_state_changed(RecordTask* t);
   bool prepare_to_inject_signal(RecordTask* t, StepState* step_state);
   void task_continue(const StepState& step_state);
-  bool can_end();
 
   TraceWriter trace_out;
   Scheduler scheduler_;

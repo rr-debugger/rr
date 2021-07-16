@@ -2307,20 +2307,18 @@ RecordSession::RecordSession(const std::string& exe_path,
   on_create(t);
 }
 
-bool RecordSession::can_end() {
-  if (wait_for_all_) {
-    return task_map.empty();
-  }
-  return initial_thread_group->task_set().empty();
-}
-
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 
-  if (can_end()) {
+  if (task_map.empty()) {
     result.status = STEP_EXITED;
     result.exit_status = initial_thread_group->exit_status;
     return result;
+  }
+
+  if (!wait_for_all_ && initial_thread_group->task_set().empty()) {
+    // SIGKILL any tasks we haven't already killed.
+    terminate_tracees();
   }
 
   result.status = STEP_CONTINUE;
@@ -2435,28 +2433,16 @@ RecordSession::RecordResult RecordSession::record_step() {
   return result;
 }
 
-void RecordSession::terminate_recording(bool do_sigterm_detached) {
-  RecordTask* t = scheduler().current();
-  if (t) {
-    t->maybe_flush_syscallbuf();
+void RecordSession::terminate_tracees() {
+  for (auto& v : task_map) {
+    RecordTask* t = static_cast<RecordTask*>(v.second);
+    if (!t->detached_proxy && !t->sent_shutdown_kill) {
+      LOG(debug) << "Terminating tracee " << t->tid;
+      ::kill(t->rec_tid, SIGKILL);
+      t->sent_shutdown_kill = true;
+      t->emulate_SIGCONT();
+    }
   }
-
-  LOG(info) << "Processing termination request ...";
-
-  kill_all_record_tasks();
-  t = nullptr; // t is now deallocated
-  close_trace_writer(TraceWriter::CLOSE_OK);
-  // We finish our own recording first before trying to SIGTERM tasks that we
-  // detached; That way, if these tasks don't finish and we get SIGTERM'd
-  // again, we won't leave behind a corrupt trace.
-  if (do_sigterm_detached) {
-    term_detached_tasks();
-  }
-  while (!task_map.empty()) {
-    Task* t = task_map.rbegin()->second;
-    delete t;
-  }
-  assert(task_map.empty());
 }
 
 void RecordSession::term_detached_tasks() {
@@ -2478,66 +2464,6 @@ void RecordSession::term_detached_tasks() {
     pid_t ret = ::waitpid(t->rec_tid, &status, WEXITED);
     if (ret != t->rec_tid) {
       LOG(warn) << "Unexpected wait status " << WaitStatus(status) << " while waiting for detached child " << t->rec_tid;
-    }
-  }
-}
-
-static bool kill_order(RecordTask* t1, RecordTask* t2) {
-  // Non-thread-group leaders are killed before thread-group-leaders
-  if (t1->tid != t1->real_tgid() && t2->tid == t2->real_tgid()) {
-    return true;
-  }
-  // Order by depth in the process parent/child tree to ensure pid-namespace children are killed
-  // before their parents.
-  if (t1->process_depth() > t2->process_depth()) {
-    return true;
-  }
-  return false;
-}
-
-void RecordSession::kill_all_record_tasks() {
-  LOG(debug) << "Killing all tasks ...";
-  /* First we complete any coredumps in progress. */
-  vector<RecordTask*> tasks;
-  for (auto& v : task_map) {
-    RecordTask* t = static_cast<RecordTask*>(v.second);
-    if (t->waiting_for_ptrace_exit && !t->seen_ptrace_exit_event) {
-      t->wait();
-      if (!t->already_exited()) {
-        record_exit_trace_event(t, t->status());
-        t->record_exit_event(t->status().fatal_sig());
-      }
-      t->did_kill();
-      t->fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
-    }
-    tasks.push_back(t);
-  }
-  /* Linux expects threads group leaders to survive until the last
-   * member of the thread group has exited, so accomodate that
-   * by killing all non-thread-group-leaders before their
-   * thread-group leaders. We also need to make sure we kill
-   * pid-namespace children before the pid-namespace init process,
-   * since the latter can block on the death of the former.
-   */
-  sort(tasks.begin(), tasks.end(), kill_order);
-  for (auto& t : tasks) {
-    if (t->detached_proxy) {
-      // If the task was detached and none of our tasks explicitly waited for
-      // it, we let the detached task just run freely (the zombie proxy we
-      // keep around will get reaped when we destroy the RecordTask itself)
-      continue;
-    }
-    if (t->already_reaped()) {
-      continue;
-    }
-    if (t->waiting_for_ptrace_exit) {
-      t->reap();
-    } else {
-      WaitStatus status = t->kill();
-      if (!t->already_exited()) {
-        record_exit_trace_event(t, status);
-        t->record_exit_event(status.fatal_sig());
-      }
     }
   }
 }

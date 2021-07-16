@@ -12,6 +12,8 @@ static void* do_thread(__attribute__((unused)) void* p) {
 
 static void do_grandchild(void) {
   pthread_t thread;
+  /* Reduce thread priority so rr doesn't schedule these threads unless we want it to */
+  setpriority(PRIO_PROCESS, 0, 5);
   for (int i = 0; i < NUM_THREADS_PER_GRANDCHILD; ++i) {
     pthread_create(&thread, NULL, do_thread, NULL);
   }

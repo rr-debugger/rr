@@ -197,6 +197,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       waiting_for_zombie(false),
       waiting_for_ptrace_exit(false),
       retry_syscall_patching(false),
+      sent_shutdown_kill(false),
       tick_request_override((TicksRequest)0) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
@@ -280,9 +281,8 @@ void RecordTask::record_exit_event(int fatal_signo, WriteChildTid write_child_ti
   // Write the exit event here so that the value recorded above is captured.
   // Don't flush syscallbuf. Whatever triggered the exit (syscall, signal)
   // should already have flushed it, if it was running. If it was blocked,
-  // then the syscallbuf would already have been flushed too. The exception
-  // is kill_all_tasks() in which case it's OK to just drop the last chunk of
-  // execution. Trying to flush syscallbuf for an exiting task could be bad,
+  // then the syscallbuf would already have been flushed too. Trying to flush
+  // syscallbuf for an exiting task could be bad,
   // e.g. it could be in the middle of syscallbuf code that's supposed to be
   // atomic. For the same reasons don't allow syscallbuf to be reset here.
   record_event(Event::exit(), DONT_FLUSH_SYSCALLBUF, DONT_RESET_SYSCALLBUF);

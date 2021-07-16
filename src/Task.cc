@@ -175,7 +175,7 @@ WaitStatus Task::kill() {
     return this->status();
   }
   /* This call is racy. There is basically three situations:
-  * 1. By the time the kernel gets arround to delivering this signal,
+  * 1. By the time the kernel gets around to delivering this signal,
   *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an earlier
   *    fatal signal or group exit from a sibling task that the kernel
   *    didn't report to us yet), that we didn't observe yet (if we had, we

@@ -577,7 +577,7 @@ static RecordSession* static_session;
 // later.
 void force_close_record_session() {
   if (static_session) {
-    static_session->terminate_recording(false);
+    static_session->close_trace_writer(TraceWriter::CLOSE_ERROR);
   }
 }
 
@@ -651,6 +651,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   install_signal_handlers();
 
   RecordSession::RecordResult step_result;
+  bool did_term_detached_tasks = false;
   do {
     bool done_initial_exec = session->done_initial_exec();
     step_result = session->record_step();
@@ -658,9 +659,16 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
     if (!done_initial_exec && session->done_initial_exec() && flags.output_trace_dir.empty()) {
       session->trace_writer().make_latest_trace();
     }
-  } while (step_result.status == RecordSession::STEP_CONTINUE && !term_requested);
+    if (term_requested) {
+      session->terminate_tracees();
+      if (!did_term_detached_tasks) {
+        session->term_detached_tasks();
+        did_term_detached_tasks = true;
+      }
+    }
+  } while (step_result.status == RecordSession::STEP_CONTINUE);
 
-  session->terminate_recording(term_requested > 0);
+  session->close_trace_writer(TraceWriter::CLOSE_OK);
   static_session = nullptr;
 
   switch (step_result.status) {
