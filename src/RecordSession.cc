@@ -306,9 +306,11 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
   // callers of this (deprecated) interface all follow a common pattern. If we
   // can't patch the caller, this is a fatal error, since the recording will
   // otherwise be broken.
-  if (is_in_vsyscall(t->regs().ip())) {
+  remote_code_ptr ip = t->regs().ip();
+  if (is_in_vsyscall(ip)) {
+    remote_ptr<void> sp = t->regs().sp();
     // The kernel assumes the return address is on the stack - we do the same
-    remote_ptr<remote_code_ptr> ret_addr_addr = t->regs().sp().as_int();
+    remote_ptr<remote_code_ptr> ret_addr_addr = sp.cast<remote_code_ptr>();
     remote_code_ptr ret_addr = t->read_mem(ret_addr_addr);
 
     // Skip this syscall. We will attempt to patch it to the vdso entry and
@@ -342,8 +344,9 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // Now that we're in a sane state, ask the Moneypatcher to try and patch
     // that.
     bool patch_ok = t->vm()->monkeypatcher().try_patch_vsyscall_caller(t, ret_addr);
-    ASSERT(t, patch_ok) << "The tracee issues a vsyscall, but we failed to moneypatch the\n"
-            << "caller. Recording will not succeed. Exiting.";
+    ASSERT(t, patch_ok) << "The tracee issues a vsyscall to " << ip
+            << " but we failed to moneypatch the caller (return address "
+            << ret_addr << ", sp=" << sp << "). Recording will not succeed. Exiting.";
 
     // Reset to the start of the region and continue
     regs = t->regs();
