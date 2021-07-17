@@ -1,0 +1,11 @@
+source `dirname $0`/util.sh
+
+exe=simple$bitness
+cp ${OBJDIR}/bin/$exe $exe-$nonce
+just_record $exe-$nonce
+if [[ `rr dump -e latest-trace|grep --count TraceTaskEvent::EXEC` != 1 ]]; then
+    failed "Wrong number of TraceTaskEvent::EXECs"
+fi
+if [[ `rr dump -e latest-trace|grep --count TraceTaskEvent::EXIT` != 1 ]]; then
+    failed "Wrong number of TraceTaskEvent::EXITs"
+fi

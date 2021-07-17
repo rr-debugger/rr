@@ -1445,6 +1445,7 @@ set(TESTS_WITHOUT_PROGRAM
   syscallbuf_timeslice_250
   trace_version
   term_trace_cpu
+  trace_events
   tty
   unmap_vdso
   unwind_on_signal

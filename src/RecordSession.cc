@@ -233,12 +233,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // letting this task complete its exit.
   bool may_wait_exit = !is_coredumping_signal(exit_status.fatal_sig()) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
+  record_exit_trace_event(t, exit_status);
   t->record_exit_event(exit_status.fatal_sig(),
     (!t->already_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
   if (!t->already_reaped()) {
     t->proceed_to_exit(may_wait_exit);
   }
-  record_exit_trace_event(t, exit_status);
   t->do_ptrace_exit_stop(exit_status);
   if (may_wait_exit) {
     t->did_reach_zombie();
