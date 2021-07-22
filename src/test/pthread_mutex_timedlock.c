@@ -5,7 +5,7 @@
 int main(void) {
   pthread_mutexattr_t attr;
   pthread_mutex_t mutex;
-  struct timespec abstime = {};
+  struct timespec abstime = {0,0};
 
   pthread_mutexattr_init(&attr);
   pthread_mutex_init(&mutex, &attr);
