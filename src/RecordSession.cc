@@ -302,7 +302,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
 
   // Special case: If the tracee issues a vsyscall, we will get a seccomp trap,
   // but no syscall traps whatsover. In particular, we wouldn't see it during
-  // replay either. We try to moneypatch the caller on the assumption that known
+  // replay either. We try to monkeypatch the caller on the assumption that known
   // callers of this (deprecated) interface all follow a common pattern. If we
   // can't patch the caller, this is a fatal error, since the recording will
   // otherwise be broken.
@@ -341,11 +341,11 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
 
     ASSERT(t, t->regs().ip().undo_executed_bkpt(t->arch()) == ret_addr);
 
-    // Now that we're in a sane state, ask the Moneypatcher to try and patch
+    // Now that we're in a sane state, ask the Monkeypatcher to try and patch
     // that.
     bool patch_ok = t->vm()->monkeypatcher().try_patch_vsyscall_caller(t, ret_addr);
     ASSERT(t, patch_ok) << "The tracee issues a vsyscall to " << ip
-            << " but we failed to moneypatch the caller (return address "
+            << " but we failed to monkeypatch the caller (return address "
             << ret_addr << ", sp=" << sp << "). Recording will not succeed. Exiting.";
 
     // Reset to the start of the region and continue
