@@ -38,8 +38,11 @@ WEAK_ALIAS(time, __vdso_time)
 WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
 WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 
-// Dummy versioned symbol to trigger presence of DT_VERDEF/DT_VERSYM/DT_VERDEFNUM:
-.symver __vdso_time,__vdso_time@VER_1
+.symver __vdso_gettimeofday,__vdso_gettimeofday@LINUX_2.6
+.symver __vdso_clock_getres,__vdso_clock_getres@LINUX_2.6
+.symver __vdso_time,__vdso_time@LINUX_2.6
+.symver __vdso_clock_gettime,__vdso_clock_gettime@LINUX_2.6
+.symver __vdso_getcpu,__vdso_getcpu@LINUX_2.6
 
 #elif defined(__i386__)
 
@@ -92,8 +95,11 @@ WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
 WEAK_ALIAS(clock_gettime64, __vdso_clock_gettime64)
 WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 
-// Dummy versioned symbol to trigger presence of DT_VERDEF/DT_VERSYM/DT_VERDEFNUM:
-.symver __vdso_time,__vdso_time@VER_1
+.symver __vdso_gettimeofday,__vdso_gettimeofday@LINUX_2.6
+.symver __vdso_clock_getres,__vdso_clock_getres@LINUX_2.6
+.symver __vdso_time,__vdso_time@LINUX_2.6
+.symver __vdso_clock_gettime,__vdso_clock_gettime@LINUX_2.6
+.symver __vdso_getcpu,__vdso_getcpu@LINUX_2.6
 
 #elif defined(__aarch64__)
 // XXXkhuey there should probably be something here
