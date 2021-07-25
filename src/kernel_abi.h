@@ -446,6 +446,11 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(sockaddr);
 
+  struct sockaddr_storage {
+    char sa_data[128];
+  };
+  RR_VERIFY_TYPE(sockaddr_storage);
+
   struct sockaddr_un {
     unsigned_short sun_family;
     char sun_path[108];

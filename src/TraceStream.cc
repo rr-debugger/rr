@@ -503,6 +503,12 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
           o.setDevice(opened.device);
           o.setInode(opened.inode);
         }
+      } else if (e.socket_addrs) {
+        auto addrs = data.initSocketAddrs();
+        auto localAddr = (*e.socket_addrs.get())[0];
+        auto remoteAddr = (*e.socket_addrs.get())[1];
+        addrs.setLocalAddr(Data::Reader(reinterpret_cast<uint8_t*>(&localAddr), sizeof(localAddr)));
+        addrs.setRemoteAddr(Data::Reader(reinterpret_cast<uint8_t*>(&remoteAddr), sizeof(remoteAddr)));
       }
       break;
     }
@@ -675,6 +681,9 @@ TraceFrame TraceReader::read_frame() {
           }
           break;
         }
+        case trace::Frame::Event::Syscall::Extra::SOCKET_ADDRS:
+          /* rr doesn't actually use socketAddrs for replay */
+          break;
         default:
           FATAL() << "Unknown syscall type";
           break;

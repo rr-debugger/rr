@@ -325,6 +325,13 @@ std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
  */
 bool uses_invisible_guard_page();
 
+/**
+ * Search /proc/net/ for a socket of the correct family matching the provided fd.
+ * If found, returns the local and remote addresses in out and returns true.
+ * Otherwise, returns false.
+ */
+bool read_proc_net_socket_addresses(Task* t, int fd, std::array<typename NativeArch::sockaddr_storage, 2>& out);
+
 bool copy_file(int dest_fd, int src_fd);
 
 #if defined(__has_feature)

@@ -5660,6 +5660,20 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
                 "of tracees";
 }
 
+static void maybe_process_new_socket(RecordTask* t, int fd) {
+  if (t->regs().syscall_failed()) {
+    return;
+  }
+
+  std::array<typename NativeArch::sockaddr_storage, 2> socket_addresses;
+  if (!read_proc_net_socket_addresses(t, fd, socket_addresses)) {
+    return;
+  }
+
+  auto& syscall = t->ev().Syscall();
+  syscall.socket_addrs = make_shared<std::array<typename NativeArch::sockaddr_storage, 2>>(std::move(socket_addresses));
+}
+
 template <typename Arch>
 static string extra_expected_errno_info(RecordTask* t,
                                         TaskSyscallState& syscall_state) {
@@ -6117,6 +6131,14 @@ static void rec_process_syscall_arch(RecordTask* t,
         r.set_syscall_result(-EACCES);
         t->set_regs(r);
       }
+      maybe_process_new_socket(t, r.arg1());
+      break;
+    }
+
+    case Arch::accept:
+    case Arch::accept4: {
+      Registers r = t->regs();
+      maybe_process_new_socket(t, r.syscall_result());
       break;
     }
 
@@ -6229,6 +6251,18 @@ static void rec_process_syscall_arch(RecordTask* t,
             for (auto& m : msgs) {
               check_scm_rights_fd<Arch>(t, m.msg_hdr);
             }
+            break;
+          }
+          case SYS_CONNECT: {
+            auto args = t->read_mem(
+                remote_ptr<typename Arch::connect_args>(t->regs().arg2()));
+            maybe_process_new_socket(t, args.sockfd);
+            break;
+          }
+          case SYS_ACCEPT:
+          case SYS_ACCEPT4: {
+            Registers r = t->regs();
+            maybe_process_new_socket(t, r.syscall_result());
             break;
           }
         }

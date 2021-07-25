@@ -3,6 +3,7 @@
 #ifndef RR_EVENT_H_
 #define RR_EVENT_H_
 
+#include <memory>
 #include <ostream>
 #include <stack>
 #include <string>
@@ -235,6 +236,7 @@ struct SyscallEvent {
   int64_t write_offset;
   std::vector<int> exec_fds_to_close;
   std::vector<OpenedFd> opened;
+  std::shared_ptr<std::array<typename NativeArch::sockaddr_storage, 2>> socket_addrs;
 
   SyscallState state;
   // Syscall number.

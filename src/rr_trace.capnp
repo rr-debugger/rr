@@ -310,6 +310,10 @@ struct Frame {
         writeOffset @23 :Int64;
         execFdsToClose @24 :List(Fd);
         openedFds @25 :List(OpenedFd);
+        socketAddrs :group {
+          localAddr @28 :Data;
+          remoteAddr @29 :Data;
+        }
       }
     }
     patchAfterSyscall @26: Void;
