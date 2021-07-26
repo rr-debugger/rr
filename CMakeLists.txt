@@ -1318,6 +1318,7 @@ set(TESTS_WITH_PROGRAM
   sysconf_onln
   target_fork
   target_process
+  tcp_sockets
   term_nonmain
   term_rr
   term_trace_reset

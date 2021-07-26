@@ -1,0 +1,11 @@
+source `dirname $0`/util.sh
+
+exe=tcp_sockets$bitness
+cp ${OBJDIR}/bin/$exe $exe-$nonce
+just_record $exe-$nonce
+if [[ `rr dump --socket-addresses latest-trace|grep --count 127.0.0.1` != 2 ]]; then
+    failed "Wrong number of '127.0.0.1's"
+fi
+if [[ `rr dump --socket-addresses latest-trace|grep --count ::1:` != 2 ]]; then
+    failed "Wrong number of '::1:'s"
+fi

@@ -681,9 +681,21 @@ TraceFrame TraceReader::read_frame() {
           }
           break;
         }
-        case trace::Frame::Event::Syscall::Extra::SOCKET_ADDRS:
-          /* rr doesn't actually use socketAddrs for replay */
+        case trace::Frame::Event::Syscall::Extra::SOCKET_ADDRS: {
+          auto addrs = data.getSocketAddrs();
+          syscall_ev.socket_addrs = make_shared<std::array<typename NativeArch::sockaddr_storage, 2>>();
+          Data::Reader local = addrs.getLocalAddr();
+          if (local.size() != sizeof(NativeArch::sockaddr_storage)) {
+            FATAL() << "Invalid sockaddr length";
+          }
+          memcpy(&(*syscall_ev.socket_addrs.get())[0], local.begin(), sizeof(NativeArch::sockaddr_storage));
+          Data::Reader remote = addrs.getRemoteAddr();
+          if (remote.size() != sizeof(NativeArch::sockaddr_storage)) {
+            FATAL() << "Invalid sockaddr length";
+          }
+          memcpy(&(*syscall_ev.socket_addrs.get())[1], remote.begin(), sizeof(NativeArch::sockaddr_storage));
           break;
+        }
         default:
           FATAL() << "Unknown syscall type";
           break;

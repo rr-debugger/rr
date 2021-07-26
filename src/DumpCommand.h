@@ -22,6 +22,7 @@ struct DumpFlags {
   bool dump_task_events;
   bool raw_dump;
   bool dump_statistics;
+  bool dump_socket_addrs;
   int only_tid;
 
   DumpFlags()
@@ -31,6 +32,7 @@ struct DumpFlags {
         dump_task_events(false),
         raw_dump(false),
         dump_statistics(false),
+        dump_socket_addrs(false),
         only_tid(0) {}
 };
 
