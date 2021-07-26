@@ -6282,11 +6282,35 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::fcntl:
+    case Arch::fcntl64: {
+      // Restore the registers that we may have altered.
+      Registers r = t->regs();
+      r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers.arg2());
+      r.set_arg3(syscall_state.syscall_entry_registers.arg3());
+      t->set_regs(r);
+
+      if (!r.syscall_failed() && r.arg3() == O_DIRECT) {
+        int fd = r.arg1();
+        // O_DIRECT can impose unknown alignment requirements, in which case
+        // syscallbuf records will not be properly aligned and will cause I/O
+        // to fail. Disable syscall buffering for O_DIRECT files.
+        // If it already has a monitor (e.g. somebody tries to O_DIRECT
+        // /proc/pid/mem or something) then we don't need to do anything.
+        // since syscall buffering is already disabled.
+        if (!t->fd_table()->get_monitor(fd)) {
+          LOG(info) << "Installing FileMonitor for O_DIRECT " << fd;
+          FileMonitor* file_monitor = new FileMonitor();
+          t->fd_table()->add_monitor(t, fd, file_monitor);
+        }
+      }
+      break;
+    }
+
     case Arch::close:
     case Arch::dup2:
     case Arch::dup3:
-    case Arch::fcntl:
-    case Arch::fcntl64:
     case Arch::futex_time64:
     case Arch::futex:
     case Arch::ioctl:
