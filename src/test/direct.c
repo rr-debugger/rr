@@ -22,6 +22,17 @@ int main(void) {
   ret = pread(fd, p, SIZE, 0);
   test_assert(ret == SIZE);
 
+  fd = open("test.out", O_RDWR | O_CREAT | O_TRUNC, 0600);
+  test_assert(fd >= 0);
+  ret = fcntl(fd, F_SETFL, O_DIRECT);
+  test_assert(ret == 0);
+
+  ret = write(fd, p, SIZE);
+  test_assert(ret == SIZE);
+
+  ret = pread(fd, p, SIZE, 0);
+  test_assert(ret == SIZE);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
