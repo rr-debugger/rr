@@ -70,6 +70,14 @@ static int open_device(void) {
                   device_name, qec.id, qec.type, qec.name);
   }
 
+  enum v4l2_priority prio = V4L2_PRIORITY_UNSET;
+  ret = ioctl(fd, VIDIOC_G_PRIORITY, &prio);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_G_PRIORITY\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_G_PRIORITY returns prio=%d\n", device_name, prio);
+  }
+
   return fd;
 }
 
