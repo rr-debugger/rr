@@ -58,6 +58,18 @@ static int open_device(void) {
   } else {
     atomic_printf("%s VIDIOC_G_INPUT returns %d\n", device_name, input);
   }
+
+  struct v4l2_query_ext_ctrl qec;
+  memset(&qec, 0, sizeof(qec));
+  qec.id = V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
+  ret = ioctl(fd, VIDIOC_QUERY_EXT_CTRL, &qec);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_QUERY_EXT_CTRL\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_QUERY_EXT_CTRL returns id=%d, type=%d, name=%s\n",
+                  device_name, qec.id, qec.type, qec.name);
+  }
+
   return fd;
 }
 
