@@ -78,6 +78,17 @@ static int open_device(void) {
     atomic_printf("%s VIDIOC_G_PRIORITY returns prio=%d\n", device_name, prio);
   }
 
+  struct v4l2_queryctrl qc;
+  memset(&qc, 0, sizeof(qc));
+  qc.id = V4L2_CTRL_FLAG_NEXT_CTRL;
+  ret = ioctl(fd, VIDIOC_QUERYCTRL, &qc);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_QUERYCTRL\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_QUERYCTRL returns id=%d, type=%d, name=%s\n",
+                  device_name, qc.id, qc.type, qc.name);
+  }
+
   return fd;
 }
 
