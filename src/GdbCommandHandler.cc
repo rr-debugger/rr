@@ -210,7 +210,8 @@ static string gdb_unescape(const string& str) {
   }
   stringstream ss;
   for (size_t i = 0; i < len; i += 2) {
-    const char *hex_str = str.substr(i, 2).c_str();
+    string substr = str.substr(i, 2);
+    const char *hex_str = substr.c_str();
     char *ptr = nullptr;
     ss << (char)strtoul(hex_str, &ptr, 16);
     // check for unexpected character
