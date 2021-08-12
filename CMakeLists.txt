@@ -1406,6 +1406,7 @@ set(TESTS_WITHOUT_PROGRAM
   mprotect_step
   nested_detach
   nested_detach_kill
+  nested_release
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   post_exec_fpu_regs

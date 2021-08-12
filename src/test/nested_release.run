@@ -1,0 +1,12 @@
+source `dirname $0`/util.sh
+just_record $(which rr) "record --nested=release echo NOT-IN-REPLAY"
+# Replay outer
+replay
+if [[ $(grep -l NOT-IN-REPLAY replay.out) ]]; then
+    failed ": token NOT-IN-REPLAY in replay.out:"
+        echo "--------------------------------------------------"
+        cat replay.out
+        echo "--------------------------------------------------"
+fi
+check_record
+
