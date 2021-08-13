@@ -420,6 +420,7 @@ static void unpatch_extended_jumps(Monkeypatcher& patcher,
     uint64_t return_addr;
     if (!match_extended_jump_patch<ExtendedJumpPatch>(bytes, &return_addr)) {
       ASSERT(t, false) << "Failed to match extended jump patch at " << patch.first;
+      return;
     }
 
     std::vector<uint8_t> syscall = rr::syscall_instruction(t->arch());
