@@ -888,6 +888,7 @@ set(BASIC_TESTS
   ioctl_sg
   ioctl_tty
   ioctl_vt
+  ioprio
   x86/ioperm
   x86/iopl
   join_threads

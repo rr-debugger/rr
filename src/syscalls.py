@@ -1383,8 +1383,8 @@ waitid = IrregularEmulatedSyscall(x86=284, x64=247, generic=95)
 add_key = EmulatedSyscall(x86=286, x64=248, generic=217)
 request_key = UnsupportedSyscall(x86=287, x64=249, generic=218)
 keyctl = IrregularEmulatedSyscall(x86=288, x64=250, generic=219)
-ioprio_set = UnsupportedSyscall(x86=289, x64=251, generic=30)
-ioprio_get = UnsupportedSyscall(x86=290, x64=252, generic=31)
+ioprio_set = EmulatedSyscall(x86=289, x64=251, generic=30)
+ioprio_get = EmulatedSyscall(x86=290, x64=252, generic=31)
 
 #  int inotify_init(void)
 #
