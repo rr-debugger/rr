@@ -145,8 +145,14 @@ struct DirExistsCache {
 // the build directory is some ancestor directory of original_file_name.
 // We try making comp_dir/rel_dir/file_name relative to each ancestor directory
 // of original_file_name, and if we find a file there, we return that name.
+//
+// If non-empty, `comp_dir_substution` should replace `original_comp_dir`
+// in `rel_dir` if `original_comp_dir` is a prefix of `rel_dir`.
 static string resolve_file_name(const char* original_file_name,
-                                const char* comp_dir, const char* rel_dir,
+                                const char* comp_dir,
+                                const char* original_comp_dir,
+                                const string& comp_dir_substitution,
+                                const char* rel_dir,
                                 const char* file_name,
                                 DirExistsCache& dir_exists_cache) {
   string path = file_name;
@@ -154,7 +160,13 @@ static string resolve_file_name(const char* original_file_name,
     return path;
   }
   if (rel_dir) {
-    prepend_path(rel_dir, path);
+    if (rel_dir[0] == '/' && !comp_dir_substitution.empty() && original_comp_dir &&
+        strncmp(rel_dir, original_comp_dir, strlen(original_comp_dir)) == 0) {
+      string rel = comp_dir_substitution + (rel_dir + strlen(original_comp_dir));
+      prepend_path(rel.c_str(), path);
+    } else {
+      prepend_path(rel_dir, path);
+    }
     if (is_absolute(path)) {
       return path;
     }
@@ -233,11 +245,12 @@ static bool process_compilation_units(ElfFileReader& reader,
     } else {
       cu.set_str_offsets_base(0);
     }
+    const char* original_comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);;
     const char* comp_dir;
     if (!comp_dir_substitution.empty()) {
       comp_dir = comp_dir_substitution.c_str();
     } else {
-      comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);
+      comp_dir = original_comp_dir;
       if (!ok) {
         continue;
       }
@@ -262,7 +275,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         }
       }
       if (has_dwo_id) {
-        string full_name = resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, dwo_name, dir_exists_cache);
+        string full_name = resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, nullptr, dwo_name, dir_exists_cache);
         string c;
         if (comp_dir) {
           c = comp_dir;
@@ -277,7 +290,7 @@ static bool process_compilation_units(ElfFileReader& reader,
       continue;
     }
     if (source_file_name) {
-      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, source_file_name, dir_exists_cache));
+      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, nullptr, source_file_name, dir_exists_cache));
     }
     intptr_t stmt_list = cu.die().section_ptr_attr(DW_AT_stmt_list, &ok);
     if (stmt_list < 0 || !ok) {
@@ -293,7 +306,7 @@ static bool process_compilation_units(ElfFileReader& reader,
         continue;
       }
       const char* dir = lines.directories()[f.directory_index];
-      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, dir, f.file_name, dir_exists_cache));
+      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, dir, f.file_name, dir_exists_cache));
     }
   } while (!debug_info.empty());
 
