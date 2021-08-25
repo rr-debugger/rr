@@ -882,6 +882,7 @@ set(BASIC_TESTS
   io
   io_uring
   ioctl
+  ioctl_blk
   ioctl_fb
   ioctl_fs
   ioctl_pty
