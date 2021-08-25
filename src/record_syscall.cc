@@ -1735,6 +1735,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::termio>(3);
       return PREVENT_SWITCH;
 
+    case BLKSSZGET:
     case KDGKBMODE:
     case TIOCINQ:
     case TIOCOUTQ:
@@ -1976,6 +1977,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
     case IOCTL_MASK_SIZE(HIDIOCGRAWINFO):
     case IOCTL_MASK_SIZE(HIDIOCGRAWNAME(0)):
+    case IOCTL_MASK_SIZE(BLKGETSIZE64):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
