@@ -1806,6 +1806,31 @@ struct BaseArch : public wordsize,
     __u32 reserved[4];
   };
   RR_VERIFY_TYPE(fb_var_screeninfo);
+
+  struct cdrom_tochdr {
+    uint8_t cdth_trk0;
+    uint8_t cdth_trk1;
+  };
+  RR_VERIFY_TYPE(cdrom_tochdr);
+
+  struct cdrom_msf0 {
+    uint8_t minute;
+    uint8_t second;
+    uint8_t frame;
+  };
+  union cdrom_addr {
+    struct cdrom_msf0 msf;
+    int lba;
+  };
+  struct cdrom_tocentry {
+    uint8_t cdte_track;
+    uint8_t cdte_adr : 4;
+    uint8_t cdte_ctrl : 4;
+    uint8_t cdte_format;
+    union cdrom_addr cdte_addr;
+    uint8_t cdte_datamode;
+  };
+  RR_VERIFY_TYPE(cdrom_tocentry);
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {

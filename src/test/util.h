@@ -29,6 +29,7 @@
 #include <linux/aio_abi.h>
 #include <linux/audit.h>
 #include <linux/capability.h>
+#include <linux/cdrom.h>
 #include <linux/ethtool.h>
 #include <linux/fb.h>
 #include <linux/fiemap.h>

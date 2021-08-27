@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <linux/auxvec.h>
 #include <linux/capability.h>
+#include <linux/cdrom.h>
 #include <linux/elf.h>
 #include <linux/ethtool.h>
 #include <linux/fb.h>
@@ -1799,6 +1800,14 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case FBIOGET_VSCREENINFO:
       syscall_state.reg_parameter<typename Arch::fb_var_screeninfo>(3);
+      return PREVENT_SWITCH;
+
+    case CDROMREADTOCHDR:
+      syscall_state.reg_parameter<typename Arch::cdrom_tochdr>(3);
+      return PREVENT_SWITCH;
+
+    case CDROMREADTOCENTRY:
+      syscall_state.reg_parameter<typename Arch::cdrom_tocentry>(3);
       return PREVENT_SWITCH;
   }
 
