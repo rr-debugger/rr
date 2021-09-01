@@ -608,6 +608,10 @@ int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
 }
 
 void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allow_death) {
+  if (word_size(t->arch()) == 4) {
+    // Sign-extend ret because it can be a 32-bit negative errno
+    ret = (int)ret;
+  }
   if (allow_death && ret == -ESRCH) {
     return;
   }
