@@ -3985,10 +3985,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                  (size_t)regs.arg4()));
       return PREVENT_SWITCH;
 
+    case Arch::clone3:
     case Arch::io_uring_setup:
     case Arch::io_setup:
     case Arch::rseq: {
-      // Prevent the io_setup/io_uring_setup/rseq from running and fake an ENOSYS return. We want
+      // Prevent the io_setup/io_uring_setup/rseq/clone3 from running and fake an ENOSYS return. We want
       // to stop applications from using these APIs because we don't support them currently.
       Registers r = regs;
       r.set_arg2(0);
@@ -6321,6 +6322,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::clone3:
     case Arch::close:
     case Arch::dup2:
     case Arch::dup3:
