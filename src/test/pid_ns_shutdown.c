@@ -66,9 +66,52 @@ static int do_pid_ns_init(void) {
   return 77;
 }
 
+static void do_detect_glibc_bug(void) {
+  pid_t child;
+  int status;
+  unshare(CLONE_NEWPID);
+  child = fork();
+  if (!child) {
+    exit(0);
+  }
+  wait(&status);
+  exit(WIFSIGNALED(status));
+}
+
+static int detect_glibc_bug_inner(void) {
+  int status;
+  pid_t pid = fork();
+  test_assert(pid >= 0);
+  if (!pid) {
+    do_detect_glibc_bug();
+  }
+  wait(&status);
+  return WEXITSTATUS(status) != 0;
+}
+
+/* Detect https://sourceware.org/legacy-ml/libc-alpha/2017-05/msg00378.html */
+static int detect_glibc_bug(void) {
+  int status;
+  pid_t pid = fork();
+  if (!pid) {
+    close(STDERR_FILENO);
+    if (-1 == try_setup_ns(CLONE_NEWPID)) {
+      exit(0);
+    }
+    exit(detect_glibc_bug_inner());
+  }
+  wait(&status);
+  return WEXITSTATUS(status);
+}
+
 int main(void) {
   pid_t pid;
   char ch;
+
+  if (detect_glibc_bug()) {
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
 
   if (-1 == try_setup_ns(CLONE_NEWPID)) {
     /* We may not have permission to set up namespaces, so bail. */
