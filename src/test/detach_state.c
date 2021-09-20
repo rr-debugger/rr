@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
             *p = 1;
             *(p - 1) = 1;
         } else {
-            atomic_printf("Skipping MAP_GROWSDOWN due to kernel configuration");
+            atomic_puts("Skipping MAP_GROWSDOWN due to kernel configuration");
         }
 
         readlink("/proc/self/exe", path2, sizeof(path2));
