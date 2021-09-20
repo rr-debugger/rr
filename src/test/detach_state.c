@@ -110,9 +110,10 @@ int main(int argc, char **argv) {
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
             *p = 1;
             *(p - 1) = 1;
-        } else {
-            atomic_puts("Skipping MAP_GROWSDOWN due to kernel configuration");
         }
+        // Don't print anything if this fails, because none of this is going to happen
+        // during replay and a printed message will cause the test to fail with apparent
+        // divergence.
 
         readlink("/proc/self/exe", path2, sizeof(path2));
         test_assert(0 == strcmp(path1, path2));
