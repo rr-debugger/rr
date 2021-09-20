@@ -263,7 +263,7 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
                   tv.tv_usec);
     test_assert(1 == ret);
     test_assert(FD_ISSET(sock, &fds));
-    test_assert(0 < tv.tv_sec && tv.tv_sec < infinity.tv_sec);
+    test_assert(0 < tv.tv_sec && tv.tv_sec <= infinity.tv_sec);
 
     atomic_puts("r:   ... done, doing nonblocking read ...");
     test_assert(1 == read(sock, &c, sizeof(c)));
