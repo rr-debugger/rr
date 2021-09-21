@@ -106,7 +106,8 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
 }
 
 static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
-                                 const TraceFrame& frame) {
+                                 const TraceFrame& frame,
+                                 bool dump_raw) {
   if (frame.event().type() != EV_SYSCALLBUF_FLUSH) {
     return;
   }
@@ -129,6 +130,13 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
             (long)record->ret, (long)record->size,
             record->desched ? ", desched:1" : "",
             record->replay_assist ? ", replay_assist:1" : "");
+    if (dump_raw) {
+      fprintf(out, "  ");
+      for (unsigned long i = 0; i < record->size; ++i) {
+        fprintf(out, "%2.2x", *(record_ptr + (uintptr_t)i));
+      }
+      fprintf(out, "\n");
+    }
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       notifying_abort();
@@ -249,7 +257,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         frame.dump(out);
       }
       if (flags.dump_syscallbuf) {
-        dump_syscallbuf_data(trace, out, frame);
+        dump_syscallbuf_data(trace, out, frame, flags.raw_dump);
       }
       if (flags.dump_task_events) {
         auto it = task_events.find(frame.time());
