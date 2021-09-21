@@ -818,6 +818,7 @@ set(BASIC_TESTS
   doublesegv
   epoll_create
   epoll_create1
+  epoll_edge
   epoll_pwait_eintr_sigmask
   eventfd
   exec_flags
