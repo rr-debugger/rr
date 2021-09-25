@@ -1509,7 +1509,7 @@ bool read_proc_net_socket_addresses(Task* t, int fd,
         LOG(warn) << "Remote address not in expected format";
         break;
       }
-      uint16_t rport = strtoul(remote_addr_str + 33, NULL, 16);
+      unsigned long rport = strtoul(remote_addr_str + 33, NULL, 16);
       if (rport > USHRT_MAX) {
         LOG(warn) << "Remote address not in expected format";
         break;
