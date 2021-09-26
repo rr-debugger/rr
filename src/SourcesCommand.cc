@@ -543,6 +543,9 @@ static bool has_subdir(string& base, const char* suffix) {
 
 static void check_vcs_root(string& path, set<string>* vcs_dirs) {
   if (has_subdir(path, "/.git") || has_subdir(path, "/.hg")) {
+    if (!is_absolute(path)) {
+      FATAL() << "Path " << path << " not absolute";
+    }
     vcs_dirs->insert(path + "/");
   }
 }
