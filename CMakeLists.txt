@@ -1286,6 +1286,7 @@ set(TESTS_WITH_PROGRAM
   overflow_branch_counter
   patch_page_end
   x86/patch_40_80_f6_81
+  perf_event_mmap
   priority
   ptrace_remote_unmap
   remove_latest_trace
