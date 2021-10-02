@@ -164,8 +164,8 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       trace_start_time(0) {
   if (trace_in.required_forward_compatibility_version() > FORWARD_COMPATIBILITY_VERSION) {
     CLEAN_FATAL()
-      << "This rr build is too old to replay the trace (we support forward compability version "
-      << FORWARD_COMPATIBILITY_VERSION << " but the trace needs " << trace_in.required_forward_compatibility_version();
+      << "This rr build is too old to replay the trace (we support forward compatibility version "
+      << FORWARD_COMPATIBILITY_VERSION << " but the trace needs " << trace_in.required_forward_compatibility_version() << ")";
   }
 
   ticks_semantics_ = trace_in.ticks_semantics();

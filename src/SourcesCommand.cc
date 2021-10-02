@@ -417,7 +417,7 @@ find_auxiliary_file(const string& original_file_name,
     LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
     // If none of those worked, give up.
-    LOG(warn) << "Exhausted auxilliary debuginfo search locations for " << aux_file_name;
+    LOG(warn) << "Exhausted auxiliary debuginfo search locations for " << aux_file_name;
     return nullptr;
   }
 
