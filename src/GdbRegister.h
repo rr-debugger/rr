@@ -63,6 +63,7 @@ enum GdbRegister {
   DREG_YMM5H,
   DREG_YMM6H,
   DREG_YMM7H,
+  DREG_PKRU,
   DREG_NUM_LINUX_I386,
   // Last register we can find in user_regs_struct
   // (except for orig_eax).
@@ -152,6 +153,7 @@ enum GdbRegister {
   DREG_64_YMM13H,
   DREG_64_YMM14H,
   DREG_64_YMM15H,
+  DREG_64_PKRU,
   DREG_NUM_LINUX_X86_64,
   // Last register we can find in user_regs_struct (except for orig_rax).
   DREG_64_NUM_USER_REGS = DREG_64_GS + 1,

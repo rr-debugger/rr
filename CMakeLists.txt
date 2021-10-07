@@ -600,11 +600,13 @@ set(RR_GDB_RESOURCES
   32bit-core.xml
   32bit-linux.xml
   32bit-sse.xml
+  32bit-pkeys.xml
   64bit-avx.xml
   64bit-core.xml
   64bit-linux.xml
   64bit-seg.xml
   64bit-sse.xml
+  64bit-pkeys.xml
   amd64-avx-linux.xml
   amd64-linux.xml
   i386-avx-linux.xml

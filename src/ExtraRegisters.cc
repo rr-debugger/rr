@@ -24,8 +24,6 @@ static const int st_reg_space = 16;
 static const int xmm_regs_offset = 160;
 static const int xmm_reg_space = 16;
 
-static const int xsave_feature_pkru = 9;
-
 static const uint8_t fxsave_387_ctrl_offsets[] = {
   // The Intel documentation says that the following layout is only valid in
   // 32-bit mode, or when fxsave is executed in 64-bit mode without an
@@ -67,6 +65,7 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
 }
 
 static const int AVX_FEATURE_BIT = 2;
+static const int PKRU_FEATURE_BIT = 9;
 
 static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
@@ -97,6 +96,8 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
       }
       if (regno == DREG_MXCSR) {
         regno = DREG_64_MXCSR;
+      } else if (regno == DREG_PKRU) {
+        regno = DREG_64_PKRU;
       } else {
         regno = (GdbRegister)(regno - DREG_FIRST_FXSAVE_REG +
                               DREG_64_FIRST_FXSAVE_REG);
@@ -122,6 +123,19 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
   if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
                    16, &result)) {
     result.xsave_feature_bit = AVX_FEATURE_BIT;
+    return result;
+  }
+
+  if (regno == DREG_64_PKRU) {
+    const XSaveLayout& layout = xsave_native_layout();
+    if (PKRU_FEATURE_BIT > layout.feature_layouts.size()) {
+      return RegData();
+    }
+
+    const XSaveFeatureLayout& fl = layout.feature_layouts[PKRU_FEATURE_BIT];
+    result.offset = fl.offset;
+    result.size = fl.size;
+    result.xsave_feature_bit = PKRU_FEATURE_BIT;
     return result;
   }
 
@@ -400,11 +414,11 @@ static uint32_t features_used(const uint8_t* data,
                               const XSaveLayout& layout) {
   uint64_t features;
   memcpy(&features, data + xsave_header_offset, sizeof(features));
-  uint64_t pkru_bit = uint64_t(1) << xsave_feature_pkru;
+  uint64_t pkru_bit = uint64_t(1) << PKRU_FEATURE_BIT;
   if ((features & pkru_bit) &&
-      xsave_feature_pkru < layout.feature_layouts.size()) {
+      PKRU_FEATURE_BIT < layout.feature_layouts.size()) {
     // Check if it's really used
-    const XSaveFeatureLayout& fl = layout.feature_layouts[xsave_feature_pkru];
+    const XSaveFeatureLayout& fl = layout.feature_layouts[PKRU_FEATURE_BIT];
     if (uint64_t(fl.offset) + fl.size <= layout.full_size &&
         all_zeroes(data + fl.offset, fl.size)) {
       features &= ~pkru_bit;
@@ -642,7 +656,7 @@ void ExtraRegisters::reset() {
       * Avoid this issue by setting the bit if the feature is supported by the
       * CPU.
       */
-      uint64_t pkru_bit = uint64_t(1) << xsave_feature_pkru;
+      uint64_t pkru_bit = uint64_t(1) << PKRU_FEATURE_BIT;
       if (xcr0() & pkru_bit) {
         xinuse |= pkru_bit;
       }
