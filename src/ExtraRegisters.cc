@@ -134,7 +134,9 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
 
     const XSaveFeatureLayout& fl = layout.feature_layouts[PKRU_FEATURE_BIT];
     result.offset = fl.offset;
-    result.size = fl.size;
+    // NB: the PKRU *region* may be 8 bytes to maintain alignment but the
+    // PKRU *register* is only the first 4 bytes.
+    result.size = 4;
     result.xsave_feature_bit = PKRU_FEATURE_BIT;
     return result;
   }
@@ -658,6 +660,10 @@ void ExtraRegisters::reset() {
       */
       uint64_t pkru_bit = uint64_t(1) << PKRU_FEATURE_BIT;
       if (xcr0() & pkru_bit) {
+        RegData d = xsave_register_data(arch(), arch() == x86_64 ? DREG_64_PKRU : DREG_PKRU);
+        DEBUG_ASSERT(d.xsave_feature_bit == PKRU_FEATURE_BIT);
+        DEBUG_ASSERT(d.offset + d.size <= (int)data_.size());
+        *reinterpret_cast<int*>(data_.data() + d.offset) = 0x55555554;
         xinuse |= pkru_bit;
       }
 
