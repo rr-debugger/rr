@@ -17,7 +17,6 @@ typedef struct {
 typedef struct {
   /*< private >*/
   const struct link_map* map;
-  const void* base;
   int fd;
   uintptr_t stapbase;
   const ElfW(Shdr) *shdrs, *shdr_iter, *shdr_end;
