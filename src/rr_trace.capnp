@@ -106,6 +106,10 @@ struct Header {
     # Whether the version of rr that recorded this (may have) had special
     # record behavior for librrpage.so
     specialLibrrpage @15 :Bool = true;
+
+    # Whether the version of rr that recorded this saved the extra registers
+    # for the pkey_alloc syscall.
+    pkeyAllocRecordedExtraRegs @20 :Bool = false;
   }
   # Are we known to be in chaos mode? Useful for debugging.
   chaosMode @16 :ChaosMode = unknown;

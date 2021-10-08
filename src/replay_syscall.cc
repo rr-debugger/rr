@@ -1265,6 +1265,13 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       step->action = TSTEP_RETIRE;
       return;
 
+    case Arch::pkey_alloc:
+      // Older versions of rr (incorrectly) did not record the extra regs here.
+      if (t->session().has_trace_quirk(TraceReader::PkeyAllocRecordedExtraRegs)) {
+        t->set_extra_regs(trace_frame.extra_regs());
+      }
+      return;
+
     case Arch::perf_event_open: {
       Task* target = t->session().find_task((pid_t)trace_regs.arg2_signed());
       int cpu = trace_regs.arg3_signed();
