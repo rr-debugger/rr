@@ -207,6 +207,7 @@ const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;
 const int HLE_FEATURE_FLAG = 1 << 4;
 const int XSAVEC_FEATURE_FLAG = 1 << 1;
+const int PKU_FEATURE_FLAG = 1 << 3;
 
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers

@@ -432,6 +432,10 @@ static const char* target_description_name(uint32_t cpu_features) {
       return "i386-avx-linux.xml";
     case GdbConnection::CPU_X86_64 | GdbConnection::CPU_AVX:
       return "amd64-avx-linux.xml";
+    case GdbConnection::CPU_PKU | GdbConnection::CPU_AVX:
+      return "i386-pkeys-linux.xml";
+    case GdbConnection::CPU_X86_64 | GdbConnection::CPU_PKU | GdbConnection::CPU_AVX:
+      return "amd64-pkeys-linux.xml";
     case GdbConnection::CPU_AARCH64:
       return "aarch64-core.xml";
     default:
