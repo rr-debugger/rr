@@ -14,17 +14,6 @@
 #define ALIGN_UP(x, p2) \
   (((x) & ((p2) - 1)) == 0 ? (x) : ((x) + (p2)) & ~((p2) - 1))
 
-/* rtld doesn't mark itself as initialised until after it's loaded all the
- * initially required objects. dladdr() checks this flag, and when not set it
- * delegates functionality to dlfcn_hook; in our case no such hook is
- * installed, so it segfaults trying.
- *
- * This is the function dladdr() normally calls into. The signature doesn't
- * seem to have changed since at least 2007, so redeclaring it here is probably
- * relatively safe. */
-extern int _dl_addr(const void* address, Dl_info* info,
-                    struct link_map** mapp, const ElfW(Sym)** symbolp);
-
 static void* stap_note_iter_map(StapNoteIter* self,
                                 size_t offset, size_t size) {
   void* map;
@@ -83,27 +72,13 @@ void stap_note_iter_init(StapNoteIter* self, const struct link_map* map) {
 
   self->map = map;
 
-  {
-    /* We want the image base address. Kind of round-about, but it works.
-     *
-     * A warning about anyone thinking about alternate approaches: The initial
-     * implementation of this used dl_phdr_info::dlpi_addr[0], but this
-     * approach was changed since the documentation of the field doesn't appear
-     * to be correct[1].
-     *
-     * [0]: dl_iterate_phdr(3)
-     * [1]: https://bugzilla.kernel.org/show_bug.cgi?id=205837 */
-    Dl_info info;
-    if (!_dl_addr((void*) map->l_ld, &info, NULL, NULL)) {
-      if (rr_audit_debug) {
-        fprintf(stderr, "Base address lookup for '%s' failed\n", map->l_name);
-      }
-      return;
+  ehdr = stap_note_iter_map(self, 0, sizeof(*ehdr));
+  if (!ehdr) {
+    if (rr_audit_debug) {
+      fprintf(stderr, "Mapping ELF header for '%s' failed\n", map->l_name);
     }
-    self->base = info.dli_fbase;
+    return;
   }
-
-  ehdr = self->base;
 
   assert(ehdr->e_shentsize == sizeof(ElfW(Shdr)));
 
@@ -114,6 +89,7 @@ void stap_note_iter_init(StapNoteIter* self, const struct link_map* map) {
     if (rr_audit_debug) {
       fprintf(stderr, "Mapping section headers for '%s' failed\n", map->l_name);
     }
+    stap_note_iter_unmap(self, (void*) ehdr, sizeof(*ehdr));
     return;
   }
 
@@ -122,6 +98,8 @@ void stap_note_iter_init(StapNoteIter* self, const struct link_map* map) {
 
   assert(ehdr->e_shstrndx < ehdr->e_shnum);
   shstrtab_hdr = self->shdrs + ehdr->e_shstrndx;
+  stap_note_iter_unmap(self, (void*) ehdr, sizeof(*ehdr));
+
   shstrtab = stap_note_iter_map(self,
                                 shstrtab_hdr->sh_offset,
                                 shstrtab_hdr->sh_size);
