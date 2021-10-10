@@ -13,9 +13,7 @@ namespace rr {
 
 class Task;
 
-/* LOG_all will activate all the log levels together, whereas LOG_quiet deactivate any
- * */
-enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug, LOG_all, LOG_quiet };
+enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug };
 
 /* A log module is just a string where any uppercase ASCII characters have
  * been lowercased. We assign a LogLevel for each log module; this assignment

@@ -51,7 +51,7 @@ void assert_prerequisites(bool use_syscall_buffer) {
 void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 
 void print_global_options(FILE* out) {
-  char usage[] =
+  fputs(
       "Global options:\n"
       "  --disable-cpuid-faulting   disable use of CPUID faulting\n"
       "  --disable-ptrace-exit_events disable use of PTRACE_EVENT_EXIT\n"
@@ -85,9 +85,8 @@ void print_global_options(FILE* out) {
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
       "\n"
-      "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n";
-      
-      fputs(usage, out);      
+      "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n",
+      out);
 }
 
 void list_commands(FILE* out) {
