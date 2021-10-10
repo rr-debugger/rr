@@ -82,11 +82,17 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       initial_regs(t->regs()),
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
+      initial_at_seccomp(t->ptrace_event() == PTRACE_EVENT_SECCOMP),
       restore_wait_status(t->status()),
       new_tid_(-1),
       scratch_mem_was_mapped(false),
       use_singlestep_path(false),
       enable_mem_params_(enable_mem_params) {
+  if (initial_at_seccomp) {
+    // This should only ever happen during recording - we don't use the
+    // seccomp traps during replay.
+    ASSERT(t, t->session().is_recording());
+  }
   // We support two paths for syscalls:
   // -- a fast path using a privileged untraced syscall and PTRACE_SINGLESTEP.
   // This only requires a single task-wait.
@@ -107,6 +113,11 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
 }
 
 void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
+#if defined(__aarch64__)
+  // XXXkhuey this fast path doesn't work on AArch64 yet, go slow instead
+  enable_singlestep_path = false;
+#endif
+
   if (!replaced_bytes.empty()) {
     // XXX what to do here to clean up if the task died unexpectedly?
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
@@ -206,6 +217,20 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   regs.set_sp(initial_sp);
   // Restore stomped registers.
   t->set_regs(regs);
+  // If we were sitting at a seccomp trap, try to get back there by resuming
+  // here. Since the original register contents caused a seccomp trap,
+  // re-running the syscall with the same registers should put us right back
+  // to this same seccomp trap.
+  if (initial_at_seccomp && t->ptrace_event() != PTRACE_EVENT_SECCOMP) {
+    RecordTask* rt = static_cast<RecordTask*>(t);
+    while (true) {
+      rt->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
+      if (rt->ptrace_event())
+        break;
+      rt->stash_sig();
+    }
+    ASSERT(rt, rt->ptrace_event() == PTRACE_EVENT_SECCOMP);
+  }
   t->set_status(restore_wait_status);
 }
 
@@ -230,7 +255,12 @@ static bool ignore_signal(Task* t) {
 }
 
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
-  LOG(debug) << "syscall " << syscall_name(syscallno, t->arch());
+  LOG(debug) << "syscall " << syscall_name(syscallno, t->arch()) << " " << callregs;
+
+  if (t->is_dying()) {
+    LOG(debug) << "Task is dying, don't try anything.";
+    return -ESRCH;
+  }
 
   if ((int)callregs.arg1() == SIGTRAP && use_singlestep_path &&
       (is_sigaction_syscall(syscallno, t->arch()) ||
@@ -243,6 +273,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     callregs.set_ip(initial_regs.ip());
   }
 
+  callregs.set_original_syscallno(syscallno);
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
@@ -255,6 +286,16 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
         // We entered the syscall, so stop now
         break;
       }
+      if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+        // We died, just let it be
+        break;
+      }
+      if (t->stop_sig() == SIGTRAP && t->get_siginfo().si_code == TRAP_TRACE) {
+        // On aarch64, if we were previously in a syscall-exit stop, continuing
+        // with PTRACE_SINGLESTEP will result in incurring a trap upon execution
+        // of the first instruction in userspace. Ignore such a trap.
+        continue;
+      }
       if (ignore_signal(t)) {
         // We were interrupted by a signal before we even entered the syscall
         continue;
@@ -262,7 +303,11 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       ASSERT(t, false) << "Unexpected status " << t->status();
     }
   } else {
-    t->enter_syscall();
+    if (initial_at_seccomp && t->ptrace_event() == PTRACE_EVENT_SECCOMP) {
+      LOG(debug) << "Skipping enter_syscall - already at seccomp stop";
+    } else {
+      t->enter_syscall();
+    }
     LOG(debug) << "Used enter_syscall; status=" << t->status();
     // proceed to syscall exit
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
@@ -326,36 +371,51 @@ static void write_socketcall_args(Task* t, remote_ptr<void> remote_mem,
   t->write_mem(remote_mem.cast<socketcall_args<Arch>>(), sc_args, ok);
 }
 
-static size_t align_size(size_t size) {
-  static int align_amount = sizeof(uintptr_t);
-  return (size + align_amount - 1) & ~(align_amount - 1);
-}
-
-static remote_ptr<void> allocate(remote_ptr<void>* buf_end,
-                                 const AutoRestoreMem& remote_buf,
-                                 size_t size) {
-  remote_ptr<void> r = *buf_end;
-  *buf_end += align_size(size);
-  if (size_t(*buf_end - remote_buf.get()) > remote_buf.size()) {
-    FATAL() << "overflow";
+template <typename Arch>
+struct fd_message {
+  // Unfortunately we need to send at least one byte of data in our
+  // message for it to work
+  char data;
+  typename Arch::iovec msgdata;
+  char cmsgbuf[Arch::cmsg_space(sizeof(int))];
+  typename Arch::msghdr msg;
+  // XXX: Could make this conditional on Arch
+  socketcall_args<Arch> socketcall;
+  void init(remote_ptr<fd_message<Arch>> base) {
+    data = 0;
+    msgdata.iov_base = REMOTE_PTR_FIELD(base, data);
+    msgdata.iov_len = 1;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_control = REMOTE_PTR_FIELD(base, cmsgbuf);
+    msg.msg_controllen = sizeof(cmsgbuf);
+    msg.msg_iov = REMOTE_PTR_FIELD(base, msgdata);
+    msg.msg_iovlen = 1;
   }
-  return r;
-}
-
-template <typename T>
-static remote_ptr<T> allocate(remote_ptr<void>* buf_end,
-                              const AutoRestoreMem& remote_buf) {
-  return allocate(buf_end, remote_buf, sizeof(T)).cast<T>();
-}
+  fd_message(remote_ptr<fd_message<Arch>> base) {
+    init(base);
+  }
+  fd_message() {
+    init((uintptr_t)this);
+  }
+  remote_ptr<fd_message<Arch>> remote_this() {
+    return msgdata.iov_base.rptr().as_int();
+  }
+  remote_ptr<typename Arch::msghdr> remote_msg() {
+    return REMOTE_PTR_FIELD(remote_this(), msg);
+  }
+  remote_ptr<socketcall_args<Arch>> remote_sc_args() {
+    return REMOTE_PTR_FIELD(remote_this(), socketcall);
+  }
+  remote_ptr<int> remote_cmsgdata() {
+    return REMOTE_PTR_FIELD(remote_this(), cmsgbuf).as_int() +
+      (uintptr_t)Arch::cmsg_data(NULL);
+  }
+};
 
 template <typename Arch>
-static long child_sendmsg(AutoRemoteSyscalls& remote,
-                          AutoRestoreMem& remote_buf,
-                          remote_ptr<socketcall_args<Arch>> sc_args,
-                          remote_ptr<void> buf_end, int child_sock, int fd) {
-  size_t cmsgbuf_size = Arch::cmsg_space(sizeof(fd));
-  std::unique_ptr<char[]> cmsgbuf(new char[cmsgbuf_size]);
-  memset(cmsgbuf.get(), 0, cmsgbuf_size);
+static long child_sendmsg(AutoRemoteSyscalls& remote, int child_sock, int fd) {
+  AutoRestoreMem remote_buf(remote, nullptr, sizeof(fd_message<Arch>));
+  fd_message<Arch> msg(remote_buf.get().cast<fd_message<Arch>>());
   // Pull the puppet strings to have the child send its fd
   // to us.  Similarly to above, we DONT_WAIT on the
   // call to finish, since it's likely not defined whether the
@@ -363,66 +423,72 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
   // sent us (in which case we would deadlock with the tracee).
   // We call sendmsg on child socket, but first we have to prepare a lot of
   // data.
-  auto remote_msg = allocate<typename Arch::msghdr>(&buf_end, remote_buf);
-  auto remote_msgdata = allocate<typename Arch::iovec>(&buf_end, remote_buf);
-  auto remote_cmsgbuf = allocate(&buf_end, remote_buf, cmsgbuf_size);
-
-  // Unfortunately we need to send at least one byte of data in our
-  // message for it to work
-  typename Arch::iovec msgdata;
-  msgdata.iov_base = remote_msg; // doesn't matter much, we ignore the data
-  msgdata.iov_len = 1;
-  bool ok = true;
-  remote.task()->write_mem(remote_msgdata, msgdata, &ok);
-
-  typename Arch::msghdr msg;
-  memset(&msg, 0, sizeof(msg));
-  msg.msg_control = remote_cmsgbuf;
-  msg.msg_controllen = cmsgbuf_size;
-  msg.msg_iov = remote_msgdata;
-  msg.msg_iovlen = 1;
-  remote.task()->write_mem(remote_msg, msg, &ok);
-
-  auto cmsg = reinterpret_cast<typename Arch::cmsghdr*>(cmsgbuf.get());
+  auto cmsg = reinterpret_cast<typename Arch::cmsghdr*>(msg.cmsgbuf);
   cmsg->cmsg_len = Arch::cmsg_len(sizeof(fd));
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
   *static_cast<int*>(Arch::cmsg_data(cmsg)) = fd;
-  remote.task()->write_bytes_helper(remote_cmsgbuf, cmsgbuf_size, cmsgbuf.get(), &ok);
+
+  if (has_socketcall_syscall(Arch::arch())) {
+    socketcall_args<Arch> sc_args = { { child_sock, (typename Arch::signed_long)msg.remote_msg().as_int(), 0 } };
+    msg.socketcall = sc_args;
+  }
+
+  bool ok = true;
+  remote.task()->write_bytes_helper(remote_buf.get().cast<char>(),
+    sizeof(msg), &msg, &ok);
 
   if (!ok) {
     return -ESRCH;
   }
-  if (sc_args.is_null()) {
-    return remote.syscall(Arch::sendmsg, child_sock, remote_msg, 0);
+  if (!has_socketcall_syscall(Arch::arch())) {
+    return remote.syscall(Arch::sendmsg, child_sock, msg.remote_msg(), 0);
   }
-  write_socketcall_args<Arch>(remote.task(), sc_args, child_sock,
-                              remote_msg.as_int(), 0, &ok);
+  return remote.syscall(Arch::socketcall, SYS_SENDMSG, msg.remote_sc_args());
+}
+
+template <typename Arch>
+static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
+  AutoRestoreMem remote_buf(remote, nullptr, sizeof(fd_message<Arch>));
+  fd_message<Arch> msg(remote_buf.get().cast<fd_message<Arch>>());
+  bool ok = true;
+
+  if (has_socketcall_syscall(Arch::arch())) {
+    socketcall_args<Arch> sc_args = { { child_sock,
+      (typename Arch::signed_long)msg.remote_msg().as_int(), 0 } };
+    msg.socketcall = sc_args;
+  }
+
+  remote.task()->write_bytes_helper(remote_buf.get().cast<char>(),
+    sizeof(msg), &msg, &ok);
+
   if (!ok) {
     return -ESRCH;
   }
-  return remote.syscall(Arch::socketcall, SYS_SENDMSG, sc_args);
+  int ret = 0;
+  if (has_socketcall_syscall(Arch::arch())) {
+    ret = remote.syscall(Arch::socketcall, SYS_RECVMSG, msg.remote_sc_args());
+  } else {
+    ret = remote.syscall(Arch::recvmsg, child_sock, msg.remote_msg(), 0);
+  }
+  if (ret < 0) {
+    return ret;
+  }
+  int their_fd = remote.task()->read_mem(msg.remote_cmsgdata(), &ok);
+  if (!ok) {
+    return -ESRCH;
+  }
+  return their_fd;
 }
 
 static int recvmsg_socket(ScopedFd& sock) {
-  char received_data;
-  struct iovec msgdata;
-  msgdata.iov_base = &received_data;
-  msgdata.iov_len = 1;
-
-  char cmsgbuf[CMSG_SPACE(sizeof(int))];
-  struct msghdr msg;
-  memset(&msg, 0, sizeof(msg));
-  msg.msg_control = cmsgbuf;
-  msg.msg_controllen = sizeof(cmsgbuf);
-  msg.msg_iov = &msgdata;
-  msg.msg_iovlen = 1;
-
-  if (0 > recvmsg(sock, &msg, 0)) {
-    FATAL() << "Failed to receive fd";
+  fd_message<NativeArch> msg;
+  struct msghdr *msgp = (struct msghdr*)&msg.msg;
+  if (0 > recvmsg(sock, msgp, MSG_CMSG_CLOEXEC)) {
+    return -1;
   }
 
-  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(msgp);
   DEBUG_ASSERT(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
                cmsg->cmsg_type == SCM_RIGHTS);
   int our_fd = *(int*)CMSG_DATA(cmsg);
@@ -430,43 +496,78 @@ static int recvmsg_socket(ScopedFd& sock) {
   return our_fd;
 }
 
-template <typename T> static size_t reserve() { return align_size(sizeof(T)); }
+static void sendmsg_socket(ScopedFd& sock, int fd_to_send)
+{
+  fd_message<NativeArch> msg;
+
+  struct msghdr *msgp = (struct msghdr*)&msg.msg;
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(msgp);
+  cmsg->cmsg_level = SOL_SOCKET;
+  cmsg->cmsg_type = SCM_RIGHTS;
+  cmsg->cmsg_len = CMSG_LEN(sizeof(fd_to_send));
+  *(int*)CMSG_DATA(cmsg) = fd_to_send;
+
+  if (0 > sendmsg(sock, msgp, 0)) {
+    FATAL() << "Failed to send fd";
+  }
+}
 
 template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
-  size_t data_length = std::max(reserve<typename Arch::sockaddr_un>(),
-                                reserve<typename Arch::msghdr>() +
-                                    align_size(Arch::cmsg_space(sizeof(fd))) +
-                                    reserve<typename Arch::iovec>());
-  if (has_socketcall_syscall(Arch::arch())) {
-    data_length += reserve<socketcall_args<Arch>>();
-  }
-  AutoRestoreMem remote_buf(*this, nullptr, data_length);
-  if (!remote_buf.get()) {
-    // Task must be dead
-    return ScopedFd();
-  }
-
-  remote_ptr<void> sc_args_end = remote_buf.get();
-  remote_ptr<socketcall_args<Arch>> sc_args;
-  if (has_socketcall_syscall(Arch::arch())) {
-    sc_args = allocate<socketcall_args<Arch>>(&sc_args_end, remote_buf);
-  }
-
   long child_syscall_result =
-      child_sendmsg(*this, remote_buf, sc_args, sc_args_end,
-                    task()->session().tracee_fd_number(), fd);
+      child_sendmsg<Arch>(*this, task()->session().tracee_fd_number(), fd);
   if (child_syscall_result == -ESRCH) {
     return ScopedFd();
   }
   ASSERT(t, child_syscall_result > 0) << "Failed to sendmsg() in tracee; err="
                                       << errno_name(-child_syscall_result);
   int our_fd = recvmsg_socket(task()->session().tracee_socket_fd());
+  ASSERT(t, our_fd >= 0) << "Failed to receive fd";
   return ScopedFd(our_fd);
 }
 
 ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
   RR_ARCH_FUNCTION(retrieve_fd_arch, arch(), fd);
 }
+
+template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &our_fd) {
+  if (!our_fd.is_open()) {
+    return -EBADF;
+  }
+
+  LOG(debug) << "Sending fd " << our_fd.get() << " via socket fd " << task()->session().tracee_socket_fd().get();
+  sendmsg_socket(task()->session().tracee_socket_fd(), our_fd.get());
+
+  long child_syscall_result =
+      child_recvmsg<Arch>(*this, task()->session().tracee_fd_number());
+  if (child_syscall_result == -ESRCH) {
+    /* The child did not receive the message. Read it out of the socket
+       buffer so it doesn't get read by another child later! */
+    int fd = recvmsg_socket(task()->session().tracee_socket_receiver_fd());
+    if (fd >= 0) {
+      close(fd);
+    }
+    return -ESRCH;
+  }
+  ASSERT(t, child_syscall_result >= 0) << "Failed to recvmsg() in tracee; err="
+                                       << errno_name(-child_syscall_result);
+  return child_syscall_result;
+}
+
+int AutoRemoteSyscalls::send_fd(const ScopedFd &our_fd) {
+  RR_ARCH_FUNCTION(send_fd_arch, arch(), our_fd);
+}
+
+void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to) {
+  int remote_fd = send_fd(our_fd);
+  ASSERT(task(), remote_fd >= 0);
+  if (remote_fd != dup_to) {
+    long ret = infallible_syscall(syscall_number_for_dup3(arch()), remote_fd,
+                                  dup_to, O_CLOEXEC);
+    ASSERT(task(), ret == dup_to);
+    infallible_syscall(syscall_number_for_close(arch()), remote_fd);
+  }
+}
+
 
 remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall(
     remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
@@ -506,7 +607,14 @@ int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
   }
 }
 
-void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno) {
+void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allow_death) {
+  if (word_size(t->arch()) == 4) {
+    // Sign-extend ret because it can be a 32-bit negative errno
+    ret = (int)ret;
+  }
+  if (allow_death && ret == -ESRCH) {
+    return;
+  }
   if (-4096 < ret && ret < 0) {
     string extra_msg;
     if (is_open_syscall(syscallno, arch())) {
@@ -518,5 +626,52 @@ void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno) {
                      << " failed with errno " << errno_name(-ret) << extra_msg;
   }
 }
+
+void AutoRemoteSyscalls::finish_direct_mmap(
+                               remote_ptr<void> rec_addr, size_t length,
+                               int prot, int flags,
+                               const string& backing_file_name,
+                               int backing_file_open_flags,
+                               off64_t backing_offset_pages,
+                               struct stat& real_file, string& real_file_name) {
+  int fd;
+
+  LOG(debug) << "directly mmap'ing " << length << " bytes of "
+             << backing_file_name << " at page offset "
+             << HEX(backing_offset_pages);
+
+  ASSERT(task(), !(flags & MAP_GROWSDOWN));
+
+  /* Open in the tracee the file that was mapped during
+   * recording. */
+  {
+    AutoRestoreMem child_str(*this, backing_file_name.c_str());
+    fd = infallible_syscall(syscall_number_for_openat(arch()), -1,
+                            child_str.get().as_int(),
+                            backing_file_open_flags);
+  }
+  /* And mmap that file. */
+  infallible_mmap_syscall(rec_addr, length,
+                          /* (We let SHARED|WRITEABLE
+                          * mappings go through while
+                          * they're not handled properly,
+                          * but we shouldn't do that.) */
+                          prot, (flags & ~MAP_SYNC) | MAP_FIXED, fd,
+                          /* MAP_SYNC is used to request direct mapping
+                          * (DAX) from the filesystem for persistent
+                          * memory devices (requires
+                          * MAP_SHARED_VALIDATE). Drop it for the
+                          * backing file. */
+                          backing_offset_pages);
+
+  // While it's open, grab the link reference.
+  real_file = task()->stat_fd(fd);
+  real_file_name = task()->file_name_of_fd(fd);
+
+  /* Don't leak the tmp fd.  The mmap doesn't need the fd to
+   * stay open. */
+  infallible_syscall(syscall_number_for_close(arch()), fd);
+}
+
 
 } // namespace rr

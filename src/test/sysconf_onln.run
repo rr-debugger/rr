@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+record $TESTNAME "--expected-cpus=1"
+replay
+check EXIT-SUCCESS
+RECORD_ARGS="--num-cores=2"
+record $TESTNAME "--expected-cpus=2"
+replay
+check EXIT-SUCCESS

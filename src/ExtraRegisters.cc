@@ -24,8 +24,6 @@ static const int st_reg_space = 16;
 static const int xmm_regs_offset = 160;
 static const int xmm_reg_space = 16;
 
-static const int xsave_feature_pkru = 9;
-
 static const uint8_t fxsave_387_ctrl_offsets[] = {
   // The Intel documentation says that the following layout is only valid in
   // 32-bit mode, or when fxsave is executed in 64-bit mode without an
@@ -41,6 +39,10 @@ static const uint8_t fxsave_387_ctrl_offsets[] = {
   16, // DREG_64_FOOFF
   6,  // DREG_64_FOP
 };
+
+static const int fip_offset = 8;
+static const int fdp_offset = 16;
+static const int mxcsr_offset = 24;
 
 struct RegData {
   int offset;
@@ -63,6 +65,7 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
 }
 
 static const int AVX_FEATURE_BIT = 2;
+static const int PKRU_FEATURE_BIT = 9;
 
 static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
@@ -93,6 +96,8 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
       }
       if (regno == DREG_MXCSR) {
         regno = DREG_64_MXCSR;
+      } else if (regno == DREG_PKRU) {
+        regno = DREG_64_PKRU;
       } else {
         regno = (GdbRegister)(regno - DREG_FIRST_FXSAVE_REG +
                               DREG_64_FIRST_FXSAVE_REG);
@@ -121,6 +126,21 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
     return result;
   }
 
+  if (regno == DREG_64_PKRU) {
+    const XSaveLayout& layout = xsave_native_layout();
+    if (PKRU_FEATURE_BIT > layout.feature_layouts.size()) {
+      return RegData();
+    }
+
+    const XSaveFeatureLayout& fl = layout.feature_layouts[PKRU_FEATURE_BIT];
+    result.offset = fl.offset;
+    // NB: the PKRU *region* may be 8 bytes to maintain alignment but the
+    // PKRU *register* is only the first 4 bytes.
+    result.size = 4;
+    result.xsave_feature_bit = PKRU_FEATURE_BIT;
+    return result;
+  }
+
   if (regno < DREG_64_FIRST_FXSAVE_REG || regno > DREG_64_LAST_FXSAVE_REG) {
     return RegData();
   }
@@ -146,6 +166,33 @@ static uint64_t xsave_features(const vector<uint8_t>& data) {
 
 size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
+  if (format_ == NT_FPR) {
+    if (arch() != aarch64) {
+      *defined = false;
+      return 0;
+    }
+
+    RegData reg_data;
+    if (DREG_V0 <= regno && regno <= DREG_V31) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, vregs[0]) +
+        ((regno - DREG_V0) * 16), 16);
+    } else if (regno == DREG_FPSR) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpsr),
+                         sizeof(uint32_t));
+    } else if (regno == DREG_FPCR) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpcr),
+                         sizeof(uint32_t));
+    } else {
+      *defined = false;
+      return 0;
+    }
+
+    DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
+    *defined = true;
+    memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
+    return reg_data.size;
+  }
+
   if (format_ != XSAVE) {
     *defined = false;
     return 0;
@@ -183,6 +230,48 @@ uint64_t ExtraRegisters::read_xinuse(bool* defined) const {
   }
 
   memcpy(&ret, data_.data() + xinuse_offset, sizeof(ret));
+  return ret;
+}
+
+uint64_t ExtraRegisters::read_fip(bool* defined) const {
+  if (format_ != XSAVE) {
+    *defined = false;
+    return 0;
+  }
+
+  uint64_t ret;
+  memcpy(&ret, data_.data() + fip_offset, sizeof(ret));
+  return ret;
+}
+
+uint32_t ExtraRegisters::read_mxcsr(bool* defined) const {
+  if (format_ != XSAVE) {
+    *defined = false;
+    return 0;
+  }
+
+  uint32_t ret;
+  memcpy(&ret, data_.data() + mxcsr_offset, sizeof(ret));
+  return ret;
+}
+
+bool ExtraRegisters::clear_fip_fdp() {
+  if (format_ != XSAVE) {
+    return false;
+  }
+
+  bool ret = false;
+  uint64_t v;
+  memcpy(&v, data_.data() + fip_offset, sizeof(v));
+  if (v != 0) {
+    ret = true;
+    memset(data_.data() + fip_offset, 0, 8);
+  }
+  memcpy(&v, data_.data() + fdp_offset, sizeof(v));
+  if (v != 0) {
+    ret = true;
+    memset(data_.data() + fdp_offset, 0, 8);
+  }
   return ret;
 }
 
@@ -254,6 +343,14 @@ void ExtraRegisters::print_register_file_compact(FILE* f) const {
       fputc(' ', f);
       print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
       break;
+    case aarch64:
+      DEBUG_ASSERT(format_ == NT_FPR);
+      print_regs(*this, DREG_V0, GdbRegister(0), 32, "v", f);
+      fputc(' ', f);
+      print_reg(*this, DREG_FPSR, GdbRegister(0), "fpsr", f);
+      fputc(' ', f);
+      print_reg(*this, DREG_FPCR, GdbRegister(0), "fpcr", f);
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       break;
@@ -306,30 +403,28 @@ template <typename T> static vector<uint8_t> to_vector(const T& v) {
   return result;
 }
 
-static bool all_zeroes(const uint8_t* data, size_t size) {
-  for (size_t i = 0; i < size; ++i) {
-    if (data[i]) {
-      return false;
-    }
+static uint32_t features_used(const uint8_t* data) {
+  uint64_t features;
+  memcpy(&features, data + xsave_header_offset, sizeof(features));
+  return features;
+}
+
+template <typename Arch>
+bool memcpy_fpr_regs_arch(std::vector<uint8_t>& dest, const uint8_t* src,
+                          size_t data_size) {
+  if (data_size != sizeof(typename Arch::user_fpregs_struct)) {
+    LOG(error) << "Invalid FPR data length: " << data_size << " for architecture " <<
+      arch_name(Arch::arch()) << ", expected " << sizeof(typename Arch::user_fpregs_struct);
+    return false;
   }
+  dest.resize(sizeof(typename Arch::user_fpregs_struct));
+  memcpy(dest.data(), src, sizeof(typename Arch::user_fpregs_struct));
   return true;
 }
 
-static uint32_t features_used(const uint8_t* data,
-                              const XSaveLayout& layout) {
-  uint64_t features;
-  memcpy(&features, data + xsave_header_offset, sizeof(features));
-  uint64_t pkru_bit = uint64_t(1) << xsave_feature_pkru;
-  if ((features & pkru_bit) &&
-      xsave_feature_pkru < layout.feature_layouts.size()) {
-    // Check if it's really used
-    const XSaveFeatureLayout& fl = layout.feature_layouts[xsave_feature_pkru];
-    if (uint64_t(fl.offset) + fl.size <= layout.full_size &&
-        all_zeroes(data + fl.offset, fl.size)) {
-      features &= ~pkru_bit;
-    }
-  }
-  return features;
+bool memcpy_fpr_regs_arch(SupportedArch arch, std::vector<uint8_t>& dest,
+                          const uint8_t* src, size_t data_size) {
+  RR_ARCH_FUNCTION(memcpy_fpr_regs_arch, arch, dest, src, data_size)
 }
 
 bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
@@ -340,7 +435,14 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   if (format == NONE) {
     return true;
+  } else if (format == NT_FPR) {
+    if (!memcpy_fpr_regs_arch(a, data_, data, data_size)) {
+      return false;
+    }
+    format_ = NT_FPR;
+    return true;
   }
+
   if (format != XSAVE) {
     LOG(error) << "Unknown ExtraRegisters format: " << format;
     return false;
@@ -368,7 +470,28 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   // Check for unsupported features being used
   if (layout.full_size >= xsave_header_end) {
-    uint64_t features = features_used(data, layout);
+    uint64_t features = features_used(data);
+    /* Mask off the PKRU bit unconditionally here.
+     * We want traces that are recorded on machines with PKRU but
+     * that don't actually use PKRU to be replayable on machines
+     * without PKRU. Linux, however, sets the PKRU register to
+     * 0x55555554 (only the default key is allowed to access memory),
+     * while the default hardware value is 0, so in some sense
+     * PKRU is always in use.
+     *
+     * There are three classes of side effects of the pkey feature.
+     * 1. The direct effects of syscalls such as pkey_alloc/pkey_mprotect
+     *    on registers.
+     * 2. Traps generated by the CPU when the protection keys are violated.
+     * 3. The RDPKRU instruction writing to EAX.
+     *
+     * The first two are replayed exactly by rr. The latter will trigger
+     * SIGILL on any machine without PKRU, which is no different from
+     * any other new CPU instruction that doesn't have its own XSAVE
+     * feature bit. So ignore the PKRU bit here and leave users on their
+     * own with respect to RDPKRU.
+     */
+    features &= ~(uint64_t(1) << PKRU_FEATURE_BIT);
     if (features & ~native_layout.supported_feature_bits) {
       LOG(error) << "Unsupported CPU features found: got " << HEX(features)
                  << " (" << xsave_feature_string(features)
@@ -395,7 +518,7 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
     return true;
   }
 
-  uint64_t features = features_used(data, layout);
+  uint64_t features = features_used(data);
   // OK, now both our native layout and the input layout are using the full
   // XSAVE header. Copy the header. Make sure to use our updated `features`.
   memcpy(data_.data() + xsave_header_offset, &features, sizeof(features));
@@ -441,14 +564,21 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
   DEBUG_ASSERT(format_ == XSAVE);
   switch (arch) {
     case x86:
+      DEBUG_ASSERT(format_ == XSAVE);
       DEBUG_ASSERT(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
       return to_vector(convert_fxsave_to_x86_fpregs(
           *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(
               data_.data())));
     case x86_64:
+      DEBUG_ASSERT(format_ == XSAVE);
       DEBUG_ASSERT(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
       return to_vector(
           *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data_.data()));
+    case aarch64:
+      DEBUG_ASSERT(format_ == NT_FPR);
+      DEBUG_ASSERT(data_.size() == sizeof(ARM64Arch::user_fpregs_struct));
+      return to_vector(
+          *reinterpret_cast<const ARM64Arch::user_fpregs_struct*>(data_.data()));
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       return vector<uint8_t>();
@@ -501,32 +631,49 @@ static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbRegister r,
 }
 
 void ExtraRegisters::reset() {
-  DEBUG_ASSERT(format_ == XSAVE);
   memset(data_.data(), 0, data_.size());
-  switch (arch()) {
-    case x86_64: {
+  if (is_x86ish(arch())) {
+    DEBUG_ASSERT(format_ == XSAVE);
+    if (arch() == x86_64) {
       set_word(arch(), data_, DREG_64_MXCSR, 0x1f80);
       set_word(arch(), data_, DREG_64_FCTRL, 0x37f);
-      break;
-    }
-    case x86: {
+    } else {
       set_word(arch(), data_, DREG_MXCSR, 0x1f80);
       set_word(arch(), data_, DREG_FCTRL, 0x37f);
-      break;
     }
-    default:
-      DEBUG_ASSERT(0 && "Unknown arch");
-      break;
-  }
-  uint64_t xinuse;
-  if (data_.size() >= xinuse_offset + sizeof(xinuse)) {
-    /* We have observed (Skylake, Linux 4.10) the system setting XINUSE's 0 bit
-     * to indicate x87-in-use, at times unrelated to x87 actually being used.
-     * Work around this by setting the bit unconditionally after exec.
-     */
-    memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
-    xinuse |= 1;
-    memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
+    uint64_t xinuse;
+    if (data_.size() >= xinuse_offset + sizeof(xinuse)) {
+      memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
+
+      /* We have observed (Skylake, Linux 4.10) the system setting XINUSE's 0 bit
+      * to indicate x87-in-use, at times unrelated to x87 actually being used.
+      * Work around this by setting the bit unconditionally after exec.
+      */
+      xinuse |= 1;
+
+      /* If the system supports the PKRU feature, the PKRU feature bit must be
+      * set in order to get the kernel to properly update the PKRU register
+      * value. If this is not set, it has been observed that the PKRU register
+      * may occasionally contain "stale" values, particularly after involuntary
+      * context swtiches.
+      * Avoid this issue by setting the bit if the feature is supported by the
+      * CPU.
+      */
+      uint64_t pkru_bit = uint64_t(1) << PKRU_FEATURE_BIT;
+      if (xcr0() & pkru_bit) {
+        RegData d = xsave_register_data(arch(), arch() == x86_64 ? DREG_64_PKRU : DREG_PKRU);
+        DEBUG_ASSERT(d.xsave_feature_bit == PKRU_FEATURE_BIT);
+        DEBUG_ASSERT(d.offset + d.size <= (int)data_.size());
+        *reinterpret_cast<int*>(data_.data() + d.offset) = 0x55555554;
+        xinuse |= pkru_bit;
+      }
+
+      memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
+    }
+  } else {
+    DEBUG_ASSERT(format_ == NT_FPR);
+    DEBUG_ASSERT(arch() == aarch64 &&
+      "Ensure that nothing is required here for your architecture.");
   }
 }
 

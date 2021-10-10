@@ -28,6 +28,25 @@ static ssize_t my_write(int fd, void* buf, size_t size) {
       "mov %5,%%esp\n\t"
       : "=a"(ret)
       : "a"(SYS_write), "b"(fd), "c"(buf), "d"(size), "m"(saved_sp));
+#elif __aarch64__
+  register long x8 __asm__("x8") = SYS_write;
+  register long x0 __asm__("x0") = (long)fd;
+  register long x1 __asm__("x1") = (long)buf;
+  register long x2 __asm__("x2") = (long)size;
+  register long x6 __asm__("x6") = 0;
+  asm("mov x6, sp\n\t"
+      "str x6,%1\n\t"
+      "eor x6,x6,x6\n\t"
+      "mov sp,x6\n\t"
+      "svc #0\n\t"
+      "nop\n\t"
+      "nop\n\t"
+      "nop\n\t"
+      "ldr x6,%1\n\t"
+      "mov sp,x6\n\t"
+      : "+r"(x0), "+m"(saved_sp), "+r"(x6) :
+      "r"(x1), "r"(x2), "r"(x8));
+  ret = x0;
 #else
 #error Unknown architecture
 #endif
@@ -36,6 +55,6 @@ static ssize_t my_write(int fd, void* buf, size_t size) {
 
 int main(void) {
   test_assert(1 == my_write(STDOUT_FILENO, &ch, 1));
-  atomic_puts("XIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }

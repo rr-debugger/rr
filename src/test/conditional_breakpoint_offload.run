@@ -1,2 +1,3 @@
 source `dirname $0`/util.sh
+if [ $TIMEOUT -lt 300 ]; then TIMEOUT=300; fi
 debug_test

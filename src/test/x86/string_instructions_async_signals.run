@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+RECORD_ARGS="-c1000"
+if [ $TIMEOUT -lt 600 ]; then TIMEOUT=600; fi
+compare_test EXIT-SUCCESS
+

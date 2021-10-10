@@ -86,7 +86,8 @@ public:
    */
   static void launch_gdb(ScopedFd& params_pipe_fd,
                          const std::string& gdb_binary_file_path,
-                         const std::vector<std::string>& gdb_options);
+                         const std::vector<std::string>& gdb_options,
+                         bool serve_files);
 
   /**
    * Start a debugging connection for |t| and return when there are no
@@ -207,7 +208,7 @@ private:
    * an entry to `files` with the file contents and return our internal
    * file descriptor.
    */
-  int open_file(Session& session, const std::string& file_name);
+  int open_file(Session& session, Task *continue_task, const std::string& file_name);
 
   Target target;
   // dbg is initially null. Once the debugger connection is established, it
@@ -258,7 +259,7 @@ private:
   Checkpoint debugger_restart_checkpoint;
 
   // gdb checkpoints, indexed by ID
-  std::map<int, Checkpoint> checkpoints;
+  std::map<int64_t, Checkpoint> checkpoints;
 
   // Set of symbols to look up, for qSymbol.
   std::set<std::string> symbols;
@@ -269,6 +270,7 @@ private:
   // file descriptor. Exposing our real file descriptor values is probably a
   // bad idea.
   std::map<int, ScopedFd> files;
+  std::map<int, FileId> memory_files;
   // The pid for gdb's last vFile:setfs
   pid_t file_scope_pid;
 };

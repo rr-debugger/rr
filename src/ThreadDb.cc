@@ -16,10 +16,8 @@ extern "C" {
 #include "proc_service.h"
 }
 
-#include <asm/prctl.h>
 #include <dlfcn.h>
 #include <linux/elf.h>
-#include <sys/reg.h>
 
 #define LIBRARY_NAME "libthread_db.so.1"
 
@@ -48,7 +46,10 @@ ps_err_e ps_pdread(struct ps_prochandle* h, psaddr_t addr, void* buffer,
   // We need any task associated with the thread group.  Here we assume
   // that all the tasks in the thread group share VM, which is enforced
   // by clone(2).
-  rr::Task* task = *h->thread_group->task_set().begin();
+  rr::Task* task = h->thread_group->first_running_task();
+  if (!task) {
+    return PS_ERR;
+  }
   task->read_bytes_helper(uaddr, len, buffer, &ok);
   LOG(debug) << "ps_pdread " << ok;
   return ok ? PS_OK : PS_ERR;
@@ -67,7 +68,7 @@ ps_err_e ps_lgetregs(struct ps_prochandle* h, lwpid_t rec_tid,
   rr::Task* task = h->thread_group->session()->find_task(rec_tid);
   DEBUG_ASSERT(task != nullptr);
 
-  struct ::user_regs_struct regs = task->regs().get_ptrace();
+  NativeArch::user_regs_struct regs = task->regs().get_ptrace();
   memcpy(result, static_cast<void*>(&regs), sizeof(regs));
   LOG(debug) << "ps_lgetregs OK";
   return PS_OK;
@@ -93,6 +94,9 @@ pid_t ps_getpid(struct ps_prochandle* h) {
   return h->tgid;
 }
 
+static const int _REG_FS = 25;
+static const int _REG_GS = 26;
+
 ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
                             int val, psaddr_t* base) {
   if (!h->thread_group) {
@@ -113,23 +117,34 @@ ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
     }
     LOG(debug) << "ps_get_thread_area 32 failed";
     return PS_ERR;
-  }
+  } else if (task->arch() == rr::x86_64) {
+    uintptr_t result;
+    switch (val) {
+      case _REG_FS:
+        result = task->regs().fs_base();
+        break;
+      case _REG_GS:
+        result = task->regs().gs_base();
+        break;
+      default:
+        LOG(debug) << "ps_get_thread_area PS_BADADDR";
+        return PS_BADADDR;
+    }
 
-  uintptr_t result;
-  switch (val) {
-    case FS:
-      result = task->regs().fs_base();
-      break;
-    case GS:
-      result = task->regs().gs_base();
-      break;
-    default:
-      LOG(debug) << "ps_get_thread_area PS_BADADDR";
-      return PS_BADADDR;
+    *base = reinterpret_cast<psaddr_t>(result);
+    return PS_OK;
+  } else if (task->arch() == aarch64) {
+    uintptr_t result;
+    if (!task->read_aarch64_tls_register(&result)) {
+      LOG(error) << "Task was dead";
+      return PS_ERR;
+    }
+    *base = reinterpret_cast<psaddr_t>(result - val);
+    return PS_OK;
+  } else {
+    LOG(error) << "Unknown architecture in ThreadDb";
+    return PS_ERR;
   }
-
-  *base = reinterpret_cast<psaddr_t>(result);
-  return PS_OK;
 }
 
 rr::ThreadDb::ThreadDb(pid_t tgid)

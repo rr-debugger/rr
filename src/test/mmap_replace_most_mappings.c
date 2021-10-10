@@ -20,7 +20,8 @@ void callback(uint64_t env, char* name, map_properties_t* props) {
   if (contains_symbol(props, &main) ||
       /* env is on the stack - this prevents it from being unmapped if
          the kernel gets confused by syscallbuf's stack switching */
-      contains_symbol(props, &env) || props->start == RR_PAGE_ADDR ||
+      contains_symbol(props, &env) ||
+      (props->start <= RR_PAGE_ADDR && RR_PAGE_ADDR < props->end) ||
       strcmp(name, "[stack]") == 0) {
     return;
   }
@@ -69,6 +70,17 @@ __asm__("my_syscall:\n\t"
         "mov 8(%rsp),%r9\n\t"
         "syscall\n\t"
         "ret\n\t");
+#elif defined(__aarch64__)
+__asm__("my_syscall:\n\t"
+        "mov x8,x0\n\t"
+        "mov x0,x1\n\t"
+        "mov x1,x2\n\t"
+        "mov x2,x3\n\t"
+        "mov x3,x4\n\t"
+        "mov x4,x5\n\t"
+        "mov x5,x6\n\t"
+        "svc #0\n\t"
+        "ret\n\t");
 #else
 #error Fill in syscall here
 #endif
@@ -85,7 +97,7 @@ int main(void) {
     const int mmap_syscall =
 #ifdef __i386__
         RR_mmap2
-#elif defined(__x86_64__)
+#elif defined(__x86_64__) || defined(__aarch64__)
         RR_mmap
 #else
 #error Fill in syscall here

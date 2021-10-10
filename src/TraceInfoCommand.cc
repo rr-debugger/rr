@@ -41,6 +41,7 @@ TraceInfoCommand TraceInfoCommand::singleton(
     "  Dump trace header in JSON format.\n");
 
 static int dump_trace_info(const string& trace_dir, FILE* out) {
+  int ret = 0;
   TraceReader trace(trace_dir);
 
   fputs("{\n", out);
@@ -57,7 +58,11 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
 
   fprintf(out, "  \"xcr0\":%llu,\n", (unsigned long long)trace.xcr0());
 
+  fprintf(out, "  \"bindToCpu\":%d,\n", trace.bound_to_cpu());
+
   fprintf(out, "  \"cpuidFaulting\":%s,\n", trace.uses_cpuid_faulting() ? "true" : "false");
+
+  fprintf(out, "  \"requiredForwardCompatibilityVersion\":%d,\n", trace.required_forward_compatibility_version());
 
   const char* semantics;
   switch (trace.ticks_semantics()) {
@@ -79,16 +84,28 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
   }
   fputs("\n  ],\n", out);
 
+  bool chaos_mode_known;
+  bool chaos_mode = trace.chaos_mode(&chaos_mode_known);
+  if (chaos_mode_known) {
+    fprintf(out, "  \"chaosMode\":%s,\n", chaos_mode ? "true" : "false");
+    if (chaos_mode) {
+      MemoryRange exclusion_range = trace.exclusion_range();
+      fprintf(out, "  \"exclusionRange\": { \"start\": %llu, \"end\": %llu },\n",
+             (unsigned long long)exclusion_range.start().as_int(),
+             (unsigned long long)exclusion_range.end().as_int());
+    }
+  }
+
   ReplaySession::Flags flags;
   flags.redirect_stdio = false;
   flags.share_private_mappings = false;
   flags.cpu_unbound = true;
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, flags);
 
-  fputs("  \"environ\":[", out);
   while (true) {
     auto result = replay_session->replay_step(RUN_CONTINUE);
     if (replay_session->done_initial_exec()) {
+      fputs("  \"environ\":[", out);
       auto environ = read_env(replay_session->current_task());
       for (size_t i = 0; i < environ.size(); ++i) {
         if (i > 0) {
@@ -96,17 +113,18 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
         }
         fprintf(out, "\n    \"%s\"", json_escape(environ[i]).c_str());
       }
+      fputs("\n  ]\n", out);
       break;
     }
     if (result.status == REPLAY_EXITED) {
       fputs("Replay finished before initial exec!\n", stderr);
-      return 1;
+      ret = 1;
+      break;
     }
   }
-  fputs("\n  ]\n", out);
 
   fputs("}\n", out);
-  return 0;
+  return ret;
 }
 
 int TraceInfoCommand::run(vector<string>& args) {

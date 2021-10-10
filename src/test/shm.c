@@ -18,8 +18,11 @@ static int run_child(void) {
   pid_t child2;
   int status;
   struct shmid_ds* ds;
-  struct shminfo* info;
-  struct shm_info* info2;
+  /* These are the wrong types, to work around
+     https://sourceware.org/bugzilla/show_bug.cgi?id=26636 */
+  struct shmid_ds* info;
+  struct shmid_ds* info2;
+  int used_ids;
 
   size_t page_size = sysconf(_SC_PAGESIZE);
 
@@ -34,15 +37,20 @@ static int run_child(void) {
   test_assert(0 == shmctl(shmid, IPC_SET, ds));
 
   ALLOCATE_GUARD(info, 'i');
-  test_assert(0 <= shmctl(shmid, IPC_INFO, (struct shmid_ds*)info));
+  test_assert(0 <= shmctl(shmid, IPC_INFO, info));
   VERIFY_GUARD(info);
-  test_assert(info->shmmin == 1);
+  test_assert(((struct shminfo*)info)->shmmin == 1);
 
   ALLOCATE_GUARD(info2, 'j');
   test_assert(0 <= shmctl(shmid, SHM_INFO, (struct shmid_ds*)info2));
   VERIFY_GUARD(info2);
-  test_assert(info2->used_ids > 0);
-  test_assert(info2->used_ids < 1000000);
+  used_ids = ((struct shm_info*)info2)->used_ids;
+  if (used_ids == 0x6a6a6a6a && sizeof(void*) == 4) {
+    atomic_puts("SHM_INFO apparently failed, perhaps due to glibc bug. Ignoring.");
+  } else {
+    test_assert(used_ids > 0);
+    test_assert(used_ids < 1000000);
+  }
 
   p = shmat(shmid, NULL, 0);
   test_assert(p != (char*)-1);

@@ -66,7 +66,11 @@ ReplayCommand ReplayCommand::singleton(
     "                             Note that this may diverge from the recording\n"
     "                             in some cases.\n"
     "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n"
-    "  --stats=<N>                display brief stats every N steps (eg 10000).\n");
+    "  --stats=<N>                display brief stats every N steps (eg 10000).\n"
+    "  --serve-files              Serve all files from the trace rather than\n"
+    "                             assuming they exist on disk. Debugging will\n"
+    "                             be slower, but be able to tolerate missing files\n"
+    "  --tty <file>               Redirect tracee replay output to <file>\n");
 
 struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
@@ -121,6 +125,12 @@ struct ReplayFlags {
   // When nonzero, display statistics every N steps.
   uint32_t dump_interval;
 
+  // When set, serve files from the tracer rather than asking GDB
+  // to get them from the filesystem
+  bool serve_files;
+
+  string tty;
+
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -134,7 +144,8 @@ struct ReplayFlags {
         redirect(true),
         cpu_unbound(false),
         share_private_mappings(false),
-        dump_interval(0) {}
+        dump_interval(0),
+        serve_files(false) {}
 };
 
 static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
@@ -158,6 +169,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 0, "share-private-mappings", NO_PARAMETER },
     { 1, "fullname", NO_PARAMETER },
     { 2, "stats", HAS_PARAMETER },
+    { 3, "serve-files", NO_PARAMETER },
+    { 4, "tty", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'i', "interpreter", HAS_PARAMETER }
   };
@@ -240,6 +253,12 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       }
       flags.dump_interval = opt.int_value;
       break;
+    case 3:
+      flags.serve_files = true;
+      break;
+    case 4:
+      flags.tty = opt.value;
+      break;
     case 'u':
       flags.cpu_unbound = true;
       break;
@@ -314,6 +333,7 @@ static pid_t waiting_for_child;
 static ReplaySession::Flags session_flags(const ReplayFlags& flags) {
   ReplaySession::Flags result;
   result.redirect_stdio = flags.redirect;
+  result.redirect_stdio_file = flags.tty;
   result.share_private_mappings = flags.share_private_mappings;
   result.cpu_unbound = flags.cpu_unbound;
   return result;
@@ -502,7 +522,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
     GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_binary_file_path,
-                          flags.gdb_options);
+                          flags.gdb_options,
+                          flags.serve_files);
   }
 
   // Child must have died before we were able to get debugger parameters

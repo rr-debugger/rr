@@ -15,7 +15,7 @@ static void futex(int* uaddr, int op, int val) {
           "xchg %%ebx,%%edi\n\t" ::"a"(SYS_futex),
           "c"(op), "d"(val), "S"(NULL), "D"(uaddr));
 #else
-  syscall(SYS_futex, uaddr, op, val, NULL, NULL, 0);
+  syscall(SYS_futex, uaddr, op, val, (void*)0, (void*)0, 0);
 #endif
 }
 

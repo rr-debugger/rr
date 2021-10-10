@@ -14,8 +14,8 @@ copy_file_range_syscall(int fd_in, loff_t *off_in, int fd_out,
 }
 
 int main(void) {
-  int in_fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC);
-  int out_fd = open("dummy2.txt", O_RDWR | O_CREAT | O_TRUNC);
+  int in_fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC, 0600);
+  int out_fd = open("dummy2.txt", O_RDWR | O_CREAT | O_TRUNC, 0600);
   int ret = write(in_fd, "Hello\n", 6);
   loff_t in_off = 0;
   loff_t out_off = 0;
@@ -25,7 +25,8 @@ int main(void) {
   test_assert(ret == 6);
   ret = copy_file_range_syscall(in_fd, &in_off, out_fd, &out_off, 3, 0);
   if (ret < 0) {
-    test_assert(errno == ENOSYS);
+    // Debian 9 4.9.0-11-amd64 returns EINVAL here for unknown reasons
+    test_assert(errno == ENOSYS || errno == EINVAL);
     atomic_puts("copy_file_range not supported, aborting test");
     atomic_puts("EXIT-SUCCESS");
     return 0;

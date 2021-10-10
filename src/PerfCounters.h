@@ -58,6 +58,9 @@ public:
    */
   void reset(Ticks ticks_period);
 
+  template <typename Arch>
+  void reset_arch_extras();
+
   /**
    * Close the perfcounter fds. They will be automatically reopened if/when
    * reset is called again.
@@ -130,8 +133,14 @@ private:
   ScopedFd fd_ticks_measure;
   ScopedFd fd_minus_ticks_measure;
   ScopedFd fd_ticks_interrupt;
-  ScopedFd fd_ticks_in_transaction;
   ScopedFd fd_useless_counter;
+
+  // x86(_64) specific counter to support recording HLE
+  ScopedFd fd_ticks_in_transaction;
+
+  // aarch64 specific counter to detect use of ll/sc instructions
+  ScopedFd fd_strex_counter;
+
   TicksSemantics ticks_semantics_;
   bool started;
   bool counting;

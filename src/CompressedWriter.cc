@@ -61,7 +61,16 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
   // until we've finished initializing it.
   pthread_mutex_lock(&mutex);
   for (uint32_t i = 0; i < num_threads; ++i) {
-    pthread_create(&threads[i], nullptr, compression_thread_callback, this);
+    while (true) {
+      int err = pthread_create(&threads[i], nullptr, compression_thread_callback, this);
+      if (err == EAGAIN) {
+        sched_yield(); // Give other processes a chance to exit.
+        continue;
+      } else if (err != 0) {
+        SAFE_FATAL(err, "Failed to create compression threads!");
+      }
+      break;
+    }
     size_t last_slash = filename.rfind('/');
     string thread_name =
         string("compress ") + (last_slash == string::npos

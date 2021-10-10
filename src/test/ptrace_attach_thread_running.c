@@ -14,6 +14,7 @@ static void* child_thread(__attribute__((unused)) void* p) {
 
 static void* child_thread_running(__attribute__((unused)) void* p) {
   while (1) {
+    asm("" : : : "memory");
   }
   return NULL;
 }

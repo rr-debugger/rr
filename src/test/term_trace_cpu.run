@@ -15,10 +15,12 @@ SYNC_TOKEN=spinning
 WAIT_SECS=1
 
 record $EXE &
+SUB_ID=$!
 
 echo "Waiting for token '$SYNC_TOKEN' from tracee ..."
 until grep -q $SYNC_TOKEN record.out; do
         sleep 0
+        if ! kill -0 "$SUB_ID" >/dev/null 2>&1; then failed "subshell died, no need to longer wait for '$SYNC_TOKEN'"; exit; fi
 done
 
 rrpid=$(parent_pid_of $(pidof $EXE-$nonce))

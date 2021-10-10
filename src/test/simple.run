@@ -1,0 +1,9 @@
+source `dirname $0`/util.sh
+unset RR_TRUST_TEMP_FILES
+export RR_COPY_ALL_FILES=1
+record simple$bitness
+if ! ( ls $workdir/latest-trace | grep -q 'mmap_.*libc.*\.so' ); then
+    failed "Can't find libc"
+fi
+replay
+check EXIT-SUCCESS

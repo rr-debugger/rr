@@ -162,6 +162,17 @@ public:
   }
 
   template <typename... Rest>
+  long infallible_syscall_if_alive(int syscallno, Rest... args) {
+    Registers callregs = regs();
+    // The first syscall argument is called "arg 1", so
+    // our syscall-arg-index template parameter starts
+    // with "1".
+    long ret = syscall_helper<1>(syscallno, callregs, args...);
+    check_syscall_result(ret, syscallno, true);
+    return ret;
+  }
+
+  template <typename... Rest>
   remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
     Registers callregs = regs();
     long ret = syscall_helper<1>(syscallno, callregs, args...);
@@ -196,6 +207,20 @@ public:
   ScopedFd retrieve_fd(int fd);
 
   /**
+   * Arranges for 'fd' to be transmitted to the tracee and returns
+   * a file descriptor in the tracee that corresponds to the same file
+   * description.
+   * Returns a negative value if the process dies or has died.
+   */
+  int send_fd(const ScopedFd &fd);
+
+  /**
+   * `send_fd` the given file descriptor, making sure that it ends up as fd
+   * `dup_to`, (dup'ing it there and closing the original if necessary)
+   */
+  void infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to);
+
+  /**
    * Remotely invoke in |t| the specified syscall with the given
    * arguments.  The arguments must of course be valid in |t|,
    * and no checking of that is done by this function.
@@ -212,10 +237,18 @@ public:
    */
   pid_t new_tid() { return new_tid_; }
 
+  /* Do the open/mmap/close dance for a particular file */
+  void finish_direct_mmap(remote_ptr<void> rec_addr, size_t length,
+                          int prot, int flags,
+                          const std::string& backing_file_name,
+                          int backing_file_open_flags,
+                          off64_t backing_offset_pages,
+                          struct stat& real_file, std::string& real_file_name);
+
 private:
   void setup_path(bool enable_singlestep_path);
 
-  void check_syscall_result(long ret, int syscallno);
+  void check_syscall_result(long ret, int syscallno, bool allow_death=false);
 
   /**
    * "Recursively" build the set of syscall registers in
@@ -236,11 +269,13 @@ private:
   }
 
   template <typename Arch> ScopedFd retrieve_fd_arch(int fd);
+  template <typename Arch> int send_fd_arch(const ScopedFd &fd);
 
   Task* t;
   Registers initial_regs;
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
+  bool initial_at_seccomp;
   remote_ptr<void> fixed_sp;
   std::vector<uint8_t> replaced_bytes;
   WaitStatus restore_wait_status;
@@ -254,8 +289,6 @@ private:
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
-  void* operator new(size_t) = delete;
-  void operator delete(void*) = delete;
 };
 
 } // namespace rr

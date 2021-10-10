@@ -46,16 +46,16 @@ int main(void) {
   struct dqblk dq;
   int ret;
 
-  /* ENOTBLK returned before checking cmd */
+  /* ENOTBLK may be returned before checking cmd */
   ret = quotactl(0x12345678, "/", getuid(), (caddr_t)&dq);
-  test_assert(ret < 0 && errno == ENOTBLK);
+  test_assert(ret < 0 && (errno == ENOTBLK || errno == EINVAL));
 
-  /* ENOENT returned before checking cmd */
+  /* ENOENT may be returned before checking cmd */
   ret =
       quotactl(0x12345678, "/asdfjlafdlkk289892389pkj", getuid(), (caddr_t)&dq);
-  test_assert(ret < 0 && errno == ENOENT);
+  test_assert(ret < 0 && (errno == ENOENT || errno == EINVAL));
 
-  /* ENODEV returned before checking cmd when the device is a Btrfs volume */
+  /* ENODEV may be returned before checking cmd when the device is a Btrfs volume */
   ret = quotactl(0x12345678, "/dev/dm-0", getuid(), (caddr_t)&dq);
   test_assert(ret < 0 && (errno == ENOTBLK || errno == ENOENT ||
                           errno == ENODEV || errno == EINVAL));

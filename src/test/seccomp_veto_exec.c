@@ -13,6 +13,8 @@ static void handler(int sig, siginfo_t* si, void* p) {
   int syscallno = ctx->uc_mcontext.gregs[REG_EAX];
 #elif defined(__x86_64__)
   int syscallno = ctx->uc_mcontext.gregs[REG_RAX];
+#elif defined(__aarch64__)
+  int syscallno = ctx->uc_mcontext.regs[8];
 #else
 #error define architecture here
 #endif
@@ -22,6 +24,8 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert(si->si_arch == AUDIT_ARCH_I386);
 #elif defined(__x86_64__)
   test_assert(si->si_arch == AUDIT_ARCH_X86_64);
+#elif defined(__aarch64__)
+  test_assert(si->si_arch == AUDIT_ARCH_AARCH64);
 #endif
 #endif
   test_assert(syscallno == SYS_execve);
@@ -35,6 +39,8 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert((intptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_EIP]);
 #elif defined(__x86_64__)
   test_assert((intptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_RIP]);
+#elif defined(__aarch64__)
+  test_assert((uintptr_t)si->si_call_addr == ctx->uc_mcontext.pc);
 #else
 #error define architecture here
 #endif

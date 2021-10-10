@@ -12,7 +12,7 @@ static void check_mapping(int* page, int magic, ssize_t nr_ints) {
 
 int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
-  int fd = open("temp", O_CREAT | O_EXCL | O_RDWR);
+  int fd = open("temp", O_CREAT | O_EXCL | O_RDWR, 0600);
   int* rpage;
   pid_t child;
   int status;

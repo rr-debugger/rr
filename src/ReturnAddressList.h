@@ -19,8 +19,8 @@ class Task;
  * all zeroes.
  */
 struct ReturnAddressList {
-  enum { COUNT = 8 };
-  remote_ptr<void> addresses[COUNT];
+  enum { AARCH64_COUNT = 0, X86_COUNT = 8, MAX_COUNT = X86_COUNT };
+  remote_ptr<void> addresses[MAX_COUNT];
 
   /**
    * Capture return addresses from |t|'s stack. The returned
@@ -28,7 +28,11 @@ struct ReturnAddressList {
    * will probably not be), but they will be a function of the task's current
    * state, so may be useful for distinguishing this state from other states.
    */
-  ReturnAddressList() {}
+  ReturnAddressList() {
+    for (size_t i = 0; i < MAX_COUNT; ++i) {
+      addresses[i] = nullptr;
+    }
+  }
   explicit ReturnAddressList(Task* t);
 
   bool operator==(const ReturnAddressList& other) const {

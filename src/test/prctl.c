@@ -58,6 +58,10 @@ int main(void) {
   test_assert(0 == prctl(PR_GET_CHILD_SUBREAPER, &reaper));
   test_assert(reaper == 1);
 
+  unsigned int size = 0;
+  test_assert(0 == prctl(PR_SET_MM, PR_SET_MM_MAP_SIZE, &size, 0, 0));
+  test_assert(size != 0);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

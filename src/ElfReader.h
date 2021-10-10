@@ -59,8 +59,13 @@ public:
 
 class Debuglink {
 public:
-  std::string filename;
+  std::string file_name;
   uint32_t crc;
+};
+
+class Debugaltlink {
+public:
+  std::string file_name;
 };
 
 struct SectionOffsets {
@@ -93,6 +98,7 @@ public:
   SymbolTable read_symbols(const char* symtab, const char* strtab);
   DynamicSection read_dynamic();
   Debuglink read_debuglink();
+  Debugaltlink read_debugaltlink();
   std::string read_buildid();
   // Returns true and sets file |offset| if ELF address |addr| is mapped from
   // a section in the ELF file.  Returns false if no section maps to
@@ -120,6 +126,7 @@ public:
   ScopedFd open_debug_file(const std::string& elf_file_name);
 
   static SupportedArch identify_arch(ScopedFd& fd);
+  static bool is_x32_abi(ScopedFd& fd);
 };
 
 } // namespace rr

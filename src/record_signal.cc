@@ -12,7 +12,10 @@
 #include <sys/resource.h>
 #include <sys/user.h>
 #include <syscall.h>
+
+#if defined(__i386__) || defined(__x86_64__)
 #include <x86intrin.h>
+#endif
 
 #include "preload/preload_interface.h"
 
@@ -32,14 +35,13 @@ using namespace std;
 
 namespace rr {
 
-static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
-
-template <typename Arch> static size_t sigaction_sigset_size_arch() {
-  return sizeof(typename Arch::kernel_sigset_t);
-}
-
-static size_t sigaction_sigset_size(SupportedArch arch) {
-  RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
+static __inline__ unsigned long long rdtsc(void) {
+#if defined(__i386__) || defined(__x86_64__)
+  return __rdtsc();
+#else
+  FATAL() << "Reached x86-only code path on non-x86 architecture";
+  return 0;
+#endif
 }
 
 static void restore_sighandler_if_not_default(RecordTask* t, int sig) {
@@ -164,9 +166,14 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
     LOG(debug) << "try_grow_map " << addr << ": address would be in guard page";
     return false;
   }
-  struct rlimit stack_limit;
   remote_ptr<void> limit_bottom;
+#if defined (__i386__)
+  struct rlimit stack_limit;
   int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
+#else
+  struct rlimit64 stack_limit;
+  int ret = syscall(__NR_prlimit64, t->tid, RLIMIT_STACK, (void*)0, &stack_limit);
+#endif
   if (ret >= 0 && stack_limit.rlim_cur != RLIM_INFINITY) {
     limit_bottom = ceil_page_size(it->map.end() - stack_limit.rlim_cur);
     if (limit_bottom > addr) {
@@ -205,7 +212,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
       t->vm()->map(t, new_start, it->map.start() - new_start, it->map.prot(),
                    it->map.flags() | MAP_ANONYMOUS, 0, string(),
                    KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
-  t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
+  t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
   // No need to flush syscallbuf here. It's safe to map these pages "early"
   // before they're really needed.
   t->record_event(Event::grow_map(), RecordTask::DONT_FLUSH_SYSCALLBUF);
@@ -216,14 +223,16 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
 }
 
 void disarm_desched_event(RecordTask* t) {
-  if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
+  if (t->desched_fd.is_open() &&
+      ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
 }
 
 void arm_desched_event(RecordTask* t) {
-  if (ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
-    FATAL() << "Failed to disarm desched event";
+  if (t->desched_fd.is_open() &&
+      ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
+    FATAL() << "Failed to arm desched event";
   }
 }
 
@@ -266,7 +275,7 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
   }
 
   Registers r = t->regs();
-  r.set_ip(r.ip().decrement_by_bkpt_insn_length(t->arch()));
+  r.set_ip(r.ip().undo_executed_bkpt(t->arch()));
   t->set_regs(r);
 
   if (t->is_at_traced_syscall_entry()) {
@@ -544,7 +553,17 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
                << " because in traced syscall";
     return true;
   }
-  if (t->is_at_traced_syscall_entry()) {
+
+  // Don't deliver signals just before entering rrcall_notify_syscall_hook_exit.
+  // At that point, notify_on_syscall_hook_exit will be set, but we have
+  // passed the point at which syscallbuf code has checked that flag.
+  // Replay will set notify_on_syscall_hook_exit when we replay towards the
+  // rrcall_notify_syscall_hook_exit *after* handling this signal, but
+  // that will be too late for syscallbuf to notice.
+  // It's OK to delay signal delivery until after rrcall_notify_syscall_hook_exit
+  // anyway.
+  if (t->is_at_traced_syscall_entry() &&
+      !is_rrcall_notify_syscall_hook_exit_syscall(t->regs().syscallno(), t->arch())) {
     LOG(debug) << "Safe to deliver signal at " << t->ip()
                << " because at entry to traced syscall";
     return true;
@@ -622,7 +641,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     // Since we're not undoing the kernel's changes, update our signal handler
     // state to match the kernel's.
     if (signal_was_blocked || t->is_sig_ignored(sig)) {
-      t->set_sig_handler_default(sig);
+      t->did_set_sig_handler_default(sig);
     }
   }
 

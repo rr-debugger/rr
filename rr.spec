@@ -21,13 +21,17 @@ http://rr-project.org
 # we skip _install step because CPack does that for us.
 # We do only save CPack installed tree in _prepr
 # and then restore it in build.
- 
+
+%install
+mkdir -p %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib64
+cp -a %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib/* %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib64
+ln -s @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/RPMS/@CPACK_PACKAGE_FILE_NAME@.rpm @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/@CPACK_PACKAGE_FILE_NAME@.rpm
+
 %files
 %defattr(-,root,root,-)
 @CPACK_PACKAGING_INSTALL_PREFIX@/lib64/*
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr_exec_stub*
-@CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr_page*
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/signal-rr-recording.sh
 @CPACK_PACKAGING_INSTALL_PREFIX@/share/rr/*.xml
 

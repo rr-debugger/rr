@@ -93,7 +93,7 @@ function usage {
 
 GLOBAL_OPTIONS="--suppress-environment-warnings --check-cached-mmaps --fatal-errors"
 
-SRCDIR=`dirname $0`/../..
+SRCDIR=`dirname ${BASH_SOURCE[0]}`/../..
 SRCDIR=`realpath $SRCDIR`
 
 TESTNAME=$1
@@ -108,9 +108,6 @@ else
     TESTNAME_NO_BITNESS=$TESTNAME
 fi
 LIB_ARG=$2
-if [[ "$LIB_ARG" == "" ]]; then
-    LIB_ARG=-b
-fi
 OBJDIR=$3
 if [[ "$OBJDIR" == "" ]]; then
     # Default to assuming that the user's working directory is the
@@ -142,9 +139,28 @@ TESTDIR="${SRCDIR}/src/test"
 # binaries into the trace.
 export RR_TRUST_TEMP_FILES=1
 
+# Have rr processes coordinate to not oversubscribe CPUs
+export _RR_CPU_LOCK_FILE="/tmp/rr-test-cpu-lock"
+
 # Set options to find rr and resource files in the expected places.
 export PATH="${OBJDIR}/bin:${PATH}"
-GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${OBJDIR}"
+
+# Resource path is normally the same as the build directory, however, it is
+# slightly different when using the installable testsuite. The installable
+# testsuite will look for resources under DESTDIR/CMAKE_INSATALL_PREFIX. We
+# can detect if it's the installable testsuite being run by checking if the
+# rr binary exists in the build directory.
+if [[ -f "$OBJDIR/bin/rr" ]]; then
+    RESOURCE_PATH=$OBJDIR
+else
+    # The resources are located at DESTDIR/CMAKE_INSTALL_PREFIX. We don't have
+    # access to these variables while running the testsuite. However, OBJDIR is
+    # set as DESTDIR/CMAKE_INSTALL_PREFIX/CMAKE_INSTALL_LIBDIR/rr/testsuite/obj.
+    # We can use this to locate the resources by going up exactly 4 directories.
+    RESOURCE_PATH=`realpath $OBJDIR/../../../..`
+fi
+
+GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${RESOURCE_PATH}"
 
 which rr >/dev/null 2>&1
 if [[ "$?" != "0" ]]; then
@@ -158,6 +174,8 @@ fi
 if [[ ! -d $TESTDIR ]]; then
     fatal FAILED: TESTDIR "($TESTDIR)" not found.
 fi
+
+RR_EXE=rr
 
 # Our test programs intentionally crash a lot. Don't generate coredumps for them.
 ulimit -c 0
@@ -192,10 +210,33 @@ function skip_if_no_syscall_buf {
     fi
 }
 
+function skip_if_test_32_bit {
+    if [[ "_32" == $bitness ]]; then
+        echo NOTE: Skipping "'$TESTNAME'" because 32-bit test
+        exit 0
+    fi
+}
+
+function skip_if_rr_32_bit {
+    if [[ "$(file $RESOURCE_PATH/lib/rr/librrpage.so | grep 32-bit -c)" == "1" ]]; then
+        echo NOTE: Skipping "'$TESTNAME'" because 32-bit rr
+        exit 0
+    fi
+}
+
+function skip_if_rr_32_bit_with_shell_64_bit {
+    if [[ "$(file $RESOURCE_PATH/lib/rr/librrpage.so | grep 32-bit -c)" == "1" ]] &&
+       [[ "$(file -L $(which sh) | grep 64-bit -c)" == "1" ]];
+    then
+        echo NOTE: Skipping "'$TESTNAME'" because 32-bit rr with 64-bit shell
+        exit 0
+    fi
+}
+
 # If the test is causing an unrealistic failure when the syscallbuf is
 # enabled, skip it.  This better be a temporary situation!
 function skip_if_syscall_buf {
-    if [[ "-b" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
+    if [[ "" == "$LIB_ARG" ]]; then
         echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
         exit 0
     fi
@@ -203,11 +244,18 @@ function skip_if_syscall_buf {
 
 function just_record { exe="$1"; exeargs=$2;
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err \
-        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
+        $RR_EXE $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
 }
 
 function save_exe { exe=$1;
-    cp "${OBJDIR}/bin/$exe" "$exe-$nonce"
+    # If the installable testsuite is being run, most of the exes will
+    # be located under OBJDIR and the remaining under RESOURCE_PATH.
+    if [[ -f "${OBJDIR}/bin/$exe" ]]; then
+        EXE_PATH=$OBJDIR/bin/$exe
+    else
+        EXE_PATH=$RESOURCE_PATH/bin/$exe
+    fi
+    cp "${EXE_PATH}" "$exe-$nonce"
 }
 
 # Record $exe with $exeargs.
@@ -229,12 +277,17 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 
 function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
-        rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+        $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+}
+
+function rerun { rerunflags=$1
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT rerun.err \
+        $RR_EXE $GLOBAL_OPTIONS rerun $rerunflags 1> rerun.out 2> rerun.err
 }
 
 function do_ps { psflags=$1
     _RR_TRACE_DIR="$workdir" \
-        rr $GLOBAL_OPTIONS ps $psflags
+        $RR_EXE $GLOBAL_OPTIONS ps $psflags
 }
 
 #  debug <expect-script-name> [replay-args]
@@ -243,7 +296,7 @@ function do_ps { psflags=$1
 function debug { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
         python3 $TESTDIR/$expectscript.py \
-        rr $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs
+        $RR_EXE $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
         passed
     else
@@ -267,11 +320,23 @@ function passed {
     echo "Test '$TESTNAME' PASSED"
 }
 
-# Check that (i) no error during replay; (ii) recorded and replayed
-# output match; (iii) the supplied token was found in the output.
-# Otherwise the test fails.
-function check { token=$1;
-    if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out -o ! -f record.err ]; then
+function just_check_replay_err {
+    if [[ $(cat replay.err) != "" ]]; then
+        failed ": error during replay:"
+        echo "--------------------------------------------------"
+        cat replay.err
+        echo "--------------------------------------------------"
+        echo "replay.out:"
+        echo "--------------------------------------------------"
+        cat replay.out
+        echo "--------------------------------------------------"
+        return 1
+    fi
+    return 0
+}
+
+function just_check_record { token=$1;
+     if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out -o ! -f record.err ]; then
         failed "output files not found."
     elif [[ $(cat record.err) != "" ]]; then
         failed ": error during recording:"
@@ -287,23 +352,57 @@ function check { token=$1;
         echo "--------------------------------------------------"
         cat record.out
         echo "--------------------------------------------------"
-    elif [[ $(cat replay.err) != "" ]]; then
-        failed ": error during replay:"
-        echo "--------------------------------------------------"
-        cat replay.err
-        echo "--------------------------------------------------"
-        echo "replay.out:"
-        echo "--------------------------------------------------"
-        cat replay.out
-        echo "--------------------------------------------------"
-    elif [[ $(diff record.out replay.out) != "" ]]; then
+    else
+        return 0;
+    fi
+    return 1
+}
+
+function just_check_record_replay_match {
+    if [[ $(diff record.out replay.out) != "" ]]; then
         failed ": output from recording different than replay"
         echo "diff -U8 $workdir/record.out $workdir/replay.out"
         diff -U8 record.out replay.out
+        return 1
+    fi
+    return 0
+}
+
+# Check that (i) no error during replay; (ii) recorded and replayed
+# output match; (iii) the supplied token was found in the output.
+# Otherwise the test fails.
+function check { token=$1;
+    if ! just_check_record $1; then return;
+    elif ! just_check_replay_err; then return;
+    elif ! just_check_record_replay_match; then return;
     else
         passed
     fi
 }
+
+# Like `check`, but omit the check that the output matches between record and
+# replay
+function check_record { token=$1;
+    if ! just_check_record $token; then return;
+    elif ! just_check_replay_err; then return;
+    else
+        passed
+    fi
+}
+
+# Like `check`, but don't look at the record output at all
+function check_replay_token { token=$1;
+    if [[ "$token" != "" && "replay.out" != $(grep -l "$token" replay.out) ]]; then
+        failed ": token '$token' not in replay.out:"
+        echo "--------------------------------------------------"
+        cat replay.out
+        echo "--------------------------------------------------"
+    elif ! just_check_replay_err; then return;
+    else
+        passed
+    fi
+}
+
 
 #  compare_test <token> [<replay-flags>] [executable]
 #
@@ -331,12 +430,21 @@ function compare_test { token=$1; replayflags=$2;
 # computing test pass/fail.
 function debug_test {
     record $TESTNAME
-    debug $TESTNAME_NO_BITNESS
+    debug $TEST_PREFIX$TESTNAME_NO_BITNESS
+}
+
+#  rerun_singlestep_test
+#
+# Record the test name passed to |util.sh|, then rerun --singlestep
+# the recording.
+function rerun_singlestep_test {
+    record $TESTNAME
+    rerun "--singlestep=rip,gp_x16,flags"
 }
 
 # Return the number of events in the most recent local recording.
 function count_events {
-    local events=$(rr $GLOBAL_OPTIONS dump -r latest-trace | wc -l)
+    local events=$($RR_EXE $GLOBAL_OPTIONS dump -r latest-trace | wc -l)
     # The |simple| test is just about the simplest possible C program,
     # and has around 180 events (when recorded on a particular
     # developer's machine).  If we count a number of events

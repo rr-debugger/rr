@@ -3,6 +3,7 @@
 #ifndef RR_EVENT_H_
 #define RR_EVENT_H_
 
+#include <memory>
 #include <ostream>
 #include <stack>
 #include <string>
@@ -104,6 +105,16 @@ struct DeschedEvent {
   // middle of a desched, which means it's successfully
   // allocated (but not yet committed) this syscall record.
   remote_ptr<const struct syscallbuf_record> rec;
+};
+
+struct PatchSyscallEvent {
+  PatchSyscallEvent() : patch_after_syscall(false) {}
+  // If true, this patch event comes after a syscall (whereas usually they
+  // come before). We assume the trace has put us in the correct place
+  // and don't try to execute any code to reach this event.
+  bool patch_after_syscall;
+  // It true, this patch is for the caller of a vsyscall entry point
+  bool patch_vsyscall;
 };
 
 struct SyscallbufFlushEvent {
@@ -225,6 +236,7 @@ struct SyscallEvent {
   int64_t write_offset;
   std::vector<int> exec_fds_to_close;
   std::vector<OpenedFd> opened;
+  std::shared_ptr<std::array<typename NativeArch::sockaddr_storage, 2>> socket_addrs;
 
   SyscallState state;
   // Syscall number.
@@ -274,6 +286,15 @@ struct Event {
     return desched;
   }
 
+  PatchSyscallEvent& PatchSyscall() {
+    DEBUG_ASSERT(EV_PATCH_SYSCALL == event_type);
+    return patch;
+  }
+  const PatchSyscallEvent& PatchSyscall() const {
+    DEBUG_ASSERT(EV_PATCH_SYSCALL == event_type);
+    return patch;
+  }
+
   SyscallbufFlushEvent& SyscallbufFlush() {
     DEBUG_ASSERT(EV_SYSCALLBUF_FLUSH == event_type);
     return syscallbuf_flush;
@@ -313,13 +334,6 @@ struct Event {
   bool is_signal_event() const;
   bool is_syscall_event() const;
 
-  /**
-   * Dump info about this to INFO log.
-   *
-   * Note: usually you want to use |LOG(info) << event;|.
-   */
-  void log() const;
-
   /** Return a string describing this. */
   std::string str() const;
 
@@ -338,7 +352,12 @@ struct Event {
   static Event noop() { return Event(EV_NOOP); }
   static Event trace_termination() { return Event(EV_TRACE_TERMINATION); }
   static Event instruction_trap() { return Event(EV_INSTRUCTION_TRAP); }
-  static Event patch_syscall() { return Event(EV_PATCH_SYSCALL); }
+  static Event patch_syscall() {
+    auto ev = Event(EV_PATCH_SYSCALL);
+    ev.PatchSyscall().patch_after_syscall = false;
+    ev.PatchSyscall().patch_vsyscall = false;
+    return ev;
+  }
   static Event sched() { return Event(EV_SCHED); }
   static Event seccomp_trap() { return Event(EV_SECCOMP_TRAP); }
   static Event syscallbuf_abort_commit() {
@@ -355,6 +374,7 @@ private:
   EventType event_type;
   union {
     DeschedEvent desched;
+    PatchSyscallEvent patch;
     SignalEvent signal;
     SyscallEvent syscall;
     SyscallbufFlushEvent syscallbuf_flush;

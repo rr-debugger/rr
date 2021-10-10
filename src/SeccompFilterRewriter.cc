@@ -30,7 +30,7 @@ static void pass_through_seccomp_filter(RecordTask* t) {
   long ret;
   {
     AutoRemoteSyscalls remote(t);
-    ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
+    ret = remote.syscall(t->regs().original_syscallno(), t->regs().orig_arg1(),
                          t->regs().arg2(), t->regs().arg3());
   }
   set_syscall_result(t, ret);
@@ -85,7 +85,8 @@ static void install_patched_seccomp_filter_arch(
   for (auto& e : AddressSpace::rr_page_syscalls()) {
     if (e.privileged == AddressSpace::PRIVILEGED) {
       auto ip = AddressSpace::rr_page_syscall_exit_point(e.traced, e.privileged,
-                                                         e.enabled);
+                                                         e.enabled,
+                                                         Arch::arch());
       f.allow_syscalls_from_callsite(ip);
     }
   }
@@ -105,7 +106,7 @@ static void install_patched_seccomp_filter_arch(
                         .cast<typename Arch::sock_fprog>();
     t->write_mem(prog_ptr, prog);
 
-    ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
+    ret = remote.syscall(t->regs().original_syscallno(), t->regs().orig_arg1(),
                          t->regs().arg2(), prog_ptr);
   }
   set_syscall_result(t, ret);

@@ -11,7 +11,7 @@ int main(void) {
     return 77;
   }
 
-  // This is the first child, therefore PID 1 in it's PID namespace
+  // This is the first child, therefore PID 1 in its PID namespace
   pid = fork();
   test_assert(pid >= 0);
   if (pid == 0) {

@@ -17,7 +17,11 @@ int main(void) {
     ptrace(PTRACE_TRACEME, 0, 0, 0);
     raise(SIGSTOP);
     for (;;) {
+#if defined(__x86_64__) || defined(__i386__)
       __asm__("pause");
+#else
+      __asm__("nop");
+#endif
     }
     test_assert(0 && "Should have died");
   }

@@ -4,5 +4,5 @@ RECORD_ARGS="-c100"
 record $TESTNAME
 # Don't use pipes here since we need 'debug' to run in the same bash process
 declare -i stop_at_event=`rr --suppress-environment-warnings dump $workdir/latest-trace | \
-    python2 $TESTDIR/clone_interruption_finder.py`
+    python3 $TESTDIR/clone_interruption_finder.py`
 debug clone_interruption "-g $stop_at_event"

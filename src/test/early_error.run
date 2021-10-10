@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+save_exe "$TESTNAME"
+_RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err "./$TESTNAME-$nonce" \
+    $(which rr) $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "./$TESTNAME-$nonce" \
+    || failed "didn't get expected startup error"

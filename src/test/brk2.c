@@ -3,7 +3,7 @@
 #include "util.h"
 
 int main(void) {
-  void* start = (void*)syscall(SYS_brk, 0);
+  void* start = (void*)syscall(SYS_brk, (void*)0);
   void* p = (void*)syscall(SYS_brk, start + 5000);
   int res;
   void* pp;
@@ -13,7 +13,7 @@ int main(void) {
   res = mprotect((void*)(((long)start + 4095) & ~(long)4095), 4096, PROT_READ);
   test_assert(res == 0);
 
-  pp = (void*)syscall(SYS_brk, 0);
+  pp = (void*)syscall(SYS_brk, (void*)0);
   test_assert(pp == p);
 
   *(char*)p = 77;

@@ -21,6 +21,7 @@ public:
   void insert_task(Task* t);
   void erase_task(Task* t);
   bool has_task(Task* t) const { return tasks.find(t) != tasks.end(); }
+  Task* first_running_task() const;
 
 protected:
   TaskSet tasks;

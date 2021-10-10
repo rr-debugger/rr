@@ -7,6 +7,7 @@
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <sysexits.h>
+#include <time.h>
 
 #include "preload/preload_interface.h"
 
@@ -28,12 +29,11 @@ namespace rr {
 RecordCommand RecordCommand::singleton(
     "record",
     " rr record [OPTION]... <exe> [exe-args]...\n"
-    "  -b, --force-syscall-buffer force the syscall buffer preload library\n"
-    "                             to be used, even if that's probably a bad\n"
-    "                             idea\n"
     "  -c, --num-cpu-ticks=<NUM>  maximum number of 'CPU ticks' (currently \n"
     "                             retired conditional branches) to allow a \n"
     "                             task to run before interrupting it\n"
+    "  --disable-avx-512          Masks out the CPUID bits for AVX512\n"
+    "                             This can improve trace portability\n"
     "  --disable-cpuid-features <CCC>[,<DDD>]\n"
     "                             Mask out CPUID EAX=1 feature bits\n"
     "                             <CCC>: Bitmask of bits to clear from ECX\n"
@@ -48,9 +48,6 @@ RecordCommand RecordCommand::singleton(
     "                             <AAA>: Bitmask of bits to clear from EAX\n"
     "  -h, --chaos                randomize scheduling decisions to try to \n"
     "                             reproduce bugs\n"
-    "  -i, --ignore-signal=<SIG>  block <SIG> from being delivered to \n"
-    "                             tracees. Probably only useful for unit \n"
-    "                             tests.\n"
     "  -n, --no-syscall-buffer    disable the syscall buffer preload \n"
     "                             library even if it would otherwise be used\n"
     "  --no-file-cloning          disable file cloning for mmapped files\n"
@@ -65,12 +62,9 @@ RecordCommand RecordCommand::singleton(
     "                             application name.\n"
     "  -p --print-trace-dir=<NUM> print trace directory followed by a newline\n"
     "                             to given file descriptor\n"
-    "  --syscall-buffer-size=<NUM> desired size of syscall buffer in kB.\n"
-    "                             Mainly for tests\n"
     "  --syscall-buffer-sig=<NUM> the signal used for communication with the\n"
     "                             syscall buffer. SIGPWR by default, unused\n"
     "                             if --no-syscall-buffer is passed\n"
-    "  -s, --always-switch        try to context switch at every rr event\n"
     "  -t, --continue-through-signal=<SIG>\n"
     "                             Unhandled <SIG> signals will be ignored\n"
     "                             instead of terminating the program. The\n"
@@ -87,16 +81,23 @@ RecordCommand RecordCommand::singleton(
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
     "                             just the initial process.\n"
-    "  --ignore-nested            Directly start child process when running\n"
-    "                             under nested rr recording, instead of\n"
-    "                             raising an error.\n"
-    "  --scarce-fds               Consume 950 fds before recording\n"
-    "                             (for testing purposes)\n"
+    "  --nested=<value>           Control behavior when run inside an outer\n"
+    "                             rr recording. Default: exit with error\n"
+    "  --nested=ignore            Directly start child process so it's part\n"
+    "                             of the outer recording\n"
+    "  --nested=detach            Start a separate recording session.\n"
+    "                             Must not share memory with the outer.\n"
+    "  --nested=release           Run the child without recording it.\n"
+    "                             Must not share memory with the outer.\n"
     "  --setuid-sudo              If running under sudo, pretend to be the\n"
     "                             user that ran sudo rather than root. This\n"
     "                             allows recording setuid/setcap binaries.\n"
     "  --trace-id                 Sets the trace id to the specified id.\n"
-    "  --copy-preload-src         Copy preload sources to trace dir\n");
+    "  --copy-preload-src         Copy preload sources to trace dir\n"
+    "  --stap-sdt                 Enables the use of SystemTap statically-\n"
+    "                             defined tracepoints\n"
+    "  --asan                     Override heuristics and always enable ASAN\n"
+    "                             compatibility.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -150,7 +151,7 @@ struct RecordFlags {
   bool wait_for_all;
 
   /* Start child process directly if run under nested rr recording */
-  bool ignore_nested;
+  NestedBehavior nested;
 
   bool scarce_fds;
 
@@ -163,6 +164,15 @@ struct RecordFlags {
 
   /* The signal to use for syscallbuf desched events */
   int syscallbuf_desched_sig;
+
+  /* True if we should load the audit library for SystemTap SDT support. */
+  bool stap_sdt;
+
+  /* True if we should unmap the vdso */
+  bool unmap_vdso;
+
+  /* True if we should always enable ASAN compatibility. */
+  bool asan;
 
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
@@ -179,11 +189,14 @@ struct RecordFlags {
         chaos(false),
         num_cores(0),
         wait_for_all(false),
-        ignore_nested(false),
+        nested(NESTED_ERROR),
         scarce_fds(false),
         setuid_sudo(false),
         copy_preload_src(false),
-        syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL) {}
+        syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
+        stap_sdt(false),
+        unmap_vdso(false),
+        asan(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -229,7 +242,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 0, "no-read-cloning", NO_PARAMETER },
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
-    { 3, "ignore-nested", NO_PARAMETER },
+    { 3, "nested", HAS_PARAMETER },
     { 4, "scarce-fds", NO_PARAMETER },
     { 5, "setuid-sudo", NO_PARAMETER },
     { 6, "bind-to-cpu", HAS_PARAMETER },
@@ -240,7 +253,10 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 11, "trace-id", HAS_PARAMETER },
     { 12, "copy-preload-src", NO_PARAMETER },
     { 13, "syscall-buffer-sig", HAS_PARAMETER },
-    { 'b', "force-syscall-buffer", NO_PARAMETER },
+    { 14, "stap-sdt", NO_PARAMETER },
+    { 15, "unmap-vdso", NO_PARAMETER },
+    { 16, "disable-avx-512", NO_PARAMETER },
+    { 17, "asan", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -251,8 +267,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'v', "env", HAS_PARAMETER },
-    { 'w', "wait", NO_PARAMETER }
-  };
+    { 'w', "wait", NO_PARAMETER }};
   ParsedOption opt;
   auto args_copy = args;
   if (!Command::parse_option(args_copy, options, &opt)) {
@@ -260,9 +275,6 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   }
 
   switch (opt.short_name) {
-    case 'b':
-      flags.use_syscall_buffer = RecordSession::ENABLE_SYSCALL_BUF;
-      break;
     case 'c':
       if (!opt.verify_valid_int(1, Scheduler::MAX_MAX_TICKS)) {
         return false;
@@ -306,7 +318,18 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.syscall_buffer_size = opt.int_value * 1024;
       break;
     case 3:
-      flags.ignore_nested = true;
+      if (opt.value == "default" || opt.value == "error") {
+        flags.nested = NESTED_ERROR;
+      } else if (opt.value == "ignore") {
+        flags.nested = NESTED_IGNORE;
+      } else if (opt.value == "detach") {
+        flags.nested = NESTED_DETACH;
+      } else if (opt.value == "release") {
+        flags.nested = NESTED_RELEASE;
+      } else {
+        LOG(warn) << "Unknown nesting behavior `" << opt.value << "`";
+        flags.nested = NESTED_ERROR;
+      }
       break;
     case 4:
       flags.scarce_fds = true;
@@ -431,6 +454,20 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       }
       flags.syscallbuf_desched_sig = opt.int_value;
       break;
+    case 14:
+      flags.stap_sdt = true;
+      break;
+    case 15:
+      flags.unmap_vdso = true;
+      break;
+    case 16:
+      flags.disable_cpuid_features.extended_features_ebx |= 0xdc230000;
+      flags.disable_cpuid_features.extended_features_ecx |= 0x00002c42;
+      flags.disable_cpuid_features.extended_features_edx |= 0x0000000c;
+      break;
+    case 17:
+      flags.asan = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -458,14 +495,13 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   return true;
 }
 
-static volatile bool term_request;
+static volatile double term_requested;
 
 /**
- * A terminating signal was received.  Set the |term_request| bit to
- * terminate the trace at the next convenient point.
+ * A terminating signal was received.
  *
- * If there's already a term request pending, then assume rr is wedged
- * and abort().
+ * If a term request has been pending for more than one second,
+ * then assume rr is wedged and abort().
  *
  * Note that this is not only called in a signal handler but it could
  * be called off the main thread.
@@ -473,14 +509,29 @@ static volatile bool term_request;
 static void handle_SIGTERM(__attribute__((unused)) int sig) {
   // Don't use LOG() here because we're in a signal handler. If we do anything
   // that could allocate, we could deadlock.
-  if (term_request) {
-    static const char msg[] =
+  if (term_requested > 0) {
+    double now = monotonic_now_sec();
+    if (now - term_requested > 1) {
+      static const char msg[] =
         "Received SIGTERM while an earlier one was pending.  We're "
         "probably wedged.\n";
-    write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-    notifying_abort();
+      write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+      notifying_abort();
+    }
+  } else {
+    term_requested = monotonic_now_sec();
   }
-  term_request = true;
+}
+
+/**
+ * Something segfaulted - this is probably a bug in rr. Try to at least
+ * give a stacktrace.
+ */
+static void handle_SIGSEGV(__attribute__((unused)) int sig) {
+  static const char msg[] =
+    "rr itself crashed (SIGSEGV). This shouldn't happen!\n";
+  write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+  notifying_abort();
 }
 
 static void install_signal_handlers(void) {
@@ -488,6 +539,9 @@ static void install_signal_handlers(void) {
   memset(&sa, 0, sizeof(sa));
   sa.sa_handler = handle_SIGTERM;
   sigaction(SIGTERM, &sa, nullptr);
+
+  sa.sa_handler = handle_SIGSEGV;
+  sigaction(SIGSEGV, &sa, nullptr);
 
   sa.sa_handler = SIG_IGN;
   sigaction(SIGHUP, &sa, nullptr);
@@ -528,7 +582,7 @@ static RecordSession* static_session;
 // later.
 void force_close_record_session() {
   if (static_session) {
-    static_session->terminate_recording();
+    static_session->close_trace_writer(TraceWriter::CLOSE_ERROR);
   }
 }
 
@@ -579,7 +633,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       args, flags.extra_env, flags.disable_cpuid_features,
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
-      flags.trace_id.get());
+      flags.trace_id.get(),
+      flags.stap_sdt, flags.unmap_vdso, flags.asan);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();
@@ -601,15 +656,24 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   install_signal_handlers();
 
   RecordSession::RecordResult step_result;
+  bool did_term_detached_tasks = false;
   do {
     bool done_initial_exec = session->done_initial_exec();
     step_result = session->record_step();
-    if (!done_initial_exec && session->done_initial_exec()) {
+    // Only create latest-trace symlink if --output-trace-dir is not being used
+    if (!done_initial_exec && session->done_initial_exec() && flags.output_trace_dir.empty()) {
       session->trace_writer().make_latest_trace();
     }
-  } while (step_result.status == RecordSession::STEP_CONTINUE && !term_request);
+    if (term_requested) {
+      session->terminate_tracees();
+      if (!did_term_detached_tasks) {
+        session->term_detached_tasks();
+        did_term_detached_tasks = true;
+      }
+    }
+  } while (step_result.status == RecordSession::STEP_CONTINUE);
 
-  session->terminate_recording();
+  session->close_trace_writer(TraceWriter::CLOSE_OK);
   static_session = nullptr;
 
   switch (step_result.status) {
@@ -688,13 +752,32 @@ int RecordCommand::run(vector<string>& args) {
   }
 
   if (running_under_rr()) {
-    if (flags.ignore_nested) {
-      exec_child(args);
+    switch (flags.nested) {
+      case NESTED_IGNORE:
+        exec_child(args);
+        return 1;
+      case NESTED_DETACH:
+      case NESTED_RELEASE: {
+        int ret = syscall(SYS_rrcall_detach_teleport, (uintptr_t)0, (uintptr_t)0,
+          (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
+        if (ret < 0) {
+          FATAL() << "Failed to detach from parent rr";
+        }
+        if (running_under_rr(false)) {
+          FATAL() << "Detaching from parent rr did not work";
+        }
+        if (flags.nested == NESTED_RELEASE) {
+          exec_child(args);
+          return 1;
+        }
+        break;
+      }
+      default:
+        fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
+                        "Use `rr record --nested=ignore` to start the child "
+                        "process directly.\n");
+        return 1;
     }
-    fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
-                    "Use `rr record --ignore-nested` to start the child "
-                    "process directly.\n");
-    return 1;
   }
 
   if (!verify_not_option(args) || args.size() == 0) {
@@ -707,7 +790,7 @@ int RecordCommand::run(vector<string>& args) {
   if (flags.setuid_sudo) {
     if (geteuid() != 0 || getenv("SUDO_UID") == NULL) {
       fprintf(stderr, "rr: --setuid-sudo option may only be used under sudo.\n"
-                      "Re-run as `sudo -EP rr record --setuid-sudo` to"
+                      "Re-run as `sudo -EP --preserve-env=HOME rr record --setuid-sudo` to"
                       "record privileged executables.\n");
       return 1;
     }

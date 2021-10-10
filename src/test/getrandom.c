@@ -8,7 +8,7 @@
 #endif
 
 int main(void) {
-  char buf[128];
+  unsigned char buf[128];
   int ret;
 
   memset(buf, 0, sizeof(buf));

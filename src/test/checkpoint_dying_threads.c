@@ -11,6 +11,9 @@ static int wait_forever_fds[2];
 static char ch = 'X';
 
 static void* run_thread(__attribute__((unused)) void* p) {
+  /* Lower our priority so we won't get scheduled until everything
+     else is blocked */
+  setpriority(PRIO_PROCESS, 0, 4);
   test_assert(1 == write(thread_to_main_fds[1], &ch, 1));
   read(wait_forever_fds[0], &ch, 1);
   test_assert(0);
@@ -27,9 +30,12 @@ static int run_child(void) {
   return 0;
 }
 
+static volatile int scratch = 0;
+
 int main(void) {
   pthread_t thread;
   pid_t child;
+  int i;
 
   test_assert(0 == pipe(thread_to_main_fds));
   test_assert(0 == pipe(main_to_child_fds));
@@ -46,6 +52,11 @@ int main(void) {
   /* thread should have blocked on its wait-forever read. Tell the
      child to proceed after we exit_group. */
   test_assert(1 == write(main_to_child_fds[1], &ch, 1));
+
+  /* Spin for a while to give run_child time to reach a runnable state */
+  for (i = 0; i < 10000000; ++i) {
+    scratch += 1;
+  }
 
   return 0;
 }

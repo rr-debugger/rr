@@ -2,5 +2,7 @@ source `dirname $0`/util.sh
 
 # This test requires syscallbuf syscall patching
 skip_if_no_syscall_buf
+
+if [ $TIMEOUT -lt 300 ]; then TIMEOUT=300; fi
 compare_test EXIT-SUCCESS
 

@@ -13,9 +13,10 @@
 #include "GdbRegister.h"
 #include "core.h"
 #include "kernel_abi.h"
-#include "kernel_supplement.h"
 #include "remote_code_ptr.h"
 #include "remote_ptr.h"
+
+struct iovec;
 
 namespace rr {
 
@@ -28,11 +29,14 @@ enum MismatchBehavior {
 };
 
 const uintptr_t X86_RESERVED_FLAG = 1 << 1;
+const uintptr_t X86_ZF_FLAG = 1 << 6;
 const uintptr_t X86_TF_FLAG = 1 << 8;
 const uintptr_t X86_IF_FLAG = 1 << 9;
 const uintptr_t X86_DF_FLAG = 1 << 10;
 const uintptr_t X86_RF_FLAG = 1 << 16;
 const uintptr_t X86_ID_FLAG = 1 << 21;
+
+const uintptr_t AARCH64_DBG_SPSR_SS = 1 << 21;
 
 /**
  * A Registers object contains values for all general-purpose registers.
@@ -73,7 +77,8 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  void set_from_ptrace(const struct ::user_regs_struct& ptrace_regs);
+  void set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs);
+
   /**
    * Get a user_regs_struct from these Registers. If the tracee architecture
    * is not rr's native architecture, then it must be a 32-bit tracee with a
@@ -83,7 +88,9 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  struct ::user_regs_struct get_ptrace() const;
+  NativeArch::user_regs_struct get_ptrace() const;
+  iovec get_ptrace_iovec();
+
   /**
    * Get a user_regs_struct for a particular Arch from these Registers.
    * It's invalid to call this when 'arch' is 64-bit and the
@@ -95,10 +102,17 @@ public:
     const uint8_t* data;
     size_t size;
   };
+
+  /**
+   * Get the register content to save in the trace.
+   */
+  InternalData get_regs_for_trace() const;
+
   /**
    * Equivalent to get_ptrace_for_arch(arch()) but doesn't copy.
    */
   InternalData get_ptrace_for_self_arch() const;
+
   /**
    * Copy an arch-specific user_regs_struct into these Registers.
    * It's invalid to call this when 'arch' is 64-bit and the
@@ -108,55 +122,79 @@ public:
   void set_from_ptrace_for_arch(SupportedArch arch, const void* data,
                                 size_t size);
 
-#define RR_GET_REG(x86case, x64case)                                           \
-  (arch() == x86 ? (uint32_t)u.x86regs.x86case                                 \
-                 : arch() == x86_64 ? u.x64regs.x64case : -1)
-#define RR_GET_REG_SIGNED(x86case, x64case)                                    \
-  (arch() == x86 ? u.x86regs.x86case                                           \
-                 : arch() == x86_64 ? u.x64regs.x64case : -1)
-#define RR_SET_REG(x86case, x64case, value)                                    \
+  /**
+   * Copy from the arch-specific structure returned in get_regs_for_trace()
+   * back into *this
+   */
+  void set_from_trace(SupportedArch arch, const void* data,
+                      size_t size);
+
+#define ARCH_SWITCH_CASE(rettype, x86case, x64case, arm64case)                 \
+(([=](void) -> rettype {                                                       \
   switch (arch()) {                                                            \
-    case x86:                                                                  \
-      u.x86regs.x86case = (value);                                             \
-      break;                                                                   \
-    case x86_64:                                                               \
-      u.x64regs.x64case = (value);                                             \
-      break;                                                                   \
     default:                                                                   \
       DEBUG_ASSERT(0 && "unknown architecture");                               \
-  }
+      RR_FALLTHROUGH; /* Fall through to avoid warnings */                     \
+    case x86: {                                                                \
+      x86case;                                                                 \
+      break;                                                                   \
+    }                                                                          \
+    case x86_64: {                                                             \
+      x64case;                                                                 \
+      break;                                                                   \
+    }                                                                          \
+    case aarch64: {                                                            \
+      arm64case;                                                               \
+      break;                                                                   \
+    }                                                                          \
+  }                                                                            \
+})())
 
-  remote_code_ptr ip() const { return RR_GET_REG(eip, rip); }
-  void set_ip(remote_code_ptr addr) {
-    RR_SET_REG(eip, rip, addr.register_value());
+#define RR_GET_REG(x86case, x64case, arm64case)                                \
+  ARCH_SWITCH_CASE(uint64_t,                                                   \
+    return (uint32_t)u.x86regs.x86case,                                        \
+    return u.x64regs.x64case,                                                  \
+    return u.arm64regs.arm64case)
+
+#define RR_GET_REG_SIGNED(x86case, x64case, arm64case)                         \
+  ARCH_SWITCH_CASE(int64_t,                                                    \
+    return (int32_t)u.x86regs.x86case,                                         \
+    return u.x64regs.x64case,                                                  \
+    return u.arm64regs.arm64case)
+
+#define RR_GET_REG_X86(x86case, x64case)                                       \
+  ARCH_SWITCH_CASE(uint64_t,                                                   \
+    return (uint32_t)u.x86regs.x86case,                                        \
+    return u.x64regs.x64case,                                                  \
+    DEBUG_ASSERT(0 && "Hit an x86-only case, but this is not x86"); return 0)
+
+#define RR_UPDATE_CHECK(loc, value) bool changed = (uintptr_t)loc != (uintptr_t)(value); \
+  loc = (value); \
+  return changed;
+#define RR_SET_REG(x86case, x64case, arm64case, value)                         \
+  ARCH_SWITCH_CASE(bool,                                                       \
+    RR_UPDATE_CHECK(u.x86regs.x86case, value),                                 \
+    RR_UPDATE_CHECK(u.x64regs.x64case, value),                                 \
+    RR_UPDATE_CHECK(u.arm64regs.arm64case, value))
+
+#define RR_SET_REG_X86(x86case, x64case, value)                                \
+  ARCH_SWITCH_CASE(bool,                                                       \
+    RR_UPDATE_CHECK(u.x86regs.x86case, value),                                 \
+    RR_UPDATE_CHECK(u.x64regs.x64case, value),                                 \
+    DEBUG_ASSERT(0 && "Hit an x86-only case, but this is not x86"); return false)
+
+  remote_code_ptr ip() const { return RR_GET_REG(eip, rip, pc); }
+  bool set_ip(remote_code_ptr addr) {
+    return RR_SET_REG(eip, rip, pc, addr.register_value());
   }
-  remote_ptr<void> sp() const { return RR_GET_REG(esp, rsp); }
-  void set_sp(remote_ptr<void> addr) { RR_SET_REG(esp, rsp, addr.as_int()); }
+  remote_ptr<void> sp() const { return RR_GET_REG(esp, rsp, sp); }
+  bool set_sp(remote_ptr<void> addr) { return RR_SET_REG(esp, rsp, sp, addr.as_int()); }
 
   // Access the registers holding system-call numbers, results, and
   // parameters.
 
-  intptr_t syscallno() const { return RR_GET_REG(eax, rax); }
-  void set_syscallno(intptr_t syscallno) { RR_SET_REG(eax, rax, syscallno); }
-
-  uintptr_t syscall_result() const { return RR_GET_REG(eax, rax); }
-  intptr_t syscall_result_signed() const { return RR_GET_REG_SIGNED(eax, rax); }
-  void set_syscall_result(uintptr_t syscall_result) {
-    RR_SET_REG(eax, rax, syscall_result);
-  }
-  template <typename T> void set_syscall_result(remote_ptr<T> syscall_result) {
-    RR_SET_REG(eax, rax, syscall_result.as_int());
-  }
-
-  /**
-   * Returns true if syscall_result() indicates failure.
-   */
-  bool syscall_failed() const;
-
-  /**
-   * Returns true if syscall_result() indicates a syscall restart.
-   */
-  bool syscall_may_restart() const;
+  intptr_t syscallno() const { return (int)RR_GET_REG(eax, rax, x[8]); }
+  bool set_syscallno(intptr_t syscallno) { return RR_SET_REG(eax, rax, x[8], syscallno); }
 
   /**
    * This pseudo-register holds the system-call number when we get ptrace
@@ -165,53 +203,32 @@ public:
    * event.
    */
   intptr_t original_syscallno() const {
-    return RR_GET_REG_SIGNED(orig_eax, orig_rax);
+    return RR_GET_REG_SIGNED(orig_eax, orig_rax, orig_syscall);
   }
-  void set_original_syscallno(intptr_t syscallno) {
-    RR_SET_REG(orig_eax, orig_rax, syscallno);
-  }
-
-  uintptr_t arg1() const { return RR_GET_REG(ebx, rdi); }
-  intptr_t arg1_signed() const { return RR_GET_REG_SIGNED(ebx, rdi); }
-  void set_arg1(uintptr_t value) { RR_SET_REG(ebx, rdi, value); }
-  template <typename T> void set_arg1(remote_ptr<T> value) {
-    RR_SET_REG(ebx, rdi, value.as_int());
+  bool set_original_syscallno(intptr_t syscallno) {
+    return RR_SET_REG(orig_eax, orig_rax, orig_syscall, syscallno);
   }
 
-  uintptr_t arg2() const { return RR_GET_REG(ecx, rsi); }
-  intptr_t arg2_signed() const { return RR_GET_REG_SIGNED(ecx, rsi); }
-  void set_arg2(uintptr_t value) { RR_SET_REG(ecx, rsi, value); }
-  template <typename T> void set_arg2(remote_ptr<T> value) {
-    RR_SET_REG(ecx, rsi, value.as_int());
+  #define SYSCALL_REGISTER(name, x86case, x64case, arm64case)                  \
+  uintptr_t name() const { return RR_GET_REG(x86case, x64case, arm64case); }   \
+  intptr_t name ## _signed() const {                                           \
+    return RR_GET_REG_SIGNED(x86case, x64case, arm64case);                     \
+  }                                                                            \
+  bool set_ ## name(uintptr_t value) {                                         \
+    return RR_SET_REG(x86case, x64case, arm64case, value);                     \
+  }                                                                            \
+  template <typename T> bool set_ ## name(remote_ptr<T> value) {               \
+    return RR_SET_REG(x86case, x64case, arm64case, value.as_int());            \
   }
 
-  uintptr_t arg3() const { return RR_GET_REG(edx, rdx); }
-  intptr_t arg3_signed() const { return RR_GET_REG_SIGNED(edx, rdx); }
-  void set_arg3(uintptr_t value) { RR_SET_REG(edx, rdx, value); }
-  template <typename T> void set_arg3(remote_ptr<T> value) {
-    RR_SET_REG(edx, rdx, value.as_int());
-  }
-
-  uintptr_t arg4() const { return RR_GET_REG(esi, r10); }
-  intptr_t arg4_signed() const { return RR_GET_REG_SIGNED(esi, r10); }
-  void set_arg4(uintptr_t value) { RR_SET_REG(esi, r10, value); }
-  template <typename T> void set_arg4(remote_ptr<T> value) {
-    RR_SET_REG(esi, r10, value.as_int());
-  }
-
-  uintptr_t arg5() const { return RR_GET_REG(edi, r8); }
-  intptr_t arg5_signed() const { return RR_GET_REG_SIGNED(edi, r8); }
-  void set_arg5(uintptr_t value) { RR_SET_REG(edi, r8, value); }
-  template <typename T> void set_arg5(remote_ptr<T> value) {
-    RR_SET_REG(edi, r8, value.as_int());
-  }
-
-  uintptr_t arg6() const { return RR_GET_REG(ebp, r9); }
-  intptr_t arg6_signed() const { return RR_GET_REG_SIGNED(ebp, r9); }
-  void set_arg6(uintptr_t value) { RR_SET_REG(ebp, r9, value); }
-  template <typename T> void set_arg6(remote_ptr<T> value) {
-    RR_SET_REG(ebp, r9, value.as_int());
-  }
+  SYSCALL_REGISTER(syscall_result, eax, rax, x[0]);
+  SYSCALL_REGISTER(orig_arg1, ebx, rdi, orig_x0)
+  SYSCALL_REGISTER(arg1, ebx, rdi, x[0])
+  SYSCALL_REGISTER(arg2, ecx, rsi, x[1])
+  SYSCALL_REGISTER(arg3, edx, rdx, x[2])
+  SYSCALL_REGISTER(arg4, esi, r10, x[3])
+  SYSCALL_REGISTER(arg5, edi, r8, x[4])
+  SYSCALL_REGISTER(arg6, ebp, r9, x[5])
 
   uintptr_t arg(int index) const {
     switch (index) {
@@ -237,15 +254,15 @@ public:
    * Set the register containing syscall argument |Index| to
    * |value|.
    */
-  template <int Index> void set_arg(std::nullptr_t) { set_arg(Index, 0); }
-  template <int Index, typename T> void set_arg(remote_ptr<T> value) {
-    set_arg(Index, value.as_int());
+  template <int Index> bool set_arg(std::nullptr_t) { return set_arg(Index, 0); }
+  template <int Index, typename T> bool set_arg(remote_ptr<T> value) {
+    return set_arg(Index, value.as_int());
   }
-  template <int Index, typename T> void set_arg(T value) {
-    set_arg(Index, uintptr_t(value));
+  template <int Index, typename T> bool set_arg(T value) {
+    return set_arg(Index, uintptr_t(value));
   }
 
-  void set_arg(int index, uintptr_t value) {
+  bool set_arg(int index, uintptr_t value) {
     switch (index) {
       case 1:
         return set_arg1(value);
@@ -261,8 +278,39 @@ public:
         return set_arg6(value);
       default:
         DEBUG_ASSERT(0 && "Argument index out of range");
+        return false;
     }
   }
+
+  bool set_orig_arg(int index, uintptr_t value) {
+    switch (index) {
+      case 1:
+        return set_orig_arg1(value);
+      case 2:
+        return set_arg2(value);
+      case 3:
+        return set_arg3(value);
+      case 4:
+        return set_arg4(value);
+      case 5:
+        return set_arg5(value);
+      case 6:
+        return set_arg6(value);
+      default:
+        DEBUG_ASSERT(0 && "Argument index out of range");
+        return false;
+    }
+  }
+
+  /**
+   * Returns true if syscall_result() indicates failure.
+   */
+  bool syscall_failed() const;
+
+  /**
+   * Returns true if syscall_result() indicates a syscall restart.
+   */
+  bool syscall_may_restart() const;
 
   // Some X86-specific stuff follows. Use of these accessors should be guarded
   // by an architecture test.
@@ -270,54 +318,53 @@ public:
    * Set the output registers of the |rdtsc| instruction.
    */
   void set_rdtsc_output(uint64_t value) {
-    RR_SET_REG(eax, rax, value & 0xffffffff);
-    RR_SET_REG(edx, rdx, value >> 32);
+    RR_SET_REG_X86(eax, rax, value & 0xffffffff);
+    RR_SET_REG_X86(edx, rdx, value >> 32);
   }
 
   void set_cpuid_output(uint32_t eax, uint32_t ebx, uint32_t ecx,
                         uint32_t edx) {
-    RR_SET_REG(eax, rax, eax);
-    RR_SET_REG(ebx, rbx, ebx);
-    RR_SET_REG(ecx, rcx, ecx);
-    RR_SET_REG(edx, rdx, edx);
+    RR_SET_REG_X86(eax, rax, eax);
+    RR_SET_REG_X86(ebx, rbx, ebx);
+    RR_SET_REG_X86(ecx, rcx, ecx);
+    RR_SET_REG_X86(edx, rdx, edx);
   }
 
-  void set_r8(uintptr_t value) {
+  bool set_r8(uintptr_t value) {
     DEBUG_ASSERT(arch() == x86_64);
-    u.x64regs.r8 = value;
+    RR_UPDATE_CHECK(u.x64regs.r8, value);
   }
 
-  void set_r9(uintptr_t value) {
+  bool set_r9(uintptr_t value) {
     DEBUG_ASSERT(arch() == x86_64);
-    u.x64regs.r9 = value;
+    RR_UPDATE_CHECK(u.x64regs.r9, value);
   }
 
-  void set_r10(uintptr_t value) {
+  bool set_r10(uintptr_t value) {
     DEBUG_ASSERT(arch() == x86_64);
-    u.x64regs.r10 = value;
+    RR_UPDATE_CHECK(u.x64regs.r10, value);
   }
 
-  void set_r11(uintptr_t value) {
+  bool set_r11(uintptr_t value) {
     DEBUG_ASSERT(arch() == x86_64);
-    u.x64regs.r11 = value;
+    RR_UPDATE_CHECK(u.x64regs.r11, value);
   }
 
-  uintptr_t di() const { return RR_GET_REG(edi, rdi); }
-  void set_di(uintptr_t value) { RR_SET_REG(edi, rdi, value); }
+  uintptr_t di() const { return RR_GET_REG_X86(edi, rdi); }
+  bool set_di(uintptr_t value) { return RR_SET_REG_X86(edi, rdi, value); }
 
-  uintptr_t si() const { return RR_GET_REG(esi, rsi); }
-  void set_si(uintptr_t value) { RR_SET_REG(esi, rsi, value); }
+  uintptr_t si() const { return RR_GET_REG_X86(esi, rsi); }
+  bool set_si(uintptr_t value) { return RR_SET_REG_X86(esi, rsi, value); }
 
-  uintptr_t cx() const { return RR_GET_REG(ecx, rcx); }
-  void set_cx(uintptr_t value) { RR_SET_REG(ecx, rcx, value); }
+  uintptr_t cx() const { return RR_GET_REG_X86(ecx, rcx); }
+  bool set_cx(uintptr_t value) { return RR_SET_REG_X86(ecx, rcx, value); }
 
-  uintptr_t ax() const { return RR_GET_REG(eax, rax); }
-  uintptr_t bp() const { return RR_GET_REG(ebp, rbp); }
+  uintptr_t ax() const { return RR_GET_REG_X86(eax, rax); }
+  uintptr_t bp() const { return RR_GET_REG_X86(ebp, rbp); }
 
-  uintptr_t flags() const;
-  void set_flags(uintptr_t value);
-  bool singlestep_flag() { return flags() & X86_TF_FLAG; }
-  void clear_singlestep_flag() { set_flags(flags() & ~X86_TF_FLAG); }
+  uintptr_t flags() const { return RR_GET_REG_X86(eflags, eflags); };
+  bool set_flags(uintptr_t value) { return RR_SET_REG_X86(eflags, eflags, value); }
+  bool zf_flag() const { return flags() & X86_ZF_FLAG; }
   bool df_flag() const { return flags() & X86_DF_FLAG; }
 
   uintptr_t fs_base() const {
@@ -338,14 +385,64 @@ public:
     u.x64regs.gs_base = gs_base;
   }
 
-  uint64_t cs() const { return RR_GET_REG(xcs, cs); }
-  uint64_t ss() const { return RR_GET_REG(xss, ss); }
-  uint64_t ds() const { return RR_GET_REG(xds, ds); }
-  uint64_t es() const { return RR_GET_REG(xes, es); }
-  uint64_t fs() const { return RR_GET_REG(xfs, fs); }
-  uint64_t gs() const { return RR_GET_REG(xgs, gs); }
+  uint64_t cs() const { return RR_GET_REG_X86(xcs, cs); }
+  uint64_t ss() const { return RR_GET_REG_X86(xss, ss); }
+  uint64_t ds() const { return RR_GET_REG_X86(xds, ds); }
+  uint64_t es() const { return RR_GET_REG_X86(xes, es); }
+  uint64_t fs() const { return RR_GET_REG_X86(xfs, fs); }
+  uint64_t gs() const { return RR_GET_REG_X86(xgs, gs); }
 
   // End of X86-specific stuff
+  // Begin aarch64 specific accessors
+  uintptr_t pstate() const {
+    DEBUG_ASSERT(arch() == aarch64);
+    return u.arm64regs.pstate;
+  }
+
+  void set_pstate(uintptr_t pstate) {
+    DEBUG_ASSERT(arch() == aarch64);
+    u.arm64regs.pstate = pstate;
+  }
+
+  void set_x7(uintptr_t x7) {
+    DEBUG_ASSERT(arch() == aarch64);
+    u.arm64regs.x[7] = x7;
+  }
+
+  uintptr_t x1() const {
+    DEBUG_ASSERT(arch() == aarch64);
+    return u.arm64regs.x[1];
+  }
+
+  uintptr_t x7() const {
+    DEBUG_ASSERT(arch() == aarch64);
+    return u.arm64regs.x[7];
+  }
+  // End of aarch64 specific accessors
+
+  /**
+   * Modify the processor's single step flag. On x86 this is the TF flag in the
+   * eflags register.
+   */
+  bool x86_singlestep_flag() const;
+  void clear_x86_singlestep_flag();
+
+  /**
+   * Aarch64 has two flags that control single stepping. An EL1 one that
+   * enables singlestep execeptions and an EL0 one in pstate (SPSR_SS). The EL1 bit
+   * is controlled by PTRACE_SINGLESTEP (it gets turned on upon the first
+   * PTRACE_(SYSEMU_)SINGLESTEP and turned off on any other ptrace resume).
+   * The EL0 bit controls whether an exception is taken *before* execution
+   * of the next instruction (an exception is taken when the bit is *clear*).
+   * The hardware clears this bit whenever an instruction completes. Thus, to
+   * ensure that a single step actually happens, regardless of how we got to
+   * this step, we must both using PTRACE_SINGLESTEP and *set* the SPSR_SS bit.
+   * Otherwise, if we got to this stop via single step, the SPSR_SS bit will
+   * likely already be clear, and we'd take a single step exception without
+   * ever having executed any userspace instructions whatsoever.
+   */
+  bool aarch64_singlestep_flag() const;
+  void set_aarch64_singlestep_flag();
 
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;
@@ -403,6 +500,28 @@ public:
    */
   void write_register_by_user_offset(uintptr_t offset, uintptr_t value);
 
+
+  bool operator==(const Registers &other) const {
+    if (arch() != other.arch()) {
+      return false;
+    }
+    switch (arch()) {
+      case x86:
+        return memcmp(&u.x86regs, &other.u.x86regs, sizeof(u.x86regs)) == 0;
+      case x86_64:
+        return memcmp(&u.x64regs, &other.u.x64regs, sizeof(u.x64regs)) == 0;
+      case aarch64:
+        return memcmp(&u.arm64regs, &other.u.arm64regs, sizeof(u.arm64regs)) == 0;
+      default:
+        DEBUG_ASSERT(0 && "Unknown architecture");
+        return false;
+    }
+  }
+
+  bool operator!=(const Registers &other) const {
+    return !(*this == other);
+  }
+
 private:
   template <typename Arch>
   void print_register_file_arch(FILE* f, const char* formats[]) const;
@@ -451,6 +570,24 @@ private:
   union {
     rr::X86Arch::user_regs_struct x86regs;
     rr::X64Arch::user_regs_struct x64regs;
+    struct {
+      // This is the NT_PRSTATUS regset
+      union {
+        rr::ARM64Arch::user_regs_struct _ptrace;
+        // This duplicates the field names of the user_regs_struct and makes
+        // them available as fields of arm64regs for easy access.
+        struct {
+          uint64_t x[31];
+          uint64_t sp;
+          uint64_t pc;
+          uint64_t pstate;
+        };
+      };
+      // This is not exposed through GETREGSET. We track it manually
+      uint64_t orig_x0;
+      // This is the NT_ARM_SYSTEM_CALL regset
+      int orig_syscall;
+    } arm64regs;
   } u;
 };
 

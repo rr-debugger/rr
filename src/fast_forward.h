@@ -11,6 +11,19 @@ namespace rr {
 
 class Registers;
 
+struct FastForwardStatus {
+  FastForwardStatus() : did_fast_forward(false), incomplete_fast_forward(false) {}
+  FastForwardStatus(const FastForwardStatus& other) = default;
+  FastForwardStatus& operator=(const FastForwardStatus& other) = default;
+  FastForwardStatus& operator|=(const FastForwardStatus& other) {
+    did_fast_forward |= other.did_fast_forward;
+    incomplete_fast_forward |= other.incomplete_fast_forward;
+    return *this;
+  }
+  bool did_fast_forward;
+  bool incomplete_fast_forward;
+};
+
 /**
  * Perform one or more synchronous singlesteps of |t|. Usually just does
  * one singlestep, except when a singlestep leaves the IP unchanged (i.e. a
@@ -33,7 +46,7 @@ class Registers;
  * Returns true if we did a fast-forward, false if we just did one regular
  * singlestep.
  */
-bool fast_forward_through_instruction(
+FastForwardStatus fast_forward_through_instruction(
     Task* t, ResumeRequest how, const std::vector<const Registers*>& states);
 
 /**

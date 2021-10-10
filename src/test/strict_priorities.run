@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+export RR_DISABLE_ROUND_ROBIN=1
+compare_test EXIT-SUCCESS

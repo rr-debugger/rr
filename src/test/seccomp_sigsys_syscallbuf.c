@@ -12,6 +12,9 @@ static void handler(int sig, __attribute__((unused)) siginfo_t* si, void* p) {
 #elif defined(__x86_64__)
   tv = ctx->uc_mcontext.gregs[REG_RDI];
   ctx->uc_mcontext.gregs[REG_RAX] = 0;
+#elif defined(__aarch64__)
+  tv = ctx->uc_mcontext.regs[0];
+  ctx->uc_mcontext.regs[0] = 0;
 #else
 #error define architecture here
 #endif

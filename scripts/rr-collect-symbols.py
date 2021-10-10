@@ -13,9 +13,9 @@ from urllib.error import HTTPError, ContentTooShortError
 
 # Usage: rr-collect-symbols.py <trace-dir> [<url> | <path>]
 #
-# Given a <url>, downloads the ZIP file at <url>, unzips it, runs "gunzip"
-# on any .gz files, and for any ELF files found whose build-ids match the
-# build-id of an ELF file in the trace, moves it into the trace.
+# Given a <url>, downloads the zip/.tar.zst file at <url>, uncompresses it,
+# runs "gunzip" on any .gz files, and for any ELF files found whose build-ids
+# match the build-id of an ELF file in the trace, moves it into the trace.
 #
 # Given a <path>, which must contain a .build-id directory with the usual
 # structure (e.g. as Ubuntu and Fedora create under /usr/lib/debug), searches
@@ -93,6 +93,25 @@ def mkdir_p(path):
         else:
             raise
 
+# 'dst' must be a complete file name, not a directory.
+def copy_file(src, dst):
+    try:
+        # Remove the destination file in case it's a hard link
+        # or owned by someone else.
+        os.remove(dst)
+    except:
+        pass
+    shutil.copy(src, dst)
+
+# 'dst' must be a complete file name, not a directory
+def create_link(src, dst):
+    try:
+        # Remove the destination file in case it's wrong.
+        os.remove(dst)
+    except:
+        pass
+    os.symlink(src, dst)
+
 def collect_trace_build_ids():
     ret = {}
     for file in glob.iglob("%s/mmap_*"%trace_dir):
@@ -103,23 +122,32 @@ def collect_trace_build_ids():
             if altref:
                 altref_file = find_altref_for_trace_file(file, altref)
                 if not altref_file:
-                    raise "Can't find alt file %s for %s"%(altref, file)
+                    print("WARNING: Can't find alt file %s for %s"%(altref, file))
+                    continue
                 dir = "%s/debug/.build-id/%s"%(trace_dir, build_id[:2])
                 mkdir_p(dir)
-                dst = "%s/%s.sup"%(dir, build_id[2:])
-                subprocess.check_call(["cp", "--preserve", "-f", "--reflink=auto", altref_file, dst])
+                copy_file(altref_file, "%s/%s.sup"%(dir, build_id[2:]))
     return ret
 
 trace_build_ids = collect_trace_build_ids()
 
 def collect_archive(url):
+    is_tar_zst = url.endswith(".tar.zst")
     tmp_dir = tempfile.mkdtemp(dir=trace_dir)
+    if is_tar_zst:
+        tmp_file_name = "%s/archive.tar.zst"%tmp_dir
+    else:
+        # Assume its a ZIP
+        tmp_file_name = "%s/archive.zip"%tmp_dir
     try:
-        (file, headers) = urlretrieve(url, "%s/archive.zip"%tmp_dir)
+        (file, headers) = urlretrieve(url, tmp_file_name)
     except (HTTPError, ContentTooShortError) as exc:
         print("Failed to load archive %s: %s"%(url, exc), file=sys.stderr)
         sys.exit(2)
-    subprocess.check_call(["unzip", "-d", tmp_dir, file])
+    if is_tar_zst:
+        subprocess.check_call(["tar", "-C", tmp_dir, "-I", "zstd", "-xvf", file])
+    else:
+        subprocess.check_call(["unzip", "-d", tmp_dir, file])
     os.remove(file)
 
     for root, dirs, files in os.walk(tmp_dir):
@@ -148,13 +176,24 @@ def collect_filesystem(path):
                 if build_id and build_id in trace_build_ids:
                     dir = "%s/debug/.build-id/%s"%(trace_dir, build_id[:2])
                     mkdir_p(dir)
-                    dst = "%s/%s.debug"%(dir, build_id[2:])
-                    subprocess.check_call(["cp", "--preserve", "-f", "--reflink=auto", file, dst])
+                    copy_file(file, "%s/%s.debug"%(dir, build_id[2:]))
                     altref = find_altref(file)
                     if altref:
-                        altref_file = os.path.join(os.path.dirname(file), altref.decode('utf-8'))
-                        dst = "%s/%s.sup"%(dir, build_id[2:])
-                        subprocess.check_call(["cp", "--preserve", "-f", "--reflink=auto", altref_file, dst])
+                        altref = altref.decode('utf-8')
+                        altref_file = os.path.join(os.path.dirname(file), altref)
+                        copy_file(altref_file, "%s/%s.sup"%(dir, build_id[2:]))
+                        if altref.startswith("../../../.dwz/"):
+                            mkdir_p("%s/.dwz"%trace_dir)
+                            src = "../debug/.build-id/%s/%s.sup"%(build_id[:2], build_id[2:])
+                            create_link(src, "%s/.dwz/%s"%(trace_dir, altref[14:]))
+                        elif altref.startswith("../../.dwz/"):
+                            mkdir_p("%s/debug/.dwz"%trace_dir)
+                            src = "../.build-id/%s/%s.sup"%(build_id[:2], build_id[2:])
+                            create_link(src, "%s/debug/.dwz/%s"%(trace_dir, altref[11:]))
+                        elif altref.startswith("../.dwz/"):
+                            mkdir_p("%s/debug/.build-id/.dwz"%trace_dir)
+                            src = "../%s/%s.sup"%(build_id[:2], build_id[2:])
+                            create_link(src, "%s/debug/.build-id/.dwz/%s"%(trace_dir, altref[8:]))
 
 if re.search("^[^:/]+:", source):
     collect_archive(source)

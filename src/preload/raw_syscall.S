@@ -136,8 +136,30 @@ _raw_syscall:
         .cfi_endproc
         .size _raw_syscall, . - _raw_syscall
 
+#elif defined(__aarch64__)
+        .text
+        .globl _raw_syscall
+        .hidden _raw_syscall
+        .type _raw_syscall, @function
+_raw_syscall:
+        .cfi_startproc
+        mov x8,x0
+        mov x0,x1
+        mov x1,x2
+        mov x2,x3
+        mov x3,x4
+        mov x4,x5
+        mov x5,x6
+        svc #0
+        ret
+        .cfi_endproc
+        .size _raw_syscall, . - _raw_syscall
 #else
 #error unknown CPU architecture
 #endif /* __i386__/__x86_64__ */
+        .global _syscallbuf_code_end
+        .hidden _syscallbuf_code_end
+_syscallbuf_code_end:
+
         .section .note.GNU-stack,"",@progbits
         .previous

@@ -9,6 +9,8 @@ static void handler(int sig, __attribute__((unused)) siginfo_t* si, void* p) {
   ctx->uc_mcontext.gregs[REG_EAX] = 42;
 #elif defined(__x86_64__)
   ctx->uc_mcontext.gregs[REG_RAX] = 42;
+#elif defined(__aarch64__)
+  ctx->uc_mcontext.regs[0] = 42;
 #else
 #error define architecture here
 #endif
@@ -20,8 +22,8 @@ static void install_filter(void) {
        accumulator */
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
     /* Jump forward 1 instruction if system call number
-       is not SYS_open */
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_open, 0, 1),
+       is not SYS_openat */
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_openat, 0, 1),
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     /* Destination of system call number mismatch: allow other
@@ -61,8 +63,7 @@ int main(void) {
   install_filter();
 
   /* Test SIGSYS for a buffered syscall */
-  /* Use syscall directly since glibc 2.26 uses SYS_openat to implement open. */
-  test_assert(syscall(SYS_open, "/dev/null", O_RDONLY) == 42);
+  test_assert(syscall(SYS_openat, -1, "/dev/null", O_RDONLY) == 42);
 
   atomic_puts("EXIT-SUCCESS");
 

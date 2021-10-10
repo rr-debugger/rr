@@ -3,10 +3,9 @@
 #ifndef RR_TASK_H_
 #define RR_TASK_H_
 
-#include <asm/ldt.h>
-
 #include <memory>
 #include <vector>
+#include <unordered_map>
 
 #include "preload/preload_interface.h"
 
@@ -18,6 +17,7 @@
 #include "PropertyTable.h"
 #include "Registers.h"
 #include "TaskishUid.h"
+#include "ThreadGroup.h"
 #include "TraceStream.h"
 #include "WaitStatus.h"
 #include "core.h"
@@ -28,13 +28,11 @@
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
-struct user_desc;
 
 namespace rr {
 
 class AutoRemoteSyscalls;
 class RecordSession;
-class RecordTask;
 class ReplaySession;
 class ScopedFd;
 class Session;
@@ -77,8 +75,8 @@ enum ResumeRequest {
   RESUME_CONT = PTRACE_CONT,
   RESUME_SINGLESTEP = PTRACE_SINGLESTEP,
   RESUME_SYSCALL = PTRACE_SYSCALL,
-  RESUME_SYSEMU = PTRACE_SYSEMU,
-  RESUME_SYSEMU_SINGLESTEP = PTRACE_SYSEMU_SINGLESTEP,
+  RESUME_SYSEMU = NativeArch::PTRACE_SYSEMU,
+  RESUME_SYSEMU_SINGLESTEP = NativeArch::PTRACE_SYSEMU_SINGLESTEP,
 };
 enum WaitRequest {
   // After resuming, blocking-waitpid() until tracee status
@@ -133,11 +131,33 @@ public:
   typedef std::vector<WatchConfig> DebugRegs;
 
   /**
-   * We hide the destructor and require clients to call this instead. This
-   * lets us make virtual calls from within the destruction code. This
-   * does the actual PTRACE_DETACH and then calls the real destructor.
+   * Ptrace-detach the task.
    */
-  void destroy();
+  void detach();
+
+  /*
+   * Re-enable the CPUID instruction in this task (if it was previously
+   * disabled to support CPUID emulation) as well as the use of rdtsc.
+   */
+  void reenable_cpuid_tsc();
+
+  /**
+   * Wait for the task to exit, but do not reap/detach yet.
+   */
+  void wait_exit();
+
+  /**
+   * Advance the task to its exit state if it's not already there.
+   */
+  void proceed_to_exit(bool wait = true);
+
+  /**
+   * Kill this task and wait for it to exit.
+   * N.B.: If may_reap() is false, this may hang.
+   * Returns the WaitStatus of the task at exit (usually SIGKILL, but may not
+   * be if we raced with another exit reason).
+   */
+  WaitStatus kill();
 
   /**
    * This must be in an emulated syscall, entered through
@@ -174,6 +194,27 @@ public:
   Ticks tick_count() { return ticks; }
 
   /**
+   * Return the path of this fd as /proc/<pid>/fd/<fd>
+   */
+  std::string proc_fd_path(int fd);
+
+  /**
+   * Return the path of /proc/<pid>/stat
+   */
+  std::string proc_stat_path();
+
+  /**
+   * Return the path of /proc/<pid>/exe
+   */
+  std::string proc_exe_path();
+
+  /**
+   * Return the path of the executable (i.e. what
+   * /proc/<pid>/exe points to).
+   */
+  std::string exe_path();
+
+  /**
    * Stat |fd| in the context of this task's fd table.
    */
   struct stat stat_fd(int fd);
@@ -190,6 +231,14 @@ public:
    * task's fd table.
    */
   std::string file_name_of_fd(int fd);
+  /**
+   * Get current offset of |fd|
+   */
+  int64_t fd_offset(int fd);
+  /**
+   * Get pid of pidfd |fd|
+   */
+  pid_t pid_of_pidfd(int fd);
 
   /**
    * Force the wait status of this to |status|, as if
@@ -224,15 +273,24 @@ public:
   /**
    * Destroy in the tracee task the scratch buffer and syscallbuf (if
    * syscallbuf_child is non-null).
-   * This task must already be at a state in which remote syscalls can be
-   * executed; if it's not, results are undefined.
+   * Both the as_task and the fd_task must be able to execute remote syscalls
+   * and share the address space, resp. the file descriptor table with the
+   * current task. If either of these is null, the corresponding resource is
+   * not destroyed remote (e.g. if there are no other tasks left in the same
+   * address space or file descriptor table).
    */
-  void destroy_buffers();
+  void destroy_buffers(Task *as_task, Task *fd_task);
+  void destroy_buffers() { destroy_buffers(this, this); }
+
+  void did_kill();
 
   void unmap_buffers_for(
       AutoRemoteSyscalls& remote, Task* t,
       remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child);
-  void close_buffers_for(AutoRemoteSyscalls& remote, Task* t);
+  /* Close fds related to `t`'s syscallbuf, in this task's fd table.
+     If `really_close` is true, actually close the kernel fds through `remote`,
+     otherwise only update our FdTable. */
+  void close_buffers_for(AutoRemoteSyscalls& remote, Task* t, bool really_close);
 
   remote_ptr<const struct syscallbuf_record> next_syscallbuf_record();
   long stored_record_size(remote_ptr<const struct syscallbuf_record> record);
@@ -278,7 +336,7 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    auto t = AddressSpace::rr_page_syscall_from_exit_point(ip());
+    auto t = AddressSpace::rr_page_syscall_from_exit_point(arch(), ip());
     return t && t->traced == AddressSpace::UNTRACED;
   }
 
@@ -318,9 +376,10 @@ public:
   virtual void did_wait() {}
   /**
    * Return the pid of the task in its own pid namespace.
-   * Only RecordTasks actually change pid namespaces.
+   * Only RecordTasks actually change pid namespaces, but
+   * this value is stored and present during replay too.
    */
-  virtual pid_t own_namespace_tid() { return tid; }
+  pid_t own_namespace_tid() { return own_namespace_rec_tid; }
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust
@@ -376,6 +435,11 @@ public:
   bool execed() const;
 
   /**
+   * Return true if this task is dead and just waiting to be reaped.
+   */
+  virtual bool already_exited() const { return false; }
+
+  /**
    * Read |N| bytes from |child_addr| into |buf|, or don't
    * return.
    */
@@ -387,8 +451,11 @@ public:
   /** Return the current regs of this. */
   const Registers& regs() const;
 
-  /** Return the extra registers of this. */
+  /** Return the extra registers of this. Asserts if the task died. */
   const ExtraRegisters& extra_regs();
+
+  /** Return the extra registers of this, or null if the task died. */
+  const ExtraRegisters* extra_regs_fallible();
 
   /** Return the current arch of this. This can change due to exec(). */
   SupportedArch arch() const {
@@ -400,19 +467,26 @@ public:
   /**
    * Return the debug status (DR6 on x86). The debug status is always cleared
    * in resume_execution() before we resume, so it always only reflects the
-   * events since the last resume.
+   * events since the last resume. Must not be called on non-x86 architectures.
    */
-  uintptr_t debug_status();
-  /**
-   * Set the debug status (DR6 on x86).
-   */
-  void set_debug_status(uintptr_t status);
+  uintptr_t x86_debug_status();
 
   /**
-   * Determine why a SIGTRAP occurred. Uses debug_status() but doesn't
+   * Set the debug status (DR6 on x86). Noop on non-x86 architectures.
+   */
+  void set_x86_debug_status(uintptr_t status);
+
+  /**
+   * Determine why a SIGTRAP occurred. On x86, uses x86_debug_status() but doesn't
    * consume it.
    */
   TrapReasons compute_trap_reasons();
+
+  /**
+   * Called on syscall entry to save any registers that we need to keep, but
+   * cannot get from the kernel (r.g. orig_x0 on aarch64).
+   */
+  void apply_syscall_entry_regs();
 
   /**
    * Read |val| from |child_addr|.
@@ -440,9 +514,11 @@ public:
 
   /**
    * Read and return the C string located at |child_addr| in
-   * this address space.
+   * this address space. If the data can't all be read (because the c string to
+   * be read is invalid), then if |ok| is non-null, sets *ok to
+   * false, otherwise asserts.
    */
-  std::string read_c_str(remote_ptr<char> child_addr);
+  std::string read_c_str(remote_ptr<char> child_addr, bool *ok = nullptr);
 
   /**
    * Resume execution |how|, deliverying |sig| if nonzero.
@@ -470,6 +546,13 @@ public:
   void set_extra_regs(const ExtraRegisters& regs);
 
   /**
+   * Read the aarch64 TLS register via ptrace. Returns true on success, false
+   * on failure. On success `result` is set to the tracee's TLS register.
+   */
+  bool read_aarch64_tls_register(uintptr_t *result);
+  void set_aarch64_tls_register(uintptr_t val);
+
+  /**
    * Program the debug registers to the vector of watchpoint
    * configurations in |reg| (also updating the debug control
    * register appropriately).  Return true if all registers were
@@ -480,23 +563,27 @@ public:
    */
   bool set_debug_regs(const DebugRegs& regs);
 
+  bool set_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs, size_t nregs);
+  bool get_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs);
+
   uintptr_t get_debug_reg(size_t regno);
-  bool set_debug_reg(size_t regno, uintptr_t value);
+  bool set_x86_debug_reg(size_t regno, uintptr_t value);
 
   /** Update the thread area to |addr|. */
-  void set_thread_area(remote_ptr<struct ::user_desc> tls);
+  void set_thread_area(remote_ptr<X86Arch::user_desc> tls);
 
   /** Set the thread area at index `idx` to desc and reflect this
     * into the OS task. Returns 0 on success, errno otherwise.
     */
-  int emulate_set_thread_area(int idx, struct ::user_desc desc);
+  int emulate_set_thread_area(int idx, X86Arch::user_desc desc);
 
   /** Get the thread area from the remote process.
     * Returns 0 on success, errno otherwise.
     */
-  int emulate_get_thread_area(int idx, struct ::user_desc& desc);
+  int emulate_get_thread_area(int idx, X86Arch::user_desc& desc);
 
-  const std::vector<struct ::user_desc>& thread_areas() {
+  const std::vector<X86Arch::user_desc>& thread_areas() {
+    DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
     return thread_areas_;
   }
 
@@ -571,15 +658,11 @@ public:
 
   /**
    * Block until the status of this changes. wait() expects the wait to end
-   * with the process in a stopped() state. If interrupt_after_elapsed > 0,
-   * interrupt the task after that many seconds have elapsed.
+   * with the process in a stopped() state. If interrupt_after_elapsed >= 0,
+   * interrupt the task after that many seconds have elapsed. If
+   * interrupt_after_elapsed == 0.0, the interrupt will happen immediately.
    */
-  void wait(double interrupt_after_elapsed = 0);
-  /**
-   * Return true if the status of this has changed, but don't
-   * block.
-   */
-  bool try_wait();
+  void wait(double interrupt_after_elapsed = -1);
   /**
    * Return true if an unexpected exit was already detected for this task and
    * it is ready to be reported.
@@ -629,6 +712,16 @@ public:
                        static_cast<const void*>(val), ok);
   }
 
+  uint64_t write_ranges(const std::vector<FileMonitor::Range>& ranges,
+                        void* data, size_t size);
+
+  /**
+   * Writes zeroes to the given memory range.
+   * For efficiency tries using MADV_REMOVE via `remote`. Caches
+   * an AutoRemoteSyscalls in `*remote`.
+   */
+  void write_zeroes(std::unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size);
+
   /**
    * Don't use these helpers directly; use the safer and more
    * convenient variants above.
@@ -650,6 +743,13 @@ public:
   void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                           const void* buf, bool* ok = nullptr,
                           uint32_t flags = 0);
+  /**
+   * |flags| is bits from WriteFlags.
+   * Returns number of bytes written.
+   */
+  ssize_t write_bytes_helper_no_notifications(remote_ptr<void> addr, ssize_t buf_size,
+                                              const void* buf, bool* ok = nullptr,
+                                              uint32_t flags = 0);
 
   SupportedArch detect_syscall_arch();
 
@@ -678,15 +778,6 @@ public:
    * Calls open_mem_fd if this task's AddressSpace doesn't already have one.
    */
   void open_mem_fd_if_needed();
-
-  /* True when any assumptions made about the status of this
-   * process have been invalidated, and must be re-established
-   * with a waitpid() call. Only applies to tasks which are dying, usually
-   * due to a signal sent to the entire thread group. */
-  bool unstable;
-  /* exit(), or exit_group() with one task, has been called, so
-   * the exit can be treated as stable. */
-  bool stable_exit;
 
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
@@ -739,6 +830,8 @@ public:
   int desched_fd_child;
   /* The child's cloned_file_data_fd */
   int cloned_file_data_fd_child;
+  /* The filename opened by the child's cloned_file_data_fd */
+  std::string cloned_file_data_fname;
 
   PerfCounters hpc;
 
@@ -748,13 +841,12 @@ public:
    * recording, it's synonymous with |tid|, and during replay
    * it's the tid that was recorded. */
   pid_t rec_tid;
+  /* This is the recorded tid of the tracee *in its own pid namespace*. */
+  pid_t own_namespace_rec_tid;
 
   size_t syscallbuf_size;
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
-  // XXX Move these fields to ReplayTask
-  remote_code_ptr stopping_breakpoint_table;
-  int stopping_breakpoint_table_entry_size;
 
   remote_ptr<struct preload_globals> preload_globals;
   typedef uint8_t ThreadLocals[PRELOAD_THREAD_LOCALS_SIZE];
@@ -779,7 +871,7 @@ public:
     Registers regs;
     ExtraRegisters extra_regs;
     std::string prname;
-    std::vector<struct user_desc> thread_areas;
+    uintptr_t fdtable_identity;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
@@ -790,10 +882,19 @@ public:
     uint64_t cloned_file_data_offset;
     ThreadLocals thread_locals;
     pid_t rec_tid;
+    pid_t own_namespace_rec_tid;
     uint32_t serial;
+    ThreadGroupUid tguid;
     int desched_fd_child;
     int cloned_file_data_fd_child;
+    std::string cloned_file_data_fname;
     WaitStatus wait_status;
+    // TLS state (architecture specific)
+    // On x86_64 the tls register is part of the general register state (%fs)
+    // On x86 thread_areas is used
+    // on aarch64, tls_register is used
+    uintptr_t tls_register;
+    std::vector<X86Arch::user_desc> thread_areas;
   };
 
   /**
@@ -801,6 +902,15 @@ public:
    * Only has an effect if the syscallbuf has been initialized.
    */
   void set_syscallbuf_locked(bool locked);
+
+  // Disable syscall buffering during diversions
+  void set_in_diversion(bool in_diversion) {
+    if (preload_globals) {
+      write_mem(REMOTE_PTR_FIELD(preload_globals, in_diversion),
+                (unsigned char)in_diversion);
+    }
+    set_syscallbuf_locked(in_diversion);
+  }
 
   /**
    * Like |fallible_ptrace()| but infallible for most purposes.
@@ -814,14 +924,61 @@ public:
     return seen_ptrace_exit_event || detected_unexpected_exit;
   }
 
+  void did_handle_ptrace_exit_event();
+
   remote_code_ptr last_execution_resume() const {
     return address_of_last_execution_resume;
   }
 
+  bool already_reaped() const {
+    return was_reaped;
+  }
+
+  void os_exec(SupportedArch arch, std::string filename);
+  void os_exec_stub(SupportedArch arch) {
+      os_exec(arch, find_exec_stub(arch));
+  }
+
+  /**
+   * Try to make the current task look exactly like some `other` task
+   * by copying that task's address space and other relevant properties,
+   * but without using the os's clone system call.
+   */
+  void dup_from(Task *task);
+
+  virtual ~Task();
+
+  /**
+   * Fork and exec the initial task. If something goes wrong later
+   * (i.e. an exec does not occur before an exit), an error may be
+   * readable from the other end of the pipe whose write end is error_fd.
+   */
+  static Task* spawn(Session& session, ScopedFd& error_fd,
+                     ScopedFd* sock_fd_out,
+                     ScopedFd* sock_fd_receiver_out,
+                     int* tracee_socket_fd_number_out,
+                     const std::string& exe_path,
+                     const std::vector<std::string>& argv,
+                     const std::vector<std::string>& envp, pid_t rec_tid = -1);
+
+  /**
+   * Do a tgkill to send a specific signal to this task.
+   */
+  void tgkill(int sig);
+
+  /**
+   * Try to move this task to a signal stop by signaling it with the
+   * syscallbuf desched signal (which is guaranteed not to be blocked).
+   */
+  void move_to_signal_stop();
+
+  // A map from original table to (potentially detached) clone, to preserve
+  // FdTable sharing relationships during a session fork.
+  using ClonedFdTables = std::unordered_map<uintptr_t, FdTable::shr_ptr>;
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);
-  virtual ~Task();
 
   enum CloneReason {
     // Cloning a task in the same session due to tracee fork()/vfork()/clone()
@@ -843,7 +1000,9 @@ protected:
   virtual Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
                       remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
-                      Session* other_session = nullptr);
+                      Session* other_session = nullptr,
+                      FdTable::shr_ptr new_fds = nullptr,
+                      ThreadGroup::shr_ptr new_tg = nullptr);
 
   /**
    * Internal method called after the first wait() during a clone().
@@ -937,9 +1096,11 @@ protected:
    * created.  |task_leader| will perform the actual OS calls to
    * create the new child.
    */
-  Task* os_fork_into(Session* session);
+  Task* os_fork_into(Session* session, FdTable::shr_ptr new_fds);
   static Task* os_clone_into(const CapturedState& state,
-                             AutoRemoteSyscalls& remote);
+                             AutoRemoteSyscalls& remote,
+                             const ClonedFdTables& cloned_fd_tables,
+                             ThreadGroup::shr_ptr new_tg);
 
   /**
    * Return the TraceStream that we're using, if in recording or replay.
@@ -959,23 +1120,14 @@ protected:
   static Task* os_clone(CloneReason reason, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                         uint32_t new_serial, unsigned base_flags,
+                        FdTable::shr_ptr new_fds = nullptr,
+                        ThreadGroup::shr_ptr new_tg = nullptr,
                         remote_ptr<void> stack = nullptr,
                         remote_ptr<int> ptid = nullptr,
                         remote_ptr<void> tls = nullptr,
                         remote_ptr<int> ctid = nullptr);
 
-  /**
-   * Fork and exec the initial task. If something goes wrong later
-   * (i.e. an exec does not occur before an exit), an error may be
-   * readable from the other end of the pipe whose write end is error_fd.
-   */
-  static Task* spawn(Session& session, const ScopedFd& error_fd,
-                     ScopedFd* sock_fd_out, int* tracee_socket_fd_number_out,
-                     TraceStream& trace, const std::string& exe_path,
-                     const std::vector<std::string>& argv,
-                     const std::vector<std::string>& envp, pid_t rec_tid = -1);
-
-  void maybe_workaround_singlestep_bug();
+  void work_around_KNL_string_singlestep_bug();
 
   void* preload_thread_locals();
 
@@ -998,6 +1150,12 @@ protected:
   // cx register. If so, we record the orginal value here. See comments in
   // Task.cc
   uint64_t last_resume_orig_cx;
+  // The instruction type we're singlestepping through.
+  TrappedInstruction singlestepping_instruction;
+  // True if we set a breakpoint after a singlestepped CPUID instruction.
+  // We need this in addition to `singlestepping_instruction` because that
+  // might be CPUID but we failed to set the breakpoint.
+  bool did_set_breakpoint_after_cpuid;
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;
@@ -1011,6 +1169,10 @@ protected:
   // True when 'registers' has changes that haven't been flushed back to the
   // task yet.
   bool registers_dirty;
+  // True when changes to the original syscallno in 'registers' have not been
+  // flushed back to the task yet. Some architectures (e.g. AArch64) require a
+  // separate ptrace call for this.
+  bool orig_syscallno_dirty;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;
@@ -1021,7 +1183,8 @@ protected:
   // Entries set by |set_thread_area()| or the |tls| argument to |clone()|
   // (when that's a user_desc). May be more than one due to different
   // entry_numbers.
-  std::vector<struct user_desc> thread_areas_;
+  // x86(_64) only.
+  std::vector<X86Arch::user_desc> thread_areas_;
   // The |stack| argument passed to |clone()|, which for
   // "threads" is the top of the user-allocated stack.
   remote_ptr<void> top_of_stack;
@@ -1033,12 +1196,22 @@ protected:
   // True when a PTRACE_EXIT_EVENT has been observed in the wait_status
   // for this task.
   bool seen_ptrace_exit_event;
+  // True when a PTRACE_EXIT_EVENT has been handled for this task.
+  // By handled we mean either RecordSession's handle_ptrace_exit_event was
+  // run (or the replay equivalent) or we recognized that the task is already
+  // dead and we cleaned up our books so we don't try to destroy our buffers
+  // or anything like that in an already deceased task.
+  // We might defer handling the exit (e.g. if there's an ongoing execve).
+  // If this is true, `seen_ptrace_exit_event` must be true.
+  bool handled_ptrace_exit_event;
 
   PropertyTable properties_;
 
   // A counter for the number of stops for which the stop may have been caused
   // by PTRACE_INTERRUPT. See description in do_waitpid
   int expecting_ptrace_interrupt_stop;
+
+  bool was_reaped;
 
   Task(Task&) = delete;
   Task operator=(Task&) = delete;

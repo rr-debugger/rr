@@ -5,6 +5,7 @@
 
 #include <signal.h>
 #include <stdio.h>
+#include <math.h>
 
 #include <array>
 #include <map>
@@ -15,12 +16,24 @@
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 #include "remote_ptr.h"
+#include "kernel_supplement.h"
 
 /* This is pretty arbitrary. On Linux SIGPWR is sent to PID 1 (init) on
  * power failure, and it's unlikely rr will be recording that.
  * Note that SIGUNUSED means SIGSYS which actually *is* used (by seccomp),
  * so we can't use it. */
 #define SYSCALLBUF_DEFAULT_DESCHED_SIGNAL SIGPWR
+
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
+#define UNUSED(expr)     \
+  do {                   \
+    if (expr) {          \
+      (void)0;           \
+    }                    \
+  } while (0)
 
 namespace rr {
 
@@ -36,6 +49,7 @@ struct Event;
 class KernelMapping;
 class Task;
 class TraceFrame;
+class RecordTask;
 
 enum Completion { COMPLETE, INCOMPLETE };
 
@@ -45,9 +59,21 @@ enum Completion { COMPLETE, INCOMPLETE };
 std::vector<uint8_t> read_auxv(Task* t);
 
 /**
+ * Returns the base address where the interpreter is mapped.
+ */
+remote_ptr<void> read_interpreter_base(std::vector<uint8_t> auxv);
+
+/**
+ * Returns a string containing the file name of the interpreter.
+ */
+std::string read_ld_path(Task* t, remote_ptr<void> interpreter_base);
+
+/**
  * Returns a vector containing the environment strings.
  */
 std::vector<std::string> read_env(Task* t);
+
+void patch_auxv_vdso(RecordTask* t, uintptr_t search, uintptr_t new_entry);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
@@ -143,6 +169,7 @@ SignalDeterministic is_deterministic_signal(Task* t);
  * necessarily safe to skip copying!
  */
 bool should_copy_mmap_region(const KernelMapping& mapping,
+                             const std::string &file_name,
                              const struct stat& stat);
 
 /**
@@ -171,12 +198,16 @@ enum cpuid_requests {
   CPUID_INTELBRANDSTRING,
   CPUID_INTELBRANDSTRINGMORE,
   CPUID_INTELBRANDSTRINGEND,
+  CPUID_AMD_CACHE_TOPOLOGY = 0x8000001D,
+  CPUID_AMD_PLATFORM_QOS = 0x80000020
 };
 
+const int XSAVE_FEATURE_FLAG = 1 << 26;
 const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;
 const int HLE_FEATURE_FLAG = 1 << 4;
 const int XSAVEC_FEATURE_FLAG = 1 << 1;
+const int PKU_FEATURE_FLAG = 1 << 3;
 
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers
@@ -188,6 +219,12 @@ struct CPUIDData {
   uint32_t eax, ebx, ecx, edx;
 };
 CPUIDData cpuid(uint32_t code, uint32_t subrequest);
+
+/**
+ * Check whether the given result of cpuid(CPUID_GETVENDORSTRING) indicates
+ * an AMD processor.
+ */
+bool is_cpu_vendor_amd(CPUIDData vendor_string);
 
 /**
  * Check OSXSAVE flag.
@@ -228,6 +265,17 @@ const CPUIDRecord* find_cpuid_record(const std::vector<CPUIDRecord>& records,
  */
 bool cpuid_compatible(const std::vector<CPUIDRecord>& trace_records);
 
+/**
+ * Return true if the CPU stores 0 for FIP/FDP in an XSAVE when no x87 exception
+ * is pending.
+ */
+bool cpu_has_xsave_fip_fdp_quirk();
+
+/**
+ * CPU only sets FDP when an unmasked x87 exception is generated.
+ */
+bool cpu_has_fdp_exception_only_quirk();
+
 struct CloneParameters {
   remote_ptr<void> stack;
   remote_ptr<int> ptid;
@@ -264,19 +312,26 @@ std::string resource_path();
  */
 double monotonic_now_sec();
 
-bool running_under_rr();
+bool running_under_rr(bool cache = true);
+
+std::vector<int> read_all_proc_fds(pid_t tid);
 
 std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
                                                  const char* name2 = nullptr,
                                                  const char* name3 = nullptr);
-
-bool is_zombie_process(pid_t pid);
 
 /**
  * Mainline Linux kernels use an invisible (to /proc/<pid>/maps) guard page
  * for stacks. grsecurity kernels don't.
  */
 bool uses_invisible_guard_page();
+
+/**
+ * Search /proc/net/ for a socket of the correct family matching the provided fd.
+ * If found, returns the local and remote addresses in out and returns true.
+ * Otherwise, returns false.
+ */
+bool read_proc_net_socket_addresses(Task* t, int fd, std::array<typename NativeArch::sockaddr_storage, 2>& out);
 
 bool copy_file(int dest_fd, int src_fd);
 
@@ -335,7 +390,7 @@ inline bool is_kernel_trap(int si_code) {
   /* XXX unable to find docs on which of these "should" be
    * right.  The SI_KERNEL code is seen in the int3 test, so we
    * at least need to handle that. */
-  return si_code == TRAP_BRKPT || si_code == SI_KERNEL;
+  return si_code == TRAP_TRACE || si_code == TRAP_BRKPT || si_code == TRAP_HWBKPT || si_code == SI_KERNEL;
 }
 
 enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
@@ -383,6 +438,11 @@ struct TempFile {
  */
 TempFile create_temporary_file(const char* pattern);
 
+/**
+ * Opens a temporary file backed by RAM.
+ */
+ScopedFd open_memory_file(const std::string &name);
+
 void good_random(void* out, size_t out_len);
 
 std::vector<std::string> current_env();
@@ -394,13 +454,22 @@ enum class TrappedInstruction {
   RDTSC = 1,
   RDTSCP = 2,
   CPUID = 3,
+  INT3 = 4,
+  PUSHF = 5,
+  PUSHF16 = 6,
 };
 
-/* If |t->ip()| points at a disabled instruction, return the instruction */
+/* If |t->ip()| points at a decoded instruction, return the instruction */
 TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip);
 
 /* Return the length of the TrappedInstruction */
 size_t trapped_instruction_len(TrappedInstruction insn);
+
+/**
+ * Certain instructions generate deterministic signals but also advance pc.
+ * Look *backwards* and see if this was one of them.
+ */
+bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip);
 
 /**
  * BIND_CPU means binding to a randomly chosen CPU.
@@ -409,8 +478,10 @@ size_t trapped_instruction_len(TrappedInstruction insn);
  */
 enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
 
-/* Convert a BindCPU to a specific CPU number */
-int choose_cpu(BindCPU bind_cpu);
+/* Convert a BindCPU to a specific CPU number. If possible, the cpu_lock_fd_out
+   will be set to an fd that holds an advisory fcntl lock for the chosen CPU
+   for coordination with other rr processes */
+int choose_cpu(BindCPU bind_cpu, ScopedFd& cpu_lock_fd_out);
 
 /* Updates an IEEE 802.3 CRC-32 least significant bit first from each byte in
  * |buf|.  Pre- and post-conditioning is not performed in this function and so
@@ -420,6 +491,9 @@ uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len);
 /* Like write(2) but any error or "device full" is treated as fatal. We also
  * ensure that all bytes are written by looping on short writes. */
 void write_all(int fd, const void* buf, size_t size);
+
+/* Like pwrite64(2) but we try to write all bytes by looping on short writes. */
+ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset);
 
 /* Returns true if |path| is an accessible directory. Returns false if there
  * was an error.
@@ -451,6 +525,38 @@ size_t word_size(SupportedArch arch);
  * Print JSON-escaped version of the string, including double-quotes.
  */
 std::string json_escape(const std::string& str, size_t pos = 0);
+
+void sleep_time(double t);
+
+/**
+ * Normalize a file name by lexically resolving `.`,`..`,`//`
+ */
+void normalize_file_name(std::string& s);
+
+enum NestedBehavior {
+  NESTED_ERROR,
+  NESTED_IGNORE,
+  NESTED_DETACH,
+  NESTED_RELEASE,
+};
+
+std::string find_exec_stub(SupportedArch arch);
+
+std::string find_helper_library(const char* basepath);
+
+static inline struct timeval to_timeval(double t) {
+  struct timeval v;
+  v.tv_sec = (time_t)floor(t);
+  v.tv_usec = (int)floor((t - v.tv_sec) * 1000000);
+  return v;
+}
+
+/* Slow but simple pop-count implementation. */
+int pop_count(uint64_t v);
+
+/* A version of fatal that uses no allocation/thread resource and is thus
+  safe to use in volatile contexts */
+void SAFE_FATAL(int err, const char *msg);
 
 } // namespace rr
 

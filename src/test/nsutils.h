@@ -40,10 +40,12 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
     pid_t child = fork();
     test_assert(child >= 0);
     if (!child) {
+      char ch;
+
       close(child_block[1]);
 
       // This will block until the parent closes fds[1]
-      test_assert(0 == read(child_block[0], NULL, 1));
+      test_assert(0 == read(child_block[0], &ch, 1));
       close(child_block[0]);
 
       // Deny setgroups

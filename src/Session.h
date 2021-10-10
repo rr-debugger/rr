@@ -12,8 +12,10 @@
 
 #include "AddressSpace.h"
 #include "MonitoredSharedMemory.h"
+#include "Task.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
+#include "preload/preload_interface.h"
 
 namespace rr {
 
@@ -30,17 +32,46 @@ class AutoRemoteSyscalls;
 // The following types are used by step() APIs in Session subclasses.
 
 /**
+ * Stores a Task and information about it separately so decisions can
+ * still be made from a Task's context even if it dies.
+ */
+struct TaskContext {
+  TaskContext()
+      : task(nullptr),
+        session(nullptr),
+        thread_group(nullptr) {}
+  explicit TaskContext(Task* task)
+      : task(task),
+        session(task ? &task->session() : nullptr),
+        thread_group(task ? task->thread_group() : nullptr) {}
+  TaskContext(Session* session, std::shared_ptr<ThreadGroup> thread_group)
+      : task(nullptr),
+        session(session),
+        thread_group(thread_group) {}
+
+  // A pointer to a task. This may be |nullptr|. When non-NULL, this
+  // is not necessarily the same as session->current_task() (for
+  // example, when replay switches to a new task after
+  // ReplaySession::replay_step()).
+  Task* task;
+  // The session to which |task| belongs/belonged.
+  Session* session;
+  // The thread group to which |task| belongs/belonged.
+  std::shared_ptr<ThreadGroup> thread_group;
+};
+
+/**
  * In general, multiple break reasons can apply simultaneously.
  */
 struct BreakStatus {
   BreakStatus()
-      : task(nullptr),
+      : task_context(TaskContext()),
         breakpoint_hit(false),
         singlestep_complete(false),
         approaching_ticks_target(false),
         task_exit(false) {}
   BreakStatus(const BreakStatus& other)
-      : task(other.task),
+      : task_context(other.task_context),
         watchpoints_hit(other.watchpoints_hit),
         signal(other.signal
                    ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
@@ -50,7 +81,7 @@ struct BreakStatus {
         approaching_ticks_target(other.approaching_ticks_target),
         task_exit(other.task_exit) {}
   const BreakStatus& operator=(const BreakStatus& other) {
-    task = other.task;
+    task_context = other.task_context;
     watchpoints_hit = other.watchpoints_hit;
     signal = other.signal
                  ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
@@ -62,9 +93,8 @@ struct BreakStatus {
     return *this;
   }
 
-  // The triggering Task. This may be different from session->current_task()
-  // when replay switches to a new task when ReplaySession::replay_step() ends.
-  Task* task;
+  // The triggering TaskContext.
+  TaskContext task_context;
   // List of watchpoints hit; any watchpoint hit causes a stop after the
   // instruction that triggered the watchpoint has completed.
   std::vector<WatchConfig> watchpoints_hit;
@@ -108,6 +138,8 @@ struct BreakStatus {
     return !watchpoints_hit.empty() || signal || breakpoint_hit ||
            singlestep_complete || approaching_ticks_target;
   }
+
+  Task* task() const { return task_context.task; }
 };
 enum RunCommand {
   // Continue until we hit a breakpoint or a new replay event
@@ -324,12 +356,48 @@ public:
   static const char* rr_mapping_prefix();
 
   ScopedFd& tracee_socket_fd() { return *tracee_socket; }
+  ScopedFd& tracee_socket_receiver_fd() { return *tracee_socket_receiver; }
   int tracee_fd_number() const { return tracee_socket_fd_number; }
 
   virtual TraceStream* trace_stream() { return nullptr; }
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
   virtual int cpu_binding(TraceStream& trace) const;
+
+  int syscall_number_for_rrcall_init_preload() const {
+    return SYS_rrcall_init_preload - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_init_buffers() const {
+    return SYS_rrcall_init_buffers - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_syscall_hook_exit() const {
+    return SYS_rrcall_notify_syscall_hook_exit - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_control_msg() const {
+    return SYS_rrcall_notify_control_msg - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_reload_auxv() const {
+    return SYS_rrcall_reload_auxv - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_mprotect_record() const {
+    return SYS_rrcall_mprotect_record - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_stap_semaphore_added() const {
+    return SYS_rrcall_notify_stap_semaphore_added - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_stap_semaphore_removed() const {
+    return SYS_rrcall_notify_stap_semaphore_removed - RR_CALL_BASE + rrcall_base_;
+  }
+
+  /* Bind the current process to the a CPU as specified in the session options
+     or trace */
+  void do_bind_cpu(TraceStream &trace);
+
+  const ThreadGroupMap& thread_group_map() const { return thread_group_map_; }
+
+  virtual int tracee_output_fd(int dflt) {
+    return dflt;
+  }
 
 protected:
   Session();
@@ -356,7 +424,9 @@ protected:
 
   AddressSpaceMap vm_map;
   TaskMap task_map;
-  ThreadGroupMap thread_group_map;
+  ThreadGroupMap thread_group_map_;
+
+  ScopedFd cpu_lock;
 
   // If non-null, data required to finish initializing the tasks of this
   // session.
@@ -365,10 +435,12 @@ protected:
   Statistics statistics_;
 
   std::shared_ptr<ScopedFd> tracee_socket;
+  std::shared_ptr<ScopedFd> tracee_socket_receiver;
   int tracee_socket_fd_number;
   uint32_t next_task_serial_;
   ScopedFd spawned_task_error_fd_;
 
+  int rrcall_base_;
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
 
   TicksSemantics ticks_semantics_;

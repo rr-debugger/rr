@@ -12,6 +12,9 @@
 #ifndef F_ADD_SEALS
 #define F_ADD_SEALS 0x409
 #endif
+#ifndef F_GET_SEALS
+#define F_GET_SEALS 0x40a
+#endif
 
 #ifndef F_SEAL_SEAL
 #define F_SEAL_SEAL 0x0001
@@ -30,12 +33,15 @@ int main(void) {
   } else if (-1 == fd && EINVAL == errno) {
     atomic_puts("MFD_ALLOW_SEALING not supported on this kernel");
   } else {
+    int seals;
     test_assert(fd >= 0);
     test_assert(
         fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW) == 0);
     /* Seal after F_SEAL_SEAL should fail */
     test_assert(fcntl(fd, F_ADD_SEALS,
                       F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW) == -1);
+    seals = fcntl(fd, F_GET_SEALS, 0);
+    test_assert(seals == (F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW));
   }
 
   atomic_puts("EXIT-SUCCESS");

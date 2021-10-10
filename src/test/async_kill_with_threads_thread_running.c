@@ -5,6 +5,7 @@
 static void* start_thread(__attribute__((unused)) void* p) {
   atomic_puts("ready");
   while (1) {
+    asm("" : : : "memory");
   }
   return NULL;
 }

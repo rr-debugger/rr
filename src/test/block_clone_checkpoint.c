@@ -8,7 +8,7 @@ static void breakpoint(void) { event_syscall(); }
 
 int main(void) {
   int i;
-  int fd = open("tmp.txt", O_RDWR | O_CREAT | O_EXCL);
+  int fd = open("tmp.txt", O_RDWR | O_CREAT | O_EXCL, 0600);
   char buf[BUF_SIZE];
   test_assert(fd >= 0);
   test_assert(0 == unlink("tmp.txt"));

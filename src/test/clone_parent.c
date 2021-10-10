@@ -9,8 +9,8 @@ int main(void) {
   test_assert(child != -1);
   if (child == 0) {
     *child_sibling = 0;
-    syscall(SYS_clone, CLONE_PARENT_SETTID | CLONE_PARENT | SIGCHLD, 0,
-            child_sibling, 0, 0);
+    syscall(SYS_clone, CLONE_PARENT_SETTID | CLONE_PARENT | SIGCHLD, (void*)0,
+            child_sibling, (void*)0, 0L);
     test_assert(*child_sibling != -1);
     if (*child_sibling == 0) {
       _exit(77);

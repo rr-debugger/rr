@@ -31,7 +31,8 @@ enum WaitType {
 enum EmulatedStopType {
   NOT_STOPPED,
   GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
-  SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
+  SIGNAL_DELIVERY_STOP,// Stopped before delivering a signal. ptracees only.
+  CHILD_STOP           // All other kinds of non-ptrace stops
 };
 
 /**
@@ -62,14 +63,15 @@ public:
   Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
               remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
               pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
-              Session* other_session = nullptr) override;
+              Session* other_session = nullptr,
+              FdTable::shr_ptr new_fds = nullptr,
+              ThreadGroup::shr_ptr new_tg = nullptr) override;
   virtual void post_wait_clone(Task* cloned_from, int flags) override;
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
                                const Registers& regs) override;
   virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
                                      int /*sig*/) override;
   virtual void did_wait() override;
-  virtual pid_t own_namespace_tid() override { return own_namespace_rec_tid; }
 
   std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
@@ -111,6 +113,19 @@ public:
    */
   void force_emulate_ptrace_stop(WaitStatus status);
   /**
+   * If necessary, signal the ptracer that this task has exited.
+   */
+  void do_ptrace_exit_stop(WaitStatus exit_status);
+  /**
+   * Return the exit event.
+   * If write_child_tid is set, zero out child_tid now if applicable.
+   */
+  enum WriteChildTid {
+    KERNEL_WRITES_CHILD_TID,
+    WRITE_CHILD_TID,
+  };
+  void record_exit_event(int exitsig = 0, WriteChildTid write_child_tid = KERNEL_WRITES_CHILD_TID);
+  /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
    * update the siginfo to reflect the status and note that that
@@ -125,14 +140,9 @@ public:
    */
   template <typename Arch>
   void set_siginfo_for_waited_task(typename Arch::siginfo_t* si) {
-    // XXX handle CLD_EXITED here
-    if (emulated_stop_type == GROUP_STOP) {
-      si->si_code = CLD_STOPPED;
-      si->_sifields._sigchld.si_status_ = emulated_stop_code.stop_sig();
-    } else {
-      si->si_code = CLD_TRAPPED;
-      si->_sifields._sigchld.si_status_ = emulated_stop_code.ptrace_signal();
-    }
+    // XXX: The `ptrace` argument is likely incorrect here.
+    emulated_stop_code.fill_siginfo<Arch>(si,
+      emulated_stop_type != GROUP_STOP, emulated_ptrace_options);
     si->_sifields._sigchld.si_pid_ = tgid();
     si->_sifields._sigchld.si_uid_ = getuid();
   }
@@ -158,6 +168,10 @@ public:
    * when t's status changes due to a regular event (exit).
    */
   bool is_waiting_for(RecordTask* t);
+
+  virtual bool already_exited() const override {
+    return waiting_for_reap || waiting_for_zombie;
+  }
 
   /**
    * Call this to force a group stop for this task with signal 'sig',
@@ -228,7 +242,7 @@ public:
   /**
    * Reset the signal handler for this signal to the default.
    */
-  void set_sig_handler_default(int sig);
+  void did_set_sig_handler_default(int sig);
 
   /**
    * Check that our status for |sig| matches what's in /proc/<pid>/status.
@@ -297,6 +311,12 @@ public:
    */
   bool at_may_restart_syscall() const;
   /**
+   * Return true iff this is at an execution state where
+   * a syscall that modifes isgnals was interrupted but will not
+   * be automatically restarted.
+   **/
+  bool at_interrupted_non_restartable_signal_modifying_syscall() const;
+  /**
    * Return true if this is at an arm-desched-event syscall.
    */
   bool is_arm_desched_event_syscall();
@@ -335,7 +355,10 @@ public:
    * system call being handled by syscall buffering.
    */
   bool running_inside_desched() const;
-  uint16_t get_ptrace_eventmsg_seccomp_data();
+  /**
+   * Returns -1 if we failed (the process unexpectedly exited).
+   */
+  int get_ptrace_eventmsg_seccomp_data();
 
   /**
    * Save tracee data to the trace.  |addr| is the address in
@@ -357,9 +380,13 @@ public:
   void record_remote(const MemoryRange& range) {
     record_remote(range.start(), range.size());
   }
+  ssize_t record_remote_fallible(const MemoryRange& range) {
+    return record_remote_fallible(range.start(), range.size());
+  }
   // Record as much as we can of the bytes in this range. Will record only
   // contiguous mapped data starting at `addr`.
-  ssize_t record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes);
+  ssize_t record_remote_fallible(remote_ptr<void> addr, uintptr_t num_bytes,
+                                 const std::vector<WriteHole>& holes = std::vector<WriteHole>());
   // Record as much as we can of the bytes in this range. Will record only
   // contiguous mapped-writable data starting at `addr`.
   void record_remote_writable(remote_ptr<void> addr, ssize_t num_bytes);
@@ -398,6 +425,14 @@ public:
   /** Return the event at the top of this's stack. */
   Event& ev() { return pending_events.back(); }
   const Event& ev() const { return pending_events.back(); }
+
+  /**
+   * Obtain the previous event on the stack (if any) or nullptr (if not)
+   */
+  Event *prev_ev() {
+    ssize_t depth = pending_events.size();
+    return depth > 2 ? &pending_events[depth - 2] : nullptr;
+  }
 
   /**
    * Call this before recording events or data.  Records
@@ -462,11 +497,6 @@ public:
   pid_t find_newborn_process(pid_t child_parent);
 
   /**
-   * Do a tgkill to send a specific signal to this task.
-   */
-  void tgkill(int sig);
-
-  /**
    * If the process looks alive, kill it. It is recommended to call try_wait(),
    * on this task before, to make sure liveness is correctly reflected when
    * making this decision
@@ -477,7 +507,7 @@ public:
   size_t robust_list_len() const { return robust_futex_list_len; }
 
   /** Uses /proc so not trivially cheap. */
-  pid_t get_parent_pid();
+  pid_t get_parent_pid() const;
 
   /**
    * Return true if this is a "clone child" per the wait(2) man page.
@@ -510,10 +540,59 @@ public:
    * Just get the signal mask of the process.
    */
   sig_set_t read_sigmask_from_process();
+  /**
+   * Unblock the signal for the process.
+   */
+  void unblock_signal(int sig);
+  /**
+   * Set the signal handler to default for the process.
+   */
+  void set_sig_handler_default(int sig);
 
   ~RecordTask();
 
   void maybe_restore_original_syscall_registers();
+
+  /**
+   * The task reached zombie state. Do whatever processing is necessary (reaping
+   * it, emulating ptrace stops, etc.)
+   */
+  void did_reach_zombie();
+
+  // Is this task a container init? (which has special signal behavior)
+  bool is_container_init() const { return tg->tgid_own_namespace == 1; }
+
+  /**
+   * Linux requires the invariant that that all members of a thread group
+   * are reaped before the thread group leader. This determines whether or
+   * not we're allowed to attempt reaping this thread or whether doing so
+   * risks deadlock.
+   */
+  bool may_reap();
+
+  /**
+   * Reaps a task-exit notification, thus detaching us from the tracee.
+   * N.B.: If may_reap is false, this risks a deadlock.
+   */
+  void reap();
+
+  /**
+   * Return true if the status of this has changed, but don't
+   * block.
+   */
+  bool try_wait();
+
+  bool waiting_for_pid_namespace_tasks_to_exit() const;
+  int process_depth() const;
+
+  /**
+   * Called when this task is able to receive a SIGCHLD (e.g. because
+   * we completed delivery of a signal). Sends a new synthetic
+   * SIGCHLD to the task if there are still tasks that need a SIGCHLD
+   * sent for them.
+   * May queue signals for specific tasks.
+   */
+  void send_synthetic_SIGCHLD_if_necessary();
 
 private:
   /* Retrieve the tid of this task from the tracee and store it */
@@ -528,15 +607,6 @@ private:
    * will change "soon".
    */
   void futex_wait(remote_ptr<int> futex, int val, bool* ok);
-
-  /**
-   * Called when this task is able to receive a SIGCHLD (e.g. because
-   * we completed delivery of a signal). Sends a new synthetic
-   * SIGCHLD to the task if there are still tasks that need a SIGCHLD
-   * sent for them.
-   * May queue signals for specific tasks.
-   */
-  void send_synthetic_SIGCHLD_if_necessary();
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.
@@ -564,6 +634,7 @@ private:
 
 public:
   Ticks ticks_at_last_recorded_syscall_exit;
+  remote_code_ptr ip_at_last_recorded_syscall_exit;
 
   // Scheduler state
 
@@ -578,6 +649,11 @@ public:
    * in_round_robin_queue instead of its task_priority_set.
    */
   bool in_round_robin_queue;
+  /* exit(), or exit_group() with one task, has been called, so
+   * the exit can be treated as stable. */
+  bool stable_exit;
+
+  bool detached_proxy;
 
   // ptrace emulation state
 
@@ -605,7 +681,6 @@ public:
   bool emulated_SIGCHLD_pending;
   // tracer attached via PTRACE_SEIZE
   bool emulated_ptrace_seized;
-  bool emulated_ptrace_queued_exit_stop;
   WaitType in_wait_type;
   pid_t in_wait_pid;
 
@@ -666,9 +741,6 @@ public:
   // The memory cell the kernel will clear and notify on exit,
   // if our clone parent requested it.
   remote_ptr<int> tid_futex;
-  /* This is the recorded tid of the tracee *in its own pid namespace*. */
-  pid_t own_namespace_rec_tid;
-  int exit_code;
   // Signal delivered by the kernel when this task terminates, or zero
   int termination_signal;
 
@@ -695,6 +767,26 @@ public:
   bool next_pmc_interrupt_is_for_user;
 
   bool did_record_robust_futex_changes;
+
+  // This task is just waiting to be reaped.
+  bool waiting_for_reap;
+
+  // This task is waiting to reach zombie state
+  bool waiting_for_zombie;
+
+  // This task is waiting for a ptrace exit event. It should not
+  // be manually run.
+  bool waiting_for_ptrace_exit;
+
+  // When exiting a syscall, we should call MonkeyPatcher::try_patch_syscall again.
+  bool retry_syscall_patching;
+
+  // We've sent a SIGKILL during shutdown for this task.
+  bool sent_shutdown_kill;
+
+  // Set if the tracee requested an override of the ticks request.
+  // Used for testing.
+  TicksRequest tick_request_override;
 };
 
 } // namespace rr

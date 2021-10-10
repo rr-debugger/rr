@@ -42,11 +42,18 @@ python
 import re
 
 def gdb_unescape(string):
-    result = ""
-    pos = 0
-    while pos < len(string):
-        result += chr(int(string[pos:pos+2], 16))
-        pos += 2
+    str_len = len(string)
+    if str_len % 2:
+        return ""
+    result = "" # check for unexpected string length
+    try:
+        pos = 0
+        while pos < str_len:
+            hex_char = string[pos:pos+2]
+            result += chr(int(hex_char, 16))
+            pos += 2
+    except: # check for unexpected string value
+        return ""
     return result
 
 def gdb_escape(string):
@@ -108,6 +115,29 @@ class RRCmd(gdb.Command):
 def history_push(p):
     gdb.execute("rr-history-push", to_string=True)
 
+rr_suppress_run_hook = False
+
+class RRHookRun(gdb.Command):
+    def __init__(self):
+        gdb.Command.__init__(self, 'rr-hook-run',
+                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, False)
+        
+    def invoke(self, arg, from_tty):  
+      thread = int(gdb.parse_and_eval("$_thread"))
+      if thread != 0 and not rr_suppress_run_hook:
+        gdb.execute("stepi")
+     
+class RRSetSuppressRunHook(gdb.Command):
+    def __init__(self):
+        gdb.Command.__init__(self, 'rr-set-suppress-run-hook',
+                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, False)
+        
+    def invoke(self, arg, from_tty):
+      rr_suppress_run_hook = arg == '1'
+
+RRHookRun()
+RRSetSuppressRunHook()
+
 #Automatically push an history entry when the program execution stops
 #(signal, breakpoint).This is fired before an interactive prompt is shown.
 #Disabled for now since it's not fully working.
@@ -155,12 +185,14 @@ void GdbCommandHandler::register_command(GdbCommand& cmd) {
   gdb_command_list->push_back(&cmd);
 }
 
-// Use the simplest two hex character by byte encoding
+// applies the simplest two hex character by byte encoding
 static string gdb_escape(const string& str) {
   stringstream ss;
   ss << hex;
-  for (size_t i = 0; i < str.size(); i++) {
-    int chr = (int)str.at(i);
+  const size_t len = str.size();
+  const char *data = str.data();
+  for (size_t i = 0; i < len; i++) {
+    int chr = data[i];
     if (chr < 16) {
       ss << "0";
     }
@@ -168,12 +200,25 @@ static string gdb_escape(const string& str) {
   }
   return ss.str();
 }
+// undo the two hex character byte encoding,
+// in case of error returns an empty string
 static string gdb_unescape(const string& str) {
-  stringstream ss;
-  for (size_t i = 0; i < str.size(); i += 2) {
-    ss << (char)stoul(str.substr(i, 2), nullptr, 16);
+  const size_t len = str.size();
+  // check for unexpected string length
+  if (len % 2) {
+    return "";
   }
-
+  stringstream ss;
+  for (size_t i = 0; i < len; i += 2) {
+    string substr = str.substr(i, 2);
+    const char *hex_str = substr.c_str();
+    char *ptr = nullptr;
+    ss << (char)strtoul(hex_str, &ptr, 16);
+    // check for unexpected character
+    if (*ptr) {
+      return "";
+    }
+  }
   return ss.str();
 }
 static vector<string> parse_cmd(string& str) {

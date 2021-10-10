@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+skip_if_test_32_bit
+record vsyscall$bitness
+_RR_TRACE_DIR="$workdir" rr rerun -s 300 --singlestep=rip > /dev/null || failed "Singlestepping through vsyscall failed"

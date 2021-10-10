@@ -77,7 +77,7 @@ int main(void) {
     test_assert(0 == timer_settime(*id, 0, &its3, NULL));
     for (int i = 0; i < 5000 && !caught_limit_sig; ++i) {
       caught_sig = 0;
-      for (counter = 0; counter >= 0 && !caught_sig; counter++) {
+      for (counter = 0; counter >= 0 && !caught_sig && !caught_limit_sig; counter++) {
         (void)sys_gettid();
       }
     }

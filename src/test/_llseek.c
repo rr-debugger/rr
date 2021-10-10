@@ -9,7 +9,7 @@ int main(__attribute__((unused)) int argc, char* argv[]) {
 #endif
   test_assert(fd >= 0);
 #ifdef SYS__llseek
-  test_assert(syscall(SYS__llseek, fd, 0, 0, &result, SEEK_SET) == 0);
+  test_assert(syscall(SYS__llseek, fd, 0L, 0, &result, SEEK_SET) == 0);
   test_assert(result == 0);
 #endif
 

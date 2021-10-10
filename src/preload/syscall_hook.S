@@ -122,11 +122,31 @@ _syscall_hook_trampoline:
         /* Align stack to 16 bytes */
         and $0xfffffff0,%esp
 
+        /* Save XMM registers */
+        sub $0x80,%esp
+        movdqa %xmm0,(%esp)
+        movdqa %xmm1,0x10(%esp)
+        movdqa %xmm2,0x20(%esp)
+        movdqa %xmm3,0x30(%esp)
+        movdqa %xmm4,0x40(%esp)
+        movdqa %xmm5,0x50(%esp)
+        movdqa %xmm6,0x60(%esp)
+        movdqa %xmm7,0x70(%esp)
+
         sub $12,%esp
         pushl %ebp
 
         call syscall_hook
         /* $eax = vsyscall_hook(&info); */
+
+        movdqa 0x10(%esp),%xmm0
+        movdqa 0x20(%esp),%xmm1
+        movdqa 0x30(%esp),%xmm2
+        movdqa 0x40(%esp),%xmm3
+        movdqa 0x50(%esp),%xmm4
+        movdqa 0x60(%esp),%xmm5
+        movdqa 0x70(%esp),%xmm6
+        movdqa 0x80(%esp),%xmm7
 
         /* Restore ESP */
         mov %ebp, %esp
@@ -277,9 +297,30 @@ _syscall_hook_trampoline:
         .cfi_def_cfa_register %rbx
         and $0xfffffffffffffff0,%rsp
 
+        /* Save XMM registers */
+        sub $0x80,%rsp
+        movdqa %xmm0,(%rsp)
+        movdqa %xmm1,0x10(%rsp)
+        movdqa %xmm2,0x20(%rsp)
+        movdqa %xmm3,0x30(%rsp)
+        movdqa %xmm4,0x40(%rsp)
+        movdqa %xmm5,0x50(%rsp)
+        movdqa %xmm6,0x60(%rsp)
+        movdqa %xmm7,0x70(%rsp)
+
         /* Call our hook. */
         mov %rbx,%rdi
         callq syscall_hook
+
+        /* Restore XMM registers */
+        movdqa (%rsp),%xmm0
+        movdqa 0x10(%rsp),%xmm1
+        movdqa 0x20(%rsp),%xmm2
+        movdqa 0x30(%rsp),%xmm3
+        movdqa 0x40(%rsp),%xmm4
+        movdqa 0x50(%rsp),%xmm5
+        movdqa 0x60(%rsp),%xmm6
+        movdqa 0x70(%rsp),%xmm7
 
         mov %rbx,%rsp
         .cfi_def_cfa_register %rsp
@@ -415,6 +456,14 @@ CFA_AT_RSP_OFFSET(16)
 RSP_IS_RSP_PLUS_OFFSET(8)
 RIP_IS_DEREF_RSP(0)
 callq _syscall_hook_trampoline
+/* GDB likes to override valid CFI with its own heuristics if the current
+   instruction is a retq. This becomes a problem here, because GDB will set
+   a breakpoint at the next instruction after the callq when continuing out of
+   `_syscall_hook_trampoline`. This `nop` makes said instruction not a retq,
+   thus preventing that GDB heuristic from kicking in and letting GDB realize
+   that it did in fact manage to step out of the `_syscall_hook_trampoline`
+   frame. */
+nop
 retq
 .cfi_endproc
 .size __morestack, .-__morestack
@@ -498,6 +547,16 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_c3_nop)
 
         .cfi_endproc
         .size _syscall_hook_trampoline_c3_nop, .-_syscall_hook_trampoline_c3_nop
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_40_80_f6_81)
+	xor $0x81, %sil
+	call __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_40_80_f6_81)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_49_89_ca)
+	mov %rcx, %r10
+	call __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_49_89_ca)
 
 #endif /* __x86_64__ */
 

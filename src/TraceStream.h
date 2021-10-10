@@ -14,6 +14,7 @@
 #include "CompressedReader.h"
 #include "CompressedWriter.h"
 #include "Event.h"
+#include "MemoryRange.h"
 #include "TaskishUid.h"
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
@@ -21,11 +22,21 @@
 
 namespace rr {
 
+/**
+ * Bump this when rr changes mean that traces produced by new rr can't be replayed by old rr.
+ */
+const int FORWARD_COMPATIBILITY_VERSION = 2;
+
 struct CPUIDRecord;
 struct DisableCPUIDFeatures;
 class KernelMapping;
 class RecordTask;
 struct TraceUuid;
+
+struct WriteHole {
+  uint64_t offset;
+  uint64_t size;
+};
 
 /**
  * TraceStream stores all the data common to both recording and
@@ -44,6 +55,7 @@ public:
     remote_ptr<void> addr;
     size_t size;
     pid_t rec_tid;
+    std::vector<WriteHole> holes;
   };
 
   /**
@@ -198,6 +210,7 @@ public:
    */
   RecordInTrace write_mapped_region(RecordTask* t, const KernelMapping& map,
                                     const struct stat& stat,
+                                    const std::string &file_name,
                                     const std::vector<TraceRemoteFd>& extra_fds,
                                     MappingOrigin origin = SYSCALL_MAPPING,
                                     bool skip_monitoring_mapped_fd = false);
@@ -211,8 +224,13 @@ public:
    * 'addr' is the address in the tracee where the data came from/will be
    * restored to.
    */
-  void write_raw(pid_t tid, const void* data, size_t len,
-                 remote_ptr<void> addr);
+  void write_raw(pid_t tid, const void* data, size_t len, remote_ptr<void> addr) {
+    write_raw_data(data, len);
+    write_raw_header(tid, len, addr, std::vector<WriteHole>());
+  }
+  void write_raw_data(const void* data, size_t len);
+  void write_raw_header(pid_t tid, size_t total_len, remote_ptr<void> addr,
+                        const std::vector<WriteHole>& holes);
 
   /**
    * Write a task event (clone or exec record) to the trace.
@@ -231,14 +249,20 @@ public:
    * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set)
    * or by setting -o=<OUTPUT_TRACE_DIR>.
    */
-  TraceWriter(const std::string& file_name, int bind_to_cpu,
-              const string& output_trace_dir, TicksSemantics ticks_semantics_);
+  TraceWriter(const std::string& file_name,
+              const string& output_trace_dir, TicksSemantics ticks_semantics);
 
   /**
    * Called after the calling thread is actually bound to |bind_to_cpu|.
    */
   void setup_cpuid_records(bool has_cpuid_faulting,
                            const DisableCPUIDFeatures& disable_cpuid_features);
+
+  void set_xsave_fip_fdp_quirk(bool value) { xsave_fip_fdp_quirk_ = value; }
+  void set_fdp_exception_only_quirk(bool value) { fdp_exception_only_quirk_ = value; }
+  void set_clear_fip_fdp(bool value) { clear_fip_fdp_ = value; }
+  bool clear_fip_fdp() const { return clear_fip_fdp_; }
+  void set_chaos_mode(bool value) { chaos_mode = value; }
 
   enum CloseStatus {
     /**
@@ -266,10 +290,13 @@ public:
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
 private:
-  bool try_hardlink_file(const std::string& file_name, std::string* new_name);
-  bool try_clone_file(RecordTask* t, const std::string& file_name,
+  bool try_hardlink_file(const std::string& real_file_name,
+                         const std::string& access_file_name, std::string* new_name);
+  bool try_clone_file(RecordTask* t, const std::string& real_file_name,
+                      const std::string& access_file_name,
                       std::string* new_name);
-  bool copy_file(const std::string& file_name, std::string* new_name);
+  bool copy_file(const std::string& real_file_name,
+                 const std::string& access_file_name, std::string* new_name);
 
   CompressedWriter& writer(Substream s) { return *writers[s]; }
   const CompressedWriter& writer(Substream s) const { return *writers[s]; }
@@ -291,19 +318,33 @@ private:
   ScopedFd version_fd;
   uint32_t mmap_count;
   bool has_cpuid_faulting_;
+  bool xsave_fip_fdp_quirk_;
+  bool fdp_exception_only_quirk_;
+  bool clear_fip_fdp_;
   bool supports_file_data_cloning_;
+  bool chaos_mode;
 };
 
 class TraceReader : public TraceStream {
 public:
   /**
    * A parcel of recorded tracee data.  |data| contains the data read
-   * from |addr| in the tracee.
+   * from |addr| in the tracee. `data` contains zeroes for holes.
    */
   struct RawData {
     std::vector<uint8_t> data;
     remote_ptr<void> addr;
     pid_t rec_tid;
+  };
+
+  /**
+   * Like RawData, but returns positions of holes. `data` excludes holes.
+   */
+  struct RawDataWithHoles {
+    std::vector<uint8_t> data;
+    remote_ptr<void> addr;
+    pid_t rec_tid;
+    std::vector<WriteHole> holes;
   };
 
   /**
@@ -346,8 +387,17 @@ public:
   /**
    * Reads the next raw data record for last-read frame. If there are no more
    * raw data records for this frame, return false.
+   * Holes are filled with zeroes in the output buffer.
    */
   bool read_raw_data_for_frame(RawData& d);
+
+  /**
+   * Reads the next raw data record for last-read frame. If there are no more
+   * raw data records for this frame, return false.
+   * Returns hole metadata so you can do something smarter with it than
+   * explicitly filling with zeroes.
+   */
+  bool read_raw_data_for_frame_with_holes(RawDataWithHoles& d);
 
   /**
    * Like read_raw_data_for_frame, but doesn't actually read the data bytes.
@@ -401,6 +451,7 @@ public:
   }
   bool uses_cpuid_faulting() const { return trace_uses_cpuid_faulting; }
   uint64_t xcr0() const;
+  bool clear_fip_fdp() const { return clear_fip_fdp_; }
   // Prior to issue 2370, we did not emit mapping into the trace for the
   // preload_thread_locals mapping if it was created by a clone(2) without
   // CLONE_VM. This is true if that has been fixed.
@@ -410,6 +461,33 @@ public:
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
   double recording_time() const { return monotonic_time_; }
+
+  // The base syscall number for rr syscalls in this trace
+  int rrcall_base() const { return rrcall_base_; }
+
+  SupportedArch arch() const { return arch_; }
+
+  bool chaos_mode(bool* known) const {
+    *known = chaos_mode_known_;
+    return chaos_mode_;
+  }
+  MemoryRange exclusion_range() const {
+    return exclusion_range_;
+  }
+
+  enum TraceQuirks {
+    // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
+    ExplicitProcMem = 0x1,
+    // Whether this trace requires the special librrpage replay behavior
+    // added in 3aaf792 and later removed.
+    SpecialLibRRpage = 0x2,
+    // Whether this trace recorded extra regs for pkey_alloc(2).
+    PkeyAllocRecordedExtraRegs = 0x4
+  };
+
+  int quirks() const { return quirks_; }
+
+  int required_forward_compatibility_version() const { return required_forward_compatibility_version_; }
 
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
@@ -422,8 +500,16 @@ private:
   TicksSemantics ticks_semantics_;
   double monotonic_time_;
   std::unique_ptr<TraceUuid> uuid_;
+  MemoryRange exclusion_range_;
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
+  bool clear_fip_fdp_;
+  bool chaos_mode_known_;
+  bool chaos_mode_;
+  int rrcall_base_;
+  int required_forward_compatibility_version_;
+  SupportedArch arch_;
+  int quirks_;
 };
 
 extern std::string trace_save_dir();

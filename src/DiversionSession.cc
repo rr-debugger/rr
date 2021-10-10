@@ -85,10 +85,32 @@ static void process_syscall_arch(Task* t, int syscallno) {
     case Arch::rt_sigqueueinfo:
     case Arch::rt_tgsigqueueinfo:
     case Arch::tgkill:
-    case Arch::tkill:
+    case Arch::tkill: {
       LOG(debug) << "Suppressing syscall "
                  << syscall_name(syscallno, t->arch());
+      Registers r = t->regs();
+      r.set_syscall_result(-ENOSYS);
+      t->set_regs(r);
       return;
+    }
+
+    case Arch::gettid: {
+      auto tid = t->own_namespace_tid();
+      LOG(debug) << "Emulating gettid with " << tid;
+      Registers r = t->regs();
+      r.set_syscall_result(tid);
+      t->set_regs(r);
+      return;
+    }
+
+    case Arch::getpid: {
+      auto pid = t->thread_group()->tgid_own_namespace;
+      LOG(debug) << "Emulating getpid with " << pid;
+      Registers r = t->regs();
+      r.set_syscall_result(pid);
+      t->set_regs(r);
+      return;
+    }
   }
 
   LOG(debug) << "Executing syscall " << syscall_name(syscallno, t->arch());
@@ -97,6 +119,12 @@ static void process_syscall_arch(Task* t, int syscallno) {
 
 static void process_syscall(Task* t, int syscallno){
   RR_ARCH_FUNCTION(process_syscall_arch, t->arch(), t, syscallno)
+}
+
+static void handle_ptrace_exit_event(Task *t) {
+  t->did_kill();
+  t->detach();
+  delete t;
 }
 
 /**
@@ -112,16 +140,19 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
 
   // An exit might have occurred while processing a previous syscall.
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    // We're about to destroy the task, so capture the context while
+    // we can.
+    TaskContext context(t);
+    handle_ptrace_exit_event(t);
+    // This is now a dangling pointer, so clear it.
+    context.task = nullptr;
     result.status = DIVERSION_EXITED;
+    result.break_status.task_context = context;
+    result.break_status.task_exit = true;
     return result;
   }
 
-  // Disable syscall buffering during diversions
-  if (t->preload_globals) {
-    t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, in_diversion),
-                 (unsigned char)1);
-  }
-  t->set_syscallbuf_locked(1);
+  t->set_in_diversion(true);
 
   switch (command) {
     case RUN_CONTINUE:
@@ -139,6 +170,7 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   }
 
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    handle_ptrace_exit_event(t);
     result.status = DIVERSION_EXITED;
     return result;
   }
@@ -147,6 +179,10 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   if (t->stop_sig()) {
     LOG(debug) << "Pending signal: " << t->get_siginfo();
     result.break_status = diagnose_debugger_trap(t, command);
+    if (!result.break_status.breakpoint_hit && result.break_status.watchpoints_hit.empty() && !result.break_status.singlestep_complete && (t->stop_sig() == SIGTRAP)) {
+      result.break_status.signal = unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
+      result.break_status.signal->si_signo = t->stop_sig();
+    }
     LOG(debug) << "Diversion break at ip=" << (void*)t->ip().register_value()
                << "; break=" << result.break_status.breakpoint_hit
                << ", watch=" << !result.break_status.watchpoints_hit.empty()
@@ -155,6 +191,10 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
            !result.break_status.singlestep_complete ||
                command == RUN_SINGLESTEP);
     return result;
+  }
+
+  if (t->status().is_syscall()) {
+    t->apply_syscall_entry_regs();
   }
 
   process_syscall(t, t->regs().original_syscallno());

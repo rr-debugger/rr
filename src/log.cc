@@ -59,12 +59,12 @@ static char simple_to_lower(char ch) {
 }
 
 static string simple_to_lower(const string& s) {
-  char* buf = new char[s.size() + 1];
+  std::unique_ptr<char[]> buf(new char[s.size() + 1]);
   for (size_t i = 0; i < s.size(); ++i) {
     buf[i] = simple_to_lower(s[i]);
   }
   buf[s.size()] = 0;
-  return string(buf);
+  return string(buf.get());
 }
 
 #if __has_attribute(require_constant_initialization)
@@ -118,13 +118,17 @@ static void init_log_globals() {
     log_buffer_size = atoi(buffer);
     if (log_buffer_size) {
       log_buffer = unique_ptr<deque<char>>(new deque<char>());
-      atexit(flush_log_buffer);
     }
   }
 
   const char* filename = getenv("RR_LOG_FILE");
+  ios_base::openmode log_file_open_mode = std::ofstream::out;
+  if (!filename) {
+    filename = getenv("RR_APPEND_LOG_FILE");
+    log_file_open_mode |= std::ofstream::app;
+  }
   if (filename) {
-    auto file = new ofstream(filename);
+    auto file = new ofstream(filename, log_file_open_mode);
     if (!file->good()) {
       delete file;
     } else {
@@ -342,6 +346,7 @@ CleanFatalOstream::CleanFatalOstream(const char* file, int line,
 CleanFatalOstream::~CleanFatalOstream() {
   cerr << endl;
   flush_log_stream();
+  flush_log_buffer();
   exit(1);
 }
 

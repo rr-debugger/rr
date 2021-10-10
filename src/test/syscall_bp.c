@@ -2,6 +2,14 @@
 
 #include "util.h"
 
+#if defined(__i386__) || defined(__x86_64__)
+char breakpoint_instruction[] = { 0xcc };
+#elif defined(__aarch64__)
+char breakpoint_instruction[] = { 0x0, 0x0, 0x20, 0xd4 };
+#else
+#error Unknown architecture
+#endif
+
 #define RR_PAGE_ADDR 0x70000000
 
 static uintptr_t my_syscall(uintptr_t syscall, uintptr_t arg1, uintptr_t arg2,
@@ -17,6 +25,15 @@ static uintptr_t my_syscall(uintptr_t syscall, uintptr_t arg1, uintptr_t arg2,
                    "xchg %%esi,%%edi\n\t"
                    : "=a"(ret)
                    : "a"(syscall), "b"(arg1), "c"(arg2), "d"(arg3));
+#elif defined(__aarch64__)
+  register long x8 __asm__("x8") = syscall;
+  register long x0 __asm__("x0") = (long)arg1;
+  register long x1 __asm__("x1") = (long)arg2;
+  register long x2 __asm__("x2") = (long)arg3;
+  __asm__ volatile("svc #0\n\t"
+                   : "+r"(x0)
+                   : "r"(x1), "r"(x2), "r"(x8));
+  ret = x0;
 #else
 #error define syscall here
 #endif
@@ -30,14 +47,14 @@ int main(void) {
   // We don't do this by mprotecting, since we'd have to use RWX,
   // which may be disallowed by some kernels.
   int memfd = open("/proc/self/mem", O_RDWR);
-  uint8_t bp = 0xcc;
-  int nwritten = pwrite(memfd, &bp, 1, (uintptr_t)syscall_addr);
+  int nwritten = pwrite(memfd, &breakpoint_instruction,
+                        sizeof(breakpoint_instruction), (uintptr_t)syscall_addr);
   if (nwritten == -1 && errno == EIO) {
     atomic_puts("Not running under rr");
     atomic_puts("EXIT-SUCCESS");
     return 0;
   }
-  test_assert(nwritten == 1);
+  test_assert(nwritten == sizeof(breakpoint_instruction));
   // Now make a syscall that we know rr will want to use a remote syscall
   // for. Don't use the glibc wrapper to make absolutely sure we don't hit
   // our own breakpoint.

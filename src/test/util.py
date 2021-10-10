@@ -2,7 +2,8 @@ import pexpect, re, signal, sys, time
 
 __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'expect_list',
             'restart_replay', 'interrupt_gdb', 'ok',
-            'failed', 'iterlines_both', 'last_match', 'get_exe_arch' ]
+            'failed', 'iterlines_both', 'last_match', 'get_exe_arch',
+            'get_gdb_version' ]
 
 # Public API
 def expect_gdb(what):
@@ -89,15 +90,22 @@ def expect(prog, what):
 
 def get_exe_arch():
     send_gdb('show architecture')
-    expect_gdb('The target architecture is set automatically \\(currently ([0-9a-z:-]+)\\)')
+    expect_gdb(r'The target architecture is set (automatically|to "auto") \(currently "?([0-9a-z:-]+)"?\)\.?')
     global gdb_rr
-    return gdb_rr.match.group(1)
+    return gdb_rr.match.group(2)
 
 def get_rr_cmd():
     '''Return the command that should be used to invoke rr, as the tuple
   (executable, array-of-args)'''
     rrargs = sys.argv[1:]
     return (rrargs[0], rrargs[1:])
+
+def get_gdb_version():
+    '''Return the gdb version'''
+    send_gdb('python print(gdb.VERSION)')
+    expect_gdb(r'(\d+.\d+)')
+    global gdb_rr
+    return float(gdb_rr.match.group(1))
 
 def send(prog, what):
     try:

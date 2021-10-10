@@ -46,18 +46,10 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
 
     if (args.cloned_file_data_fd >= 0) {
       cloned_file_data_fd_child = args.cloned_file_data_fd;
-      string clone_file_name = trace_reader().file_data_clone_file_name(tuid());
-      AutoRestoreMem name(remote, clone_file_name.c_str());
-      int fd = remote.infallible_syscall(syscall_number_for_openat(arch()),
-                                         RR_RESERVED_ROOT_DIR_FD, name.get(),
-                                         O_RDONLY | O_CLOEXEC);
-      if (fd != cloned_file_data_fd_child) {
-        long ret =
-            remote.infallible_syscall(syscall_number_for_dup3(arch()), fd,
-                                      cloned_file_data_fd_child, O_CLOEXEC);
-        ASSERT(this, ret == cloned_file_data_fd_child);
-        remote.infallible_syscall(syscall_number_for_close(arch()), fd);
-      }
+      cloned_file_data_fname = trace_reader().file_data_clone_file_name(tuid());
+      ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDONLY);
+      ASSERT(this, clone_file.is_open());
+      remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child);
       fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
     }
   }
@@ -167,7 +159,7 @@ bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
     TraceReader::MappedData data;
     KernelMapping km = trace_reader().read_mapped_region(&data);
     ASSERT(this, km.start() == AddressSpace::preload_thread_locals_start() &&
-           km.size() == PAGE_SIZE);
+           km.size() == page_size());
     return true;
   }
 

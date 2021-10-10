@@ -3,7 +3,7 @@
 #include "util.h"
 
 static int not_shared;
-static int* shared;
+static int * volatile shared;
 
 int clonefunc(void* exe) {
   not_shared = 1;
@@ -28,8 +28,10 @@ int main(int argc, char* argv[]) {
   shared = (int*)mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                       MAP_ANONYMOUS | MAP_SHARED, -1, 0);
 
-  child = clone(clonefunc, child_stack + sizeof(child_stack),
+  child = clone(clonefunc, (void*)(((uintptr_t)child_stack + sizeof(child_stack)) &
+                                   ~((uintptr_t)0x8-1)),
                 CLONE_VFORK | SIGCHLD, (void*)exe);
+  test_assert(child >= 0);
 
   /* This should not execute until after the vfork child has execed */
   test_assert(*shared == 1);

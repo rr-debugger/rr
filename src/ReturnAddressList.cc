@@ -39,7 +39,7 @@ static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {
   }
 
   remote_ptr<void> bp = t->regs().bp();
-  for (int i = next_address; i < ReturnAddressList::COUNT; ++i) {
+  for (int i = next_address; i < ReturnAddressList::X86_COUNT; ++i) {
     if (!read_bytes_no_breakpoints(t, bp, sizeof(frame), frame)) {
       break;
     }
@@ -48,8 +48,28 @@ static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {
   }
 }
 
+template <typename Arch>
+void return_addresses_arch(ReturnAddressList* result, Task* t);
+
+template <> void return_addresses_arch<X86Arch>(ReturnAddressList* result, Task* t) {
+  return_addresses_x86ish<X86Arch>(result, t);
+}
+
+template <> void return_addresses_arch<X64Arch>(ReturnAddressList* result, Task* t) {
+  return_addresses_x86ish<X64Arch>(result, t);
+}
+
+template <> void return_addresses_arch<ARM64Arch>(ReturnAddressList* result, Task*) {
+  // On aarch64, we track all taken branches, so tracking return addresses should
+  // not be necessary.
+  DEBUG_ASSERT(ReturnAddressList::AARCH64_COUNT == 0);
+  for (size_t i = 0; i < array_length(result->addresses); ++i) {
+    result->addresses[i] = nullptr;
+  }
+}
+
 static void compute_return_addresses(ReturnAddressList* result, Task* t) {
-  RR_ARCH_FUNCTION(return_addresses_x86ish, t->arch(), result, t);
+  RR_ARCH_FUNCTION(return_addresses_arch, t->arch(), result, t);
 }
 
 ReturnAddressList::ReturnAddressList(Task* t) {

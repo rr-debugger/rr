@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+
+# Switch threads very eagerly on recorded events.
+RECORD_ARGS="-s"
+compare_test EXIT-SUCCESS

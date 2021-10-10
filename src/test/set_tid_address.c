@@ -28,7 +28,7 @@ int main(void) {
   v = 1;
   pthread_create(&thread, NULL, run_thread, NULL);
   test_assert(1 == write(pipe_fds[1], "x", 1));
-  int ret = syscall(SYS_futex, &v, FUTEX_WAIT, 1, NULL, NULL, 0);
+  int ret = syscall(SYS_futex, &v, FUTEX_WAIT, 1, (void*)0, (void*)0, 0);
   // The above is slightly racy. If the thread finishes before we enter
   // the syscall we will exit with EAGAIN. This is unfortunate, but there
   // is no much we can do. Luckily this failure mode is different from

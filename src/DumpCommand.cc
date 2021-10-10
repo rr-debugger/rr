@@ -2,7 +2,10 @@
 
 #include "DumpCommand.h"
 
+#include <arpa/inet.h>
 #include <inttypes.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #include <limits>
 #include <unordered_map>
@@ -36,7 +39,8 @@ DumpCommand DumpCommand::singleton(
     "dump",
     " rr dump [OPTIONS] [<trace_dir>] [<event-spec>...]\n"
     "  Event specs can be either an event number like `127', or a range\n"
-    "  like `1000-5000'.  By default, all events are dumped.\n"
+    "  like `1000-5000', or `end' for the last record in the trace.\n"
+    "  By default, all events are dumped.\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n"
     "  -e, --task-events          dump task events\n"
     "  -m, --recorded-metadata    dump recorded data metadata\n"
@@ -53,6 +57,7 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
   }
 
   static const OptionSpec options[] = {
+    { 0, "socket-addresses", NO_PARAMETER },
     { 'b', "syscallbuf", NO_PARAMETER },
     { 'e', "task-events", NO_PARAMETER },
     { 'm', "recorded-metadata", NO_PARAMETER },
@@ -91,6 +96,9 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
       }
       flags.only_tid = opt.int_value;
       break;
+    case 0:
+      flags.dump_socket_addrs = true;
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
   }
@@ -98,7 +106,8 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
 }
 
 static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
-                                 const TraceFrame& frame) {
+                                 const TraceFrame& frame,
+                                 bool dump_raw) {
   if (frame.event().type() != EV_SYSCALLBUF_FLUSH) {
     return;
   }
@@ -116,14 +125,66 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
     // Buffered syscalls always use the task arch
-    fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx }\n",
+    fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx%s%s }\n",
             syscall_name(record->syscallno, frame.regs().arch()).c_str(),
-            (long)record->ret, (long)record->size);
+            (long)record->ret, (long)record->size,
+            record->desched ? ", desched:1" : "",
+            record->replay_assist ? ", replay_assist:1" : "");
+    if (dump_raw) {
+      fprintf(out, "  ");
+      for (unsigned long i = 0; i < record->size; ++i) {
+        fprintf(out, "%2.2x", *(record_ptr + (uintptr_t)i));
+      }
+      fprintf(out, "\n");
+    }
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       notifying_abort();
     }
     record_ptr += stored_record_size(record->size);
+  }
+}
+
+static void print_socket_addr(FILE* out, const struct NativeArch::sockaddr_storage& sa) {
+  char buf[256];
+  auto sockaddr = reinterpret_cast<const struct sockaddr_storage*>(&sa);
+  switch (sockaddr->ss_family) {
+    case AF_INET: {
+      auto sockaddr_in = reinterpret_cast<const struct sockaddr_in*>(sockaddr);
+      if (inet_ntop(AF_INET, &sockaddr_in->sin_addr, buf, sizeof(buf) - 1)) {
+        fprintf(out, "%s:%d", buf, sockaddr_in->sin_port);
+      } else {
+        FATAL();
+      }
+      break;
+    }
+    case AF_INET6: {
+      auto sockaddr_in6 = reinterpret_cast<const struct sockaddr_in6*>(sockaddr);
+      if (inet_ntop(AF_INET6, &sockaddr_in6->sin6_addr, buf, sizeof(buf) - 1)) {
+        fprintf(out, "%s:%d", buf, sockaddr_in6->sin6_port);
+      } else {
+        FATAL();
+      }
+      break;
+    }
+    default:
+      fputs("<Unknown socket family>", out);
+      break;
+  }
+}
+
+static void dump_socket_addrs(FILE* out, const TraceFrame& frame) {
+  if (frame.event().type() != EV_SYSCALL) {
+    return;
+  }
+
+  auto syscall = frame.event().Syscall();
+  if (syscall.socket_addrs) {
+    fputs("  Local socket address '", out);
+    print_socket_addr(out, (*syscall.socket_addrs.get())[0]);
+    fputs("' Remote socket address '", out);
+    print_socket_addr(out, (*syscall.socket_addrs.get())[1]);
+    fputs("'\n", out);
   }
 }
 
@@ -140,6 +201,9 @@ static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
     case TraceTaskEvent::EXIT:
       fprintf(out, "  TraceTaskEvent::EXIT tid=%d status=%d\n", event.tid(),
           event.exit_status().get());
+      break;
+    case TraceTaskEvent::DETACH:
+      fprintf(out, "  TraceTaskEvent::DETACH tid=%d\n", event.tid());
       break;
     default:
       FATAL() << "Unknown TraceTaskEvent";
@@ -160,29 +224,21 @@ static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
  * event sets.  No attempt is made to enforce this or normalize specs.
  */
 static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
-                                 FILE* out, const string* spec) {
+                                 FILE* out, const string* spec,
+                                 const unordered_map<FrameTime, TraceTaskEvent>& task_events) {
 
   uint32_t start = 0, end = numeric_limits<uint32_t>::max();
+  bool only_end = false;
 
-  // Try to parse the "range" syntax '[start]-[end]'.
-  if (spec && 2 > sscanf(spec->c_str(), "%u-%u", &start, &end)) {
-    // Fall back on assuming the spec is a single event
-    // number, however it parses out with atoi().
-    start = end = atoi(spec->c_str());
-  }
-
-  unordered_map<FrameTime, TraceTaskEvent> task_events;
-  FrameTime last_time = 0;
-  while (true) {
-    FrameTime time;
-    TraceTaskEvent r = trace.read_task_event(&time);
-    if (time <= last_time) {
-      FATAL() << "TraceTaskEvent times non-increasing";
+  if (spec && *spec == "end") {
+    only_end = true;
+  } else {
+    // Try to parse the "range" syntax '[start]-[end]'.
+    if (spec && 2 > sscanf(spec->c_str(), "%u-%u", &start, &end)) {
+      // Fall back on assuming the spec is a single event
+      // number, however it parses out with atoi().
+      start = end = atoi(spec->c_str());
     }
-    if (r.type() == TraceTaskEvent::NONE) {
-      break;
-    }
-    task_events.insert(make_pair(time, r));
   }
 
   bool process_raw_data =
@@ -192,15 +248,16 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
     if (end < frame.time()) {
       return;
     }
-    if (start <= frame.time() && frame.time() <= end &&
-        (!flags.only_tid || flags.only_tid == frame.tid())) {
+    if (only_end ? trace.at_end() :
+         (start <= frame.time() && frame.time() <= end &&
+           (!flags.only_tid || flags.only_tid == frame.tid()))) {
       if (flags.raw_dump) {
         frame.dump_raw(out);
       } else {
         frame.dump(out);
       }
       if (flags.dump_syscallbuf) {
-        dump_syscallbuf_data(trace, out, frame);
+        dump_syscallbuf_data(trace, out, frame, flags.raw_dump);
       }
       if (flags.dump_task_events) {
         auto it = task_events.find(frame.time());
@@ -252,9 +309,24 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       TraceReader::RawDataMetadata data;
       while (process_raw_data && trace.read_raw_data_metadata_for_frame(data)) {
         if (flags.dump_recorded_data_metadata) {
-          fprintf(out, "  { tid:%d, addr:%p, length:%p }\n", data.rec_tid,
+          fprintf(out, "  { tid:%d, addr:%p, length:%p", data.rec_tid,
                   (void*)data.addr.as_int(), (void*)data.size);
+          if (!data.holes.empty()) {
+            fputs(", holes:[", out);
+            bool first = true;
+            for (auto& h : data.holes) {
+              if (!first) {
+                fputs(", ", out);
+              }
+              fprintf(out, "%p-%p", (void*)h.offset, (void*)(h.offset + h.size));
+            }
+            fputs("]", out);
+          }
+          fputs(" }\n", out);
         }
+      }
+      if (flags.dump_socket_addrs) {
+        dump_socket_addrs(out, frame);
       }
       if (!flags.raw_dump) {
         fprintf(out, "}\n");
@@ -293,13 +365,28 @@ void dump(const string& trace_dir, const DumpFlags& flags,
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
   }
 
+  unordered_map<FrameTime, TraceTaskEvent> task_events;
+  FrameTime last_time = 0;
+  while (true) {
+    FrameTime time;
+    TraceTaskEvent r = trace.read_task_event(&time);
+    if (time < last_time) {
+      FATAL() << "TraceTaskEvent times non-monotonic";
+    }
+    if (r.type() == TraceTaskEvent::NONE) {
+      break;
+    }
+    task_events.insert(make_pair(time, r));
+    last_time = time;
+  }
+
   if (specs.size() > 0) {
     for (size_t i = 0; i < specs.size(); ++i) {
-      dump_events_matching(trace, flags, out, &specs[i]);
+      dump_events_matching(trace, flags, out, &specs[i], task_events);
     }
   } else {
     // No specs => dump all events.
-    dump_events_matching(trace, flags, out, nullptr /*all events*/);
+    dump_events_matching(trace, flags, out, nullptr /*all events*/, task_events);
   }
 
   if (flags.dump_statistics) {

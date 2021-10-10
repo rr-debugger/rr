@@ -2,11 +2,10 @@
 
 #include "Session.h"
 
-#include <asm/ptrace.h>
 #include <linux/limits.h>
 #include <linux/unistd.h>
-#include <sys/prctl.h>
 #include <syscall.h>
+#include <sys/wait.h>
 
 #include <algorithm>
 #include <limits>
@@ -17,12 +16,14 @@
 #include "EmuFs.h"
 #include "Flags.h"
 #include "PerfCounters.h"
+#include "RecordTask.h"
 #include "Task.h"
 #include "ThreadGroup.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
+#include "preload/preload_interface.h"
 
 using namespace std;
 
@@ -36,12 +37,15 @@ struct Session::CloneCompletion {
     vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
   };
   vector<AddressSpaceClone> address_spaces;
+  Task::ClonedFdTables cloned_fd_tables;
 };
 
 Session::Session()
-    : tracee_socket(shared_ptr<ScopedFd>(new ScopedFd())),
+    : tracee_socket(make_shared<ScopedFd>()),
+      tracee_socket_receiver(make_shared<ScopedFd>()),
       tracee_socket_fd_number(0),
       next_task_serial_(1),
+      rrcall_base_(RR_CALL_BASE),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),
@@ -53,7 +57,7 @@ Session::~Session() {
   kill_all_tasks();
   LOG(debug) << "Session " << this << " destroyed";
 
-  for (auto tg : thread_group_map) {
+  for (auto tg : thread_group_map_) {
     tg.second->forget_session();
   }
 }
@@ -62,15 +66,17 @@ Session::Session(const Session& other) {
   statistics_ = other.statistics_;
   next_task_serial_ = other.next_task_serial_;
   done_initial_exec_ = other.done_initial_exec_;
+  rrcall_base_ = other.rrcall_base_;
   visible_execution_ = other.visible_execution_;
   tracee_socket = other.tracee_socket;
+  tracee_socket_receiver = other.tracee_socket_receiver;
   tracee_socket_fd_number = other.tracee_socket_fd_number;
   ticks_semantics_ = other.ticks_semantics_;
 }
 
-void Session::on_create(ThreadGroup* tg) { thread_group_map[tg->tguid()] = tg; }
+void Session::on_create(ThreadGroup* tg) { thread_group_map_[tg->tguid()] = tg; }
 void Session::on_destroy(ThreadGroup* tg) {
-  thread_group_map.erase(tg->tguid());
+  thread_group_map_.erase(tg->tguid());
 }
 
 void Session::post_exec() {
@@ -117,8 +123,8 @@ AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
 
 ThreadGroup::shr_ptr Session::create_initial_tg(Task* t) {
   ThreadGroup::shr_ptr tg(
-      new ThreadGroup(this, nullptr, t->rec_tid, t->tid,
-                      t->tid, t->tuid().serial()));
+      new ThreadGroup(this, nullptr, t->rec_tid, t->rec_tid,
+                      t->tuid().serial()));
   tg->insert_task(t);
   return tg;
 }
@@ -130,12 +136,12 @@ ThreadGroup::shr_ptr Session::clone(Task* t, ThreadGroup::shr_ptr tg) {
   if (this == tg->session()) {
     return ThreadGroup::shr_ptr(
        new ThreadGroup(this, tg.get(), t->rec_tid,
-                       t->tid, t->own_namespace_tid(), t->tuid().serial()));
+                       t->own_namespace_tid(), t->tuid().serial()));
   }
   ThreadGroup* parent =
       tg->parent() ? find_thread_group(tg->parent()->tguid()) : nullptr;
   return ThreadGroup::shr_ptr(
-      new ThreadGroup(this, parent, tg->tgid, t->tid,
+      new ThreadGroup(this, parent, tg->tgid,
                       t->own_namespace_tid(), tg->tguid().serial()));
 }
 
@@ -175,8 +181,8 @@ Task* Session::find_task(const TaskUid& tuid) const {
 
 ThreadGroup* Session::find_thread_group(const ThreadGroupUid& tguid) const {
   finish_initializing();
-  auto it = thread_group_map.find(tguid);
-  if (thread_group_map.end() == it) {
+  auto it = thread_group_map_.find(tguid);
+  if (thread_group_map_.end() == it) {
     return nullptr;
   }
   return it->second;
@@ -184,7 +190,7 @@ ThreadGroup* Session::find_thread_group(const ThreadGroupUid& tguid) const {
 
 ThreadGroup* Session::find_thread_group(pid_t pid) const {
   finish_initializing();
-  for (auto& tg : thread_group_map) {
+  for (auto& tg : thread_group_map_) {
     if (tg.first.tid() == pid) {
       return tg.second;
     }
@@ -202,87 +208,27 @@ AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
 }
 
 void Session::kill_all_tasks() {
-  for (auto& v : task_map) {
-    Task* t = v.second;
-
-    if (!t->is_stopped) {
-      // During recording we might be aborting the recording, in which case
-      // one or more tasks might not be stopped. We haven't got any really
-      // good options here so we'll just skip detaching and try killing
-      // it with SIGKILL below. rr will usually exit immediately after this
-      // so the likelihood that we'll leak a zombie task isn't too bad.
-      continue;
-    }
-
-    /*
-     * Prepare to forcibly kill this task by detaching it first. To ensure
-     * the task doesn't continue executing, we first set its ip() to an
-     * invalid value. We need to do this for all tasks in the Session before
-     * kill() is guaranteed to work properly. SIGKILL on ptrace-attached tasks
-     * seems to not work very well, and after sending SIGKILL we can't seem to
-     * reliably detach.
+  LOG(debug) << "Killing all tasks ...";
+  for (int pass = 0; pass <= 1; ++pass) {
+    /* We delete tasks in two passes. First, we kill
+     * every non-thread-group-leader, then we kill every group leader.
+     * Linux expects threads group leaders to survive until the last
+     * member of the thread group has exited, so we accomodate that.
      */
-    LOG(debug) << "safely detaching from " << t->tid << " ...";
-    // Detaching from the process lets it continue. We don't want a replaying
-    // process to perform syscalls or do anything else observable before we
-    // get around to SIGKILLing it. So we move its ip() to an address
-    // which will cause it to do an exit() syscall if it runs at all.
-    // We used to set this to an invalid address, but that causes a SIGSEGV
-    // to be raised which can cause core dumps after we detach from ptrace.
-    // Making the process undumpable with PR_SET_DUMPABLE turned out not to
-    // be practical because that has a side effect of triggering various
-    // security measures blocking inspection of the process (PTRACE_ATTACH,
-    // access to /proc/<pid>/fd).
-    // Disabling dumps via setrlimit(RLIMIT_CORE, 0) doesn't stop dumps
-    // if /proc/sys/kernel/core_pattern is set to pipe the core to a process
-    // (e.g. to systemd-coredump).
-    // We also tried setting ip() to an address that does an infinite loop,
-    // but that leaves a runaway process if something happens to kill rr
-    // after detaching but before we get a chance to SIGKILL the tracee.
-    Registers r = t->regs();
-    r.set_ip(t->vm()->privileged_traced_syscall_ip());
-    r.set_syscallno(syscall_number_for_exit(r.arch()));
-    r.set_arg1(0);
-    t->set_regs(r);
-    t->flush_regs();
-    long result;
-    do {
-      // We have observed this failing with an ESRCH when the thread clearly
-      // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
-      // work around it.
-      result = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-      ASSERT(t, result >= 0 || errno == ESRCH);
-      // But we it might get ESRCH because it really doesn't exist.
-      if (errno == ESRCH && is_zombie_process(t->tid)) {
-        break;
+    for (auto& v : task_map) {
+      Task* t = v.second;
+      bool is_group_leader = t->tid == t->real_tgid();
+      if (pass == 0 ? is_group_leader : !is_group_leader) {
+        continue;
       }
-    } while (result < 0);
+      t->kill();
+    }
   }
-
   while (!task_map.empty()) {
     Task* t = task_map.rbegin()->second;
-    if (!t->unstable) {
-      /**
-       * Destroy the OS task backing this by sending it SIGKILL and
-       * ensuring it was delivered.  After |kill()|, the only
-       * meaningful thing that can be done with this task is to
-       * delete it.
-       */
-      LOG(debug) << "sending SIGKILL to " << t->tid << " ...";
-      // If we haven't already done a stable exit via syscall,
-      // kill the task and note that the entire thread group is unstable.
-      // The task may already have exited due to the preparation above,
-      // so we might accidentally shoot down the wrong task :-(, but we
-      // have to do this because the task might be in a state where it's not
-      // going to run and exit by itself.
-      // Linux doesn't seem to give us a reliable way to detach and kill
-      // the tracee without races.
-      syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
-      t->thread_group()->destabilize();
-    }
-
-    t->destroy();
+    delete t;
   }
+  assert(task_map.empty());
 }
 
 void Session::on_destroy(AddressSpace* vm) {
@@ -320,7 +266,7 @@ string Session::read_spawned_task_error() const {
 BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   assert_fully_initialized();
   BreakStatus break_status;
-  break_status.task = t;
+  break_status.task_context = TaskContext(t);
 
   int stop_sig = t->stop_sig();
   if (!stop_sig) {
@@ -373,12 +319,12 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
       BreakpointType retired_bp =
           t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
       if (BKPT_USER == retired_bp) {
-        LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
         // SW breakpoint: $ip is just past the
         // breakpoint instruction.  Move $ip back
         // right before it.
         t->move_ip_before_breakpoint();
         break_status.breakpoint_hit = true;
+        LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
       }
     }
   }
@@ -401,26 +347,34 @@ void Session::finish_initializing() const {
   }
 
   Session* self = const_cast<Session*>(this);
-  for (auto& tgleader : clone_completion->address_spaces) {
+  for (auto& asleader : clone_completion->address_spaces) {
     {
-      AutoRemoteSyscalls remote(tgleader.clone_leader);
-      for (const auto& m : tgleader.clone_leader->vm()->maps()) {
+      AutoRemoteSyscalls remote(asleader.clone_leader);
+      for (const auto& m : asleader.clone_leader->vm()->maps()) {
         // Creating this mapping was delayed in capture_state for performance
         if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
           self->recreate_shared_mmap(remote, m);
         }
       }
-      for (auto& mem : tgleader.captured_memory) {
-        tgleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
+      for (auto& mem : asleader.captured_memory) {
+        asleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
                                                   mem.second.data());
       }
-      for (auto& tgmember : tgleader.member_states) {
-        Task* t_clone = Task::os_clone_into(tgmember, remote);
+      for (auto& asmember : asleader.member_states) {
+        auto it = thread_group_map_.find(asmember.tguid);
+        ThreadGroup::shr_ptr tg(it == thread_group_map_.end() ? nullptr :
+          it->second->shared_from_this());
+        if (!tg) {
+          tg = std::make_shared<ThreadGroup>
+            (self, nullptr, asmember.tguid.tid(), asmember.tguid.tid(), asmember.tguid.serial());
+        }
+        Task* t_clone = Task::os_clone_into(
+            asmember, remote, clone_completion->cloned_fd_tables, tg);
         self->on_create(t_clone);
-        t_clone->copy_state(tgmember);
+        t_clone->copy_state(asmember);
       }
     }
-    tgleader.clone_leader->copy_state(tgleader.clone_leader_state);
+    asleader.clone_leader->copy_state(asleader.clone_leader_state);
   }
 
   self->clone_completion = nullptr;
@@ -445,20 +399,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
-  int remote_fd;
-  {
-    string path = emu_file->proc_path();
-    AutoRestoreMem child_path(remote, path.c_str());
-    // Always open the emufs file O_RDWR, even if the current mapping prot
-    // is read-only. We might mprotect it to read-write later.
-    // skip leading '/' since we want the path to be relative to the root fd
-    remote_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_path.get() + 1, O_RDWR);
-    if (0 > remote_fd) {
-      FATAL() << "Couldn't open " << path << " in tracee";
-    }
-  }
+  int remote_fd = remote.send_fd(emu_file->fd());
+  ASSERT(remote.task(), remote_fd >= 0);
   struct stat real_file = remote.task()->stat_fd(remote_fd);
   string real_file_name = remote.task()->file_name_of_fd(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
@@ -493,24 +435,12 @@ KernelMapping Session::create_shared_mmap(
   snprintf(path, sizeof(path) - 1, "%s%s%s-%d-%d", tmp_dir(),
            rr_mapping_prefix(), name, remote.task()->real_tgid(), nonce++);
 
-  // Let the child create the shmem block and then send the fd back to us.
-  // This lets us avoid having to make the file world-writeable so that
-  // the child can read it when it's in a different user namespace (which
-  // would be a security hole, letting other users abuse rr users).
-  int child_shmem_fd;
-  {
-    AutoRestoreMem child_path(remote, path);
-    // skip leading '/' since we want the path to be relative to the root fd
-    child_shmem_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_path.get() + 1, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
-  }
-
+  ScopedFd shmem_fd(path, O_CREAT | O_EXCL | O_RDWR);
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(path);
 
-  ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
+  int child_shmem_fd = remote.send_fd(shmem_fd);
   resize_shmem_segment(shmem_fd, size);
   LOG(debug) << "created shmem segment " << path;
 
@@ -677,11 +607,23 @@ static vector<uint8_t> capture_syscallbuf(const AddressSpace::Mapping& m,
   return clone_leader->read_mem(start, data_size);
 }
 
+static FdTable::shr_ptr& get_or_clone_fd_table(
+    Task::ClonedFdTables& existing_clones, Task* task_to_clone) {
+  auto original_fd_table = task_to_clone->fd_table();
+  FdTable::shr_ptr& existing_clone =
+      existing_clones[uintptr_t(original_fd_table.get())];
+  if (!existing_clone) {
+    existing_clone = original_fd_table->clone();
+  }
+  return existing_clone;
+}
+
 void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
   DEBUG_ASSERT(!dest.clone_completion);
 
   auto completion = unique_ptr<CloneCompletion>(new CloneCompletion());
+  auto& cloned_fd_tables = completion->cloned_fd_tables;
 
   for (auto vm : vm_map) {
     // Pick an arbitrary task to be group leader. The actual group leader
@@ -693,7 +635,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     completion->address_spaces.push_back(CloneCompletion::AddressSpaceClone());
     auto& group = completion->address_spaces.back();
 
-    group.clone_leader = group_leader->os_fork_into(&dest);
+    group.clone_leader = group_leader->os_fork_into(
+        &dest, get_or_clone_fd_table(cloned_fd_tables, group_leader));
     dest.on_create(group.clone_leader);
     LOG(debug) << "  forked new group leader " << group.clone_leader->tid;
 
@@ -727,6 +670,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
         }
         LOG(debug) << "    cloning " << t->rec_tid;
 
+        get_or_clone_fd_table(cloned_fd_tables, t);
         group.member_states.push_back(t->capture_state());
       }
     }
@@ -744,6 +688,51 @@ bool Session::has_cpuid_faulting() {
 
 int Session::cpu_binding(TraceStream& trace) const {
   return trace.bound_to_cpu();
+}
+
+// Returns true if we succeeded, false if we failed because the
+// requested CPU does not exist/is not available.
+static bool set_cpu_affinity(int cpu) {
+  DEBUG_ASSERT(cpu >= 0);
+
+  cpu_set_t mask;
+  CPU_ZERO(&mask);
+  CPU_SET(cpu, &mask);
+  if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+    if (errno == EINVAL) {
+      return false;
+    }
+    FATAL() << "Couldn't bind to CPU " << cpu;
+  }
+  return true;
+}
+
+void Session::do_bind_cpu(TraceStream &trace) {
+  int cpu_index = this->cpu_binding(trace);
+  if (cpu_index >= 0) {
+    // Set CPU affinity now, after we've created any helper threads
+    // (so they aren't affected), but before we create any
+    // tracees (so they are all affected).
+    // Note that we're binding rr itself to the same CPU as the
+    // tracees, since this seems to help performance.
+    if (!set_cpu_affinity(cpu_index)) {
+      if (has_cpuid_faulting() && !is_recording()) {
+        cpu_index = choose_cpu(BIND_CPU, cpu_lock);
+        if (!set_cpu_affinity(cpu_index)) {
+          FATAL() << "Can't bind to requested CPU " << cpu_index
+                  << " even after we re-selected it";
+        }
+        LOG(warn) << "Bound to CPU " << cpu_index
+                  << "instead of selected " << trace.bound_to_cpu()
+                  << "because the latter is not available;\n"
+                  << "Hoping tracee doesn't use LSL instruction!";
+        trace.set_bound_cpu(cpu_index);
+      } else {
+        FATAL() << "Can't bind to requested CPU " << cpu_index
+                << ", and CPUID faulting not available";
+      }
+    }
+  }
 }
 
 } // namespace rr

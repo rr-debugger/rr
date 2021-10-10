@@ -1,4 +1,0 @@
-source `dirname $0`/util.sh
-
-TIMEOUT=600
-debug_test

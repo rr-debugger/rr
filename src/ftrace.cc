@@ -22,7 +22,9 @@ namespace rr {
 namespace ftrace {
 
 static ScopedFd control_fd;
-static ScopedFd marker_fd;
+// This needs to be a pointer since we may need to check it during logging that
+// happens in life-before-main.
+static ScopedFd* marker_fd = nullptr;
 static bool tracing = false;
 
 static void open_socket() {
@@ -83,8 +85,8 @@ static void receive_marker_fd() {
   struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
   DEBUG_ASSERT(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
                cmsg->cmsg_type == SCM_RIGHTS);
-  marker_fd = ScopedFd(*(int*)CMSG_DATA(cmsg));
-  DEBUG_ASSERT(marker_fd.is_open());
+  marker_fd = new ScopedFd(*(int*)CMSG_DATA(cmsg));
+  DEBUG_ASSERT(marker_fd->is_open());
 }
 
 void start_function_graph(const Session& session, const TraceStream& trace) {
@@ -114,7 +116,7 @@ void start_function_graph(const Session& session, const TraceStream& trace) {
 }
 
 void write(const string& str) {
-  if (!marker_fd.is_open()) {
+  if (!marker_fd) {
     return;
   }
   size_t last_start = 0;
@@ -122,7 +124,7 @@ void write(const string& str) {
     if (str[i] == '\n') {
       if (i > last_start) {
         string s = str.substr(last_start, i + 1 - last_start);
-        ssize_t ret = ::write(marker_fd, s.c_str(), s.size());
+        ssize_t ret = ::write(*marker_fd, s.c_str(), s.size());
         if (ret != (ssize_t)s.size()) {
           FATAL() << "Can't write line to socket " << s;
         }
@@ -134,7 +136,9 @@ void write(const string& str) {
 
 void stop() {
   if (tracing) {
-    marker_fd.close();
+    marker_fd->close();
+    delete marker_fd;
+    marker_fd = nullptr;
     write_control_message("end\n");
     wait_for_reply();
     tracing = false;

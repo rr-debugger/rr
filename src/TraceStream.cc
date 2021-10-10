@@ -24,6 +24,7 @@
 #include "RecordTask.h"
 #include "TaskishUid.h"
 #include "core.h"
+#include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "log.h"
 #include "rr_trace.capnp.h"
@@ -41,9 +42,8 @@ namespace rr {
 // version number doesn't track the rr version number, because changes
 // to the trace format will be rare.
 //
-// NB: if you *do* change the trace format for whatever reason, you
-// MUST increment this version number.  Otherwise users' old traces
-// will become unreplayable and they won't know why.
+// We don't plan to ever change this again. Instead, we use CapnpProto
+// to define the trace format in an extensible way (see rr_trace.capnp).
 //
 #define TRACE_VERSION 85
 
@@ -189,8 +189,9 @@ private:
 };
 
 TraceStream::TraceStream(const string& trace_dir, FrameTime initial_time)
-    : trace_dir(real_path(trace_dir))
-    , global_time(initial_time)
+    : trace_dir(real_path(trace_dir)),
+      bind_to_cpu(-1),
+      global_time(initial_time)
    {}
 
 string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
@@ -241,10 +242,16 @@ static trace::Arch to_trace_arch(SupportedArch arch) {
       return trace::Arch::X86;
     case x86_64:
       return trace::Arch::X8664;
+    case aarch64:
+      return trace::Arch::AARCH64;
     default:
       FATAL() << "Unknown arch";
       return trace::Arch::X86;
   }
+}
+
+static trace::CpuTriState to_tristate(bool value) {
+  return value ? trace::CpuTriState::KNOWN_TRUE : trace::CpuTriState::KNOWN_FALSE;
 }
 
 static SupportedArch from_trace_arch(trace::Arch arch) {
@@ -253,6 +260,8 @@ static SupportedArch from_trace_arch(trace::Arch arch) {
       return x86;
     case trace::Arch::X8664:
       return x86_64;
+    case trace::Arch::AARCH64:
+      return aarch64;
     default:
       FATAL() << "Unknown arch";
       return x86;
@@ -392,8 +401,7 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
   // Use an on-stack first segment that should be adequate for most cases. A
   // simple syscall event takes 320 bytes currently. The default Capnproto
   // implementation does a calloc(8192) for the first segment.
-  word buf[reasonable_frame_message_words];
-  memset(buf, 0, sizeof(buf));
+  word buf[reasonable_frame_message_words] = {};
   MallocMessageBuilder frame_msg(buf);
   trace::Frame::Builder frame = frame_msg.initRoot<trace::Frame>();
 
@@ -407,12 +415,17 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
     w.setTid(r.rec_tid);
     w.setAddr(r.addr.as_int());
     w.setSize(r.size);
+    auto holes = w.initHoles(r.holes.size());
+    for (size_t j = 0; j < r.holes.size(); ++j) {
+      holes[j].setOffset(r.holes[j].offset);
+      holes[j].setSize(r.holes[j].size);
+    }
   }
   raw_recs.clear();
   frame.setArch(to_trace_arch(t->arch()));
   if (registers) {
     // Avoid dynamic allocation and copy
-    auto raw_regs = registers->get_ptrace_for_self_arch();
+    auto raw_regs = registers->get_regs_for_trace();
     frame.initRegisters().setRaw(Data::Reader(raw_regs.data, raw_regs.size));
   }
   if (extra_registers) {
@@ -426,7 +439,13 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
       event.setInstructionTrap(Void());
       break;
     case EV_PATCH_SYSCALL:
-      event.setPatchSyscall(Void());
+      if (ev.PatchSyscall().patch_vsyscall) {
+        event.setPatchVsyscall(Void());
+      } else if (ev.PatchSyscall().patch_after_syscall) {
+        event.setPatchAfterSyscall(Void());
+      } else {
+        event.setPatchSyscall(Void());
+      }
       break;
     case EV_SYSCALLBUF_ABORT_COMMIT:
       event.setSyscallbufAbortCommit(Void());
@@ -484,6 +503,12 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
           o.setDevice(opened.device);
           o.setInode(opened.inode);
         }
+      } else if (e.socket_addrs) {
+        auto addrs = data.initSocketAddrs();
+        auto localAddr = (*e.socket_addrs.get())[0];
+        auto remoteAddr = (*e.socket_addrs.get())[1];
+        addrs.setLocalAddr(Data::Reader(reinterpret_cast<uint8_t*>(&localAddr), sizeof(localAddr)));
+        addrs.setRemoteAddr(Data::Reader(reinterpret_cast<uint8_t*>(&remoteAddr), sizeof(remoteAddr)));
       }
       break;
     }
@@ -517,7 +542,14 @@ TraceFrame TraceReader::read_frame() {
   for (size_t i = 0; i < raw_recs.size(); ++i) {
     // Build list in reverse order so we can efficiently pull records from it
     auto w = mem_writes[raw_recs.size() - 1 - i];
-    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()) };
+    auto holes = w.getHoles();
+    vector<WriteHole> h;
+    h.resize(holes.size());
+    for (size_t j = 0; j < h.size(); ++j) {
+      const auto& hole = holes[j];
+      h[j] = { hole.getOffset(), hole.getSize() };
+    }
+    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()), h };
   }
 
   TraceFrame ret;
@@ -533,16 +565,29 @@ TraceFrame TraceReader::read_frame() {
   ret.recorded_regs.set_arch(arch);
   auto reg_data = frame.getRegisters().getRaw();
   if (reg_data.size()) {
-    ret.recorded_regs.set_from_ptrace_for_arch(arch, reg_data.begin(),
-                                               reg_data.size());
+    ret.recorded_regs.set_from_trace(arch, reg_data.begin(),
+                                     reg_data.size());
   }
   auto extra_reg_data = frame.getExtraRegisters().getRaw();
   if (extra_reg_data.size()) {
+    ExtraRegisters::Format fmt;
+    switch (arch) {
+      default:
+        FATAL() << "Unknown architecture";
+        RR_FALLTHROUGH;
+      case x86:
+      case x86_64:
+        fmt = ExtraRegisters::XSAVE;
+        break;
+      case aarch64:
+        fmt = ExtraRegisters::NT_FPR;
+        break;
+    }
     bool ok = ret.recorded_extra_regs.set_to_raw_data(
-        arch, ExtraRegisters::XSAVE, extra_reg_data.begin(),
+        arch, fmt, extra_reg_data.begin(),
         extra_reg_data.size(), xsave_layout_from_trace(cpuid_records()));
     if (!ok) {
-      FATAL() << "Invalid XSAVE data in trace";
+      FATAL() << "Invalid extended register data in trace";
     }
   } else {
     ret.recorded_extra_regs = ExtraRegisters(arch);
@@ -555,6 +600,14 @@ TraceFrame TraceReader::read_frame() {
       break;
     case trace::Frame::Event::PATCH_SYSCALL:
       ret.ev = Event::patch_syscall();
+      break;
+    case trace::Frame::Event::PATCH_VSYSCALL:
+      ret.ev = Event::patch_syscall();
+      ret.ev.PatchSyscall().patch_vsyscall = true;
+      break;
+    case trace::Frame::Event::PATCH_AFTER_SYSCALL:
+      ret.ev = Event::patch_syscall();
+      ret.ev.PatchSyscall().patch_after_syscall = true;
       break;
     case trace::Frame::Event::SYSCALLBUF_ABORT_COMMIT:
       ret.ev = Event::syscallbuf_abort_commit();
@@ -628,6 +681,21 @@ TraceFrame TraceReader::read_frame() {
           }
           break;
         }
+        case trace::Frame::Event::Syscall::Extra::SOCKET_ADDRS: {
+          auto addrs = data.getSocketAddrs();
+          syscall_ev.socket_addrs = make_shared<std::array<typename NativeArch::sockaddr_storage, 2>>();
+          Data::Reader local = addrs.getLocalAddr();
+          if (local.size() != sizeof(NativeArch::sockaddr_storage)) {
+            FATAL() << "Invalid sockaddr length";
+          }
+          memcpy(&(*syscall_ev.socket_addrs.get())[0], local.begin(), sizeof(NativeArch::sockaddr_storage));
+          Data::Reader remote = addrs.getRemoteAddr();
+          if (remote.size() != sizeof(NativeArch::sockaddr_storage)) {
+            FATAL() << "Invalid sockaddr length";
+          }
+          memcpy(&(*syscall_ev.socket_addrs.get())[1], remote.begin(), sizeof(NativeArch::sockaddr_storage));
+          break;
+        }
         default:
           FATAL() << "Unknown syscall type";
           break;
@@ -670,6 +738,9 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
     case TraceTaskEvent::EXIT:
       task.initExit().setExitStatus(event.exit_status().get());
       break;
+    case TraceTaskEvent::DETACH:
+      task.initDetach();
+      break;
     case TraceTaskEvent::NONE:
       DEBUG_ASSERT(0 && "Writing NONE TraceTaskEvent");
       break;
@@ -703,7 +774,10 @@ TraceTaskEvent TraceReader::read_task_event(FrameTime* time) {
       r.type_ = TraceTaskEvent::CLONE;
       auto clone = task.getClone();
       r.parent_tid_ = i32_to_tid(clone.getParentTid());
-      r.own_ns_tid_ = i32_to_tid(clone.getOwnNsTid());
+      // The record task could have died before we were able to compute this,
+      // which we handle fine (since we'll see the exit event right away),
+      // but we can't use i32_to_tid, which will assert if the tid is invalid.
+      r.own_ns_tid_ = (pid_t)clone.getOwnNsTid();
       r.clone_flags_ = clone.getFlags();
       LOG(debug) << "Reading event for " << task.getFrameTime()
                  << ": parent=" << r.parent_tid_ << " tid=" << r.tid_;
@@ -725,6 +799,9 @@ TraceTaskEvent TraceReader::read_task_event(FrameTime* time) {
       r.type_ = TraceTaskEvent::EXIT;
       r.exit_status_ = WaitStatus(task.getExit().getExitStatus());
       break;
+    case trace::TaskEvent::Which::DETACH:
+      r.type_ = TraceTaskEvent::DETACH;
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown TraceEvent type");
       break;
@@ -738,14 +815,15 @@ static string base_file_name(const string& file_name) {
                                         : file_name;
 }
 
-bool TraceWriter::try_hardlink_file(const string& file_name,
+bool TraceWriter::try_hardlink_file(const string& real_file_name,
+                                    const string& access_file_name,
                                     std::string* new_name) {
   char count_str[20];
   sprintf(count_str, "%d", mmap_count);
 
   string path =
-      string("mmap_hardlink_") + count_str + "_" + base_file_name(file_name);
-  int ret = link(file_name.c_str(), (dir() + "/" + path).c_str());
+      string("mmap_hardlink_") + count_str + "_" + base_file_name(real_file_name);
+  int ret = linkat(AT_FDCWD, access_file_name.c_str(), AT_FDCWD, (dir() + "/" + path).c_str(), AT_SYMLINK_FOLLOW);
   if (ret < 0) {
     return false;
   }
@@ -753,8 +831,9 @@ bool TraceWriter::try_hardlink_file(const string& file_name,
   return true;
 }
 
-bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
-                                 string* new_name) {
+bool TraceWriter::try_clone_file(RecordTask* t,
+    const string& real_file_name, const string& access_file_name,
+    string* new_name) {
   if (!t->session().use_file_cloning()) {
     return false;
   }
@@ -763,9 +842,9 @@ bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
   sprintf(count_str, "%d", mmap_count);
 
   string path =
-      string("mmap_clone_") + count_str + "_" + base_file_name(file_name);
+      string("mmap_clone_") + count_str + "_" + base_file_name(real_file_name);
 
-  ScopedFd src(file_name.c_str(), O_RDONLY);
+  ScopedFd src(access_file_name.c_str(), O_RDONLY);
   if (!src.is_open()) {
     return false;
   }
@@ -786,17 +865,18 @@ bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
   return true;
 }
 
-bool TraceWriter::copy_file(const std::string& file_name,
+bool TraceWriter::copy_file(const std::string& real_file_name,
+                            const std::string& access_file_name,
                             std::string* new_name) {
   char count_str[20];
   sprintf(count_str, "%d", mmap_count);
 
   string path =
-      string("mmap_copy_") + count_str + "_" + base_file_name(file_name);
+      string("mmap_copy_") + count_str + "_" + base_file_name(real_file_name);
 
-  ScopedFd src(file_name.c_str(), O_RDONLY);
+  ScopedFd src(access_file_name.c_str(), O_RDONLY);
   if (!src.is_open()) {
-    LOG(debug) << "Can't open " << file_name;
+    LOG(debug) << "Can't open " << access_file_name;
     return false;
   }
   string dest_path = dir() + "/" + path;
@@ -810,36 +890,13 @@ bool TraceWriter::copy_file(const std::string& file_name,
   return rr::copy_file(dest, src);
 }
 
-/**
- * Given `file_name`, where `file_name` is relative to our root directory
- * but is in the mount namespace of `t`, try to make it a file we can read.
- */
-static string try_make_process_file_name(RecordTask* t,
-                                         const std::string& file_name) {
-  char proc_root[32];
-  // /proc/<pid>/root has magical properties; not only is it a link, but
-  // it links to a view of the filesystem as the process sees it, taking into
-  // account the process mount namespace etc.
-  snprintf(proc_root, sizeof(proc_root), "/proc/%d/root", t->tid);
-  char root[PATH_MAX];
-  ssize_t ret = readlink(proc_root, root, sizeof(root) - 1);
-  ASSERT(t, ret >= 0);
-  root[ret] = 0;
-
-  if (strncmp(root, file_name.c_str(), ret)) {
-    LOG(debug) << "File " << file_name << " is outside known root "
-               << proc_root;
-    return file_name;
-  }
-  return string(proc_root) + (ret == 1 ? file_name : file_name.substr(ret));
-}
-
 static bool starts_with(const string& s, const string& with) {
   return s.find(with) == 0;
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
-    RecordTask* t, const KernelMapping& km, const struct stat& stat,
+    RecordTask* t, const KernelMapping& km,
+    const struct stat& stat, const std::string &file_name,
     const vector<TraceRemoteFd>& extra_fds, MappingOrigin origin,
     bool skip_monitoring_mapped_fd) {
   MallocMessageBuilder map_msg;
@@ -869,63 +926,86 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   auto src = map.getSource();
   string backing_file_name;
 
+  auto copy_file_or_trace = [&](string file_name) {
+    // Make executable files accessible to debuggers by copying the whole
+    // thing into the trace directory. We don't get to compress the data and
+    // the entire file is copied, not just the used region, which is why we
+    // don't do this for all files.
+    // Don't bother trying to copy [vdso].
+    // Don't try to copy files that use shared mappings. We do not want to
+    // create a shared mapping of a file stored in the trace. This means
+    // debuggers can't find the file, but the Linux loader doesn't create
+    // shared mappings so situations where a shared-mapped executable contains
+    // usable debug info should be very rare at best...
+    string backing_file_name;
+    if ((km.prot() & PROT_EXEC) &&
+        copy_file(km.fsname(), file_name, &backing_file_name) &&
+        !(km.flags() & MAP_SHARED)) {
+      src.initFile().setBackingFileName(str_to_data(backing_file_name));
+    } else {
+      src.setTrace();
+    }
+  };
+
   if (origin == REMAP_MAPPING || origin == PATCH_MAPPING ||
       origin == RR_BUFFER_MAPPING) {
     src.setZero();
   } else if (starts_with(km.fsname(), "/SYSV")) {
     src.setTrace();
   } else if (origin == SYSCALL_MAPPING &&
-             (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
+             (km.inode() == 0 || km.fsname_strip_deleted() == "/dev/zero")) {
     src.setZero();
   } else if (!starts_with(km.fsname(), "/")) {
     src.setTrace();
   } else {
-    string file_name = try_make_process_file_name(t, km.fsname());
     auto assumed_immutable =
         files_assumed_immutable.find(make_pair(stat.st_dev, stat.st_ino));
 
     if (assumed_immutable != files_assumed_immutable.end()) {
       src.initFile().setBackingFileName(str_to_data(assumed_immutable->second));
     } else if ((km.flags() & MAP_PRIVATE) &&
-               try_clone_file(t, file_name, &backing_file_name)) {
+               try_clone_file(t, km.fsname(), file_name, &backing_file_name)) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
-    } else if (should_copy_mmap_region(km, stat)) {
-      // Make executable files accessible to debuggers by copying the whole
-      // thing into the trace directory. We don't get to compress the data and
-      // the entire file is copied, not just the used region, which is why we
-      // don't do this for all files.
-      // Don't bother trying to copy [vdso].
-      // Don't try to copy files that use shared mappings. We do not want to
-      // create a shared mapping of a file stored in the trace. This means
-      // debuggers can't find the file, but the Linux loader doesn't create
-      // shared mappings so situations where a shared-mapped executable contains
-      // usable debug info should be very rare at best...
-      if ((km.prot() & PROT_EXEC) &&
-          copy_file(file_name, &backing_file_name) &&
-          !(km.flags() & MAP_SHARED)) {
-        src.initFile().setBackingFileName(str_to_data(backing_file_name));
-      } else {
-        src.setTrace();
-      }
+    } else if (should_copy_mmap_region(km, file_name, stat)) {
+      copy_file_or_trace(file_name);
     } else {
       // should_copy_mmap_region's heuristics determined it was OK to just map
       // the file here even if it's MAP_SHARED. So try cloning again to avoid
       // the possibility of the file changing between recording and replay.
-      if (!try_clone_file(t, file_name, &backing_file_name)) {
+      if (try_clone_file(t, km.fsname(), file_name, &backing_file_name)) {
+        src.initFile().setBackingFileName(str_to_data(backing_file_name));
+      } else {
         // Try hardlinking file into the trace directory. This will avoid
         // replay failures if the original file is deleted or replaced (but not
         // if it is overwritten in-place). If try_hardlink_file fails it
         // just returns the original file name.
         // A relative backing_file_name is relative to the trace directory.
-        if (!try_hardlink_file(file_name, &backing_file_name)) {
+        if (!try_hardlink_file(km.fsname(), file_name, &backing_file_name)) {
           // Don't ever use `file_name` for the `backing_file_name` because it
           // contains the pid of a recorded process and will not work!
           backing_file_name = km.fsname();
-        }
-        files_assumed_immutable.insert(
+          // If the backing_file_name refers to a different file (e.g.
+          // because we have a file in our mount namespace that matches the
+          // fsname in the Task's mount namespace), then copy the file even
+          // if the heuristics above thought we could get away with leaving it
+          // in place. Otherwise, we're essentially guaranteed to have a broken
+          // recording.
+          struct stat backing_stat;
+          int err = ::stat(backing_file_name.c_str(), &backing_stat);
+          if (err != 0 || backing_stat.st_dev != km.device() ||
+              backing_stat.st_ino != km.inode()) {
+            copy_file_or_trace(file_name);
+          } else {
+            files_assumed_immutable.insert(
+                make_pair(make_pair(stat.st_dev, stat.st_ino), backing_file_name));
+            src.initFile().setBackingFileName(str_to_data(backing_file_name));
+          }
+        } else {
+          files_assumed_immutable.insert(
             make_pair(make_pair(stat.st_dev, stat.st_ino), backing_file_name));
+          src.initFile().setBackingFileName(str_to_data(backing_file_name));
+        }
       }
-      src.initFile().setBackingFileName(str_to_data(backing_file_name));
     }
   }
 
@@ -1103,10 +1183,14 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                        map.getFileOffsetBytes());
 }
 
-void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,
-                            remote_ptr<void> addr) {
+void TraceWriter::write_raw_header(pid_t rec_tid, size_t total_len,
+                                   remote_ptr<void> addr,
+                                   const std::vector<WriteHole>& holes = std::vector<WriteHole>()) {
+  raw_recs.push_back({ addr, total_len, rec_tid, holes });
+}
+
+void TraceWriter::write_raw_data(const void* d, size_t len) {
   auto& data = writer(RAW_DATA);
-  raw_recs.push_back({ addr, len, rec_tid });
   data.write(d, len);
 }
 
@@ -1125,8 +1209,44 @@ bool TraceReader::read_raw_data_for_frame(RawData& d) {
   auto& rec = raw_recs[raw_recs.size() - 1];
   d.rec_tid = rec.rec_tid;
   d.addr = rec.addr;
+
   d.data.resize(rec.size);
-  reader(RAW_DATA).read((char*)d.data.data(), rec.size);
+  auto hole_iter = rec.holes.begin();
+  uintptr_t offset = 0;
+  while (offset < d.data.size()) {
+    uintptr_t end = rec.size;
+    if (hole_iter != rec.holes.end()) {
+      if (offset == hole_iter->offset) {
+        memset(d.data.data() + offset, 0, hole_iter->size);
+        offset += hole_iter->size;
+        ++hole_iter;
+        continue;
+      }
+      end = hole_iter->offset;
+    }
+    reader(RAW_DATA).read((char*)d.data.data() + offset, end - offset);
+    offset = end;
+  }
+
+  raw_recs.pop_back();
+  return true;
+}
+
+bool TraceReader::read_raw_data_for_frame_with_holes(RawDataWithHoles& d) {
+  if (raw_recs.empty()) {
+    return false;
+  }
+  auto& rec = raw_recs[raw_recs.size() - 1];
+  d.rec_tid = rec.rec_tid;
+  d.addr = rec.addr;
+  d.holes = move(rec.holes);
+  size_t data_size = rec.size;
+  for (auto& h : d.holes) {
+    data_size -= h.size;
+  }
+  d.data.resize(data_size);
+  reader(RAW_DATA).read((char*)d.data.data(), data_size);
+
   raw_recs.pop_back();
   return true;
 }
@@ -1136,7 +1256,11 @@ bool TraceReader::read_raw_data_metadata_for_frame(RawDataMetadata& d) {
     return false;
   }
   d = raw_recs[raw_recs.size() - 1];
-  reader(RAW_DATA).skip(d.size);
+  size_t data_size = d.size;
+  for (auto& h : d.holes) {
+    data_size -= h.size;
+  }
+  reader(RAW_DATA).skip(data_size);
   raw_recs.pop_back();
   return true;
 }
@@ -1184,7 +1308,6 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
 #define STR(x) STR_HELPER(x)
 
 TraceWriter::TraceWriter(const std::string& file_name,
-                         int bind_to_cpu,
                          const string& output_trace_dir,
                          TicksSemantics ticks_semantics_)
     : TraceStream(make_trace_dir(file_name, output_trace_dir),
@@ -1193,9 +1316,11 @@ TraceWriter::TraceWriter(const std::string& file_name,
                   1),
       ticks_semantics_(ticks_semantics_),
       mmap_count(0),
-      has_cpuid_faulting_(false) {
+      has_cpuid_faulting_(false),
+      xsave_fip_fdp_quirk_(false),
+      fdp_exception_only_quirk_(false),
+      clear_fip_fdp_(false) {
   this->ticks_semantics_ = ticks_semantics_;
-  this->bind_to_cpu = bind_to_cpu;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
     writers[s] = unique_ptr<CompressedWriter>(new CompressedWriter(
@@ -1203,7 +1328,7 @@ TraceWriter::TraceWriter(const std::string& file_name,
   }
 
   string ver_path = incomplete_version_path();
-  version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
+  version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
   if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
   }
@@ -1265,15 +1390,33 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   MallocMessageBuilder header_msg;
   trace::Header::Builder header = header_msg.initRoot<trace::Header>();
   header.setBindToCpu(this->bind_to_cpu);
-  header.setHasCpuidFaulting(has_cpuid_faulting_);
-  header.setCpuidRecords(
-      Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
-                   cpuid_records.size() * sizeof(CPUIDRecord)));
-  header.setXcr0(xcr0());
   header.setTicksSemantics(
     to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
+  header.setRequiredForwardCompatibilityVersion(FORWARD_COMPATIBILITY_VERSION);
   header.setPreloadThreadLocalsRecorded(true);
+  header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
+
+  header.setNativeArch(to_trace_arch(NativeArch::arch()));
+  if (NativeArch::is_x86ish())
+  {
+    auto x86data = header.initX86();
+    x86data.setHasCpuidFaulting(has_cpuid_faulting_);
+    x86data.setCpuidRecords(
+        Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
+                    cpuid_records.size() * sizeof(CPUIDRecord)));
+    x86data.setXcr0(xcr0());
+    x86data.setXsaveFipFdpQuirk(to_tristate(xsave_fip_fdp_quirk_));
+    x86data.setFdpExceptionOnlyQuirk(to_tristate(fdp_exception_only_quirk_));
+    x86data.setClearFipFdp(clear_fip_fdp_);
+  }
+
+  {
+    auto quirks = header.initQuirks();
+    quirks.setExplicitProcMem(false);
+    quirks.setSpecialLibrrpage(false);
+    quirks.setPkeyAllocRecordedExtraRegs(true);
+  }
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
   if (!uuid) {
@@ -1284,6 +1427,11 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     header.setUuid(Data::Reader(uuid->bytes, sizeof(TraceUuid::bytes)));
   }
   header.setOk(status == CLOSE_OK);
+  header.setChaosMode(chaos_mode ? trace::ChaosMode::KNOWN_TRUE : trace::ChaosMode::KNOWN_FALSE);
+  MemoryRange exclusion_range = AddressSpace::get_global_exclusion_range();
+  header.setExclusionRangeStart(exclusion_range.start().as_int());
+  header.setExclusionRangeEnd(exclusion_range.end().as_int());
+
   try {
     writePackedMessageToFd(version_fd, header_msg);
   } catch (...) {
@@ -1324,12 +1472,14 @@ TraceFrame TraceReader::peek_frame() {
   auto& events = reader(EVENTS);
   events.save_state();
   auto saved_time = global_time;
+  auto saved_raw_recs = raw_recs;
   TraceFrame frame;
   if (!at_end()) {
     frame = read_frame();
   }
   events.restore_state();
   global_time = saved_time;
+  raw_recs = saved_raw_recs;
   return frame;
 }
 
@@ -1410,24 +1560,62 @@ TraceReader::TraceReader(const string& dir)
 
   trace::Header::Reader header = header_msg.getRoot<trace::Header>();
   bind_to_cpu = header.getBindToCpu();
-  trace_uses_cpuid_faulting = header.getHasCpuidFaulting();
-  Data::Reader cpuid_records_bytes = header.getCpuidRecords();
-  size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
-  if (cpuid_records_bytes.size() != len * sizeof(CPUIDRecord)) {
-    FATAL() << "Invalid CPUID records length";
-  }
-  cpuid_records_.resize(len);
-  memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
-         len * sizeof(CPUIDRecord));
-  xcr0_ = header.getXcr0();
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
+  rrcall_base_ = header.getRrcallBase();
+  required_forward_compatibility_version_ = header.getRequiredForwardCompatibilityVersion();
+  quirks_ = 0;
+  {
+    auto quirks = header.getQuirks();
+    if (quirks.getExplicitProcMem()) {
+      quirks_ |= ExplicitProcMem;
+    }
+    if (quirks.getSpecialLibrrpage()) {
+      quirks_ |= SpecialLibRRpage;
+    }
+    if (quirks.getPkeyAllocRecordedExtraRegs()) {
+      quirks_ |= PkeyAllocRecordedExtraRegs;
+    }
+  }
   Data::Reader uuid = header.getUuid();
   uuid_ = unique_ptr<TraceUuid>(new TraceUuid());
   if (uuid.size() != sizeof(uuid_->bytes)) {
     FATAL() << "Invalid UUID length";
   }
   memcpy(uuid_->bytes, uuid.begin(), sizeof(uuid_->bytes));
+
+  arch_ = from_trace_arch(header.getNativeArch());
+  if (is_x86ish(arch_)) {
+    auto x86data = header.getX86();
+    trace_uses_cpuid_faulting = x86data.getHasCpuidFaulting();
+    Data::Reader cpuid_records_bytes = x86data.getCpuidRecords();
+    size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
+    if (cpuid_records_bytes.size() != len * sizeof(CPUIDRecord)) {
+      FATAL() << "Invalid CPUID records length";
+    }
+    cpuid_records_.resize(len);
+    memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
+          len * sizeof(CPUIDRecord));
+    xcr0_ = x86data.getXcr0();
+    clear_fip_fdp_ = x86data.getClearFipFdp();
+  }
+
+  switch (header.getChaosMode()) {
+    case trace::ChaosMode::UNKNOWN:
+      chaos_mode_known_ = false;
+      chaos_mode_ = false;
+      break;
+    case trace::ChaosMode::KNOWN_TRUE:
+      chaos_mode_known_ = true;
+      chaos_mode_ = true;
+      break;
+    case trace::ChaosMode::KNOWN_FALSE:
+      chaos_mode_known_ = true;
+      chaos_mode_ = false;
+      break;
+  }
+  exclusion_range_ = MemoryRange(remote_ptr<void>(header.getExclusionRangeStart()),
+                                 remote_ptr<void>(header.getExclusionRangeEnd()));
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
@@ -1452,6 +1640,14 @@ TraceReader::TraceReader(const TraceReader& other)
   raw_recs = other.raw_recs;
   xcr0_ = other.xcr0_;
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
+  rrcall_base_ = other.rrcall_base_;
+  arch_ = other.arch_;
+  chaos_mode_ = other.chaos_mode_;
+  chaos_mode_known_ = other.chaos_mode_known_;
+  exclusion_range_ = other.exclusion_range_;
+  quirks_ = other.quirks_;
+  clear_fip_fdp_ = other.clear_fip_fdp_;
+  required_forward_compatibility_version_ = other.required_forward_compatibility_version_;
 }
 
 TraceReader::~TraceReader() {}

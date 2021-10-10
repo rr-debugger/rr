@@ -1,0 +1,54 @@
+name: rr
+base: core20 # the base snap is the execution environment for this snap
+version: git
+summary: low-overhead record-replay debugging tool
+description: |
+  rr aspires to be your primary C/C++ debugging tool for Linux, replacing —
+  well, enhancing — gdb. You record a failure once, then debug the recording,
+  deterministically, as many times as you want. The same execution is
+  replayed every time.
+
+  rr also provides efficient reverse execution under gdb. Set breakpoints and
+  data watchpoints and quickly reverse-execute to where they were hit.
+
+  * Low overhead compared to other similar tools, especially on
+    mostly-single-threaded workloads
+  * Supports recording and replay of all kinds of applications:
+    Firefox, Chrome, QEMU, LibreOffice, Go programs, ...
+  * Record, replay and debug multiple-process workloads, including entire containers
+  * Works with gdb scripting and
+    [IDE integration](https://github.com/rr-debugger/rr/wiki/Using-rr-in-an-IDE)
+  * [Durable](http://robert.ocallahan.org/2017/06/new-rr-pack-command.html),
+    [compact](http://robert.ocallahan.org/2017/07/selecting-compression-algorithm-for-rr.html)
+    traces that can be 
+    [ported](http://robert.ocallahan.org/2017/09/rr-trace-portability.html) between machines
+  * [Chaos mode](http://robert.ocallahan.org/2016/02/introducing-rr-chaos-mode.html)
+    to make intermittent bugs more reproducible 
+
+grade: stable # must be 'stable' to release into candidate/stable channels
+confinement: classic
+
+apps:
+  rr:
+    command: usr/bin/rr
+
+parts:
+  rr:
+    plugin: cmake
+    cmake-parameters:
+      - -DCMAKE_INSTALL_PREFIX=/usr
+    source: .
+    source-type: git
+    build-packages:
+      - g++
+      - g++-multilib
+      - gdb
+      - pkg-config
+      - coreutils
+      - python3-pexpect
+      - manpages-dev
+      - ninja-build
+      - capnproto
+      - libcapnp-dev
+    stage-packages:
+      - libcapnp-0.7.0

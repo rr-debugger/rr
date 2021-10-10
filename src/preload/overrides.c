@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -18,11 +19,21 @@
 
 #define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
 
+#define DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE 1
+#ifdef __GLIBC_PREREQ
+#if __GLIBC_PREREQ(2, 34)
+#undef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+#endif
+#endif
+
 static void fix_mutex_kind(pthread_mutex_t* mutex) {
   /* Disable priority inheritance. */
   mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
 }
 
+extern int __pthread_mutex_init(pthread_mutex_t* mutex,
+                                const pthread_mutexattr_t* attr);
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
 /*
  * We need to able to call directly to __pthread_mutex_lock and
  * __pthread_mutex_trylock because setting up indirect function pointers
@@ -33,16 +44,47 @@ static void fix_mutex_kind(pthread_mutex_t* mutex) {
  */
 extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
 extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
+#endif
+
+int pthread_mutex_init(pthread_mutex_t* mutex,
+                       const pthread_mutexattr_t* attr) {
+  int ret;
+  pthread_mutexattr_t realattr;
+
+  if (!attr) {
+    return __pthread_mutex_init(mutex, NULL);
+  }
+
+  /* We wish to enforce the use of plain (no PI) mutex to avoid
+   * needing to handle PI futex() operations.
+   * We also wish to ensure that pthread_mutexattr_getprotocol()
+   * still returns the requested protocol.
+   * So we copy the attribute and force PTHREAD_PRIO_NONE.
+   */
+  memcpy(&realattr, attr, sizeof(realattr));
+  ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
+  if (ret) {
+    return ret;
+  }
+  if (real_pthread_mutex_init) {
+    return real_pthread_mutex_init(mutex, &realattr);
+  }
+  return __pthread_mutex_init(mutex, &realattr);
+}
 
 /* Prevent use of lock elision; Haswell's TSX/RTM features used by
    lock elision increment the rbc perf counter for instructions which
    are later rolled back if the transaction fails. */
 int pthread_mutex_lock(pthread_mutex_t* mutex) {
   fix_mutex_kind(mutex);
-  if (real_pthread_mutex_lock) {
-    return real_pthread_mutex_lock(mutex);
+  if (!real_pthread_mutex_lock) {
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+    return __pthread_mutex_lock(mutex);
+#else
+    real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
+#endif
   }
-  return __pthread_mutex_lock(mutex);
+  return real_pthread_mutex_lock(mutex);
 }
 
 int pthread_mutex_timedlock(pthread_mutex_t* mutex,
@@ -51,15 +93,22 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
   /* No __pthread_mutex_timedlock stub exists, so we have to use the
    * indirect call no matter what.
    */
+  if (!real_pthread_mutex_timedlock) {
+    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+  }
   return real_pthread_mutex_timedlock(mutex, abstime);
 }
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex) {
   fix_mutex_kind(mutex);
-  if (real_pthread_mutex_trylock) {
-    return real_pthread_mutex_trylock(mutex);
+  if (!real_pthread_mutex_trylock) {
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+    return __pthread_mutex_trylock(mutex);
+#else
+    real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+#endif
   }
-  return __pthread_mutex_trylock(mutex);
+  return real_pthread_mutex_trylock(mutex);
 }
 
 /**
@@ -140,7 +189,13 @@ void spurious_desched_syscall(struct syscall_info* info) {
  * which sometimes can't be hooked. So override it here with something that
  * can be hooked.
  */
-uid_t geteuid(void) { return syscall(SYS_geteuid); }
+uid_t geteuid(void) {
+#ifdef __i386__
+  return syscall(SYS_geteuid32);
+#else
+  return syscall(SYS_geteuid);
+#endif
+}
 
 /**
  * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
@@ -164,21 +219,22 @@ int sched_yield(void) {
   return 0;
 }
 
-typedef void* (*fopen_ptr)(const char* filename, const char* mode);
-
-static void random_device_init_helper(void* this) {
-  void** file_ptr = (void**)this;
-  void* f_ptr = dlsym(RTLD_DEFAULT, "fopen");
-  fopen_ptr fopen = (fopen_ptr)f_ptr;
-  *file_ptr = fopen("/dev/urandom", "rb");
-}
-
 /**
  * libstdc++3 uses RDRAND. Bypass that with this incredible hack.
  */
 void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE(
     void* this, __attribute__((unused)) void* token) {
-  random_device_init_helper(this);
+  static void (*assign_string)(void *, char*) = NULL;
+  static void (*random_init)(void *, void*) = NULL;
+  if (!assign_string) {
+    assign_string = (void (*)(void *, char*))dlsym(RTLD_NEXT,
+      "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE6assignEPKc");
+  }
+  assign_string(token, "/dev/urandom");
+  if (!random_init) {
+    random_init = (void (*)(void *, void*))dlsym(RTLD_NEXT, __func__);
+  }
+  random_init(this, token);
 }
 
 /**
@@ -186,5 +242,15 @@ void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIc
  */
 void _ZNSt13random_device7_M_initERKSs(void* this,
                                        __attribute__((unused)) void* token) {
-  random_device_init_helper(this);
+  static void (*assign_string)(void *, char*) = NULL;
+  static void (*random_init)(void *, void*) = NULL;
+  if (!assign_string) {
+    assign_string = (void (*)(void *, char*))dlsym(RTLD_NEXT,
+      "_ZNSs6assignEPKc");
+  }
+  assign_string(token, "/dev/urandom");
+  if (!random_init) {
+    random_init = (void (*)(void *, void*))dlsym(RTLD_NEXT, __func__);
+  }
+  random_init(this, token);
 }

@@ -1,6 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
+#include "ptrace_util.h"
 
 static int parent_to_child_fds[2];
 
@@ -23,7 +24,7 @@ int main(void) {
 
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | 0x7f));
-  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+  ptrace_getregs(child, &regs);
 
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)0));
 

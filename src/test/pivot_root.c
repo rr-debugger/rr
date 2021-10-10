@@ -19,11 +19,11 @@ int main(void) {
   test_assert(0 == mkdir("old_root/new_root/new_old_root", 0700));
 
   /* Write some files so we can identify directories */
-  int fd = open("old_root/old_root.txt", O_WRONLY | O_CREAT);
+  int fd = open("old_root/old_root.txt", O_WRONLY | O_CREAT, 0600);
   test_assert(fd != -1);
   test_assert(0 == close(fd));
 
-  fd = open("old_root/new_root/new_root.txt", O_WRONLY | O_CREAT);
+  fd = open("old_root/new_root/new_root.txt", O_WRONLY | O_CREAT, 0600);
   test_assert(fd != -1);
   test_assert(0 == close(fd));
 

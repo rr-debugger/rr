@@ -39,7 +39,7 @@ static void run_test(void) {
   args.fd = fd;
   args.offset = 0;
   rpage = (int*)syscall(SYS_mmap, &args, -1, -1, -1, -1, -1);
-#elif defined(__x86_64__)
+#elif defined(__x86_64__) || defined(__aarch64__)
   rpage = (int*)syscall(SYS_mmap, 0, num_bytes, PROT_READ, MAP_SHARED, fd,
                         (off_t)0);
 #else

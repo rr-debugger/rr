@@ -75,9 +75,9 @@ public:
    * around 10. Somewhat arbitrarily guessing ~4cycles/insn on average
    * (fair amount of pointer chasing), that implies for a nominal 2GHz CPU
    * 50,000 ticks per millisecond. We choose the default max ticks to give us
-   * 10ms timeslices, i.e. 500,000 ticks.
+   * 50ms timeslices, i.e. 2,500,000 ticks.
    */
-  enum { DEFAULT_MAX_TICKS = 500000 };
+  enum { DEFAULT_MAX_TICKS = 2500000 };
   /**
    * Don't allow max_ticks to get above this value.
    */
@@ -152,6 +152,31 @@ public:
   }
 
   void in_stable_exit(RecordTask* t);
+
+  /**
+   * In unlimited ticks mode, only one task is runnable while every other task
+   * is blocked in the kernel. Check whether we're in that situation.
+   */
+  bool may_use_unlimited_ticks();
+
+  /**
+   * Let the scheduler know that the passed task has started running
+   */
+  void started(RecordTask*) {
+    if (may_use_unlimited_ticks()) {
+      unlimited_ticks_mode = true;
+    }
+    ntasks_running++;
+  }
+
+  /**
+   * Let the scheduler know that the task has entered an execve.
+   */
+  void did_enter_execve(RecordTask* t);
+  /**
+   * Let the scheduler know that the task has exited an execve.
+   */
+  void did_exit_execve(RecordTask* t);
 
 private:
   // Tasks sorted by priority.
@@ -231,6 +256,12 @@ private:
   int pretend_num_cores_;
 
   /**
+   * If nonzero, the threadgroup ID of a threadgroup where one of the
+   * threads is currently in an execve.
+   */
+  pid_t in_exec_tgid;
+
+  /**
    * When true, context switch at every possible point.
    */
   bool always_switch;
@@ -242,6 +273,9 @@ private:
 
   bool enable_poll;
   bool last_reschedule_in_high_priority_only_interval;
+
+  bool unlimited_ticks_mode;
+  size_t ntasks_running;
 };
 
 } // namespace rr

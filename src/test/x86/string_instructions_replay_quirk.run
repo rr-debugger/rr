@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+
+if [ $TIMEOUT -lt 600 ]; then TIMEOUT=600; fi
+record string_instructions_replay$bitness
+debug x86/string_instructions_replay_quirk

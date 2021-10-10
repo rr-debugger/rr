@@ -28,7 +28,7 @@ static void verify_results(size_t n, union legacy_id* ids) {
 #if defined(__i386__)
     // For UID16 syscall-supporting archs, the cookie should be intact.
     test_assert(ids[i].u16[1] == UID_COOKIE);
-#elif defined(__x86_64__)
+#elif defined(__x86_64__) || defined(__aarch64__)
     // For UID32 archs, assume that the user doesn't have a UID with the
     // upper bits equivalent to our cookie.  This is not a great assumption,
     // but we don't really have anything better.
@@ -42,15 +42,29 @@ static void verify_results(size_t n, union legacy_id* ids) {
 int main(void) {
   union legacy_id resuid_results[3];
   union legacy_id resgid_results[3];
+  int ret;
 
   initialize_legacy_ids(ALEN(resuid_results), resuid_results);
-  test_assert(0 == syscall(SYS_getresuid, &resuid_results[0],
-                           &resuid_results[1], &resuid_results[2]));
+  ret = syscall(SYS_getresuid, &resuid_results[0],
+                &resuid_results[1], &resuid_results[2]);
+  if (ret < 0 && errno == ENOSYS) {
+    atomic_puts("Syscall not supported, skipping test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+  test_assert(ret == 0);
+
   verify_results(ALEN(resuid_results), resuid_results);
 
   initialize_legacy_ids(ALEN(resgid_results), resgid_results);
-  test_assert(0 == syscall(SYS_getresgid, &resgid_results[0],
-                           &resgid_results[1], &resgid_results[2]));
+  ret = syscall(SYS_getresgid, &resgid_results[0],
+                &resgid_results[1], &resgid_results[2]);
+  if (ret < 0 && errno == ENOSYS) {
+    atomic_puts("Syscall not supported, skipping test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+  test_assert(ret == 0);
   verify_results(ALEN(resgid_results), resgid_results);
 
   atomic_puts("EXIT-SUCCESS");

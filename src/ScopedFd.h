@@ -38,12 +38,17 @@ public:
     return result;
   }
 
-  bool is_open() { return fd >= 0; }
+  bool is_open() const { return fd >= 0; }
   void close() {
     if (fd >= 0) {
       ::close(fd);
     }
     fd = -1;
+  }
+
+  static ScopedFd openat(const ScopedFd &dir, const char* pathname,
+                         int flags, mode_t mode = 0) {
+    return ScopedFd(::openat(dir.get(), pathname, flags, mode));
   }
 
 private:

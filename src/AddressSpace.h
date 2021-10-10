@@ -130,6 +130,7 @@ public:
   }
 
   const std::string& fsname() const { return fsname_; }
+  std::string fsname_strip_deleted() const;
   dev_t device() const { return device_; }
   ino_t inode() const { return inode_; }
   int prot() const { return prot_; }
@@ -209,6 +210,17 @@ enum WatchType {
   WATCH_EXEC = 0x00,
   WATCH_WRITE = 0x01,
   WATCH_READWRITE = 0x03
+};
+
+enum ArmWatchType {
+  ARM_WATCH_EXEC = 0x0,
+  ARM_WATCH_READ = 0x1,
+  ARM_WATCH_WRITE = 0x2,
+  ARM_WATCH_READWRITE = ARM_WATCH_READ | ARM_WATCH_WRITE
+};
+
+enum ArmPrivLevel {
+  ARM_PRIV_EL0 = 0x2
 };
 
 enum DebugStatus {
@@ -580,6 +592,7 @@ public:
    * are known to not be set on singlestep).
    */
   bool notify_watchpoint_fired(uintptr_t debug_status,
+      remote_ptr<void> hit_addr,
       remote_code_ptr address_of_singlestep_start);
   /**
    * Return true if any watchpoint has fired. Will keep returning true until
@@ -619,6 +632,7 @@ public:
 
   /** Return the vdso mapping of this. */
   KernelMapping vdso() const;
+  bool has_vdso() const { return has_mapping(vdso_start_addr); }
 
   /**
    * Verify that this cached address space matches what the
@@ -628,9 +642,6 @@ public:
 
   bool has_breakpoints() { return !breakpoints.empty(); }
   bool has_watchpoints() { return !watchpoints.empty(); }
-
-  // Encoding of the |int $3| instruction.
-  static const uint8_t breakpoint_insn = 0xCC;
 
   ScopedFd& mem_fd() { return child_mem_fd; }
   void set_mem_fd(ScopedFd&& fd) { child_mem_fd = std::move(fd); }
@@ -668,7 +679,7 @@ public:
   }
 
   static remote_ptr<void> preload_thread_locals_start() {
-    return rr_page_start() + PAGE_SIZE;
+    return rr_page_start() + rr_page_size();
   }
   static uint32_t preload_thread_locals_size() {
     return PRELOAD_THREAD_LOCALS_SIZE;
@@ -676,10 +687,29 @@ public:
 
   enum Traced { TRACED, UNTRACED };
   enum Privileged { PRIVILEGED, UNPRIVILEGED };
-  enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY };
+  /**
+   * Depending on which entry point this is and whether or not we're recording
+   * or replaying, the instruction in the rr page, may be something other than
+   * a syscall. This enum encodes the combination of instructions for each entry
+   * point:
+   *
+   *      Enabled         | Record  | Replay
+   * ---------------------|---------|-------
+   * RECORDING_ONLY       | syscall | nop
+   * REPLAY_ONLY          | nop     | syscall
+   * RECORDING_AND_REPLAY | syscall | syscall
+   * REPLAY_ASSIST        | syscall | int3
+   *
+   * The REPLAY_ASSIST is used for a syscall that is untraced during record (so
+   * we can save the context switch penalty), but requires us to apply side
+   * effects during replay. The int3 lets the replayer stop and apply these
+   * at the appropriate point.
+   */
+  enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY, REPLAY_ASSIST };
   static remote_code_ptr rr_page_syscall_exit_point(Traced traced,
                                                     Privileged privileged,
-                                                    Enabled enabled);
+                                                    Enabled enabled,
+                                                    SupportedArch arch);
   static remote_code_ptr rr_page_syscall_entry_point(Traced traced,
                                                      Privileged privileged,
                                                      Enabled enabled,
@@ -691,14 +721,16 @@ public:
     Enabled enabled;
   };
   static std::vector<SyscallType> rr_page_syscalls();
-  static const SyscallType* rr_page_syscall_from_exit_point(remote_code_ptr ip);
+  static const SyscallType* rr_page_syscall_from_exit_point(
+    SupportedArch arch, remote_code_ptr ip);
   static const SyscallType* rr_page_syscall_from_entry_point(
-      remote_code_ptr ip);
+    SupportedArch arch, remote_code_ptr ip);
 
   /**
-   * Return a pointer to 8 bytes of 0xFF
+   * Return a pointer to 8 bytes of 0xFF.
+   * (Currently only set during record / not part of the ABI)
    */
-  static remote_ptr<uint8_t> rr_page_ff_bytes() { return RR_PAGE_FF_BYTES; }
+  static remote_ptr<uint8_t> rr_page_record_ff_bytes() { return RR_PAGE_FF_BYTES; }
 
   /**
    * Locate a syscall instruction in t's VDSO.
@@ -709,7 +741,8 @@ public:
   remote_code_ptr find_syscall_instruction(Task* t);
 
   /**
-   * Task |t| just forked from this address space. Apply dont_fork settings.
+   * Task |t| just forked from this address space. Apply dont_fork and
+   * wipe_on_fork settings.
    */
   void did_fork_into(Task* t);
 
@@ -718,6 +751,14 @@ public:
 
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
+
+  remote_ptr<void> saved_interpreter_base() { return saved_interpreter_base_; }
+  void save_interpreter_base(Task* t, std::vector<uint8_t> auxv);
+
+  std::string saved_ld_path() { return saved_ld_path_;}
+  void save_ld_path(Task* t, remote_ptr<void>);
+
+  void read_mm_map(Task* t, NativeArch::prctl_mm_map* map);
 
   /**
    * Reads the /proc/<pid>/maps entry for a specific address. Does no caching.
@@ -734,7 +775,7 @@ public:
 
   static uint32_t chaos_mode_min_stack_size() { return 8 * 1024 * 1024; }
 
-  remote_ptr<void> chaos_mode_find_free_memory(RecordTask* t, size_t len);
+  remote_ptr<void> chaos_mode_find_free_memory(RecordTask* t, size_t len, remote_ptr<void> hint);
   remote_ptr<void> find_free_memory(
       size_t len, remote_ptr<void> after = remote_ptr<void>());
 
@@ -776,6 +817,41 @@ public:
    */
   static void print_process_maps(Task* t);
 
+  void add_stap_semaphore_range(Task* t, MemoryRange range);
+  void remove_stap_semaphore_range(Task* t, MemoryRange range);
+  bool is_stap_semaphore(remote_ptr<uint16_t> addr);
+
+  bool legacy_breakpoint_mode() { return stopping_breakpoint_table_ != nullptr; }
+  remote_code_ptr do_breakpoint_fault_addr() { return do_breakpoint_fault_addr_; }
+  remote_code_ptr stopping_breakpoint_table() { return stopping_breakpoint_table_; }
+  int stopping_breakpoint_table_entry_size() { return stopping_breakpoint_table_entry_size_; }
+
+  // Also sets brk_ptr.
+  enum {
+    RRVDSO_PAGE_OFFSET = 2,
+    RRPAGE_RECORD_PAGE_OFFSET = 3,
+    RRPAGE_REPLAY_PAGE_OFFSET = 4
+  };
+
+  void map_rr_page(AutoRemoteSyscalls& remote);
+  void unmap_all_but_rr_page(AutoRemoteSyscalls& remote);
+
+  void erase_task(Task* t) {
+    this->HasTaskSet::erase_task(t);
+    if (task_set().size() != 0) {
+      fd_tables_changed();
+    }
+  }
+
+  /**
+   * Called when the set of different fd tables associated with tasks
+   * in this address space may have changed (e.g. a task changed its fd table,
+   * or a task got added or removed, etc).
+   */
+  void fd_tables_changed();
+
+  static MemoryRange get_global_exclusion_range();
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
@@ -801,9 +877,6 @@ private:
   void populate_address_space(Task* t);
 
   void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
-
-  // Also sets brk_ptr.
-  void map_rr_page(AutoRemoteSyscalls& remote);
 
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);
@@ -920,18 +993,14 @@ private:
       return user_count > 0 ? BKPT_USER : BKPT_INTERNAL;
     }
 
-    size_t data_length() { return 1; }
-    uint8_t* original_data() { return &overwritten_data; }
+    uint8_t* original_data() { return overwritten_data; }
 
     // "Refcounts" of breakpoints set at |addr|.  The breakpoint
     // object must be unique since we have to save the overwritten
     // data, and we can't enforce the order in which breakpoints
     // are set/removed.
     int internal_count, user_count;
-    uint8_t overwritten_data;
-    static_assert(sizeof(overwritten_data) ==
-                      sizeof(AddressSpace::breakpoint_insn),
-                  "Must have the same size.");
+    uint8_t overwritten_data[MAX_BKPT_INSTRUCTION_LENGTH];
 
     int* counter(BreakpointType which) {
       DEBUG_ASSERT(BKPT_INTERNAL == which || BKPT_USER == which);
@@ -1030,6 +1099,8 @@ private:
   std::set<remote_ptr<void>> monitored_mem;
   /* madvise DONTFORK regions */
   std::set<MemoryRange> dont_fork;
+  /* madvise WIPEONFORK regions */
+  std::set<MemoryRange> wipe_on_fork;
   // The session that created this.  We save a ref to it so that
   // we can notify it when we die.
   Session* session_;
@@ -1058,13 +1129,24 @@ private:
   remote_code_ptr privileged_traced_syscall_ip_;
   bool syscallbuf_enabled_;
 
+  remote_code_ptr do_breakpoint_fault_addr_;
+  // These fields are deprecated and have been replaced by the
+  // breakpoint_value mechanism. They are retained for replayability
+  // of old traces.
+  remote_code_ptr stopping_breakpoint_table_;
+  int stopping_breakpoint_table_entry_size_;
+
   std::vector<uint8_t> saved_auxv_;
+  remote_ptr<void> saved_interpreter_base_;
+  std::string saved_ld_path_;
 
   /**
    * The time of the first event that ran code for a task in this address space.
    * 0 if no such event has occurred.
    */
   FrameTime first_run_event_;
+
+  std::set<remote_ptr<uint16_t>> stap_semaphores;
 
   /**
    * For each architecture, the offset of a syscall instruction with that

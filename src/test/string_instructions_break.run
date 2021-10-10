@@ -1,5 +1,0 @@
-source `dirname $0`/util.sh
-
-TIMEOUT=600
-record string_instructions_replay$bitness
-debug string_instructions_break

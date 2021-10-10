@@ -1,8 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "replay_syscall.h"
-
-#include <asm/prctl.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>
@@ -25,6 +22,8 @@
 #include <sstream>
 #include <string>
 
+#include "replay_syscall.h"
+
 #include "preload/preload_interface.h"
 
 #include "rr/rr.h"
@@ -34,10 +33,13 @@
 #include "MmappedFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
+#include "ProcStatMonitor.h"
+#include "RRPageMonitor.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "SeccompFilterRewriter.h"
 #include "StdioMonitor.h"
+#include "SysCpuMonitor.h"
 #include "ThreadGroup.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
@@ -66,68 +68,6 @@ namespace rr {
 #include "CheckSyscallNumbers.generated"
 
 #endif // CHECK_SYSCALL_NUMBERS
-
-static string maybe_dump_written_string(ReplayTask* t) {
-  if (!is_write_syscall(t->regs().original_syscallno(), t->arch())) {
-    return "";
-  }
-  size_t len = min<size_t>(1000, t->regs().arg3());
-  vector<char> buf;
-  buf.resize(len + 1);
-  buf.resize(t->read_bytes_fallible(t->regs().arg2(), len, buf.data()) + 1);
-  buf[buf.size() - 1] = 0;
-  return " \"" + string(buf.data()) + "\"";
-}
-
-/**
- * Proceeds until the next system call, which is being executed.
- */
-static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
-                          SupportedArch syscall_arch, int expect_syscallno,
-                          int expect_syscallno2 = -1, pid_t new_tid = -1) {
-  t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
-  while (true) {
-    if (t->wait_unexpected_exit()) {
-      break;
-    }
-    int raw_status;
-    // Do our own waitpid instead of calling Task::wait() so we can detect and
-    // handle tid changes due to off-main-thread execve.
-    // When we're expecting a tid change, we can't pass a tid here because we
-    // don't know which tid to wait for.
-    // Passing the original tid seems to cause a hang in some kernels
-    // (e.g. 4.10.0-19-generic) if the tid change races with our waitpid
-    int ret = waitpid(new_tid >= 0 ? -1 : t->tid, &raw_status, __WALL);
-    ASSERT(t, ret >= 0);
-    if (ret == new_tid) {
-      // Check that we only do this once
-      ASSERT(t, t->tid != new_tid);
-      // Update the serial as if this task was really created by cloning the old
-      // task.
-      t->set_real_tid_and_update_serial(new_tid);
-    }
-    ASSERT(t, ret == t->tid);
-    t->did_waitpid(WaitStatus(raw_status));
-
-    if (ReplaySession::is_ignored_signal(t->status().stop_sig())) {
-      t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
-    } else {
-      break;
-    }
-  }
-
-  ASSERT(t, !t->stop_sig())
-      << "Expected no pending signal, but got " << t->stop_sig();
-
-  /* check if we are synchronized with the trace -- should never fail */
-  int current_syscall = t->regs().original_syscallno();
-  ASSERT(t,
-         current_syscall == expect_syscallno ||
-             current_syscall == expect_syscallno2)
-      << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
-      << ", but instead at " << syscall_name(current_syscall, syscall_arch)
-      << maybe_dump_written_string(t);
-}
 
 static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
                                 const TraceReader::MappedData& data) {
@@ -191,6 +131,23 @@ static TraceTaskEvent read_task_trace_event(ReplayTask* t,
   return tte;
 }
 
+
+template <typename Arch>
+static bool syscall_shares_vm(Registers r)
+{
+  switch (r.original_syscallno()) {
+    case Arch::clone:
+      return (CLONE_VM & r.arg1());
+    case Arch::vfork:
+      return true;
+    case Arch::fork:
+      return false;
+    default:
+      FATAL() << "Unknown clone syscall";
+      __builtin_unreachable();
+  }
+}
+
 template <typename Arch> static void prepare_clone(ReplayTask* t) {
   const TraceFrame& trace_frame = t->current_trace_frame();
 
@@ -206,18 +163,38 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   int sys = r.original_syscallno();
   int flags = 0;
   if (Arch::clone == sys) {
+    // BLOCKED clone flags:
     // If we allow CLONE_UNTRACED then the child would escape from rr control
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
     // Block CLONE_VFORK for the reasons below.
     // Block CLONE_NEW* from replay, any effects it had were dealt with during
     // recording.
+    // Block CLONE_THREAD/CLONE_FILES - during replay each task is its own
+    // thread group/has its own fd table. We track what the membership was during
+    // record, but it's hard (and unnecessary) to replicate this kernel state during
+    // replay.
+    // Block CLONE_PIDFD/CLONE_CHILD_SETTID/CLONE_PARENT_SETTID because we record these.
+    //
+    // ALLOWED clone flags:
+    // We allow CLONE_VM because address space sharing must not be broken.
+    // We allow CLONE_SETTLS because we must set %fs correctly if requested.
+    //
+    // IRRELEVANT clone flags:
+    // CLONE_SIGHAND/CLONE_SYSVSEM/CLONE_FS/CLONE_IO are irrelevant because we don't set signal handlers
+    // or use SYSV-semaphore objects during replay, or let it use the filesystem, or do I/O.
+    //
+    // CLONE_PARENT/CLONE_PTRACE ... they probably need work to work under rr.
     uintptr_t disallowed_clone_flags =
-        CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK | CLONE_NEWIPC |
-        CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
-        CLONE_NEWUTS | CLONE_NEWCGROUP;
-    flags = r.arg1() & ~disallowed_clone_flags;
-    r.set_arg1(flags);
+        CLONE_UNTRACED |
+        CLONE_CHILD_CLEARTID |
+        CLONE_VFORK |
+        CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
+        CLONE_NEWUTS | CLONE_NEWCGROUP |
+        CLONE_THREAD | CLONE_FILES |
+        CLONE_PIDFD | CLONE_CHILD_SETTID | CLONE_PARENT_SETTID;
+    flags = r.arg1();
+    r.set_arg1(flags & ~disallowed_clone_flags);
   } else if (Arch::vfork == sys) {
     // We can't perform a real vfork, because the kernel won't let the vfork
     // parent return from the syscall until the vfork child has execed or
@@ -239,7 +216,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   Registers entry_regs = r;
 
   // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
-  __ptrace_cont(t, RESUME_CONT, Arch::arch(), sys);
+  t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
 
   pid_t new_tid;
   while (!t->clone_syscall_is_complete(&new_tid, Arch::arch())) {
@@ -248,11 +225,11 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // state to try the syscall again.
     ASSERT(t, t->regs().syscall_result_signed() == -EAGAIN);
     t->set_regs(entry_regs);
-    __ptrace_cont(t, RESUME_CONT, Arch::arch(), sys);
+    t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
   }
 
   // Get out of the syscall
-  __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
+  t->exit_syscall();
 
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
@@ -285,6 +262,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   ReplayTask* new_task = static_cast<ReplayTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid, rec_tid));
+  new_task->own_namespace_rec_tid = tte.own_ns_tid();
 
   if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an
@@ -304,12 +282,12 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Fix registers in new task
   Registers new_r = new_task->regs();
   new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
-  new_r.set_arg1(trace_frame.regs().arg1());
+  new_r.set_orig_arg1(trace_frame.regs().arg1());
   new_r.set_arg2(trace_frame.regs().arg2());
   new_task->set_regs(new_r);
   new_task->canonicalize_regs(new_task->arch());
 
-  if (Arch::clone != t->regs().original_syscallno() || !(CLONE_VM & r.arg1())) {
+  if (!syscall_shares_vm<Arch>(r)) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for
@@ -335,62 +313,6 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_task->vm()->after_clone();
 }
 
-static string find_exec_stub(SupportedArch arch) {
-  string exe_path = resource_path() + "bin/";
-  if (arch == x86 && NativeArch::arch() == x86_64) {
-    exe_path += "rr_exec_stub_32";
-  } else {
-    exe_path += "rr_exec_stub";
-  }
-  return exe_path;
-}
-
-static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
-                               remote_ptr<void> rec_addr, size_t length,
-                               int prot, int flags,
-                               const string& backing_file_name,
-                               int backing_file_open_flags,
-                               off64_t backing_offset_pages,
-                               struct stat& real_file, string& real_file_name) {
-  int fd;
-
-  LOG(debug) << "directly mmap'ing " << length << " bytes of "
-             << backing_file_name << " at page offset "
-             << HEX(backing_offset_pages);
-
-  ASSERT(t, !(flags & MAP_GROWSDOWN));
-
-  /* Open in the tracee the file that was mapped during
-   * recording. */
-  {
-    AutoRestoreMem child_str(remote, backing_file_name.c_str());
-    fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
-                                   child_str.get().as_int(),
-                                   backing_file_open_flags);
-  }
-  /* And mmap that file. */
-  remote.infallible_mmap_syscall(rec_addr, length,
-                                 /* (We let SHARED|WRITEABLE
-                                  * mappings go through while
-                                  * they're not handled properly,
-                                  * but we shouldn't do that.) */
-                                 prot, (flags & ~MAP_SYNC) | MAP_FIXED, fd,
-                                /* MAP_SYNC is used to request direct mapping
-                                  * (DAX) from the filesystem for persistent
-                                  * memory devices (requires
-                                  * MAP_SHARED_VALIDATE). Drop it for the
-                                  * backing file. */
-                                 backing_offset_pages);
-
-  // While it's open, grab the link reference.
-  real_file = t->stat_fd(fd);
-  real_file_name = t->file_name_of_fd(fd);
-
-  /* Don't leak the tmp fd.  The mmap doesn't need the fd to
-   * stay open. */
-  remote.infallible_syscall(syscall_number_for_close(remote.arch()), fd);
-}
-
 static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   const KernelMapping& km,
                                   const TraceReader::MappedData& data) {
@@ -407,7 +329,7 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
       struct stat real_file;
       offset_bytes = km.file_offset_bytes();
       // Private mapping, so O_RDONLY is always OK.
-      finish_direct_mmap(t, remote, km.start(), km.size(), km.prot(),
+      remote.finish_direct_mmap(km.start(), km.size(), km.prot(),
                          km.flags(), data.file_name, O_RDONLY,
                          data.data_offset_bytes / page_size(), real_file,
                          real_file_name);
@@ -438,82 +360,11 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   step->action = TSTEP_RETIRE;
 
   /* First, exec a stub program */
-  string stub_filename = find_exec_stub(trace_frame.regs().arch());
-
-  // Setup memory and registers for the execve call. We may not have to save
-  // the old values since they're going to be wiped out by execve. We can
-  // determine this by checking if this address space has any tasks with a
-  // different tgid.
-  Task* memory_task = t;
-  for (auto task : t->vm()->task_set()) {
-    if (task->tgid() != t->tgid()) {
-      memory_task = task;
-      break;
-    }
-  }
-
-  // Old data if required
-  std::vector<uint8_t> saved_data;
-
-  // Set up everything
-  Registers regs = t->regs();
-  regs.set_ip(t->vm()->traced_syscall_ip());
-  remote_ptr<void> remote_mem = floor_page_size(regs.sp());
-
-  // Determine how much memory we'll need
-  size_t filename_size = stub_filename.size() + 1;
-  size_t total_size = filename_size + sizeof(size_t);
-  if (memory_task != t) {
-    saved_data = t->read_mem(remote_mem.cast<uint8_t>(), total_size);
-  }
-
-  // We write a zero word in the host size, not t's size, but that's OK,
-  // since the host size must be bigger than t's size.
-  // We pass no argv or envp, so exec params 2 and 3 just point to the NULL
-  // word.
-  t->write_mem(remote_mem.cast<size_t>(), size_t(0));
-  regs.set_arg2(remote_mem);
-  regs.set_arg3(remote_mem);
-  remote_ptr<void> filename_addr = remote_mem + sizeof(size_t);
-  t->write_bytes_helper(filename_addr, filename_size, stub_filename.c_str());
-  regs.set_arg1(filename_addr);
-  /* The original_syscallno is execve in the old architecture. The kernel does
-   * not update the original_syscallno when the architecture changes across
-   * an exec.
-   * We're using the dedicated traced-syscall IP so its arch is t's arch.
-   */
-  int expect_syscallno = syscall_number_for_execve(t->arch());
-  regs.set_syscallno(expect_syscallno);
-  t->set_regs(regs);
-
-  LOG(debug) << "Beginning execve";
-  /* Enter our execve syscall. */
-  __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno);
-  ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
-  /* Complete the syscall. The tid of the task will be the thread-group-leader
-   * tid, no matter what tid it was before.
-   */
-  pid_t tgid = t->thread_group()->real_tgid;
-  __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno,
-                syscall_number_for_execve(trace_frame.regs().arch()),
-                tgid == t->tid ? -1 : tgid);
-  if (t->regs().syscall_result()) {
-    errno = -t->regs().syscall_result();
-    if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
-        trace_frame.regs().arch() == x86) {
-      FATAL() << "Cannot find exec stub " << stub_filename
-              << " to replay this 32-bit process; you probably built rr with "
-                 "disable32bit";
-    }
-    ASSERT(t, false) << "Exec of stub " << stub_filename << " failed";
-  }
-
-  // Restore any memory if required. We need to do this through memory_task,
-  // since the new task is now on the new address space. Do it now because
-  // later we may try to unmap this task's syscallbuf.
-  if (memory_task != t) {
-    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
-                           saved_data.size());
+  pid_t new_tid = t->real_tgid();
+  pid_t old_tid = t->tid;
+  t->os_exec_stub(trace_frame.regs().arch());
+  if (new_tid != old_tid) {
+    t->set_real_tid_and_update_serial(new_tid);
   }
 
   vector<KernelMapping> kms;
@@ -607,20 +458,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
     // Now fix up the address space. First unmap all the mappings other than
     // our rr page.
-    vector<MemoryRange> unmaps;
-    for (const auto& m : t->vm()->maps()) {
-      // Do not attempt to unmap [vsyscall] --- it doesn't work.
-      if (m.map.start() != AddressSpace::rr_page_start() &&
-          m.map.start() != AddressSpace::preload_thread_locals_start() &&
-          !m.map.is_vsyscall()) {
-        unmaps.push_back(m.map);
-      }
-    }
-    for (auto& m : unmaps) {
-      remote.infallible_syscall(syscall_number_for_munmap(t->arch()), m.start(),
-                                m.size());
-      t->vm()->unmap(t, m.start(), m.size());
-    }
+    t->vm()->unmap_all_but_rr_page(remote);
     // We will have unmapped the stack memory that |remote| would have used for
     // memory parameters. Fortunately process_mapped_region below doesn't
     // need any memory parameters for its remote syscalls.
@@ -659,7 +497,10 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
 
-  // Notify outer rr if there is one
+  // Notify outer rr if there is one. We're assuming here that our
+  // rr is the same version as the outer rr, or at least is using
+  // the same syscall numbers. The inner rr could be replaying
+  // a trace with different rr syscall numbers.
   syscall(SYS_rrcall_reload_auxv, t->tid);
 }
 
@@ -685,17 +526,9 @@ static void process_brk(ReplayTask* t) {
   }
 }
 
-/**
- * Pass NOTE_TASK_MAP to update cached mmap data.  If the data
- * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
- * it manually.
- */
-enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
-
 static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   remote_ptr<void> rec_addr, size_t length,
-                                  int prot, int flags,
-                                  NoteTaskMap note_task_map) {
+                                  int prot, int flags) {
   string file_name;
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
@@ -713,16 +546,37 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
     struct stat real_file;
     // Emufs file, so open it read-write in case we need to write to it
     // through the task's memfd.
-    finish_direct_mmap(t, remote, rec_addr, length, prot,
+    remote.finish_direct_mmap(rec_addr, length, prot,
                        flags & ~MAP_ANONYMOUS, emu_file->proc_path(), O_RDWR, 0,
                        real_file, file_name);
     device = real_file.st_dev;
     inode = real_file.st_ino;
   }
 
-  if (note_task_map) {
-    remote.task()->vm()->map(t, rec_addr, length, prot, flags, 0, file_name,
-                             device, inode, nullptr, &recorded_km, emu_file);
+  remote.task()->vm()->map(t, rec_addr, length, prot, flags, 0, file_name,
+                           device, inode, nullptr, &recorded_km, emu_file);
+}
+
+static void write_mapped_data_with_holes(ReplayTask* t, const TraceReader::RawDataWithHoles& buf) {
+  unique_ptr<AutoRemoteSyscalls> remote;
+  size_t data_offset = 0;
+  size_t addr_offset = 0;
+  auto holes_iter = buf.holes.begin();
+  while (data_offset < buf.data.size() || holes_iter != buf.holes.end()) {
+    if (holes_iter != buf.holes.end() && holes_iter->offset == addr_offset) {
+      t->write_zeroes(&remote, buf.addr + addr_offset, holes_iter->size);
+      addr_offset += holes_iter->size;
+      ++holes_iter;
+      continue;
+    }
+    size_t data_end = buf.data.size();
+    if (holes_iter != buf.holes.end()) {
+      data_end = data_offset + holes_iter->offset - addr_offset;
+    }
+    t->write_bytes_helper(buf.addr + addr_offset, data_end - data_offset, buf.data.data() + data_offset,
+                          nullptr);
+    addr_offset += data_end - data_offset;
+    data_offset = data_end;
   }
 }
 
@@ -731,9 +585,18 @@ static void write_mapped_data(ReplayTask* t,
                               size_t size,
                               TraceReader::MappedData& data) {
   switch (data.source) {
-  case TraceReader::SOURCE_TRACE:
-    t->set_data_from_trace();
+  case TraceReader::SOURCE_TRACE: {
+    TraceReader::RawDataWithHoles buf;
+    ASSERT(t, t->trace_reader().read_raw_data_for_frame_with_holes(buf));
+    ASSERT(t, buf.addr == rec_addr);
+    // Note that this gets called for remaps and shared maps that refer to the same pages
+    // as previous maps and so the data we're recording might not be the initial data
+    // for those pages, but it is the inital data *for this mapping*.
+    write_mapped_data_with_holes(t, buf);
+    t->vm()->maybe_update_breakpoints(t, rec_addr.cast<uint8_t>(),
+                                      buf.data.size());
     break;
+  }
   case TraceReader::SOURCE_FILE: {
     ScopedFd file(data.file_name.c_str(), O_RDONLY);
     ASSERT(t, file.is_open()) << "Can't open " << data.file_name;
@@ -805,7 +668,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   string real_file_name;
   // Emufs file, so open it read-write in case we want to write to it through
   // the task's mem fd.
-  finish_direct_mmap(t, remote, rec_addr, km.size(), prot, flags,
+  remote.finish_direct_mmap(rec_addr, km.size(), prot, flags,
                      emufile->proc_path(), O_RDWR, offset_pages, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
@@ -855,7 +718,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                                   : AutoRemoteSyscalls::ENABLE_MEMORY_PARAMS);
     if (flags & MAP_ANONYMOUS) {
       finish_anonymous_mmap(t, remote, trace_frame.regs().syscall_result(),
-                            length, prot, flags, NOTE_TASK_MAP);
+                            length, prot, flags);
     } else {
       TraceReader::MappedData data;
       vector<TraceRemoteFd> extra_fds;
@@ -864,12 +727,29 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         TraceReader::VALIDATE, TraceReader::CURRENT_TIME_ONLY, &extra_fds,
         &skip_monitoring_mapped_fd);
 
+      if (t->session().has_trace_quirk(TraceReader::SpecialLibRRpage)) {
+        FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
+        if (fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
+          if (offset_pages == 0 && !(flags & MAP_FIXED) &&
+              length <= 2*page_size() && addr == (RR_PAGE_ADDR - page_size())) {
+            // We only mapped the first page during record. Do the same here
+            length = page_size();
+          }
+          if (offset_pages == 1 && length == page_size() &&
+              addr == RR_PAGE_ADDR && t->vm()->has_rr_page()) {
+            // We skipped this during recording. Setting length to zero here
+            // will have the same effect.
+            length = 0;
+          }
+        }
+      }
+
       if (data.source == TraceReader::SOURCE_FILE &&
           data.file_size_bytes > data.data_offset_bytes) {
         struct stat real_file;
         string real_file_name;
         uint64_t map_bytes = min(ceil_page_size(data.file_size_bytes) - data.data_offset_bytes, length);
-        finish_direct_mmap(t, remote, addr, map_bytes, prot, flags,
+        remote.finish_direct_mmap(addr, map_bytes, prot, flags,
                            data.file_name, O_RDONLY,
                            data.data_offset_bytes / page_size(), real_file,
                            real_file_name);
@@ -903,7 +783,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     // tracer and the tracee. Instead, only mappings that have
     // sufficiently many memory access from the tracer to require
     // acceleration should be shared.
-    if (!(MAP_SHARED & flags) && t->session().flags().share_private_mappings) {
+    if (length > 0 && !(MAP_SHARED & flags) && t->session().flags().share_private_mappings) {
       Session::make_private_shared(remote, t->vm()->mapping_of(addr));
     }
 
@@ -920,7 +800,7 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
   step->action = TSTEP_RETIRE;
 
   auto& trace_regs = trace_frame.regs();
-  remote_ptr<void> old_addr = trace_frame.regs().arg1();
+  remote_ptr<void> old_addr = trace_frame.regs().orig_arg1();
   size_t old_size = ceil_page_size(trace_regs.arg2());
   remote_ptr<void> new_addr = trace_frame.regs().syscall_result();
   size_t new_size = ceil_page_size(trace_regs.arg3());
@@ -1099,14 +979,14 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
         break;
       }
       switch ((int)t->regs().arg1_signed()) {
-        case PTRACE_POKETEXT:
-        case PTRACE_POKEDATA:
+        case Arch::PTRACE_POKETEXT:
+        case Arch::PTRACE_POKEDATA:
           target->apply_all_data_records_from_trace();
           break;
         case PTRACE_SYSCALL:
         case PTRACE_SINGLESTEP:
-        case PTRACE_SYSEMU:
-        case PTRACE_SYSEMU_SINGLESTEP:
+        case Arch::PTRACE_SYSEMU:
+        case Arch::PTRACE_SYSEMU_SINGLESTEP:
         case PTRACE_CONT:
         case PTRACE_DETACH: {
           int command = (int)t->regs().arg1_signed();
@@ -1114,10 +994,10 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
                                         command != PTRACE_DETACH);
           break;
         }
-        case PTRACE_SET_THREAD_AREA: {
+        case Arch::PTRACE_SET_THREAD_AREA: {
           bool ok = true;
-          struct ::user_desc desc = t->read_mem(
-              remote_ptr<struct ::user_desc>(t->regs().arg4()), &ok);
+          X86Arch::user_desc desc = t->read_mem(
+              remote_ptr<X86Arch::user_desc>(t->regs().arg4()), &ok);
           if (ok) {
             target->emulate_set_thread_area((int)t->regs().arg3(), desc);
           }
@@ -1165,11 +1045,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   step->syscall.number = sys;
   step->action = TSTEP_ENTER_SYSCALL;
 
-  /* Don't let a negative incoming syscall number be treated as a real
-   * system call that we assigned a negative number because it doesn't
-   * exist in this architecture.
-   */
-  if (is_rrcall_notify_syscall_hook_exit_syscall(sys, sys_ev.arch())) {
+  if (sys == t->session().syscall_number_for_rrcall_notify_syscall_hook_exit()) {
     ASSERT(t, t->syscallbuf_child != nullptr);
     t->write_mem(
         REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
@@ -1177,7 +1053,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   }
 }
 
-static void handle_opened_files(ReplayTask* t) {
+static void handle_opened_files(ReplayTask* t, int flags) {
   const auto& opened = t->current_trace_frame().event().Syscall().opened;
   for (const auto& o : opened) {
     // This must be kept in sync with record_syscall's handle_opened_file.
@@ -1186,11 +1062,19 @@ static void handle_opened_files(ReplayTask* t) {
     if (emu_file) {
       file_monitor = new MmappedFileMonitor(t, emu_file);
     } else if (o.path == "terminal") {
-      file_monitor = new StdioMonitor(STDERR_FILENO);
+      file_monitor = new StdioMonitor(t->session().tracee_output_fd(STDERR_FILENO));
     } else if (is_proc_mem_file(o.path.c_str())) {
       file_monitor = new ProcMemMonitor(t, o.path);
     } else if (is_proc_fd_dir(o.path.c_str())) {
       file_monitor = new ProcFdDirMonitor(t, o.path);
+    } else if (is_sys_cpu_online_file(o.path.c_str())) {
+      file_monitor = new SysCpuMonitor(t, o.path);
+    } else if (is_proc_stat_file(o.path.c_str())) {
+      file_monitor = new ProcStatMonitor(t, o.path);
+    } else if (is_rr_page_lib(o.path.c_str())) {
+      file_monitor = new RRPageMonitor();
+    } else if (flags & O_DIRECT) {
+      file_monitor = new FileMonitor();
     } else {
       ASSERT(t, false) << "Why did we write filename " << o.path;
     }
@@ -1243,6 +1127,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     switch (non_negative_syscall(sys)) {
       case Arch::madvise:
       case Arch::mprotect:
+      case Arch::pkey_mprotect:
       case Arch::sigreturn:
       case Arch::rt_sigreturn:
         break;
@@ -1258,6 +1143,10 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
    * exist in this architecture.
    * All invalid/unsupported syscalls get the default emulation treatment.
    */
+  /* Don't let a negative incoming syscall number be treated as a real
+   * system call that we assigned a negative number because it doesn't
+   * exist in this architecture.
+   */
   switch (non_negative_syscall(sys)) {
     case Arch::execve:
       return process_execve(t, trace_frame, step);
@@ -1269,7 +1158,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
           auto args = t->read_mem(
-              remote_ptr<typename Arch::mmap_args>(trace_regs.arg1()));
+              remote_ptr<typename Arch::mmap_args>(trace_regs.orig_arg1()));
           return process_mmap(t, trace_frame, args.len, args.prot, args.flags,
                               args.fd, args.offset / page_size(), step);
         }
@@ -1290,7 +1179,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       return process_shmat(t, trace_frame, trace_regs.arg3(), step);
 
     case Arch::shmdt:
-      return process_shmdt(t, trace_frame, trace_regs.arg1(), step);
+      return process_shmdt(t, trace_frame, trace_regs.orig_arg1(), step);
 
     case Arch::mremap:
       return process_mremap(t, trace_frame, step);
@@ -1312,22 +1201,35 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       }
     }
       RR_FALLTHROUGH;
+    case Arch::prctl: {
+      auto arg1 = t->regs().arg1();
+      if (sys == Arch::prctl && (Arch::arch() != aarch64 ||
+          arg1 != PR_SET_SPECULATION_CTRL)) {
+        // On aarch64 PR_SET_SPECULATION_CTRL affects the pstate
+        // register during the system call, so we need to replay
+        // it, otherwise we'll get a mismatch there.
+        return;
+      }
+    }
+      RR_FALLTHROUGH;
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::modify_ldt:
+    case Arch::pkey_mprotect:
     case Arch::set_thread_area: {
       // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
       Registers r = t->regs();
-      r.set_syscallno(t->regs().original_syscallno());
+      int modified_sys = sys == Arch::pkey_mprotect ? Arch::mprotect : sys;
+      r.set_syscallno(modified_sys);
       r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
       t->set_regs(r);
-      if (sys == Arch::mprotect) {
+      if (modified_sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
-      __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
-      __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
+      t->enter_syscall();
+      t->exit_syscall();
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
-      if (sys == Arch::mprotect) {
+      if (modified_sys == Arch::mprotect) {
         Registers r2 = t->regs();
         r2.set_arg1(r.arg1());
         r2.set_arg2(r.arg2());
@@ -1340,7 +1242,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     }
 
     case Arch::ipc:
-      switch ((int)trace_regs.arg1_signed()) {
+      switch ((int)trace_regs.orig_arg1_signed()) {
         case SHMAT:
           return process_shmat(t, trace_frame, trace_regs.arg3(), step);
         case SHMDT:
@@ -1352,9 +1254,22 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
+      if (Arch::arch() == aarch64) {
+        // The aarch64 kernel has a bug where it refuses to apply updates
+        // to x7 during any syscall stops. Make sure to move to a signal
+        // stop if we reached here using sysemu.
+        t->move_to_signal_stop();
+      }
       t->set_regs(trace_regs);
       t->set_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;
+      return;
+
+    case Arch::pkey_alloc:
+      // Older versions of rr (incorrectly) did not record the extra regs here.
+      if (t->session().has_trace_quirk(TraceReader::PkeyAllocRecordedExtraRegs)) {
+        t->set_extra_regs(trace_frame.extra_regs());
+      }
       return;
 
     case Arch::perf_event_open: {
@@ -1362,9 +1277,10 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       int cpu = trace_regs.arg3_signed();
       unsigned long flags = trace_regs.arg5();
       int fd = trace_regs.syscall_result_signed();
-      if (target && cpu == -1 && !flags) {
+      int allowed_perf_flags = PERF_FLAG_FD_CLOEXEC;
+      if (target && cpu == -1 && !(flags & ~allowed_perf_flags)) {
         auto attr =
-            t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.arg1()));
+            t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.orig_arg1()));
         if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
           t->fd_table()->add_monitor(t,
               fd, new VirtualPerfCounterMonitor(t, target, attr));
@@ -1375,11 +1291,16 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 
     case Arch::recvmsg:
     case Arch::recvmmsg:
-    case Arch::openat:
-    case Arch::open:
+    case Arch::recvmmsg_time64:
     case Arch::socketcall:
-    case Arch::rrcall_notify_control_msg:
-      handle_opened_files(t);
+      handle_opened_files(t, 0);
+      break;
+
+    case Arch::openat:
+      handle_opened_files(t, t->regs().arg3());
+      break;
+    case Arch::open:
+      handle_opened_files(t, t->regs().arg2());
       break;
 
     case Arch::write:
@@ -1417,26 +1338,31 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       }
       return;
     }
+  }
 
-    case SYS_rrcall_init_buffers:
-      return process_init_buffers(t, step);
-
-    case SYS_rrcall_init_preload:
-      t->at_preload_init();
-      return;
-
-    case SYS_rrcall_reload_auxv: {
-      // Inner rr has finished emulating execve for a tracee. Reload auxv
-      // vectors now so that if gdb gets attached to the inner tracee, it will
-      // get useful symbols.
-      Task* target = t->session().find_task((pid_t)t->regs().arg1());
-      ASSERT(t, target) << "SYS_rrcall_reload_auxv misused";
-      target->vm()->save_auxv(target);
-      return;
-    }
-
-    default:
-      return;
+  if (sys == t->session().syscall_number_for_rrcall_notify_control_msg()) {
+    handle_opened_files(t, 0);
+  } else if (sys == t->session().syscall_number_for_rrcall_init_buffers()) {
+    process_init_buffers(t, step);
+  } else if (sys == t->session().syscall_number_for_rrcall_init_preload()) {
+    t->at_preload_init();
+  } else if (sys == t->session().syscall_number_for_rrcall_reload_auxv()) {
+    // Inner rr has finished emulating execve for a tracee. Reload auxv
+    // vectors now so that if gdb gets attached to the inner tracee, it will
+    // get useful symbols.
+    Task* target = t->session().find_task((pid_t)t->regs().arg1());
+    ASSERT(t, target) << "SYS_rrcall_reload_auxv misused";
+    target->vm()->save_auxv(target);
+  } else if (sys == t->session().syscall_number_for_rrcall_notify_stap_semaphore_added()) {
+    remote_ptr<uint16_t> range_start(t->regs().arg1()),
+                         range_end(t->regs().arg2());
+    MemoryRange semaphore_range(range_start, range_end);
+    t->vm()->add_stap_semaphore_range(t, semaphore_range);
+  } else if (sys == t->session().syscall_number_for_rrcall_notify_stap_semaphore_removed()) {
+    remote_ptr<uint16_t> range_start(t->regs().arg1()),
+                         range_end(t->regs().arg2());
+    MemoryRange semaphore_range(range_start, range_end);
+    t->vm()->remove_stap_semaphore_range(t, semaphore_range);
   }
 }
 

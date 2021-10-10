@@ -148,6 +148,7 @@ enum GdbRestartType {
   RESTART_FROM_PREVIOUS,
   RESTART_FROM_EVENT,
   RESTART_FROM_CHECKPOINT,
+  RESTART_FROM_TICKS
 };
 
 enum GdbActionType { ACTION_CONTINUE, ACTION_STEP };
@@ -209,7 +210,7 @@ struct GdbRequest {
   } watch_;
   GdbRegisterValue reg_;
   struct Restart {
-    int param;
+    int64_t param;
     std::string param_str;
     GdbRestartType type;
   } restart_;
@@ -397,7 +398,7 @@ public:
    * target has stopped executing for some reason.  |sig| is the signal
    * that stopped execution, or 0 if execution stopped otherwise.
    */
-  void notify_stop(GdbThreadId which, int sig, uintptr_t watch_addr = 0);
+  void notify_stop(GdbThreadId which, int sig, const char *reason=nullptr);
 
   /** Notify the debugger that a restart request failed. */
   void notify_restart_failed();
@@ -579,8 +580,10 @@ public:
   const Features& features() { return features_; }
 
   enum {
-    CPU_64BIT = 0x1,
+    CPU_X86_64 = 0x1,
     CPU_AVX = 0x2,
+    CPU_AARCH64 = 0x4,
+    CPU_PKU = 0x8
   };
   void set_cpu_features(uint32_t features) { cpu_features_ = features; }
   uint32_t cpu_features() const { return cpu_features_; }
@@ -597,6 +600,9 @@ public:
    *  Returns false if the connection has been closed
   */
   bool is_connection_alive();
+
+  bool hwbreak_supported() { return hwbreak_supported_; }
+  bool swbreak_supported() { return swbreak_supported_; }
 
 private:
   /**
@@ -665,7 +671,7 @@ private:
   bool process_packet();
   void consume_request();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
-                              uintptr_t watch_addr = 0);
+                              const char *reason);
   void send_file_error_reply(int system_errno);
 
   // Current request to be processed.
@@ -689,6 +695,8 @@ private:
   Features features_;
   bool connection_alive_;
   bool multiprocess_supported_; // client supports multiprocess extension
+  bool hwbreak_supported_; // client supports hwbreak extension
+  bool swbreak_supported_; // client supports swbreak extension
 };
 
 } // namespace rr

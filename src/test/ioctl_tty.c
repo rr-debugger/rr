@@ -12,6 +12,8 @@ int main(void) {
   int* outq;
   struct winsize* w;
   pid_t* sid;
+  int* nread;
+  int sockets[2];
 
   signal(SIGTTOU, SIG_IGN);
 
@@ -81,6 +83,12 @@ int main(void) {
   test_assert(0 == ioctl(fd, TIOCGSID, sid));
   VERIFY_GUARD(sid);
   atomic_printf("TIOCGSID returned %d\n", *sid);
+
+  socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
+  ALLOCATE_GUARD(nread, 'h');
+  test_assert(0 == ioctl(sockets[0], FIONREAD, nread));
+  VERIFY_GUARD(nread);
+  atomic_printf("FIONREAD returned nread=%d\n", *nread);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

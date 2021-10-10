@@ -95,6 +95,15 @@ template <> struct RegisterInfo<rr::X64Arch> {
   static Table registers;
 };
 
+template <> struct RegisterInfo<rr::ARM64Arch> {
+  static bool ignore_undefined_register(GdbRegister) {
+    return false;
+  }
+  static const size_t num_registers = DREG_NUM_LINUX_AARCH64;
+  typedef RegisterTable<num_registers> Table;
+  static Table registers;
+};
+
 #define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                       \
   RegisterInit(DREG_##gdb_suffix,                                              \
                RegisterValue(#name, offsetof(arch::user_regs_struct, name),    \
@@ -109,6 +118,9 @@ template <> struct RegisterInfo<rr::X64Arch> {
   RV_ARCH(gdb_suffix, name, rr::X86Arch, COMMA comparison_mask)
 #define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask, size)              \
   RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask COMMA size)
+#define RV_AARCH64(gdb_suffix, name) RV_ARCH(gdb_suffix, name, rr::ARM64Arch, /* empty */)
+#define RV_AARCH64_WITH_MASK(gdb_suffix, name, comparison_mask, size)          \
+  RV_ARCH(gdb_suffix, name, rr::ARM64Arch, COMMA comparison_mask COMMA size)
 
 RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86(EAX, eax), RV_X86(ECX, ecx), RV_X86(EDX, edx), RV_X86(EBX, ebx),
@@ -143,8 +155,35 @@ RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
   RV_X64(GS_BASE, gs_base),
 };
 
+RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
+  RV_AARCH64(X0, x[0]), RV_AARCH64(X1, x[1]), RV_AARCH64(X2, x[2]),
+  RV_AARCH64(X3, x[3]), RV_AARCH64(X4, x[4]), RV_AARCH64(X5, x[5]),
+  RV_AARCH64(X6, x[6]),
+  // Don't compare these - the kernel sometimes lies [1] about this value
+  // [1] https://github.com/torvalds/linux/blob/d2f8825ab78e4c18686f3e1a756a30255bb00bf3/arch/arm64/kernel/ptrace.c#L1814-L1820
+  RV_AARCH64_WITH_MASK(X7, x[7], 0, 8),
+  RV_AARCH64(X8, x[8]), RV_AARCH64(X9, x[9]),
+  RV_AARCH64(X10, x[10]), RV_AARCH64(X11, x[11]), RV_AARCH64(X12, x[12]),
+  RV_AARCH64(X13, x[13]), RV_AARCH64(X14, x[14]), RV_AARCH64(X15, x[15]),
+  RV_AARCH64(X16, x[16]), RV_AARCH64(X17, x[17]), RV_AARCH64(X18, x[18]),
+  RV_AARCH64(X19, x[19]),
+  RV_AARCH64(X20, x[20]), RV_AARCH64(X21, x[21]), RV_AARCH64(X22, x[22]),
+  RV_AARCH64(X23, x[23]), RV_AARCH64(X24, x[24]), RV_AARCH64(X25, x[25]),
+  RV_AARCH64(X26, x[26]), RV_AARCH64(X27, x[27]), RV_AARCH64(X28, x[28]),
+  RV_AARCH64(X29, x[29]), RV_AARCH64(X30, x[30]),
+  RV_AARCH64(SP, sp), RV_AARCH64(PC, pc),
+  // Mask out the single-step flag from the pstate. During replay, we may
+  // single-step to an execution point, which could set the single-step bit
+  // when it wasn't set during record.
+  RV_AARCH64_WITH_MASK(CPSR, pstate, 0xffffffffLL & ~AARCH64_DBG_SPSR_SS, 4),
+};
+
 #undef RV_X64
 #undef RV_X86
+#undef RV_AARCH64
+#undef RV_X64_WITH_MASK
+#undef RV_X86_WITH_MASK
+#undef RV_AARCH64_WITH_MASK
 #undef RV_ARCH
 
 // 32-bit format, 64-bit format for all of these.
@@ -502,7 +541,7 @@ void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
 void from_x86_narrow(int32_t& r32, uint64_t& r64) { r64 = (uint32_t)r32; }
 void from_x86_narrow_signed(int32_t& r32, uint64_t& r64) { r64 = (int64_t)r32; }
 
-void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
+void Registers::set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs) {
   if (arch() == NativeArch::arch()) {
     memcpy(&u, &ptrace_regs, sizeof(ptrace_regs));
     return;
@@ -511,8 +550,8 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
   convert_x86<to_x86_narrow, to_x86_narrow>(
       u.x86regs,
-      *reinterpret_cast<X64Arch::user_regs_struct*>(
-          const_cast<struct user_regs_struct*>(&ptrace_regs)));
+      *const_cast<X64Arch::user_regs_struct*>(
+        reinterpret_cast<const X64Arch::user_regs_struct*>(&ptrace_regs)));
 }
 
 /**
@@ -521,9 +560,9 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
  * 64-bit rr. In that case the user_regs_struct is 64-bit and we copy
  * the 32-bit register values from u.x86regs into it.
  */
-struct user_regs_struct Registers::get_ptrace() const {
+NativeArch::user_regs_struct Registers::get_ptrace() const {
   union {
-    struct user_regs_struct linux_api;
+    NativeArch::user_regs_struct linux_api;
     struct X64Arch::user_regs_struct x64arch_api;
   } result;
   if (arch() == NativeArch::arch()) {
@@ -538,6 +577,17 @@ struct user_regs_struct Registers::get_ptrace() const {
   return result.linux_api;
 }
 
+iovec Registers::get_ptrace_iovec() {
+  if (arch() == NativeArch::arch()) {
+    iovec iov = { &u, sizeof(NativeArch::user_regs_struct) };
+    return iov;
+  }
+
+  DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
+  iovec iov = { &u.x86regs, sizeof(u.x86regs) };
+  return iov;
+}
+
 Registers::InternalData Registers::get_ptrace_for_self_arch() const {
   switch (arch_) {
     case x86:
@@ -546,6 +596,26 @@ Registers::InternalData Registers::get_ptrace_for_self_arch() const {
     case x86_64:
       return { reinterpret_cast<const uint8_t*>(&u.x64regs),
                sizeof(u.x64regs) };
+    case aarch64:
+      return { reinterpret_cast<const uint8_t*>(&u.arm64regs._ptrace),
+               sizeof(u.arm64regs._ptrace) };
+    default:
+      DEBUG_ASSERT(0 && "Unknown arch");
+      return { nullptr, 0 };
+  }
+}
+
+Registers::InternalData Registers::get_regs_for_trace() const {
+  switch (arch_) {
+    case x86:
+      return { reinterpret_cast<const uint8_t*>(&u.x86regs),
+               sizeof(u.x86regs) };
+    case x86_64:
+      return { reinterpret_cast<const uint8_t*>(&u.x64regs),
+               sizeof(u.x64regs) };
+    case aarch64:
+      return { reinterpret_cast<const uint8_t*>(&u.arm64regs),
+               sizeof(u.arm64regs) };
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       return { nullptr, 0 };
@@ -566,8 +636,8 @@ vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
 void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
                                          size_t size) {
   if (a == NativeArch::arch()) {
-    DEBUG_ASSERT(size == sizeof(struct user_regs_struct));
-    set_from_ptrace(*static_cast<const struct user_regs_struct*>(data));
+    DEBUG_ASSERT(size == sizeof(NativeArch::user_regs_struct));
+    set_from_ptrace(*static_cast<const NativeArch::user_regs_struct*>(data));
     return;
   }
 
@@ -578,28 +648,56 @@ void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
   memcpy(&u.x86regs, data, sizeof(u.x86regs));
 }
 
-uintptr_t Registers::flags() const {
+void Registers::set_from_trace(SupportedArch a, const void* data,
+                               size_t size) {
+  if (is_x86ish(a)) {
+    return set_from_ptrace_for_arch(a, data, size);
+  }
+
+  DEBUG_ASSERT(a == aarch64);
+  DEBUG_ASSERT(size == sizeof(u.arm64regs));
+  memcpy(&u.arm64regs, data, sizeof(u.arm64regs));
+}
+
+bool Registers::aarch64_singlestep_flag() const {
   switch (arch()) {
-    case x86:
-      return u.x86regs.eflags;
-    case x86_64:
-      return u.x64regs.eflags;
+    case aarch64:
+      return pstate() & AARCH64_DBG_SPSR_SS;
     default:
-      DEBUG_ASSERT(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "X86 only code path");
       return false;
   }
 }
 
-void Registers::set_flags(uintptr_t value) {
+void Registers::set_aarch64_singlestep_flag() {
+  switch (arch()) {
+    case aarch64:
+      return set_pstate(pstate() | AARCH64_DBG_SPSR_SS);
+    default:
+      DEBUG_ASSERT(0 && "AArch64 only code path");
+      return;
+  }
+}
+
+bool Registers::x86_singlestep_flag() const {
   switch (arch()) {
     case x86:
-      u.x86regs.eflags = value;
-      break;
     case x86_64:
-      u.x64regs.eflags = value;
-      break;
+      return flags() & X86_TF_FLAG;
     default:
-      DEBUG_ASSERT(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "X86 only code path");
+      return false;
+  }
+}
+
+void Registers::clear_x86_singlestep_flag() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      set_flags(flags() & ~X86_TF_FLAG);
+      return;
+    default:
+      DEBUG_ASSERT(0 && "X86 only code path");
       break;
   }
 }
@@ -624,7 +722,8 @@ bool Registers::syscall_may_restart() const {
 ostream& operator<<(ostream& stream, const Registers& r) {
   stream << "{ args:(" << HEX(r.arg1()) << "," << HEX(r.arg2()) << ","
          << HEX(r.arg3()) << "," << HEX(r.arg4()) << "," << HEX(r.arg5()) << ","
-         << r.arg6() << ") orig_syscall:" << r.original_syscallno() << " }";
+         << r.arg6() << ") orig_syscall: " << r.original_syscallno() <<
+         " syscallno: " << r.syscallno() << " }";
   return stream;
 }
 

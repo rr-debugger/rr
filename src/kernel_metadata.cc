@@ -26,6 +26,18 @@ string syscall_name(int syscall, SupportedArch arch) {
   case _id:                                                                    \
     return #_id;
 
+string arch_name(SupportedArch arch) {
+  switch (arch) {
+    CASE(x86_64);
+    CASE(x86);
+    CASE(aarch64);
+  default:
+    char buf[100];
+    snprintf(buf, sizeof(buf), "Unknown architecture %d", arch);
+    return string(buf);
+  }
+}
+
 string ptrace_event_name(int event) {
   switch (event) {
     CASE(PTRACE_EVENT_FORK);
@@ -48,32 +60,37 @@ string ptrace_event_name(int event) {
       return "PTRACE_EVENT(0)";
     default: {
       char buf[100];
-      sprintf(buf, "PTRACE_EVENT(%d)", event);
+      snprintf(buf, sizeof(buf), "PTRACE_EVENT(%d)", event);
       return string(buf);
     }
   }
 }
 
+#define PTRACE_ARCH_CASE(_id)                                                  \
+  case Arch::_id:                                                              \
+    return #_id;
+
+template <typename Arch>
 string ptrace_req_name(int request) {
-  switch (request) {
-    CASE(PTRACE_TRACEME);
-    CASE(PTRACE_PEEKTEXT);
-    CASE(PTRACE_PEEKDATA);
-    CASE(PTRACE_PEEKUSER);
-    CASE(PTRACE_POKETEXT);
-    CASE(PTRACE_POKEDATA);
-    CASE(PTRACE_POKEUSER);
-    CASE(PTRACE_CONT);
-    CASE(PTRACE_KILL);
-    CASE(PTRACE_SINGLESTEP);
-    CASE(PTRACE_GETREGS);
-    CASE(PTRACE_SETREGS);
-    CASE(PTRACE_GETFPREGS);
-    CASE(PTRACE_SETFPREGS);
+  switch (request >= 0 ? request : INT32_MAX) {
+    PTRACE_ARCH_CASE(PTRACE_TRACEME);
+    PTRACE_ARCH_CASE(PTRACE_PEEKTEXT);
+    PTRACE_ARCH_CASE(PTRACE_PEEKDATA);
+    PTRACE_ARCH_CASE(PTRACE_PEEKUSR);
+    PTRACE_ARCH_CASE(PTRACE_POKETEXT);
+    PTRACE_ARCH_CASE(PTRACE_POKEDATA);
+    PTRACE_ARCH_CASE(PTRACE_POKEUSR);
+    PTRACE_ARCH_CASE(PTRACE_CONT);
+    PTRACE_ARCH_CASE(PTRACE_KILL);
+    PTRACE_ARCH_CASE(PTRACE_SINGLESTEP);
+    PTRACE_ARCH_CASE(PTRACE_GETREGS);
+    PTRACE_ARCH_CASE(PTRACE_SETREGS);
+    PTRACE_ARCH_CASE(PTRACE_GETFPREGS);
+    PTRACE_ARCH_CASE(PTRACE_SETFPREGS);
+    PTRACE_ARCH_CASE(PTRACE_GETFPXREGS);
+    PTRACE_ARCH_CASE(PTRACE_SETFPXREGS);
     CASE(PTRACE_ATTACH);
     CASE(PTRACE_DETACH);
-    CASE(PTRACE_GETFPXREGS);
-    CASE(PTRACE_SETFPXREGS);
     CASE(PTRACE_SYSCALL);
     CASE(PTRACE_SETOPTIONS);
     CASE(PTRACE_GETEVENTMSG);
@@ -85,15 +102,19 @@ string ptrace_req_name(int request) {
     CASE(PTRACE_INTERRUPT);
     CASE(PTRACE_LISTEN);
     // These aren't part of the official ptrace-request enum.
-    CASE(PTRACE_SYSEMU);
-    CASE(PTRACE_SYSEMU_SINGLESTEP);
+    PTRACE_ARCH_CASE(PTRACE_SYSEMU);
+    PTRACE_ARCH_CASE(PTRACE_SYSEMU_SINGLESTEP);
     default: {
       char buf[100];
-      sprintf(buf, "PTRACE_REQUEST(%d)", request);
+      snprintf(buf, sizeof(buf), "PTRACE_REQUEST(%d)", request);
       return string(buf);
     }
   }
 }
+
+template string ptrace_req_name<X86Arch>(int request);
+template string ptrace_req_name<X64Arch>(int request);
+template string ptrace_req_name<ARM64Arch>(int request);
 
 string signal_name(int sig) {
   /* strsignal() would be nice to use here, but it provides TMI. */
@@ -143,7 +164,7 @@ string signal_name(int sig) {
       return "signal(0)";
     default: {
       char buf[100];
-      sprintf(buf, "signal(%d)", sig);
+      snprintf(buf, sizeof(buf), "signal(%d)", sig);
       return string(buf);
     }
   }
@@ -154,7 +175,7 @@ bool is_sigreturn(int syscallno, SupportedArch arch) {
          is_rt_sigreturn_syscall(syscallno, arch);
 }
 
-string errno_name(int err) {
+const char *errno_name_cstr(int err) {
   switch (err) {
     case 0:
       return "SUCCESS";
@@ -289,12 +310,18 @@ string errno_name(int err) {
       CASE(ENOTRECOVERABLE);
       CASE(ERFKILL);
       CASE(EHWPOISON);
-    default: {
-      char buf[100];
-      sprintf(buf, "errno(%d)", err);
-      return string(buf);
-    }
+    default: return NULL;
   }
+}
+
+string errno_name(int err) {
+  const char *name = errno_name_cstr(err);
+  if (name == NULL) {
+    char buf[100];
+    snprintf(buf, sizeof(buf), "errno(%d)", err);
+    return string(buf);
+  }
+  return string(name);
 }
 
 string sicode_name(int code, int sig) {
@@ -321,6 +348,7 @@ string sicode_name(int code, int sig) {
       switch (code) {
         CASE(TRAP_BRKPT);
         CASE(TRAP_TRACE);
+        CASE(TRAP_HWBKPT);
       }
       break;
     case SIGILL:
@@ -379,7 +407,7 @@ string sicode_name(int code, int sig) {
   }
 
   char buf[100];
-  sprintf(buf, "sicode(%d)", code);
+  snprintf(buf, sizeof(buf), "sicode(%d)", code);
   return string(buf);
 }
 
@@ -444,6 +472,24 @@ string xsave_feature_string(uint64_t xsave_features) {
     ret = ret.substr(0, ret.size() - 1);
   }
   return ret;
+}
+
+bool is_coredumping_signal(int signo) {
+  switch (signo) {
+    case SIGQUIT:
+    case SIGILL:
+    case SIGTRAP:
+    case SIGABRT:
+    case SIGFPE:
+    case SIGSEGV:
+    case SIGBUS:
+    case SIGSYS:
+    case SIGXCPU:
+    case SIGXFSZ:
+        return true;
+    default:
+        return false;
+  }
 }
 
 } // namespace rr

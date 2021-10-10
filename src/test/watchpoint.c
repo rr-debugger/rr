@@ -7,7 +7,7 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-static int var;
+static volatile int var;
 
 static void* thread(__attribute__((unused)) void* unused) {
   var = 1337;

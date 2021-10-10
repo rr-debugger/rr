@@ -20,7 +20,7 @@ static void* run_thread(__attribute__((unused)) void* p) {
    */
   nanosleep(&ts, NULL);
 
-  ret = syscall(SYS_futex, &v, FUTEX_WAKE_OP, 1, NULL, &v2,
+  ret = syscall(SYS_futex, &v, FUTEX_WAKE_OP, 1, (void*)0, &v2,
                 FUTEX_OP(FUTEX_OP_SET, 1, FUTEX_OP_CMP_EQ, 0));
   test_assert(ret == 1);
   /* We test that the side effects of this syscall on v2 (setting it to 1)
@@ -37,7 +37,7 @@ int main(void) {
 
   atomic_printf("v2 = %d\n", v);
 
-  test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 0, NULL, NULL, 0));
+  test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 0, (void*)0, (void*)0, 0));
   test_assert(1 == v2);
 
   atomic_puts("EXIT-SUCCESS");

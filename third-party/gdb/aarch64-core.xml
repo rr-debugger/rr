@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2009-2020 Free Software Foundation, Inc.
+     Contributed by ARM Ltd.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  -->
+
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.aarch64.core">
+  <reg name="x0" bitsize="64"/>
+  <reg name="x1" bitsize="64"/>
+  <reg name="x2" bitsize="64"/>
+  <reg name="x3" bitsize="64"/>
+  <reg name="x4" bitsize="64"/>
+  <reg name="x5" bitsize="64"/>
+  <reg name="x6" bitsize="64"/>
+  <reg name="x7" bitsize="64"/>
+  <reg name="x8" bitsize="64"/>
+  <reg name="x9" bitsize="64"/>
+  <reg name="x10" bitsize="64"/>
+  <reg name="x11" bitsize="64"/>
+  <reg name="x12" bitsize="64"/>
+  <reg name="x13" bitsize="64"/>
+  <reg name="x14" bitsize="64"/>
+  <reg name="x15" bitsize="64"/>
+  <reg name="x16" bitsize="64"/>
+  <reg name="x17" bitsize="64"/>
+  <reg name="x18" bitsize="64"/>
+  <reg name="x19" bitsize="64"/>
+  <reg name="x20" bitsize="64"/>
+  <reg name="x21" bitsize="64"/>
+  <reg name="x22" bitsize="64"/>
+  <reg name="x23" bitsize="64"/>
+  <reg name="x24" bitsize="64"/>
+  <reg name="x25" bitsize="64"/>
+  <reg name="x26" bitsize="64"/>
+  <reg name="x27" bitsize="64"/>
+  <reg name="x28" bitsize="64"/>
+  <reg name="x29" bitsize="64"/>
+  <reg name="x30" bitsize="64"/>
+  <reg name="sp" bitsize="64" type="data_ptr"/>
+
+  <reg name="pc" bitsize="64" type="code_ptr"/>
+
+  <flags id="cpsr_flags" size="4">
+    <!-- Stack Pointer.  -->
+    <field name="SP" start="0" end="0"/>
+
+    <!-- Exception Level.  -->
+    <field name="EL" start="2" end="3"/>
+    <!-- Execution state.  -->
+    <field name="nRW" start="4" end="4"/>
+
+    <!-- FIQ interrupt mask.  -->
+    <field name="F" start="6" end="6"/>
+    <!-- IRQ interrupt mask.  -->
+    <field name="I" start="7" end="7"/>
+    <!-- SError interrupt mask.  -->
+    <field name="A" start="8" end="8"/>
+    <!-- Debug exception mask.  -->
+    <field name="D" start="9" end="9"/>
+
+    <!-- ARMv8.0-A: Speculative Store Bypass.  -->
+    <field name="SSBS" start="12" end="12"/>
+
+    <!-- Illegal Execution state.  -->
+    <field name="IL" start="20" end="20"/>
+    <!-- Software Step.  -->
+    <field name="SS" start="21" end="21"/>
+    <!-- ARMv8.1-A: Privileged Access Never.  -->
+    <field name="PAN" start="22" end="22"/>
+    <!-- ARMv8.2-A: User Access Override.  -->
+    <field name="UAO" start="23" end="23"/>
+    <!-- ARMv8.4-A: Data Independent Timing.  -->
+    <field name="DIT" start="24" end="24"/>
+    <!-- ARMv8.5-A: Tag Check Override.  -->
+    <field name="TCO" start="25" end="25"/>
+
+    <!-- Overflow Condition flag.  -->
+    <field name="V" start="28" end="28"/>
+    <!-- Carry Condition flag.  -->
+    <field name="C" start="29" end="29"/>
+    <!-- Zero Condition flag.  -->
+    <field name="Z" start="30" end="30"/>
+    <!-- Negative Condition flag.  -->
+    <field name="N" start="31" end="31"/>
+  </flags>
+  <reg name="cpsr" bitsize="32" type="cpsr_flags"/>
+
+</feature>

@@ -1,0 +1,18 @@
+source `dirname $0`/util.sh
+
+if [ $TIMEOUT -lt 600 ]; then TIMEOUT=600; fi
+
+record $TESTNAME &
+
+for i in $(seq 1 30); do
+  sleep 0.05
+  kill -CHLD $rrpid $(pidof $TESTNAME-$nonce) >& /dev/null
+done
+
+# Wait for 'record' to actually terminate. Otherwise we might start
+# replaying before the trace file has been completely written.
+wait
+
+echo "Replaying ..."
+replay
+check 'EXIT-SUCCESS'

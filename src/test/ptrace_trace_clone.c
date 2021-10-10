@@ -1,6 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
+#include "ptrace_util.h"
 
 #ifndef PTRACE_EVENT_STOP
 #define PTRACE_EVENT_STOP 128
@@ -48,11 +49,11 @@ int main(void) {
      grandchild. */
   test_assert(status == ((PTRACE_EVENT_FORK << 16) | (SIGTRAP << 8) | 0x7f));
   test_assert(0 == ptrace(PTRACE_GETEVENTMSG, child, NULL, &cloned_pid));
-  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+  ptrace_getregs(child, &regs);
   test_assert((pid_t)cloned_pid == waitpid(cloned_pid, &status, 0));
   test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP);
   test_assert((status >> 16) == PTRACE_EVENT_STOP);
-  test_assert(0 == ptrace(PTRACE_GETREGS, cloned_pid, NULL, &regs));
+  ptrace_getregs(cloned_pid, &regs);
 
   /* Test that we observe the exit of the grandchild. We need to wait()
      on the grandchild or our child won't ever see the exit. */
@@ -70,12 +71,12 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)0));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((PTRACE_EVENT_CLONE << 16) | (SIGTRAP << 8) | 0x7f));
-  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+  ptrace_getregs(child, &regs);
   test_assert(0 == ptrace(PTRACE_GETEVENTMSG, child, NULL, &cloned_pid));
   test_assert((pid_t)cloned_pid == waitpid(cloned_pid, &status, __WCLONE));
   test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP);
   test_assert((status >> 16) == PTRACE_EVENT_STOP);
-  test_assert(0 == ptrace(PTRACE_GETREGS, cloned_pid, NULL, &regs));
+  ptrace_getregs(cloned_pid, &regs);
 
   /* Test that we observe the exit of the grandchild. We need to wait()
      on the grandchild or our child won't ever see the exit. */

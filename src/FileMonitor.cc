@@ -18,7 +18,14 @@ using namespace std;
 
 template <typename Arch>
 static bool is_implicit_offset_syscall_arch(int syscallno) {
-  return syscallno == Arch::writev || syscallno == Arch::write;
+  return syscallno == Arch::writev || syscallno == Arch::write ||
+         syscallno == Arch::readv || syscallno == Arch::read;
+}
+
+template <typename Arch>
+static bool is_write_syscall_arch(int syscallno) {
+  return syscallno == Arch::writev || syscallno == Arch::write ||
+         syscallno == Arch::pwrite64 || syscallno == Arch::pwritev;
 }
 
 static bool is_implict_offset_syscall(SupportedArch arch, int syscallno) {
@@ -38,26 +45,19 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
       }
       return regs.arg4_signed();
     }
+    case Arch::readv:
+    case Arch::read:
     case Arch::writev:
     case Arch::write: {
       ASSERT(t, t->session().is_recording())
           << "Can only read a file descriptor's offset while recording";
-      int fd = regs.arg1_signed();
-      // Get the offset from /proc/*/fdinfo/*
-      char fdinfo_path[PATH_MAX];
-      sprintf(fdinfo_path, "/proc/%d/fdinfo/%d", t->tid, fd);
-      FILE* fdinfo_file;
-      if (!(fdinfo_file = fopen(fdinfo_path, "r"))) {
-        FATAL() << "Failed to open " << fdinfo_path;
-      }
-      int64_t offset = -1;
-      if (fscanf(fdinfo_file, "pos:\t%" PRId64, &offset) != 1) {
-        FATAL() << "Failed to read position";
-      }
-      fclose(fdinfo_file);
-      // The pos we just read, was after the write completed. Luckily, we do
-      // know how many bytes were written.
-      return offset - regs.syscall_result();
+      int fd = regs.orig_arg1_signed();
+      int64_t offset = t->fd_offset(fd);
+      return is_write_syscall_arch<Arch>(syscallno) ?
+        // The pos we just read, was after the write completed. Luckily, we do
+        // know how many bytes were written.
+        offset - regs.syscall_result() :
+        offset;
     }
     default: {
       ASSERT(t, false) << "Can not retrieve offset for this system call.";

@@ -7,12 +7,12 @@
 #include "ReplayTask.h"
 #include "kernel_abi.h"
 
-extern "C" int cpuid_loop(int iterations);
-
 using namespace std;
 
 namespace rr {
 
+#if defined(__i386__) || defined(__x86_64__)
+extern "C" int cpuid_loop(int iterations);
 void CPUIDBugDetector::run_detection_code() {
   // Call cpuid_loop to generate trace data we can use to detect
   // the cpuid rcb undercount bug. This generates 4 geteuid
@@ -20,6 +20,11 @@ void CPUIDBugDetector::run_detection_code() {
   // 3 consecutive pairs.
   cpuid_loop(4);
 }
+#else
+// Other platforms don't have cpuid, but keep the calling code clean, by
+// just making this a no-op there.
+void CPUIDBugDetector::run_detection_code() {}
+#endif
 
 static bool rcb_counts_ok(ReplayTask* t, uint64_t prev, uint64_t current) {
   uint32_t expected_count = 2 + PerfCounters::ticks_for_direct_call(t);
@@ -46,6 +51,9 @@ static bool rcb_counts_ok(ReplayTask* t, uint64_t prev, uint64_t current) {
 void CPUIDBugDetector::notify_reached_syscall_during_replay(ReplayTask* t) {
   // We only care about events that happen before the first exec,
   // when our detection code runs.
+  if (!is_x86ish(t->arch())) {
+    return;
+  }
   if (t->session().done_initial_exec()) {
     return;
   }

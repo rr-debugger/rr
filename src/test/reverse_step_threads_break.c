@@ -14,13 +14,25 @@ static size_t my_read(int fd, void* buf, size_t size) {
 #ifdef __x86_64__
   __asm__("syscall\n\t"
           : "=a"(ret)
-          : "a"(SYS_read), "D"(fd), "S"(buf), "d"(size));
+          : "a"(SYS_read), "D"(fd), "S"(buf), "d"(size)
+          : "memory");
 #elif defined(__i386__)
   __asm__("xchg %%ebx,%%edi\n\t"
           "int $0x80\n\t"
           "xchg %%ebx,%%edi\n\t"
           : "=a"(ret)
-          : "a"(SYS_read), "c"(buf), "d"(size), "D"(fd));
+          : "a"(SYS_read), "c"(buf), "d"(size), "D"(fd)
+          : "memory");
+#elif defined(__aarch64__)
+  register uint64_t x0 __asm__ ("x0") = fd;
+  register void *x1 __asm__ ("x1") = buf;
+  register uint64_t x2 __asm__ ("x2") = size;
+  register uint64_t x8 __asm__ ("x8") = SYS_read;
+  __asm__("svc #0\n\t"
+          : "+r"(x0)
+          : "r"(x1), "r"(x2), "r"(x8)
+          : "memory");
+  ret = x0;
 #else
 #error define syscall here
 #endif

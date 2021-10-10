@@ -4,6 +4,7 @@
 
 #include <limits.h>
 #include <linux/kdev_t.h>
+#include <linux/prctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -26,7 +27,22 @@ using namespace std;
 
 namespace rr {
 
-/*static*/ const uint8_t AddressSpace::breakpoint_insn;
+static const uint8_t x86_breakpoint_insn[] = { 0xcc }; // int $3
+static const uint8_t arm64_breakpoint_insn[4] = {0x0, 0x0, 0x20, 0xd4}; // brk #0
+
+static const uint8_t *breakpoint_insn(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+    case x86_64:
+      return x86_breakpoint_insn;
+    case aarch64:
+      return arm64_breakpoint_insn;
+    default:
+      DEBUG_ASSERT(0 && "Must define breakpoint insn for this architecture");
+      return nullptr;
+  }
+}
+
 
 /**
  * Advance *str to skip leading blank characters.
@@ -40,14 +56,14 @@ static const char* trim_leading_blanks(const char* str) {
 }
 
 /**
- * Returns true if a task in t's task-group other than t is doing an exec.
+ * Returns true if a task in t's thread-group other than t is doing an exec.
  */
 static bool thread_group_in_exec(Task* t) {
   if (!t->session().is_recording()) {
     return false;
   }
   for (Task* tt : t->thread_group()->task_set()) {
-    if (tt == t) {
+    if (tt == t || t->already_exited()) {
       continue;
     }
     RecordTask* rt = static_cast<RecordTask*>(tt);
@@ -245,6 +261,10 @@ uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 
 remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
   SupportedArch arch = t->arch();
+  // This assert passes even if --unmap-vdso is passed because this only ever
+  // gets called at the start of process_execve before we unmap the vdso. After
+  // the rr page is mapped in, we use the syscall instructions contained therein
+  ASSERT(t, has_vdso()) << "Kernel with vDSO disabled?";
   if (!offset_to_syscall_in_vdso[arch]) {
     auto vdso_data = t->read_mem(vdso().start().cast<uint8_t>(), vdso().size());
     offset_to_syscall_in_vdso[arch] = find_offset_of_syscall_instruction_in(
@@ -257,38 +277,6 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
           .as_int());
 }
 
-static string find_rr_page_file(Task* t) {
-  string path = resource_path() + "bin/rr_page_";
-  switch (t->arch()) {
-    case x86:
-      path += "32";
-      break;
-    case x86_64:
-      path += "64";
-      break;
-    default:
-      ASSERT(t, false) << "Unknown architecture";
-      return path;
-  }
-  if (!t->session().is_recording()) {
-    path += "_replay";
-  }
-  return path;
-}
-
-static vector<uint8_t> read_all(Task* t, ScopedFd& fd) {
-  char buf[4096];
-  vector<uint8_t> result;
-  while (true) {
-    int ret = read(fd, buf, sizeof(buf));
-    ASSERT(t, ret >= 0);
-    if (ret == 0) {
-      return result;
-    }
-    result.insert(result.end(), buf, buf + ret);
-  }
-}
-
 void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
@@ -297,38 +285,57 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   Task* t = remote.task();
   SupportedArch arch = t->arch();
 
-  string path = find_rr_page_file(t);
-  AutoRestoreMem child_path(remote, path.c_str());
-  // skip leading '/' since we want the path to be relative to the root fd
-  long child_fd =
-      remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
-                     child_path.get() + 1, O_RDONLY);
-  if (child_fd >= 0) {
+  const char *fname;
+  switch (t->arch()) {
+    case x86_64:
+    case aarch64:
+      fname = RRPAGE_LIB_FILENAME;
+      break;
+    case x86:
+#if defined(__x86_64__)
+      fname = RRPAGE_LIB_FILENAME_32;
+#else
+      fname = RRPAGE_LIB_FILENAME;
+#endif
+      break;
+  }
+
+  string path = find_helper_library(fname);
+  if (path.empty()) {
+    FATAL() << "Failed to locate " << fname;
+  }
+  path += fname;
+  size_t offset_pages = t->session().is_recording() ?
+    RRPAGE_RECORD_PAGE_OFFSET : RRPAGE_REPLAY_PAGE_OFFSET;
+  size_t offset_bytes = offset_pages*rr_page_size();
+
+  {
+    ScopedFd page(path.c_str(), O_RDONLY);
+    ASSERT(t, page.is_open()) << "Failed to open rrpage library " << path;
+    long child_fd = remote.send_fd(page.get());
+    ASSERT(t, child_fd >= 0);
+    if (t->session().is_recording()) {
+      remote.infallible_mmap_syscall(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
+                                    child_fd, 0);
+    }
     remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                   child_fd, 0);
+                                   child_fd, offset_pages);
 
     struct stat fstat = t->stat_fd(child_fd);
     file_name = t->file_name_of_fd(child_fd);
 
     remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
-    map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
+    map(t, rr_page_start(), rr_page_size(), prot, flags,
+        offset_pages * page_size(), file_name,
         fstat.st_dev, fstat.st_ino);
-  } else {
-    ASSERT(t, child_fd != -ENOENT) << "rr_page file not found: "
-        << path.c_str();
-    ASSERT(t, child_fd == -EACCES) << "Unexpected error mapping rr_page";
-    flags |= MAP_ANONYMOUS;
-    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                   -1, 0);
-    ScopedFd page(path.c_str(), O_RDONLY);
-    ASSERT(t, page.is_open()) << "Error opening rr_page ourselves";
-    vector<uint8_t> page_data = read_all(t, page);
-    t->write_bytes_helper(rr_page_start(), page_data.size(), page_data.data());
-
-    map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
+    mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
+    if (t->session().is_recording()) {
+      map(t, rr_page_start() - offset_bytes, offset_bytes, prot, flags,
+          0, file_name,
+          fstat.st_dev, fstat.st_ino);
+    }
   }
-  mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
 
   if (t->session().is_recording()) {
     // brk() will not have been called yet so the brk area is empty.
@@ -341,6 +348,23 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
       TRACED, UNPRIVILEGED, RECORDING_AND_REPLAY, t->arch());
   privileged_traced_syscall_ip_ = rr_page_syscall_entry_point(
       TRACED, PRIVILEGED, RECORDING_AND_REPLAY, t->arch());
+}
+
+void AddressSpace::unmap_all_but_rr_page(AutoRemoteSyscalls& remote) {
+  vector<MemoryRange> unmaps;
+  for (const auto& m : maps()) {
+    // Do not attempt to unmap [vsyscall] --- it doesn't work.
+    if (m.map.start() != AddressSpace::rr_page_start() &&
+        m.map.start() != AddressSpace::preload_thread_locals_start() &&
+        !m.map.is_vsyscall()) {
+      unmaps.push_back(m.map);
+    }
+  }
+  for (auto& m : unmaps) {
+    remote.infallible_syscall(syscall_number_for_munmap(remote.task()->arch()),
+                              m.start(), m.size());
+    unmap(remote.task(), m.start(), m.size());
+  }
 }
 
 /**
@@ -363,24 +387,65 @@ static const AddressSpace::SyscallType entry_points[] = {
     AddressSpace::REPLAY_ONLY },
   { AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
     AddressSpace::RECORDING_ONLY },
+  { AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+    AddressSpace::REPLAY_ASSIST },
 };
 
-static remote_code_ptr entry_ip_from_index(size_t i) {
-  return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i);
+static int rr_page_syscall_stub_size(SupportedArch arch) {
+  int val = 0;
+  switch (arch) {
+    case x86:
+    case x86_64:
+      val = 3;
+      break;
+    case aarch64:
+      val = 8;
+      break;
+    default:
+      FATAL() << "Syscall stub size not defined for this architecture";
+  }
+  if (arch == NativeArch::arch()) {
+    DEBUG_ASSERT(val == RR_PAGE_SYSCALL_STUB_SIZE);
+  }
+  return val;
 }
 
-static remote_code_ptr exit_ip_from_index(size_t i) {
-  return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i +
-                         RR_PAGE_SYSCALL_INSTRUCTION_END);
+static int rr_page_syscall_instruction_end(SupportedArch arch) {
+  int val = 0;
+  switch (arch) {
+    case x86:
+    case x86_64:
+      val = 2;
+      break;
+    case aarch64:
+      val = 4;
+      break;
+    default:
+      FATAL() << "Syscall stub size not defined for this architecture";
+  }
+  if (arch == NativeArch::arch()) {
+    DEBUG_ASSERT(val == RR_PAGE_SYSCALL_INSTRUCTION_END);
+  }
+  return val;
+}
+
+static remote_code_ptr entry_ip_from_index(SupportedArch arch, size_t i) {
+  return remote_code_ptr(RR_PAGE_ADDR + rr_page_syscall_stub_size(arch) * i);
+}
+
+static remote_code_ptr exit_ip_from_index(SupportedArch arch, size_t i) {
+  return remote_code_ptr(RR_PAGE_ADDR + rr_page_syscall_stub_size(arch) * i +
+                         rr_page_syscall_instruction_end(arch));
 }
 
 remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
                                                          Privileged privileged,
-                                                         Enabled enabled) {
+                                                         Enabled enabled,
+                                                         SupportedArch arch) {
   for (auto& e : entry_points) {
     if (e.traced == traced && e.privileged == privileged &&
         e.enabled == enabled) {
-      return exit_ip_from_index(&e - entry_points);
+      return exit_ip_from_index(arch, &e - entry_points);
     }
   }
   return nullptr;
@@ -389,20 +454,20 @@ remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
 remote_code_ptr AddressSpace::rr_page_syscall_entry_point(Traced traced,
                                                           Privileged privileged,
                                                           Enabled enabled,
-                                                          SupportedArch) {
+                                                          SupportedArch arch) {
   for (auto& e : entry_points) {
     if (e.traced == traced && e.privileged == privileged &&
         e.enabled == enabled) {
-      return entry_ip_from_index(&e - entry_points);
+      return entry_ip_from_index(arch, &e - entry_points);
     }
   }
   return nullptr;
 }
 
 const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
-    remote_code_ptr ip) {
+    SupportedArch arch, remote_code_ptr ip) {
   for (size_t i = 0; i < array_length(entry_points); ++i) {
-    if (exit_ip_from_index(i) == ip) {
+    if (exit_ip_from_index(arch, i) == ip) {
       return &entry_points[i];
     }
   }
@@ -410,9 +475,9 @@ const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
 }
 
 const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_entry_point(
-    remote_code_ptr ip) {
+    SupportedArch arch, remote_code_ptr ip) {
   for (size_t i = 0; i < array_length(entry_points); ++i) {
-    if (entry_ip_from_index(i) == ip) {
+    if (entry_ip_from_index(arch, i) == ip) {
       return &entry_points[i];
     }
   }
@@ -427,12 +492,102 @@ vector<AddressSpace::SyscallType> AddressSpace::rr_page_syscalls() {
   return result;
 }
 
-void AddressSpace::save_auxv(Task* t) { saved_auxv_ = read_auxv(t); }
+void AddressSpace::save_auxv(Task* t) {
+  saved_auxv_ = read_auxv(t);
+  save_interpreter_base(t, saved_auxv());
+}
+
+void AddressSpace::save_interpreter_base(Task* t, std::vector<uint8_t> auxv) {
+  saved_interpreter_base_ = read_interpreter_base(auxv);
+  save_ld_path(t, saved_interpreter_base());
+}
+
+void AddressSpace::save_ld_path(Task* t, remote_ptr<void> interpreter_base) {
+  saved_ld_path_ = read_ld_path(t, interpreter_base);
+}
+
+void AddressSpace::read_mm_map(Task* t, NativeArch::prctl_mm_map* map) {
+  char buf[PATH_MAX+1024];
+  {
+    string proc_stat = t->proc_stat_path();
+    ScopedFd fd(proc_stat.c_str(), O_RDONLY);
+    memset(buf, 0, sizeof(buf));
+    int err = read_to_end(fd, 0, buf, sizeof(buf)-1);
+    if (err < 0) {
+      FATAL() << "Failed to read /proc/<pid>/stat";
+    }
+  }
+  // The last close-paren indicates the end of the comm and the
+  // start of the fixed-width area
+  char* fixed = strrchr(buf, ')');
+  // We don't change /proc/pid/exe, since we're unlikely to have CAP_SYS_ADMIN
+  map->exe_fd = -1;
+  // auxv is restored separately
+  map->auxv.val = 0;
+  map->auxv_size = 0;
+  // All of these fields of /proc/pid/stat, we don't use (currently)
+  char state;
+  pid_t ppid;
+  pid_t pgrp;
+  int session;
+  int tty_nr;
+  int tpgid;
+  unsigned int flags;
+  unsigned long minflt, cminflt, majflt, cmajflt, utime, stime;
+  long cutime, cstime, priority, nice, num_threads, itrealvalue;
+  unsigned long long starttime;
+  unsigned long vsize;
+  long rss;
+  unsigned long rsslim, kstkesp, kstskip, signal;
+  unsigned long blocked, sigignore, sigcatch, wchan, nswap, cnswap;
+  int exit_signal, processor;
+  unsigned int rt_priority, policy;
+  unsigned long long delayacct_blkio_ticks;
+  unsigned long guest_time;
+  long cguest_time;
+  int exit_code;
+  // See the proc(5) man page for the correct scan codes for these
+  size_t n = sscanf(fixed + 1,
+    // state ppid pgrp session tty_nr tpgid
+    " %c %d %d %d %d %d"
+    // flags minflt cminflt majflt cmajflt utime stime cutime cstime
+    " %u %lu %lu %lu %lu %lu %lu %ld %ld"
+    // priority nice num_threads itrealvalue starttime vsize rss
+    " %ld %ld %ld %ld %llu %lu %ld"
+    // rsslim startcode endcode startstack kstkesp kstskip signal
+    " %lu %lu %lu %lu %lu %lu %lu"
+    // blocked sigignore sigcatch wchan nswap cnswap exit_signal
+    " %lu %lu %lu %lu %lu %lu %d"
+    // processor rt_priority policy delayacct_blkio_ticks guest_time cguest_time
+    " %d %u %u %llu %lu %ld "
+    // start_data end_data start_brk arg_start arg_end env_start env_end exit_code
+    " %lu %lu %lu %lu %lu %lu %lu %d",
+    &state, &ppid, &pgrp, &session, &tty_nr, &tpgid,
+    &flags, &minflt, &cminflt, &majflt, &cmajflt, &utime, &stime, &cutime, &cstime,
+    &priority, &nice, &num_threads, &itrealvalue, &starttime, &vsize, &rss,
+    &rsslim, (unsigned long *)&map->start_code, (unsigned long *)&map->end_code,
+    (unsigned long *)&map->start_stack, &kstkesp, &kstskip, &signal,
+    &blocked, &sigignore, &sigcatch, &wchan, &nswap, &cnswap, &exit_signal,
+    &processor, &rt_priority, &policy, &delayacct_blkio_ticks, &guest_time,
+    &cguest_time, (unsigned long *)&map->start_data, (unsigned long *)&map->end_data,
+    (unsigned long *)&map->start_brk, (unsigned long *)&map->arg_start,
+    (unsigned long *)&map->arg_end, (unsigned long *)&map->env_start,
+    (unsigned long *)&map->env_end, &exit_code);
+  ASSERT(t, n == 50);
+  // Fill in brk end
+  ASSERT(t, map->start_brk == this->brk_start.as_int());
+  map->brk = this->brk_end.as_int();
+}
 
 void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
   traced_syscall_ip_ = find_syscall_instruction(t);
   privileged_traced_syscall_ip_ = nullptr;
+
+  do_breakpoint_fault_addr_ = nullptr;
+  stopping_breakpoint_table_ = nullptr;
+  stopping_breakpoint_table_entry_size_ = 0;
+
   // Now remote syscalls work, we can open_mem_fd.
   t->open_mem_fd();
 
@@ -494,7 +649,7 @@ SupportedArch AddressSpace::arch() const {
 
 BreakpointType AddressSpace::get_breakpoint_type_for_retired_insn(
     remote_code_ptr ip) {
-  remote_code_ptr addr = ip.decrement_by_bkpt_insn_length(SupportedArch::x86);
+  remote_code_ptr addr = ip.undo_executed_bkpt(arch());
   return get_breakpoint_type_at_addr(addr);
 }
 
@@ -523,7 +678,7 @@ void AddressSpace::replace_breakpoints_with_original_values(
     remote_ptr<uint8_t> bkpt_location = it.first.to_data_ptr<uint8_t>();
     remote_ptr<uint8_t> start = max(addr, bkpt_location);
     remote_ptr<uint8_t> end =
-        min(addr + length, bkpt_location + it.second.data_length());
+        min(addr + length, bkpt_location + bkpt_instruction_length(arch()));
     if (start < end) {
       memcpy(dest + (start - addr),
              it.second.original_data() + (start - bkpt_location), end - start);
@@ -533,11 +688,26 @@ void AddressSpace::replace_breakpoints_with_original_values(
 
 bool AddressSpace::is_breakpoint_instruction(Task* t, remote_code_ptr ip) {
   bool ok = true;
-  return t->read_mem(ip.to_data_ptr<uint8_t>(), &ok) == breakpoint_insn && ok;
+  uint8_t data[MAX_BKPT_INSTRUCTION_LENGTH];
+  t->read_bytes_helper(ip.to_data_ptr<uint8_t>(),
+    bkpt_instruction_length(t->arch()), data, &ok);
+  return memcmp(data, breakpoint_insn(t->arch()),
+    bkpt_instruction_length(t->arch())) == 0 && ok;
 }
 
 static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
+  if (ranges.empty()) {
+    return;
+  }
+
   auto start = ranges.lower_bound(range);
+  // An earlier range might extend into range, so check for that.
+  if (start != ranges.begin()) {
+    --start;
+    if (start->end() <= range.start()) {
+      ++start;
+    }
+  }
   auto end = start;
   auto prev_end = start;
   while (end != ranges.end() && end->start() < range.end()) {
@@ -583,6 +753,7 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
   }
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
+  remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 
   // The mmap() man page doesn't specifically describe
   // what should happen if an existing map is
@@ -618,6 +789,14 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
         << "abled, but tracer thinks "
         << (t->session().as_record()->use_syscall_buffer() ? "en" : "dis")
         << "abled";
+  } else {
+    if (params.breakpoint_table_entry_size == -1) {
+      do_breakpoint_fault_addr_ = params.breakpoint_instr_addr.rptr().as_int();
+    } else {
+      stopping_breakpoint_table_ = params.breakpoint_table.rptr().as_int();
+      stopping_breakpoint_table_entry_size_ =
+          params.breakpoint_table_entry_size;
+    }
   }
 
   if (!params.syscallbuf_enabled) {
@@ -819,6 +998,17 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
     remove_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   }
 
+  it = wipe_on_fork.lower_bound(MemoryRange(old_addr, old_num_bytes));
+  if (it != wipe_on_fork.end() && it->start() < old_addr + old_num_bytes) {
+    // hopefully mremap fails if some but not all pages are marked DONTFORK
+    DEBUG_ASSERT(*it == MemoryRange(old_addr, old_num_bytes));
+    remove_range(wipe_on_fork, MemoryRange(old_addr, old_num_bytes));
+    add_range(wipe_on_fork, MemoryRange(new_addr, new_num_bytes));
+  } else {
+    remove_range(wipe_on_fork, MemoryRange(old_addr, old_num_bytes));
+    remove_range(wipe_on_fork, MemoryRange(new_addr, new_num_bytes));
+  }
+
   unmap_internal(t, new_addr, new_num_bytes);
 
   remote_ptr<void> new_end = new_addr + new_num_bytes;
@@ -839,21 +1029,25 @@ void AddressSpace::remove_breakpoint(remote_code_ptr addr,
 bool AddressSpace::add_breakpoint(remote_code_ptr addr, BreakpointType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
-    uint8_t overwritten_data;
+    uint8_t overwritten_data[MAX_BKPT_INSTRUCTION_LENGTH];
+    ssize_t bkpt_size = bkpt_instruction_length(arch());
     // Grab a random task from the VM so we can use its
     // read/write_mem() helpers.
-    Task* t = *task_set().begin();
-    if (sizeof(overwritten_data) !=
-        t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
-                               sizeof(overwritten_data), &overwritten_data)) {
+    Task* t = first_running_task();
+    if (!t ||
+        bkpt_size !=
+            t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
+                                   bkpt_size, overwritten_data)) {
       return false;
     }
-    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn, nullptr,
+    t->write_bytes_helper(addr.to_data_ptr<uint8_t>(), bkpt_size,
+                 breakpoint_insn(arch()), nullptr,
                  Task::IS_BREAKPOINT_RELATED);
 
     auto it_and_is_new = breakpoints.insert(make_pair(addr, Breakpoint()));
     DEBUG_ASSERT(it_and_is_new.second);
-    it_and_is_new.first->second.overwritten_data = overwritten_data;
+    memcpy(it_and_is_new.first->second.overwritten_data,
+      overwritten_data, sizeof(overwritten_data));
     it = it_and_is_new.first;
   }
   it->second.ref(type);
@@ -869,16 +1063,23 @@ void AddressSpace::remove_all_breakpoints() {
 void AddressSpace::suspend_breakpoint_at(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   if (it != breakpoints.end()) {
-    Task* t = *task_set().begin();
-    t->write_mem(addr.to_data_ptr<uint8_t>(), it->second.overwritten_data);
+    Task* t = first_running_task();
+    if (t) {
+      t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
+        bkpt_instruction_length(arch()), it->second.overwritten_data);
+    }
   }
 }
 
 void AddressSpace::restore_breakpoint_at(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   if (it != breakpoints.end()) {
-    Task* t = *task_set().begin();
-    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn);
+    Task* t = first_running_task();
+    if (t) {
+      t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
+        bkpt_instruction_length(arch()),
+        breakpoint_insn(arch()));
+    }
   }
 }
 
@@ -950,7 +1151,10 @@ bool AddressSpace::restore_watchpoints() {
 
 bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
                                            Watchpoint& watchpoint) {
-  Task* t = *task_set().begin();
+  Task* t = first_running_task();
+  if (!t) {
+    return false;
+  }
   bool valid = true;
   vector<uint8_t> value_bytes = watchpoint.value_bytes;
   for (size_t i = 0; i < value_bytes.size(); ++i) {
@@ -1005,6 +1209,7 @@ static bool watchpoint_triggered(uintptr_t debug_status,
 }
 
 bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
+    remote_ptr<void> hit_addr,
     remote_code_ptr address_of_singlestep_start) {
   bool triggered = false;
   for (auto& it : watchpoints) {
@@ -1017,15 +1222,25 @@ bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
     // execute.
     bool write_triggered = (it.second.watched_bits() & WRITE_BIT) &&
         update_watchpoint_value(it.first, it.second);
-    bool read_triggered = (it.second.watched_bits() & READ_BIT) &&
+    // Depending on the architecture the hardware may indicate hit watchpoints
+    // either by number, or by the address that triggered the watchpoint hit
+    // - support either.
+    bool read_triggered = false;
+    bool exec_triggered = false;
+    bool watchpoint_in_range = false;
+    if (is_x86ish(arch())) {
+      read_triggered = (it.second.watched_bits() & READ_BIT) &&
         watchpoint_triggered(debug_status,
                              it.second.debug_regs_for_exec_read);
-    bool exec_triggered = (it.second.watched_bits() & EXEC_BIT) &&
+      exec_triggered = (it.second.watched_bits() & EXEC_BIT) &&
         (address_of_singlestep_start.is_null() ||
          it.first.start() == address_of_singlestep_start.to_data_ptr<void>()) &&
          watchpoint_triggered(debug_status,
                               it.second.debug_regs_for_exec_read);
-    if (write_triggered || read_triggered || exec_triggered) {
+    } else {
+      watchpoint_in_range = it.first.contains(hit_addr);
+    }
+    if (write_triggered || read_triggered || exec_triggered || watchpoint_in_range) {
       it.second.changed = true;
       triggered = true;
     }
@@ -1054,6 +1269,7 @@ void AddressSpace::unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes) {
   }
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
+  remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 
   return unmap_internal(t, addr, num_bytes);
 }
@@ -1098,8 +1314,9 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
     }
 
     if (m.local_addr) {
-      int ret =
-          munmap(m.local_addr + (rem.start() - m.map.start()), rem.size());
+      auto addr = m.local_addr + (rem.start() - m.map.start());
+      auto size = std::min(rem.size(), m.map.size() - (rem.start() - m.map.start()));
+      int ret = munmap(addr, size);
       if (ret < 0) {
         FATAL() << "Can't munmap";
       }
@@ -1122,12 +1339,23 @@ void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
     case MADV_DOFORK:
       remove_range(dont_fork, MemoryRange(addr, num_bytes));
       break;
+    case MADV_WIPEONFORK:
+      add_range(wipe_on_fork, MemoryRange(addr, num_bytes));
+      break;
+    case MADV_KEEPONFORK:
+      remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
+      break;
     default:
       break;
   }
 }
 
 void AddressSpace::did_fork_into(Task* t) {
+  // MADV_WIPEONFORK is inherited across fork and cleared on exec.
+  // We'll copy it here, then do the `dont_fork` unmappings, and then
+  // whatever survives in the new AddressSpace's wipe_on_fork gets wiped.
+  t->vm()->wipe_on_fork = wipe_on_fork;
+
   for (auto& range : dont_fork) {
     // During recording we execute MADV_DONTFORK so the forked child will
     // have had its dontfork areas unmapped by the kernel already
@@ -1138,6 +1366,16 @@ void AddressSpace::did_fork_into(Task* t) {
     }
     t->vm()->unmap(t, range.start(), range.size());
   }
+
+  // Any ranges that were dropped were unmapped (and thus removed from
+  // wipe_on_fork), so now we can record anything that's left.
+  for (auto& range : t->vm()->wipe_on_fork) {
+    if (t->session().is_recording()) {
+      // Record that these mappings were wiped.
+      RecordTask* rt = static_cast<RecordTask*>(t);
+      rt->record_remote(range);
+    }
+  }
 }
 
 static string strip_deleted(const string& s) {
@@ -1147,6 +1385,10 @@ static string strip_deleted(const string& s) {
     return s.substr(0, find_deleted);
   }
   return s;
+}
+
+string KernelMapping::fsname_strip_deleted() const {
+  return strip_deleted(fsname_);
 }
 
 enum HandleHeap { TREAT_HEAP_AS_ANONYMOUS, RESPECT_HEAP };
@@ -1346,6 +1588,10 @@ void AddressSpace::verify(Task* t) const {
 
   MemoryMap::const_iterator mem_it = mem.begin();
   KernelMapIterator kernel_it(t);
+  if (kernel_it.at_end()) {
+    LOG(debug) << "Task " << t->tid << " exited unexpectedly, ignoring";
+    return;
+  }
   while (!kernel_it.at_end() && mem_it != mem.end()) {
     KernelMapping km = kernel_it.current();
     ++kernel_it;
@@ -1372,7 +1618,9 @@ void AddressSpace::verify(Task* t) const {
 // Just a place that rr's AutoSyscall functionality can use as a syscall
 // instruction in rr's address space for use before we have exec'd.
 extern "C" {
-extern char rr_syscall_addr;
+// Mark this as hidden, otherwise we might get the address of the GOT entry,
+// which could cause problems.
+extern char rr_syscall_addr __attribute__ ((visibility ("hidden")));
 }
 static void __attribute__((noinline, used)) fake_syscall() {
 #ifdef __i386__
@@ -1382,6 +1630,11 @@ static void __attribute__((noinline, used)) fake_syscall() {
                        "nop\n\t");
 #elif defined(__x86_64__)
   __asm__ __volatile__("rr_syscall_addr: syscall\n\t"
+                       "nop\n\t"
+                       "nop\n\t"
+                       "nop\n\t");
+#elif defined(__aarch64__)
+  __asm__ __volatile__("rr_syscall_addr: svc #0\n\t"
                        "nop\n\t"
                        "nop\n\t"
                        "nop\n\t");
@@ -1397,9 +1650,12 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       monkeypatch_state(t->session().is_recording() ? new Monkeypatcher()
                                                     : nullptr),
       syscallbuf_enabled_(false),
+      do_breakpoint_fault_addr_(nullptr),
+      stopping_breakpoint_table_(nullptr),
+      stopping_breakpoint_table_entry_size_(0),
       first_run_event_(0) {
   // TODO: this is a workaround of
-  // https://github.com/mozilla/rr/issues/1113 .
+  // https://github.com/rr-debugger/rr/issues/1113 .
   if (session_->done_initial_exec()) {
     populate_address_space(t);
     DEBUG_ASSERT(!vdso_start_addr.is_null());
@@ -1431,7 +1687,12 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       traced_syscall_ip_(o.traced_syscall_ip_),
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
       syscallbuf_enabled_(o.syscallbuf_enabled_),
+      do_breakpoint_fault_addr_(o.do_breakpoint_fault_addr_),
+      stopping_breakpoint_table_(o.stopping_breakpoint_table_),
+      stopping_breakpoint_table_entry_size_(o.stopping_breakpoint_table_entry_size_),
       saved_auxv_(o.saved_auxv_),
+      saved_interpreter_base_(o.saved_interpreter_base_),
+      saved_ld_path_(o.saved_ld_path_),
       first_run_event_(0) {
   for (auto& m : mem) {
     // The original address space continues to have exclusive ownership of
@@ -1703,11 +1964,19 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
   if (task_set().empty()) {
     return;
   }
-  Task* t = *task_set().begin();
+  Task* t = first_running_task();
+  if (!t) {
+    return;
+  }
   auto ptr = it->first.to_data_ptr<uint8_t>();
   auto data = it->second.overwritten_data;
-  LOG(debug) << "Writing back " << HEX(data) << " at " << ptr;
-  t->write_mem(ptr, data, nullptr, Task::IS_BREAKPOINT_RELATED);
+  if (bkpt_instruction_length(arch()) == 1) {
+    LOG(debug) << "Writing back " << HEX(data[0]) << " at " << ptr;
+  } else {
+    LOG(debug) << "Writing back " << bkpt_instruction_length(arch()) << " bytes at " << ptr;
+  }
+  t->write_bytes_helper(ptr, bkpt_instruction_length(arch()),
+    data, nullptr, Task::IS_BREAKPOINT_RELATED);
   breakpoints.erase(it);
 }
 
@@ -1719,9 +1988,11 @@ void AddressSpace::maybe_update_breakpoints(Task* t, remote_ptr<uint8_t> addr,
       // This breakpoint was overwritten. Note the new data and reset the
       // breakpoint.
       bool ok = true;
-      it.second.overwritten_data = t->read_mem(bp_addr, &ok);
+      t->read_bytes_helper(bp_addr, bkpt_instruction_length(arch()),
+        &it.second.overwritten_data, &ok);
       ASSERT(t, ok);
-      t->write_mem(bp_addr, breakpoint_insn);
+      t->write_bytes_helper(bp_addr, bkpt_instruction_length(arch()),
+        breakpoint_insn(arch()));
     }
   }
 }
@@ -1860,6 +2131,11 @@ static int random_addr_bits(SupportedArch arch) {
     // and only the bottom half is usable by user space
     case x86_64:
       return 47;
+    // Aarch64 has 48 bit address space, with user and kernel each getting
+    // their own 48 bits worth of address space at opposite end of the full
+    // 64-bit address space.
+    case aarch64:
+      return 48;
   }
 }
 
@@ -1871,6 +2147,14 @@ static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   return MemoryRange(start, km.end());
 }
 
+static bool overlaps_asan_usage(const MemoryRange& r) {
+  MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
+                          remote_ptr<void>((uintptr_t)0x10007fff8000LL));
+  MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
+                                      remote_ptr<void>((uintptr_t)0x640000000000LL));
+  return r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved);
+}
+
 // Choose a 4TB range to exclude from random mappings. This makes room for
 // advanced trace analysis tools that require a large address range in tracees
 // that is never mapped.
@@ -1880,40 +2164,64 @@ static MemoryRange choose_global_exclusion_range() {
   }
 
   const uint64_t range_size = uint64_t(4)*1024*1024*1024*1024;
-  int bits = random_addr_bits(x86_64);
-  uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-  uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
-  r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
-  remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
-  return MemoryRange(addr, (uintptr_t)range_size);
+  while (true) {
+    int bits = random_addr_bits(x86_64);
+    uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+    uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
+    r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
+    remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
+    MemoryRange ret(addr, (uintptr_t)range_size);
+    if (!overlaps_asan_usage(ret)) {
+      return ret;
+    }
+  }
+}
+
+MemoryRange AddressSpace::get_global_exclusion_range() {
+  static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+  return global_exclusion_range;
 }
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
-                                                           size_t len) {
-  static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+                                                           size_t len, remote_ptr<void> hint) {
+  MemoryRange global_exclusion_range = get_global_exclusion_range();
+  // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
+  // don't hand it out again.
+  static MemoryRange rrpage_so_range = MemoryRange(RR_PAGE_ADDR - page_size(), RR_PAGE_ADDR + page_size());
+
+  // Ignore the hint half the time.
+  if (hint && (random() & 1)) {
+    hint = nullptr;
+  }
 
   int bits = random_addr_bits(t->arch());
   uint64_t addr_space_limit = uint64_t(1) << bits;
   while (true) {
     remote_ptr<void> addr;
-    // Half the time, try to allocate at a completely random address. The other
-    // half of the time, we'll try to allocate immediately before or after a
-    // randomly chosen existing mapping.
-    if (random() % 2) {
-      // Some of these addresses will not be mappable. That's fine, the
-      // kernel will fall back to a valid address if the hint is not valid.
-      uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-      addr = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
+    if (hint) {
+      addr = hint;
+      // Don't try using the hint again.
+      hint = nullptr;
     } else {
-      ASSERT(t, !mem.empty());
-      int map_index = random() % mem.size();
-      int map_count = 0;
-      for (const auto& m : maps()) {
-        if (map_count == map_index) {
-          addr = m.map.start();
-          break;
+      // Half the time, try to allocate at a completely random address. The other
+      // half of the time, we'll try to allocate immediately before or after a
+      // randomly chosen existing mapping.
+      if (random() % 2) {
+        // Some of these addresses will not be mappable. That's fine, the
+        // kernel will fall back to a valid address if the hint is not valid.
+        uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+        addr = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
+      } else {
+        ASSERT(t, !mem.empty());
+        int map_index = random() % mem.size();
+        int map_count = 0;
+        for (const auto& m : maps()) {
+          if (map_count == map_index) {
+            addr = m.map.start();
+            break;
+          }
+          ++map_count;
         }
-        ++map_count;
       }
     }
 
@@ -1944,16 +2252,15 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
       continue;
     }
     MemoryRange r(addr, ceil_page_size(len));
+    if (r.intersects(rrpage_so_range)) {
+      continue;
+    }
     if (r.intersects(global_exclusion_range)) {
       continue;
     }
     if (t->session().asan_active() && sizeof(size_t) == 8) {
       LOG(debug) << "Checking ASAN shadow";
-      MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
-                              remote_ptr<void>((uintptr_t)0x10007fff8000LL));
-      MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
-                                          remote_ptr<void>((uintptr_t)0x640000000000LL));
-      if (r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved)) {
+      if (overlaps_asan_usage(r)) {
         continue;
       }
     }
@@ -1981,6 +2288,71 @@ remote_ptr<void> AddressSpace::find_free_memory(size_t required_space,
     current = next;
   }
   return current->map.end();
+}
+
+void AddressSpace::add_stap_semaphore_range(Task* task, MemoryRange range) {
+  ASSERT(task, range.start() != range.end())
+    << "Unexpected zero-length SystemTap semaphore range: " << range;
+  ASSERT(task, (range.size() & 1) == 0)
+    << "Invalid SystemTap semaphore range at "
+    << range
+    << ": size is not a multiple of the size of a STap semaphore!";
+
+  auto ptr = range.start().cast<uint16_t>(),
+       end = range.end().cast<uint16_t>();
+  for (; ptr < end; ++ptr) {
+    stap_semaphores.insert(ptr);
+  }
+}
+
+void AddressSpace::remove_stap_semaphore_range(Task* task, MemoryRange range) {
+  ASSERT(task, range.start() != range.end())
+    << "Unexpected zero-length SystemTap semaphore range: " << range;
+  ASSERT(task, (range.size() & 1) == 0)
+    << "Invalid SystemTap semaphore range at "
+    << range
+    << ": size is not a multiple of the size of a STap semaphore!";
+
+  auto ptr = range.start().cast<uint16_t>(),
+       end = range.end().cast<uint16_t>();
+  for (; ptr < end; ++ptr) {
+    stap_semaphores.erase(ptr);
+  }
+}
+
+bool AddressSpace::is_stap_semaphore(remote_ptr<uint16_t> addr) {
+  return stap_semaphores.find(addr) != stap_semaphores.end();
+}
+
+void AddressSpace::fd_tables_changed() {
+  if (!session()->is_recording()) {
+    // All modifications are recorded during record
+    return;
+  }
+  if (!syscallbuf_enabled()) {
+    return;
+  }
+  DEBUG_ASSERT(task_set().size() != 0);
+  uint8_t fdt_uniform = true;
+  RecordTask* rt = static_cast<RecordTask*>(first_running_task());
+  if (!rt) {
+    return;
+  }
+  auto fdt = rt->fd_table();
+  for (auto* t : task_set()) {
+    if (t->fd_table() != fdt) {
+      fdt_uniform = false;
+    }
+  }
+  auto addr = REMOTE_PTR_FIELD(rt->preload_globals, fdt_uniform);
+  bool ok = true;
+  if (rt->read_mem(addr, &ok) != fdt_uniform) {
+    if (!ok) {
+      return;
+    }
+    rt->write_mem(addr, fdt_uniform);
+    rt->record_local(addr, sizeof(fdt_uniform), &fdt_uniform);
+  }
 }
 
 } // namespace rr

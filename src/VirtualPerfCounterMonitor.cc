@@ -100,21 +100,6 @@ bool VirtualPerfCounterMonitor::emulate_fcntl(RecordTask* t, uint64_t* result) {
   return true;
 }
 
-static size_t write_ranges(RecordTask* t,
-                           const vector<FileMonitor::Range>& ranges, void* data,
-                           size_t size) {
-  uint8_t* p = static_cast<uint8_t*>(data);
-  size_t s = size;
-  size_t result = 0;
-  for (auto& r : ranges) {
-    size_t bytes = min(s, r.length);
-    t->write_bytes_helper(r.data, bytes, p);
-    s -= bytes;
-    result += bytes;
-  }
-  return result;
-}
-
 bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
                                              const vector<Range>& ranges,
                                              LazyOffset&, uint64_t* result) {
@@ -122,7 +107,7 @@ bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
   if (target) {
     int64_t val;
     val = target->tick_count() - initial_ticks;
-    *result = write_ranges(t, ranges, &val, sizeof(val));
+    *result = t->write_ranges(ranges, &val, sizeof(val));
   } else {
     *result = 0;
   }

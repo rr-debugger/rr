@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+${OBJDIR}/bin/cont_race$bitness killer &
+compare_test EXIT-SUCCESS
