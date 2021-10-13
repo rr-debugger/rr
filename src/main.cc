@@ -102,6 +102,10 @@ void print_usage(FILE* out) {
         "otherwise we assume the 'record' subcommand.\n\n",
         out);
   print_global_options(out);
+
+  /* we should print usage when utility being wrongly used.
+     use 'exit' with failure code */
+  exit(EXIT_FAILURE);
 }
 
 static void init_random() {
@@ -228,7 +232,6 @@ int main(int argc, char* argv[]) {
 
   if (args.size() == 0) {
     print_usage(stderr);
-    return 1;
   }
 
   auto command = Command::command_for_name(args[0]);
@@ -237,7 +240,6 @@ int main(int argc, char* argv[]) {
   } else {
     if (!Command::verify_not_option(args)) {
       print_usage(stderr);
-      return 1;
     }
     if (is_directory(args[0].c_str())) {
       command = ReplayCommand::get();
