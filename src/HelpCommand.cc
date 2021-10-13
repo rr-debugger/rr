@@ -26,13 +26,11 @@ HelpCommand HelpCommand::help3("--help", nullptr);
 int HelpCommand::run(std::vector<std::string>& args) {
   if (args.size() == 0) {
     print_usage(stdout);
-    return 0;
   }
 
   Command* command = Command::command_for_name(args[0]);
   if (!command) {
     print_usage(stderr);
-    return 1;
   }
   command->print_help(stdout);
   return 0;
