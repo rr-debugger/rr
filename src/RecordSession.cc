@@ -2184,6 +2184,10 @@ static string lookup_by_path(const string& name) {
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
   string full_path = lookup_by_path(argv[0]);
+  struct stat st;
+  if (stat(full_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+    CLEAN_FATAL() << "Provided tracee '" << argv[0] << "' is a directory, not an executable";
+  }
   ExeInfo exe_info = read_exe_info(full_path);
 
   // Strip any LD_PRELOAD that an outer rr may have inserted
