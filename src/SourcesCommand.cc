@@ -416,6 +416,21 @@ find_auxiliary_file(const string& original_file_name,
     }
     LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
+    // On Ubuntu 20.04 there's both a /lib/x86_64-linux-gnu/libc-2.31.so and a
+    // /usr/lib/x86_64-linux-gnu/libc-2.31.so. They are hardlinked to the same inode,
+    // and glibc debuginfo is present in the location corresponding to
+    // /lib/x86_64-linux-gnu/libc-2.31.so. But the kernel returns the /usr prefixed
+    // path from /proc/<pid>/fd/<fd>. Hack around that here.
+    if (original_file_dir.find("/usr/") == 0) {
+      full_file_name = "/usr/lib/debug" + original_file_dir.substr(sizeof("/usr") - 1) + "/" + aux_file_name;
+      normalize_file_name(full_file_name);
+      fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+      if (fd.is_open()) {
+        goto found;
+      }
+      LOG(info) << "Can't find external debuginfo file " << full_file_name;
+    }
+
     // If none of those worked, give up.
     LOG(warn) << "Exhausted auxiliary debuginfo search locations for " << aux_file_name;
     return nullptr;
