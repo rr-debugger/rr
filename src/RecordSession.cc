@@ -2232,8 +2232,8 @@ static string lookup_by_path(const string& name) {
   if (!Session::has_cpuid_faulting()) {
     // OpenSSL uses RDRAND, but we can disable it. These bitmasks are inverted
     // and ANDed with the results of CPUID. The number below is 2^62, which is the
-    // bit for RDRAND support.
-    env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
+    // bit for RDRAND support, and 2^29, which is the bit for SHA support.
+    env.push_back("OPENSSL_ia32cap=~4611686018427387904:~2199023255552");
     // Disable Qt's use of RDRAND/RDSEED/RTM
     env.push_back("QT_NO_CPU_FEATURE=rdrnd rdseed rtm");
     // Disable systemd's use of RDRAND
