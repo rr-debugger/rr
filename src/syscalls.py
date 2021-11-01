@@ -1728,6 +1728,7 @@ landlock_create_ruleset = UnsupportedSyscall(x86=444, x64=444, generic=444)
 landlock_add_rule = UnsupportedSyscall(x86=445, x64=445, generic=445)
 landlock_restrict_self = UnsupportedSyscall(x86=446, x64=446, generic=446)
 memfd_secret = UnsupportedSyscall(x86=447, x64=447, generic=447)
+process_mrelease = UnsupportedSyscall(x86=448, x64=448, generic=448)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219, generic=128)
