@@ -29,6 +29,7 @@
 #include <linux/perf_event.h>
 #include <linux/personality.h>
 #include <linux/prctl.h>
+#include <linux/random.h>
 #include <linux/seccomp.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
@@ -1738,6 +1739,7 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case BLKSSZGET:
     case KDGKBMODE:
+    case RNDGETENTCNT:
     case TIOCINQ:
     case TIOCOUTQ:
     case TIOCGETD:
