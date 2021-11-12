@@ -1942,7 +1942,9 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(VIDIOC_G_OUTPUT):
     case IOCTL_MASK_SIZE(VIDIOC_S_CTRL):
     case IOCTL_MASK_SIZE(VIDIOC_G_INPUT):
+    #ifdef VIDIOC_QUERY_EXT_CTRL
     case IOCTL_MASK_SIZE(VIDIOC_QUERY_EXT_CTRL):
+    #endif
     case IOCTL_MASK_SIZE(VIDIOC_G_PRIORITY):
     case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH):
       syscall_state.reg_parameter(3, size, IN_OUT);
