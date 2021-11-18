@@ -11,6 +11,7 @@
 
 #include "AddressSpace.h"
 #include "Command.h"
+#include "Flags.h"
 #include "RecordSession.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -128,6 +129,10 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
 }
 
 int TraceInfoCommand::run(vector<string>& args) {
+  // Various "cannot replay safely..." warnings cannot affect us since
+  // we only replay to the first execve.
+  Flags::get_for_init().suppress_environment_warnings = true;
+
   while (parse_global_option(args)) {
   }
 
