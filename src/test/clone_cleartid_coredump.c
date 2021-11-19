@@ -50,16 +50,17 @@ int main(void) {
                 CLONE_VM | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
                 NULL, shared_page, NULL, shared_page);
     test_assert(tid > 0);
+
+    futex(&child_tid, FUTEX_WAIT, tid, NULL, NULL, 0);
     test_assert(tid = waitpid(tid, &status, __WALL));
-    /* The child will take us down before we have the chance to get here */
-    test_assert(0);
+    test_assert(WIFSIGNALED(status));
   }
 
   test_assert(child_tid > 0);
   test_assert(child_tid == waitpid(child_tid, &status, __WALL));
   test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV);
   test_assert(*(pid_t*)shared_page != (pid_t)-1 &&
-              *(pid_t*)shared_page != 0);
+              *(pid_t*)shared_page == 0);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
