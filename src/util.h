@@ -558,6 +558,8 @@ int pop_count(uint64_t v);
   safe to use in volatile contexts */
 void SAFE_FATAL(int err, const char *msg);
 
+bool coredumping_signal_takes_down_entire_vm();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

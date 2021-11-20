@@ -124,7 +124,7 @@ public:
     KERNEL_WRITES_CHILD_TID,
     WRITE_CHILD_TID,
   };
-  void record_exit_event(int exitsig = 0, WriteChildTid write_child_tid = KERNEL_WRITES_CHILD_TID);
+  void record_exit_event(WriteChildTid write_child_tid = KERNEL_WRITES_CHILD_TID);
   /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,

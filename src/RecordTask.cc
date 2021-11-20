@@ -253,15 +253,11 @@ RecordTask::~RecordTask() {
   }
 }
 
-void RecordTask::record_exit_event(int fatal_signo, WriteChildTid write_child_tid) {
+void RecordTask::record_exit_event(WriteChildTid write_child_tid) {
   // The kernel explicitly only clears the futex if the address space is shared.
   // If the address space has no other users then the futex will not be cleared
   // even if it lives in shared memory which other tasks can read.
-  // If however, the exit was the result of a fatal, core-dump signal, the futex
-  // is not cleared (both to preserve the coredump and because any other users
-  // of the same address space were also shot down).
-  if (!is_coredumping_signal(fatal_signo) &&
-     !tid_futex.is_null() && as->task_set().size() > 1 &&
+  if (!tid_futex.is_null() && as->task_set().size() > 1 &&
      as->has_mapping(tid_futex)) {
     int val = 0;
     record_local(tid_futex, &val);
