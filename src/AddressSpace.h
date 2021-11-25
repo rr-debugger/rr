@@ -779,8 +779,6 @@ public:
   remote_ptr<void> find_free_memory(
       size_t len, remote_ptr<void> after = remote_ptr<void>());
 
-  PropertyTable& properties() { return properties_; }
-
   /**
    * The return value indicates whether we (re)created the preload_thread_locals
    * area.
@@ -1074,8 +1072,6 @@ private:
     bool valid;
     bool changed;
   };
-
-  PropertyTable properties_;
 
   // All breakpoints set in this VM.
   BreakpointMap breakpoints;
