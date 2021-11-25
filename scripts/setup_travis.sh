@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Install the prerequisites needed to build and run tests on travis-ci.
 
