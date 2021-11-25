@@ -10,6 +10,10 @@
 namespace rr {
 
 struct Sighandlers;
+class TaskSyscallStateBase {
+public:
+  virtual ~TaskSyscallStateBase() {}
+};
 
 /** Different kinds of waits a task can do.
  */
@@ -633,6 +637,7 @@ private:
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 
 public:
+  std::unique_ptr<TaskSyscallStateBase> syscall_state;
   Ticks ticks_at_last_recorded_syscall_exit;
   remote_code_ptr ip_at_last_recorded_syscall_exit;
 

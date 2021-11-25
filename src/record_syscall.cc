@@ -330,7 +330,17 @@ typedef bool (*ArgMutator)(RecordTask*, remote_ptr<void>, void*);
  * non-buffered-syscall scratch data. This is done by recording
  * the relevant syscallbuf record data in rec_process_syscall_arch.
  */
-struct TaskSyscallState {
+struct TaskSyscallState : TaskSyscallStateBase {
+  static TaskSyscallState& get(RecordTask* t) {
+    auto base = t->syscall_state.get();
+    ASSERT(t, base) << "Expected syscall-state but didn't find one";
+    return *static_cast<TaskSyscallState*>(base);
+  }
+  static TaskSyscallState* maybe_get(RecordTask* t) {
+    auto base = t->syscall_state.get();
+    return static_cast<TaskSyscallState*>(base);
+  }
+
   void init(RecordTask* t) {
     if (preparation_done) {
       return;
@@ -532,8 +542,6 @@ struct TaskSyscallState {
         preparation_done(false),
         scratch_enabled(false) {}
 };
-
-static const Property<TaskSyscallState, RecordTask> syscall_state_property;
 
 template <typename Arch>
 static void set_remote_ptr_arch(RecordTask* t, remote_ptr<void> addr,
@@ -1410,7 +1418,7 @@ static void record_page_below_stack_ptr(RecordTask* t) {
 typedef ethtool_gstrings GStrings;
 
 template <typename Arch> void get_ethtool_gstrings_arch(RecordTask* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   Registers& regs = syscall_state.syscall_entry_registers;
   bool ok = true;
   auto ifreq = t->read_mem(remote_ptr<typename Arch::ifreq>(regs.arg3()), &ok);
@@ -4964,7 +4972,8 @@ static Switchable rec_prepare_syscall_internal(
 }
 
 Switchable rec_prepare_syscall(RecordTask* t) {
-  auto& syscall_state = syscall_state_property.get_or_create(*t);
+  t->syscall_state = make_unique<TaskSyscallState>();
+  auto& syscall_state = TaskSyscallState::get(t);
   syscall_state.init(t);
 
   Switchable s = rec_prepare_syscall_internal(t, syscall_state);
@@ -4972,10 +4981,10 @@ Switchable rec_prepare_syscall(RecordTask* t) {
 }
 
 void rec_abort_prepared_syscall(RecordTask* t) {
-  auto syscall_state = syscall_state_property.get(*t);
+  auto syscall_state = TaskSyscallState::maybe_get(t);
   if (syscall_state) {
     syscall_state->abort_syscall_results();
-    syscall_state_property.remove(*t);
+    t->syscall_state = nullptr;
   }
 }
 
@@ -5045,9 +5054,9 @@ static void rec_prepare_restart_syscall_internal(
 }
 
 void rec_prepare_restart_syscall(RecordTask* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   rec_prepare_restart_syscall_internal(t, syscall_state);
-  syscall_state_property.remove(*t);
+  t->syscall_state = nullptr;
 }
 
 static const char* dropped_privs_warning =
@@ -6521,13 +6530,13 @@ static void rec_process_syscall_internal(RecordTask* t, SupportedArch arch,
 }
 
 void rec_did_sigreturn(RecordTask *t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   aarch64_kernel_bug_workaround(t, syscall_state);
-  syscall_state_property.remove(*t);
+  t->syscall_state = nullptr;
 }
 
 void rec_process_syscall(RecordTask* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   const SyscallEvent& sys_ev = t->ev().Syscall();
   if (sys_ev.arch() != t->arch()) {
     static bool did_warn = false;
@@ -6543,7 +6552,7 @@ void rec_process_syscall(RecordTask* t) {
   aarch64_kernel_bug_workaround(t, syscall_state);
 
   t->on_syscall_exit(sys_ev.number, sys_ev.arch(), t->regs());
-  syscall_state_property.remove(*t);
+  t->syscall_state = nullptr;
 
   MonitoredSharedMemory::check_all(t);
 }

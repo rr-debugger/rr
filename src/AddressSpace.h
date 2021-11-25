@@ -21,7 +21,6 @@
 #include "HasTaskSet.h"
 #include "MemoryRange.h"
 #include "Monkeypatcher.h"
-#include "PropertyTable.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "core.h"

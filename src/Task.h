@@ -14,7 +14,6 @@
 #include "ExtraRegisters.h"
 #include "FdTable.h"
 #include "PerfCounters.h"
-#include "PropertyTable.h"
 #include "Registers.h"
 #include "TaskishUid.h"
 #include "ThreadGroup.h"
@@ -852,8 +851,6 @@ public:
   typedef uint8_t ThreadLocals[PRELOAD_THREAD_LOCALS_SIZE];
   ThreadLocals thread_locals;
 
-  PropertyTable& properties() { return properties_; }
-
   size_t usable_scratch_size() {
     return std::max<ssize_t>(0, scratch_size - page_size());
   }
@@ -1204,8 +1201,6 @@ protected:
   // We might defer handling the exit (e.g. if there's an ongoing execve).
   // If this is true, `seen_ptrace_exit_event` must be true.
   bool handled_ptrace_exit_event;
-
-  PropertyTable properties_;
 
   // A counter for the number of stops for which the stop may have been caused
   // by PTRACE_INTERRUPT. See description in do_waitpid
