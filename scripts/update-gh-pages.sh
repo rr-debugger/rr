@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 function fatal { why=$1;
     echo "[FATAL]" $why >&2
