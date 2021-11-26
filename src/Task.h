@@ -959,6 +959,11 @@ public:
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
   /**
+   * Do PTRACE_SEIZE on this tid with the correct ptrace options.
+   */
+  static long ptrace_seize(pid_t tid, Session& session);
+
+  /**
    * Do a tgkill to send a specific signal to this task.
    */
   void tgkill(int sig);
@@ -972,6 +977,11 @@ public:
   // A map from original table to (potentially detached) clone, to preserve
   // FdTable sharing relationships during a session fork.
   using ClonedFdTables = std::unordered_map<uintptr_t, FdTable::shr_ptr>;
+
+  /**
+   * Just forget that this Task exists. Another rr process will manage it.
+   */
+  void forget();
 
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
@@ -1207,6 +1217,8 @@ protected:
   int expecting_ptrace_interrupt_stop;
 
   bool was_reaped;
+  // Let this Task object be destroyed with no consequences.
+  bool forgotten;
 
   Task(Task&) = delete;
   Task operator=(Task&) = delete;

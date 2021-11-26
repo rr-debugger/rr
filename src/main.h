@@ -15,6 +15,10 @@ void print_usage(FILE*);
 
 bool parse_global_option(std::vector<std::string>& args);
 
+char* saved_argv0();
+// Space available at `saved_argv0` including trailing null bytes.
+size_t saved_argv0_space();
+
 } // namespace rr
 
 #endif // RR_MAIN_H_

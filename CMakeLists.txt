@@ -478,6 +478,7 @@ set(RR_SOURCES
   src/GdbServer.cc
   src/HasTaskSet.cc
   src/HelpCommand.cc
+  src/ExportImportCheckpoints.cc
   src/kernel_abi.cc
   src/kernel_metadata.cc
   src/log.cc
@@ -1275,6 +1276,7 @@ set(TESTS_WITH_PROGRAM
   link
   madvise_dontfork
   main_thread_exit
+  many_yields
   mmap_fd_reuse_checkpoint
   mmap_replace_most_mappings
   mmap_shared_prot

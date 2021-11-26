@@ -95,7 +95,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       seen_ptrace_exit_event(false),
       handled_ptrace_exit_event(false),
       expecting_ptrace_interrupt_stop(0),
-      was_reaped(false) {
+      was_reaped(false),
+      forgotten(false) {
   memset(&thread_locals, 0, sizeof(thread_locals));
 }
 
@@ -237,26 +238,32 @@ WaitStatus Task::kill() {
 }
 
 Task::~Task() {
-  ASSERT(this, seen_ptrace_exit_event);
-  ASSERT(this, handled_ptrace_exit_event);
-  ASSERT(this, syscallbuf_child.is_null());
+  if (!forgotten) {
+    ASSERT(this, seen_ptrace_exit_event);
+    ASSERT(this, handled_ptrace_exit_event);
+    ASSERT(this, syscallbuf_child.is_null());
 
-  if (!session().is_recording() && !already_reaped()) {
-    // Reap the zombie.
-    int ret = waitpid(tid, NULL, __WALL);
-    if (ret == -1) {
-      ASSERT(this, errno == ECHILD || errno == ESRCH);
-    } else {
-      ASSERT(this, ret == tid);
+    if (!session().is_recording() && !already_reaped()) {
+      // Reap the zombie.
+      int ret = waitpid(tid, NULL, __WALL);
+      if (ret == -1) {
+        ASSERT(this, errno == ECHILD || errno == ESRCH);
+      } else {
+        ASSERT(this, ret == tid);
+      }
     }
+
+    LOG(debug) << "  dead";
   }
 
   session().on_destroy(this);
   tg->erase_task(this);
   as->erase_task(this);
   fds->erase_task(this);
+}
 
-  LOG(debug) << "  dead";
+void Task::forget() {
+  forgotten = true;
 }
 
 void Task::finish_emulated_syscall() {
@@ -3298,6 +3305,26 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // Never returns!
 }
 
+long Task::ptrace_seize(pid_t tid, Session& session) {
+  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+                     PTRACE_O_TRACECLONE | PTRACE_O_EXITKILL;
+  if (!Flags::get().disable_ptrace_exit_events) {
+    options |= PTRACE_O_TRACEEXIT;
+  }
+  if (session.is_recording()) {
+    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
+  }
+
+  long ret =
+      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
+  if (ret < 0 && errno == EINVAL) {
+    // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
+    // it for more robust cleanup, so tolerate not having it.
+    ret = ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
+  }
+  return ret;
+}
+
 /*static*/ Task* Task::spawn(Session& session, ScopedFd& error_fd,
                              ScopedFd* sock_fd_out,
                              ScopedFd* sock_fd_receiver_out,
@@ -3367,22 +3394,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // any abnormal exit of the rr process will leave the child paused and
   // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
-  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACECLONE;
-  if (!Flags::get().disable_ptrace_exit_events) {
-    options |= PTRACE_O_TRACEEXIT;
-  }
-  if (session.is_recording()) {
-    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
-  }
-
-  ret =
-      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
-  if (ret < 0 && errno == EINVAL) {
-    // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
-    // it for more robust cleanup, so tolerate not having it.
-    ret = ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
-  }
+  ret = ptrace_seize(tid, session);
   if (ret) {
     // Note that although the tracee may have died due to some fatal error,
     // we haven't reaped its exit code so there's no danger of killing

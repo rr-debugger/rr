@@ -6,6 +6,7 @@
 
 #include <linux/futex.h>
 #include <syscall.h>
+#include <sys/prctl.h>
 
 #include <algorithm>
 
@@ -1897,6 +1898,66 @@ ReplayTask* ReplaySession::find_task(const TaskUid& tuid) const {
 
 double ReplaySession::get_trace_start_time(){
   return trace_start_time;
+}
+
+void ReplaySession::prepare_to_detach_tasks() {
+  finish_initializing();
+
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    t->flush_regs();
+  }
+}
+
+void ReplaySession::forget_tasks() {
+  while (!task_map.empty()) {
+    Task* t = task_map.begin()->second;
+    t->forget();
+    delete t;
+  }
+  while (!vm_map.empty()) {
+    AddressSpace* a = vm_map.begin()->second;
+    delete a;
+  }
+}
+
+void ReplaySession::detach_tasks(pid_t new_ptracer) {
+  // First tell Yama to let new_ptracer ptrace the tracees.
+  // Do this before sending SIGSTOP to any tracees because SIGSTOP
+  // might stop threads before we do their PR_SET_PTRACER.
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    AutoRemoteSyscalls remote(t);
+    long ret = remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_PTRACER, new_ptracer);
+    ASSERT(t, ret >= 0 || ret == -EINVAL) << "Failed PR_SET_PTRACER";
+  }
+  // Now PTRACE_DETACH and stop them all with SIGSTOP.
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    t->flush_regs();
+    t->xptrace(PTRACE_DETACH, nullptr, (void*)SIGSTOP);
+  }
+  forget_tasks();
+}
+
+void ReplaySession::reattach_tasks() {
+  // Seize all tasks.
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    long ret = Task::ptrace_seize(t->tid, *this);
+    ASSERT(t, ret >= 0) << "Failed to PTRACE_SEIZE";
+  }
+  // Get stop events for all tasks
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    t->wait();
+    if (SIGSTOP != t->status().group_stop()) {
+      WaitStatus failed_status = t->status();
+      FATAL() << "Unexpected stop " << failed_status << " for " << t->tid;
+    }
+    t->clear_wait_status();
+    t->open_mem_fd();
+  }
 }
 
 } // namespace rr

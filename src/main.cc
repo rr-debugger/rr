@@ -205,11 +205,24 @@ bool parse_global_option(std::vector<std::string>& args) {
   return true;
 }
 
+static char* saved_argv0_;
+static size_t saved_argv0_space_;
+
+char* saved_argv0() {
+  return saved_argv0_;
+}
+size_t saved_argv0_space() {
+  return saved_argv0_space_;
+}
+
 } // namespace rr
 
 using namespace rr;
 
 int main(int argc, char* argv[]) {
+  rr::saved_argv0_ = argv[0];
+  rr::saved_argv0_space_ = argv[argc - 1] + strlen(argv[argc - 1]) + 1 - rr::saved_argv0_;
+
   init_random();
   raise_resource_limits();
 

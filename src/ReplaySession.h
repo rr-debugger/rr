@@ -322,6 +322,30 @@ public:
     return tracee_output_fd_.get() ? tracee_output_fd_->get() : dflt;
   }
 
+  /**
+   * Get ready to detach these tasks and reattach them in a child process. Call this
+   * before forking the child.
+   */
+  void prepare_to_detach_tasks();
+  /**
+   * This ReplaySession is in a forked child. The real ReplaySession is still running in
+   * the parent, so we don't really own tasks and other shared resources. Forget about
+   * them so we don't try to tear them down when this ReplaySession is destroyed.
+   */
+  void forget_tasks();
+  /**
+   * The shared resources associated with this ReplaySession are being transferred to
+   * the child process `new_ptracer`. Prepare them for transfer (e.g. ptrace-detach the
+   * tracees) and prepare them to be traced by `new_ptracer`, and forget about them.
+   */
+  void detach_tasks(pid_t new_ptracer);
+  /**
+   * The shared resources associated with this ReplaySession are being transferred to
+   * the child process `new_ptracer`. Receive them in the child process by ptrace-attaching
+   * to them etc.
+   */
+  void reattach_tasks();
+
 private:
   ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);

@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "Command.h"
+#include "ExportImportCheckpoints.h"
 #include "Flags.h"
 #include "GdbServer.h"
 #include "ReplaySession.h"
@@ -32,6 +33,8 @@ public:
 
 protected:
   RerunCommand(const char* name, const char* help) : Command(name, help) {}
+  // command_for_checkpoint is an in and out parameter.
+  int run_internal(CommandForCheckpoint& command_for_checkpoint);
 
   static RerunCommand singleton;
 };
@@ -44,6 +47,13 @@ RerunCommand RerunCommand::singleton(
     "                             address and jump to <ADDR> to fake call\n"
     "  --singlestep=<REGS>        dump <REGS> after each singlestep\n"
     "  --event-regs=<REGS>        dump <REGS> after each event\n"
+    "  --export-checkpoints=<EVENT>,<NUM>,<FILE>\n"
+    "                             Run to start of <EVENT> and then export checkpoints over\n"
+    "                             Unix socket at <FILE>. Exit after <NUM>\n"
+    "                             connections to the socket.\n"
+    "  --import-checkpoint=<FILE> Start the replay by importing a checkpoint from\n"
+    "                             another rr instance exporting checkpoints at\n"
+    "                             <FILE>\n"
     "  -r, --raw                  dump registers in raw format\n"
     "  -s, --trace-start=<EVENT>  start tracing at <EVENT>\n"
     "  -u, --cpu-unbound          allow replay to run on any CPU. Default is\n"
@@ -90,12 +100,18 @@ struct RerunFlags {
   remote_code_ptr function;
   vector<TraceField> singlestep_trace;
   vector<TraceField> event_trace;
+  string import_checkpoint_socket;
+  string export_checkpoints_socket;
+  FrameTime export_checkpoints_event;
+  int export_checkpoints_count;
   bool raw;
   bool cpu_unbound;
 
   RerunFlags()
       : trace_start(0),
         trace_end(numeric_limits<decltype(trace_end)>::max()),
+        export_checkpoints_event(0),
+        export_checkpoints_count(0),
         raw(false),
         cpu_unbound(false) {}
 };
@@ -451,6 +467,34 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
   return true;
 }
 
+static bool parse_export_checkpoints(const string& arg, RerunFlags& flags) {
+  size_t first_comma = arg.find(',');
+  if (first_comma == string::npos) {
+    fprintf(stderr, "Missing <NUM> parameter for --export-checkpoints");
+    return false;
+  }
+  size_t second_comma = arg.find(',', first_comma + 1);
+  if (second_comma == string::npos) {
+    fprintf(stderr, "Missing <FILE> parameter for --export-checkpoints");
+    return false;
+  }
+  char* endptr;
+  string event_str = arg.substr(0, first_comma);
+  flags.export_checkpoints_event = strtoul(event_str.c_str(), &endptr, 0);
+  if (*endptr) {
+    fprintf(stderr, "Invalid <EVENT> for --export-checkpoints: %s\n", event_str.c_str());
+    return false;
+  }
+  string num_str = arg.substr(first_comma + 1, second_comma - (first_comma + 1));
+  flags.export_checkpoints_count = strtoul(num_str.c_str(), &endptr, 0);
+  if (*endptr) {
+    fprintf(stderr, "Invalid <NUM> for --export-checkpoints: %s\n", num_str.c_str());
+    return false;
+  }
+  flags.export_checkpoints_socket = arg.substr(second_comma + 1);
+  return true;
+}
+
 static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   if (parse_global_option(args)) {
     return true;
@@ -459,6 +503,8 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   static const OptionSpec options[] = {
     { 1, "singlestep", HAS_PARAMETER },
     { 2, "event-regs", HAS_PARAMETER },
+    { 3, "export-checkpoints", HAS_PARAMETER },
+    { 4, "import-checkpoint", HAS_PARAMETER },
     { 'e', "trace-end", HAS_PARAMETER },
     { 'f', "function", HAS_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
@@ -480,6 +526,14 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
       if (!parse_regs(opt.value, &flags.event_trace)) {
         return false;
       }
+      break;
+    case 3:
+      if (!parse_export_checkpoints(opt.value, flags)) {
+        return false;
+      }
+      break;
+    case 4:
+      flags.import_checkpoint_socket = opt.value;
       break;
     case 'e':
       if (!opt.verify_valid_int(1, UINT32_MAX)) {
@@ -583,8 +637,24 @@ static ReplaySession::Flags session_flags(const RerunFlags& flags) {
   return result;
 }
 
-static int rerun(const string& trace_dir, const RerunFlags& flags) {
-  ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, session_flags(flags));
+static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForCheckpoint& command_for_checkpoint) {
+  ReplaySession::shr_ptr replay_session;
+  if (command_for_checkpoint.session) {
+    replay_session = move(command_for_checkpoint.session);
+  } else if (flags.import_checkpoint_socket.empty()) {
+    replay_session = ReplaySession::create(trace_dir, session_flags(flags));
+    // Now that we've spawned the replay, raise our resource limits if
+    // possible.
+    raise_resource_limits();
+  } else {
+    return invoke_checkpoint_command(flags.import_checkpoint_socket, command_for_checkpoint.args);
+  }
+
+  ScopedFd export_checkpoints_socket;
+  if (flags.export_checkpoints_event) {
+    export_checkpoints_socket = bind_export_checkpoints_socket(flags.export_checkpoints_count, flags.export_checkpoints_socket);
+  }
+
   uint64_t instruction_count_within_event = 0;
   bool done_first_step = false;
   bool need_to_singlestep = !flags.singlestep_trace.empty();
@@ -593,10 +663,6 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
       need_to_singlestep = true;
     }
   }
-
-  // Now that we've spawned the replay, raise our resource limits if
-  // possible.
-  raise_resource_limits();
 
   while (replay_session->trace_reader().time() < flags.trace_end) {
     RunCommand cmd = RUN_CONTINUE;
@@ -673,16 +739,24 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
                  flags.event_trace, stdout);
       instruction_count_within_event = 1;
     }
+
+    if (after_time == flags.export_checkpoints_event) {
+      command_for_checkpoint = export_checkpoints(move(replay_session), flags.export_checkpoints_count,
+          export_checkpoints_socket, flags.export_checkpoints_socket);
+      return 0;
+    }
   }
 
   LOG(info) << "Rerun successfully finished";
   return 0;
 }
 
-int RerunCommand::run(vector<string>& args) {
+int RerunCommand::run_internal(CommandForCheckpoint& command_for_checkpoint) {
+  // parse args first
   bool found_dir = false;
   string trace_dir;
   RerunFlags flags;
+  vector<string> args = command_for_checkpoint.args;
 
   while (!args.empty()) {
     if (parse_rerun_arg(args, flags)) {
@@ -711,7 +785,22 @@ int RerunCommand::run(vector<string>& args) {
     }
   }
 
-  return rerun(trace_dir, flags);
+  return rerun(trace_dir, flags, command_for_checkpoint);
+}
+
+int RerunCommand::run(vector<string>& args) {
+  CommandForCheckpoint command_for_checkpoint;
+  command_for_checkpoint.args = move(args);
+  while (true) {
+    ScopedFd exit_notification_fd = move(command_for_checkpoint.exit_notification_fd);
+    int ret = run_internal(command_for_checkpoint);
+    if (!command_for_checkpoint.session) {
+      if (exit_notification_fd.is_open()) {
+        notify_normal_exit(exit_notification_fd);
+      }
+      return ret;
+    }
+  }
 }
 
 } // namespace rr
