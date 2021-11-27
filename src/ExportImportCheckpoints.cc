@@ -113,7 +113,7 @@ static void set_title(const vector<string>& args) {
 }
 
 CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int count, ScopedFd& sock,
-    const std::string& socket_file_name) {
+    const std::string&) {
   if (!session->can_clone()) {
     FATAL() << "Can't create checkpoints at this time, aborting";
   }
