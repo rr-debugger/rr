@@ -42,12 +42,10 @@ ScopedFd bind_export_checkpoints_socket(int count, const string& socket_file_nam
   if (ret < 0) {
     FATAL() << "Can't bind Unix socket " << socket_file_name;
   }
-  fprintf(stderr, "Bound socket %s (pid=%d)\n", socket_file_name.c_str(), getpid());
   ret = listen(sock, count);
   if (ret < 0) {
     FATAL() << "Can't listen on Unix socket " << socket_file_name;
   }
-  fprintf(stderr, "Listening on socket %s (pid=%d)\n", socket_file_name.c_str(), getpid());
   return sock;
 }
 
@@ -128,7 +126,6 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
     if (!client.is_open()) {
       FATAL() << "Failed to accept client connection";
     }
-    fprintf(stderr, "Accepted socket %s (pid=%d)\n", socket_file_name.c_str(), getpid());
 
     size_t fds_size;
     recv_all(client, &fds_size, sizeof(fds_size));
@@ -250,7 +247,6 @@ int invoke_checkpoint_command(const string& socket_file_name,
     }
     break;
   }
-  fprintf(stderr, "Connected to %s (pid %d)\n", socket_file_name.c_str(), getpid());
 
   size_t total_fds = 4 + fds.size();
   send_all(sock, &total_fds, sizeof(total_fds));

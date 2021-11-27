@@ -638,6 +638,18 @@ static ReplaySession::Flags session_flags(const RerunFlags& flags) {
 }
 
 static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForCheckpoint& command_for_checkpoint) {
+  ScopedFd export_checkpoints_socket;
+  // Construct the listening socket immediately so importers can connect early and block without polling.
+  // If we need to import a checkpoint, we pass the socket in command_for_checkpoint.fds to the checkpoint
+  // exporter's child process.
+  if (flags.export_checkpoints_event) {
+    if (command_for_checkpoint.session) {
+      export_checkpoints_socket = move(command_for_checkpoint.fds.front());
+    } else {
+      export_checkpoints_socket = bind_export_checkpoints_socket(flags.export_checkpoints_count, flags.export_checkpoints_socket);
+    }
+  }
+
   ReplaySession::shr_ptr replay_session;
   if (command_for_checkpoint.session) {
     replay_session = move(command_for_checkpoint.session);
@@ -647,12 +659,11 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     // possible.
     raise_resource_limits();
   } else {
-    return invoke_checkpoint_command(flags.import_checkpoint_socket, command_for_checkpoint.args);
-  }
-
-  ScopedFd export_checkpoints_socket;
-  if (flags.export_checkpoints_event) {
-    export_checkpoints_socket = bind_export_checkpoints_socket(flags.export_checkpoints_count, flags.export_checkpoints_socket);
+    vector<ScopedFd> fds;
+    if (export_checkpoints_socket.is_open()) {
+      fds.push_back(move(export_checkpoints_socket));
+    }
+    return invoke_checkpoint_command(flags.import_checkpoint_socket, command_for_checkpoint.args, move(fds));
   }
 
   uint64_t instruction_count_within_event = 0;
