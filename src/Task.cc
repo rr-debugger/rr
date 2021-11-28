@@ -3307,7 +3307,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
 long Task::ptrace_seize(pid_t tid, Session& session) {
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACECLONE | PTRACE_O_EXITKILL;
+                     PTRACE_O_TRACECLONE;
   if (!Flags::get().disable_ptrace_exit_events) {
     options |= PTRACE_O_TRACEEXIT;
   }
@@ -3316,7 +3316,7 @@ long Task::ptrace_seize(pid_t tid, Session& session) {
   }
 
   long ret =
-      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
+      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.
