@@ -1,0 +1,12 @@
+source `dirname $0`/util.sh
+
+exe=many_yields$bitness
+cp ${OBJDIR}/bin/$exe $exe-$nonce
+just_record $exe-$nonce
+rr rerun --export-checkpoints=500,2,socket1 latest-trace &
+rr rerun --import-checkpoint=socket1 --export-checkpoints=601,1,socket2 latest-trace &
+rr rerun --import-checkpoint=socket2 latest-trace || failed "rerun from 601 failed"
+rr rerun --import-checkpoint=socket1 latest-trace || failed "rerun from 500 failed"
+wait %1 || failed "First rerun failed"
+wait %2 || failed "Second rerun failed"
+echo EXIT-SUCCESS
