@@ -22,14 +22,6 @@
 #define RR_MAGIC_SAVE_DATA_FD 999
 
 /**
- * rr uses this fd to ensure the tracee has access to the original root
- * directory after a chroot(). Tracee close()es of this fd will be silently
- * ignored, and tracee dup()s to this fd will fail with EBADF.
- * This is set up during both recording and replay.
- */
-#define RR_RESERVED_ROOT_DIR_FD 1000
-
-/**
  * Tracees use this fd to send other fds to rr.
  * This is only set up during recording.
  * Only the outermost rr uses this. Inner rr replays will use a different fd.
