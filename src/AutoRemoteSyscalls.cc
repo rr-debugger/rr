@@ -463,6 +463,8 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     sizeof(msg), &msg, &ok);
 
   if (!ok) {
+    ASSERT(remote.task(), errno == ESRCH);
+    LOG(debug) << "Failed to write memory";
     return -ESRCH;
   }
   int ret = 0;
@@ -472,10 +474,13 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     ret = remote.syscall(Arch::recvmsg, child_sock, msg.remote_msg(), 0);
   }
   if (ret < 0) {
+    LOG(debug) << "Failed to recvmsg " << ret;
     return ret;
   }
   int their_fd = remote.task()->read_mem(msg.remote_cmsgdata(), &ok);
   if (!ok) {
+    ASSERT(remote.task(), errno == ESRCH);
+    LOG(debug) << "Failed to read msg";
     return -ESRCH;
   }
   return their_fd;

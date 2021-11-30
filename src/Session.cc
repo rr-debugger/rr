@@ -436,11 +436,13 @@ KernelMapping Session::create_shared_mmap(
            rr_mapping_prefix(), name, remote.task()->real_tgid(), nonce++);
 
   ScopedFd shmem_fd(path, O_CREAT | O_EXCL | O_RDWR);
+  ASSERT(remote.task(), shmem_fd.is_open());
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(path);
 
   int child_shmem_fd = remote.send_fd(shmem_fd);
+  ASSERT(remote.task(), child_shmem_fd >= 0);
   resize_shmem_segment(shmem_fd, size);
   LOG(debug) << "created shmem segment " << path;
 
