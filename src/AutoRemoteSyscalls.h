@@ -218,7 +218,7 @@ public:
    * `send_fd` the given file descriptor, making sure that it ends up as fd
    * `dup_to`, (dup'ing it there and closing the original if necessary)
    */
-  void infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to);
+  void infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to, int dup3_flags);
 
   /**
    * Remotely invoke in |t| the specified syscall with the given

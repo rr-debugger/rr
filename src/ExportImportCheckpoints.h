@@ -10,6 +10,9 @@
 
 namespace rr {
 
+bool parse_export_checkpoints(const std::string& arg, FrameTime& export_checkpoints_event,
+                              int& export_checkpoints_count, std::string& export_checkpoints_socket);
+
 /* Bind the socket so clients can try to connect to it and block. */
 ScopedFd bind_export_checkpoints_socket(int count, const std::string& socket_file_name);
 

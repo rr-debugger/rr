@@ -337,14 +337,17 @@ public:
    * The shared resources associated with this ReplaySession are being transferred to
    * the child process `new_ptracer`. Prepare them for transfer (e.g. ptrace-detach the
    * tracees) and prepare them to be traced by `new_ptracer`, and forget about them.
+   * `new_sock_fd` is the new control fd pushed into all tasks.
    */
-  void detach_tasks(pid_t new_ptracer);
+  void detach_tasks(pid_t new_ptracer, ScopedFd& new_tracee_socket_receiver);
   /**
    * The shared resources associated with this ReplaySession are being transferred to
    * the child process `new_ptracer`. Receive them in the child process by ptrace-attaching
    * to them etc.
+   * `new_sock_fd` is the control fd that has been assigned to all tasks,
+   * `new_sock_receiver_fd` is its receiver end.
    */
-  void reattach_tasks();
+  void reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_tracee_socket_receiver);
 
 private:
   ReplaySession(const std::string& dir, const Flags& flags);

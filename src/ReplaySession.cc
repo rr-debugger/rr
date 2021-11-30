@@ -249,8 +249,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
  * Return true if it's possible/meaningful to make a checkpoint at the
  * |frame| that |t| will replay.
  */
-static bool can_checkpoint_at(const TraceFrame& frame) {
-  const Event& ev = frame.event();
+static bool can_checkpoint_at(const Event& ev) {
   if (ev.has_ticks_slop()) {
     return false;
   }
@@ -274,7 +273,7 @@ bool ReplaySession::can_clone() {
   finish_initializing();
 
   ReplayTask* t = current_task();
-  return t && done_initial_exec() && can_checkpoint_at(current_trace_frame());
+  return t && done_initial_exec() && can_checkpoint_at(current_trace_frame().event());
 }
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
@@ -1921,15 +1920,17 @@ void ReplaySession::forget_tasks() {
   }
 }
 
-void ReplaySession::detach_tasks(pid_t new_ptracer) {
+void ReplaySession::detach_tasks(pid_t new_ptracer, ScopedFd& new_tracee_socket_receiver) {
   // First tell Yama to let new_ptracer ptrace the tracees.
   // Do this before sending SIGSTOP to any tracees because SIGSTOP
   // might stop threads before we do their PR_SET_PTRACER.
+  // Also push the new control socket into all tracees.
   for (auto& entry : task_map) {
     Task* t = entry.second;
     AutoRemoteSyscalls remote(t);
     long ret = remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_PTRACER, new_ptracer);
     ASSERT(t, ret >= 0 || ret == -EINVAL) << "Failed PR_SET_PTRACER";
+    remote.infallible_send_fd_dup(new_tracee_socket_receiver, tracee_socket_fd_number, 0);
   }
   // Now PTRACE_DETACH and stop them all with SIGSTOP.
   for (auto& entry : task_map) {
@@ -1940,7 +1941,9 @@ void ReplaySession::detach_tasks(pid_t new_ptracer) {
   forget_tasks();
 }
 
-void ReplaySession::reattach_tasks() {
+void ReplaySession::reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_tracee_socket_receiver) {
+  tracee_socket = make_shared<ScopedFd>(move(new_tracee_socket));
+  tracee_socket_receiver = make_shared<ScopedFd>(move(new_tracee_socket_receiver));
   // Seize all tasks.
   for (auto& entry : task_map) {
     Task* t = entry.second;

@@ -3,7 +3,9 @@
 #include "ExportImportCheckpoints.h"
 
 #include <fcntl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
 
@@ -19,6 +21,35 @@ using namespace std;
 */
 
 namespace rr {
+
+bool parse_export_checkpoints(const string& arg, FrameTime& export_checkpoints_event,
+                              int& export_checkpoints_count, string& export_checkpoints_socket) {
+  size_t first_comma = arg.find(',');
+  if (first_comma == string::npos) {
+    fprintf(stderr, "Missing <NUM> parameter for --export-checkpoints");
+    return false;
+  }
+  size_t second_comma = arg.find(',', first_comma + 1);
+  if (second_comma == string::npos) {
+    fprintf(stderr, "Missing <FILE> parameter for --export-checkpoints");
+    return false;
+  }
+  char* endptr;
+  string event_str = arg.substr(0, first_comma);
+  export_checkpoints_event = strtoul(event_str.c_str(), &endptr, 0);
+  if (*endptr) {
+    fprintf(stderr, "Invalid <EVENT> for --export-checkpoints: %s\n", event_str.c_str());
+    return false;
+  }
+  string num_str = arg.substr(first_comma + 1, second_comma - (first_comma + 1));
+  export_checkpoints_count = strtoul(num_str.c_str(), &endptr, 0);
+  if (*endptr) {
+    fprintf(stderr, "Invalid <NUM> for --export-checkpoints: %s\n", num_str.c_str());
+    return false;
+  }
+  export_checkpoints_socket = arg.substr(second_comma + 1);
+  return true;
+}
 
 ScopedFd bind_export_checkpoints_socket(int count, const string& socket_file_name) {
   unlink(socket_file_name.c_str());
@@ -115,7 +146,7 @@ static void set_title(const vector<string>& args) {
 CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int count, ScopedFd& sock,
     const std::string&) {
   if (!session->can_clone()) {
-    FATAL() << "Can't create checkpoints at this time, aborting";
+    FATAL() << "Can't create checkpoints at this time, aborting: " << session->current_frame_time();
   }
 
   CommandForCheckpoint command_for_checkpoint;
@@ -125,6 +156,17 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
     ScopedFd client = accept4(sock, nullptr, nullptr, SOCK_CLOEXEC);
     if (!client.is_open()) {
       FATAL() << "Failed to accept client connection";
+    }
+
+    ssize_t priority;
+    recv_all(client, &priority, sizeof(priority));
+    ssize_t ret = setpriority(PRIO_PROCESS, 0, priority);
+    if (ret < 0) {
+      if (errno == EACCES) {
+        LOG(warn) << "Failed to increase priority";
+      } else {
+        FATAL() << "Failed setpriority";
+      }
     }
 
     size_t fds_size;
@@ -142,7 +184,7 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
     cbuf.resize(CMSG_SPACE(data_len));
     msg.msg_control = cbuf.data();
     msg.msg_controllen = cbuf.size();
-    ssize_t ret = recvmsg(client, &msg, MSG_CMSG_CLOEXEC);
+    ret = recvmsg(client, &msg, MSG_CMSG_CLOEXEC);
     if (ret != 1) {
       FATAL() << "Failed to read fds";
     }
@@ -177,6 +219,16 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
 
     checkpoint->prepare_to_detach_tasks();
 
+    // We need to create a new control socket for the child, we can't use the shared control socket
+    // safely in multiple processes.
+    int sockets[2];
+    ret = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets);
+    if (ret < 0) {
+      FATAL() << "socketpair failed";
+    }
+    ScopedFd new_tracee_socket(sockets[0]);
+    ScopedFd new_tracee_socket_receiver(sockets[1]);
+
     pid_t child = fork();
     if (!child) {
       set_title(args);
@@ -189,12 +241,13 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
       if (ret != 1) {
         FATAL() << "Failed to read parent notification";
       }
-      command_for_checkpoint.session->reattach_tasks();
+      command_for_checkpoint.session->reattach_tasks(move(new_tracee_socket),
+        move(new_tracee_socket_receiver));
       return command_for_checkpoint;
     }
     children.push_back(child);
 
-    checkpoint->detach_tasks(child);
+    checkpoint->detach_tasks(child, new_tracee_socket_receiver);
     ret = write(parent_to_child_write, "x", 1);
     if (ret != 1) {
       FATAL() << "Failed to write parent notification";
@@ -248,11 +301,17 @@ int invoke_checkpoint_command(const string& socket_file_name,
     break;
   }
 
+  ssize_t ret = getpriority(PRIO_PROCESS, 0);
+  if (ret < 0) {
+    FATAL() << "Failed getpriority";
+  }
+  send_all(sock, &ret, sizeof(ret));
+
   size_t total_fds = 4 + fds.size();
   send_all(sock, &total_fds, sizeof(total_fds));
 
   int exit_notification_pipe_fds[2];
-  ssize_t ret = pipe(exit_notification_pipe_fds);
+  ret = pipe(exit_notification_pipe_fds);
   if (ret < 0) {
     FATAL() << "Failed pipe";
   }

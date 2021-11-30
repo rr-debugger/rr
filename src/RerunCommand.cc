@@ -467,34 +467,6 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
   return true;
 }
 
-static bool parse_export_checkpoints(const string& arg, RerunFlags& flags) {
-  size_t first_comma = arg.find(',');
-  if (first_comma == string::npos) {
-    fprintf(stderr, "Missing <NUM> parameter for --export-checkpoints");
-    return false;
-  }
-  size_t second_comma = arg.find(',', first_comma + 1);
-  if (second_comma == string::npos) {
-    fprintf(stderr, "Missing <FILE> parameter for --export-checkpoints");
-    return false;
-  }
-  char* endptr;
-  string event_str = arg.substr(0, first_comma);
-  flags.export_checkpoints_event = strtoul(event_str.c_str(), &endptr, 0);
-  if (*endptr) {
-    fprintf(stderr, "Invalid <EVENT> for --export-checkpoints: %s\n", event_str.c_str());
-    return false;
-  }
-  string num_str = arg.substr(first_comma + 1, second_comma - (first_comma + 1));
-  flags.export_checkpoints_count = strtoul(num_str.c_str(), &endptr, 0);
-  if (*endptr) {
-    fprintf(stderr, "Invalid <NUM> for --export-checkpoints: %s\n", num_str.c_str());
-    return false;
-  }
-  flags.export_checkpoints_socket = arg.substr(second_comma + 1);
-  return true;
-}
-
 static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   if (parse_global_option(args)) {
     return true;
@@ -528,7 +500,7 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
       }
       break;
     case 3:
-      if (!parse_export_checkpoints(opt.value, flags)) {
+      if (!parse_export_checkpoints(opt.value, flags.export_checkpoints_event, flags.export_checkpoints_count, flags.export_checkpoints_socket)) {
         return false;
       }
       break;
