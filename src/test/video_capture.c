@@ -59,6 +59,7 @@ static int open_device(void) {
     atomic_printf("%s VIDIOC_G_INPUT returns %d\n", device_name, input);
   }
 
+#ifdef VIDIOC_QUERY_EXT_CTRL
   struct v4l2_query_ext_ctrl qec;
   memset(&qec, 0, sizeof(qec));
   qec.id = V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
@@ -69,6 +70,7 @@ static int open_device(void) {
     atomic_printf("%s VIDIOC_QUERY_EXT_CTRL returns id=%d, type=%d, name=%s\n",
                   device_name, qec.id, qec.type, qec.name);
   }
+#endif
 
   enum v4l2_priority prio = V4L2_PRIORITY_UNSET;
   ret = ioctl(fd, VIDIOC_G_PRIORITY, &prio);
