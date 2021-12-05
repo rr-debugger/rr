@@ -237,7 +237,7 @@ public:
       : redirect_stdio(false)
       , share_private_mappings(false)
       , cpu_unbound(false) {}
-    Flags(const Flags& other) = default;
+    Flags(const Flags&) = default;
     bool redirect_stdio;
     std::string redirect_stdio_file;
     bool share_private_mappings;
