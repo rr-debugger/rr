@@ -102,7 +102,7 @@ static CpuMicroarch compute_cpu_microarch() {
       break;
   }
 
-  if (!strcmp(vendor, "AuthenticAMD")) {
+  if (!strncmp(vendor, "AuthenticAMD", sizeof(vendor))) {
     CLEAN_FATAL() << "AMD CPU type " << HEX(cpu_type) << " unknown";
   } else {
     CLEAN_FATAL() << "Intel CPU type " << HEX(cpu_type) << " unknown";
