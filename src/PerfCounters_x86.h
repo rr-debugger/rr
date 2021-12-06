@@ -86,6 +86,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x30f10: // Rome, Castle Peak (Zen 2)
     case 0x60f00: // Renoir (Zen 2) (UNTESTED)
     case 0x70f10: // Matisse (Zen 2) (UNTESTED)
+    case 0x60f80: // Lucienne
       if (ext_family == 8) {
         return AMDZen;
       } else if (ext_family == 3) {
