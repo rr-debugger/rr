@@ -85,7 +85,11 @@ void print_global_options(FILE* out) {
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
       "\n"
-      "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n",
+      "Environment variables:
+      " $RR_LOG for    logging configuration ; e.g. RR_LOG=all:warn,Task:debug\n"
+      " $RR_TMPDIR     for using a different TMPDIR than the program recorded\n"
+      " $_RR_TRACE_DIR where traces will be recorded / searched;\n"
+      "                falls back to $XDG_DATA_HOME / $HOME/.local/share/rr\n",
       out);
 }
 
