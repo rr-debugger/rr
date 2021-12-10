@@ -236,11 +236,13 @@ public:
     Flags()
       : redirect_stdio(false)
       , share_private_mappings(false)
+      , replay_stops_at_first_execve(false)
       , cpu_unbound(false) {}
     Flags(const Flags&) = default;
     bool redirect_stdio;
     std::string redirect_stdio_file;
     bool share_private_mappings;
+    bool replay_stops_at_first_execve;
     bool cpu_unbound;
   };
 

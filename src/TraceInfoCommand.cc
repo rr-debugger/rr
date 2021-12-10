@@ -100,6 +100,7 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
   ReplaySession::Flags flags;
   flags.redirect_stdio = false;
   flags.share_private_mappings = false;
+  flags.replay_stops_at_first_execve = true;
   flags.cpu_unbound = true;
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, flags);
 
