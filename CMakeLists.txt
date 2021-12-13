@@ -1396,6 +1396,7 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_prctl_name
   checkpoint_simple
   checksum_sanity_noclone
+  comm
   cont_signal
   x86/cpuid
   dead_thread_target

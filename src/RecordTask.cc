@@ -350,7 +350,7 @@ void RecordTask::post_exec() {
   ev().Syscall().set_arch(arch());
 
   // The signal mask is inherited across execve so we don't need to invalidate.
-  Task::post_exec(this->exe_path());
+  Task::post_exec(exe_path(), exe_path());
   if (emulated_ptracer) {
     ASSERT(this, !(emulated_ptracer->arch() == x86 && arch() == x86_64))
         << "We don't support a 32-bit process tracing a 64-bit process";

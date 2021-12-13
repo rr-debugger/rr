@@ -928,7 +928,7 @@ static bool is_long_mode_segment(uint32_t segment) {
 }
 #endif
 
-void Task::post_exec(const string& exe_file) {
+void Task::post_exec(const string& exe_file, const string& original_exe_file) {
   Task* stopped_task_in_address_space = nullptr;
   bool other_task_in_address_space = false;
   for (Task* t : as->task_set()) {
@@ -979,7 +979,7 @@ void Task::post_exec(const string& exe_file) {
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone();
   fds->insert_task(this);
-  prname = prname_from_exe_image(as->exe_image());
+  prname = prname_from_exe_image(original_exe_file);
 }
 
 void Task::post_exec_syscall() {

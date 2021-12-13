@@ -61,8 +61,8 @@ void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
   RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
 }
 
-void ReplayTask::post_exec_syscall(const string& replay_exe) {
-  Task::post_exec(replay_exe);
+void ReplayTask::post_exec_syscall(const string& replay_exe, const string& original_replay_exe) {
+  Task::post_exec(replay_exe, original_replay_exe);
 
   // Perform post-exec-syscall tasks now (e.g. opening mem_fd) before we
   // switch registers. This lets us perform AutoRemoteSyscalls using the

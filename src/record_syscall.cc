@@ -3378,7 +3378,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   session.set_tracee_fd_number(tracee_fd_number);
   new_t->os_exec(t->arch(), exe_path);
   session.post_exec();
-  new_t->post_exec(exe_path);
+  new_t->post_exec(exe_path, exe_path);
   new_t->post_exec_syscall();
   new_t->dup_from(t);
   // Emulate the success of the syscall in the new task

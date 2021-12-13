@@ -419,8 +419,12 @@ public:
    * Call this method when this task has just performed an |execve()|
    * (so we're in the new address space), but before the system call has
    * returned.
+   * `exe_file` is the name of the executable file in the trace, if there is one,
+   * otherwise the original exe file name --- a best-effort filename we can
+   * pass to gdb for it to read the exe. `original_exe_file` is the
+   * original file exe file name.
    */
-  void post_exec(const std::string& exe_file);
+  void post_exec(const std::string& exe_file, const std::string& original_exe_file);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.

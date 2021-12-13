@@ -32,8 +32,12 @@ public:
   void init_buffers(remote_ptr<void> map_hint);
   /**
    * Call this method when the exec has completed.
+   * `replay_exe` is the name of the real executable file in the trace if we have one,
+   * otherwise the name of the original executable file. This gets passed to gdb
+   * as a best-effort to give gdb a file to look at.
+   * `original_replay_exe` is the name of the original executable file.
    */
-  void post_exec_syscall(const std::string& replay_exe);
+  void post_exec_syscall(const std::string& replay_exe, const std::string& original_replay_exe);
 
   enum {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
