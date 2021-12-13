@@ -219,7 +219,7 @@ public:
    * Returns true if the next step for this session is to exit a syscall with
    * the given number.
    */
-  bool next_step_is_successful_syscall_exit(int syscallno);
+  bool next_step_is_successful_exec_syscall_exit();
 
   /**
    * The current ReplayStepKey.

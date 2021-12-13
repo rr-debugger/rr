@@ -198,6 +198,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       waiting_for_ptrace_exit(false),
       retry_syscall_patching(false),
       sent_shutdown_kill(false),
+      did_execveat(false),
       tick_request_override((TicksRequest)0) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
@@ -339,14 +340,15 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
 }
 
 void RecordTask::post_exec() {
-  // Change syscall number to execve *for the new arch*. If we don't do this,
+  // Change syscall number to execve/execveat *for the new arch*. If we don't do this,
   // and the arch changes, then the syscall number for execve in the old arch/
   // is treated as the syscall we're executing in the new arch, with hilarious
   // results.
-  int syscallno = syscall_number_for_execve(arch());
-  registers.set_original_syscallno(syscallno);
+  int new_syscallno = did_execveat ? syscall_number_for_execveat(arch())
+      : syscall_number_for_execve(arch());
+  registers.set_original_syscallno(new_syscallno);
   // Fix event architecture and syscall number
-  ev().Syscall().number = syscallno;
+  ev().Syscall().number = new_syscallno;
   ev().Syscall().set_arch(arch());
 
   // The signal mask is inherited across execve so we don't need to invalidate.

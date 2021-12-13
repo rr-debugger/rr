@@ -222,6 +222,10 @@ struct SyscallEvent {
   /** Change the architecture for this event. */
   void set_arch(SupportedArch a) { arch_ = a; }
 
+  bool is_exec() const {
+    return is_execve_syscall(number, arch()) || is_execveat_syscall(number, arch());
+  }
+
   SupportedArch arch_;
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect

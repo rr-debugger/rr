@@ -1556,8 +1556,7 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
 
 ReplayTask* ReplaySession::revive_task_for_exec() {
   const Event& ev = trace_frame.event();
-  if (!ev.is_syscall_event() ||
-      !is_execve_syscall(ev.Syscall().number, ev.Syscall().arch())) {
+  if (!ev.is_syscall_event() || !ev.Syscall().is_exec()) {
     FATAL() << "Can't find task, but we're not in an execve";
   }
 
@@ -1726,11 +1725,12 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   return t;
 }
 
-bool ReplaySession::next_step_is_successful_syscall_exit(int syscallno) {
+bool ReplaySession::next_step_is_successful_exec_syscall_exit() {
+  const Event& ev = trace_frame.event();
   return current_step.action == TSTEP_NONE &&
-         trace_frame.event().is_syscall_event() &&
-         trace_frame.event().Syscall().number == syscallno &&
-         trace_frame.event().Syscall().state == EXITING_SYSCALL &&
+         ev.is_syscall_event() &&
+         ev.Syscall().is_exec() &&
+         ev.Syscall().state == EXITING_SYSCALL &&
          !trace_frame.regs().syscall_failed();
 }
 

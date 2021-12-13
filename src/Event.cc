@@ -99,7 +99,7 @@ bool Event::record_extra_regs() const {
       // pkey_alloc modifies the PKRU register.
       return sys_ev.state == EXITING_SYSCALL &&
              (is_sigreturn(sys_ev.number, sys_ev.arch()) ||
-              is_execve_syscall(sys_ev.number, sys_ev.arch()) ||
+              sys_ev.is_exec() ||
               is_pkey_alloc_syscall(sys_ev.number, sys_ev.arch()));
     }
     case EV_SIGNAL_HANDLER:

@@ -1149,6 +1149,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
    */
   switch (non_negative_syscall(sys)) {
     case Arch::execve:
+    case Arch::execveat:
       return process_execve(t, trace_frame, step);
 
     case Arch::brk:

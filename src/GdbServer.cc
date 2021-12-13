@@ -909,8 +909,7 @@ static Task* is_in_exec(ReplayTimeline& timeline) {
   if (!t) {
     return nullptr;
   }
-  return timeline.current_session().next_step_is_successful_syscall_exit(
-             syscall_number_for_execve(t->arch()))
+  return timeline.current_session().next_step_is_successful_exec_syscall_exit()
              ? t
              : nullptr;
 }

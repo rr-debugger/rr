@@ -789,6 +789,9 @@ public:
   // We've sent a SIGKILL during shutdown for this task.
   bool sent_shutdown_kill;
 
+  // Last exec system call was an execveat
+  bool did_execveat;
+
   // Set if the tracee requested an override of the ticks request.
   // Used for testing.
   TicksRequest tick_request_override;

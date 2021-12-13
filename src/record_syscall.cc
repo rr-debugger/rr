@@ -3544,11 +3544,26 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return PREVENT_SWITCH;
 
-    case Arch::execve: {
+    case Arch::execve:
+    case Arch::execveat: {
       t->session().scheduler().did_enter_execve(t);
       vector<string> cmd_line;
-      remote_ptr<typename Arch::unsigned_word> argv = regs.arg2();
+      remote_ptr<typename Arch::unsigned_word> argv;
+      string raw_filename;
+      t->did_execveat = syscallno == Arch::execveat;
       bool ok = true;
+      if (t->did_execveat) {
+        argv = regs.arg3();
+        raw_filename = t->read_c_str(regs.arg2(), &ok);
+      } else {
+        argv = regs.arg2();
+        raw_filename = t->read_c_str(regs.arg1(), &ok);
+      }
+      if (!ok) {
+        syscall_state.expect_errno = EFAULT;
+        return ALLOW_SWITCH;
+      }
+
       while (true) {
         auto p = t->read_mem(argv, &ok);
         if (!ok) {
@@ -3567,11 +3582,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
 
       // Save the event. We can't record it here because the exec might fail.
-      string raw_filename = t->read_c_str(regs.arg1(), &ok);
-      if (!ok) {
-        syscall_state.expect_errno = EFAULT;
-        return ALLOW_SWITCH;
-      }
       syscall_state.exec_saved_event =
           unique_ptr<TraceTaskEvent>(new TraceTaskEvent(
               TraceTaskEvent::for_exec(t->tid, raw_filename, cmd_line)));
@@ -5998,7 +6008,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         << t->regs().syscall_result_signed() << " (errno "
         << errno_name(-t->regs().syscall_result_signed()) << ")"
         << extra_expected_errno_info<Arch>(t, syscall_state);
-    if (syscallno == Arch::execve) {
+    if (syscallno == Arch::execve || syscallno == Arch::execveat) {
       t->session().scheduler().did_exit_execve(t);
     }
     return;
@@ -6022,6 +6032,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::execve:
+    case Arch::execveat:
       t->session().scheduler().did_exit_execve(t);
       process_execve(t, syscall_state);
       if (t->emulated_ptracer) {
