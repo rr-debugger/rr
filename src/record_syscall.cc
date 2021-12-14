@@ -5834,8 +5834,20 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   }
 }
 
+static bool all_tasks_exited(AddressSpace* vm) {
+  for (Task* t : vm->task_set()) {
+    if (!t->already_exited()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
   for (AddressSpace* vm : t->session().vms()) {
+    if (all_tasks_exited(vm)) {
+      continue;
+    }
     for (auto& m : vm->maps()) {
       if ((m.map.flags() & MAP_SHARED) &&
           m.mapped_file_stat && m.mapped_file_stat->st_dev == st.st_dev &&

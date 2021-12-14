@@ -924,6 +924,7 @@ set(BASIC_TESTS
   mmap_adjacent_to_rr_usage
   mmap_private
   mmap_private_grow_under_map
+  mmap_recycle
   mmap_ro
   mmap_self_maps_shared
   mmap_shared
