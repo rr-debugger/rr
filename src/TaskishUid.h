@@ -23,6 +23,7 @@ public:
   TaskishUid() : tid_(0), serial_(0) {}
   TaskishUid(pid_t tid, uint32_t serial) : tid_(tid), serial_(serial) {}
   TaskishUid(const TaskishUid<T>& other) = default;
+  TaskishUid& operator=(const TaskishUid<T>& other) = default;
   bool operator==(const TaskishUid<T>& other) const {
     return tid_ == other.tid_ && serial_ == other.serial_;
   }
@@ -55,6 +56,7 @@ public:
   AddressSpaceUid(pid_t tid, uint32_t serial, uint32_t exec_count)
       : TaskishUid<AddressSpace>(tid, serial), exec_count_(exec_count) {}
   AddressSpaceUid(const AddressSpaceUid& other) = default;
+  AddressSpaceUid& operator=(const AddressSpaceUid& other) = default;
   bool operator==(const AddressSpaceUid& other) const {
     return TaskishUid<AddressSpace>::operator==(other) &&
            exec_count_ == other.exec_count_;

@@ -77,6 +77,7 @@ class DwarfSpan {
 public:
   DwarfSpan(const uint8_t* start, const uint8_t* end) : start(start), end(end) {}
   DwarfSpan(const DwarfSpan& other) = default;
+  DwarfSpan& operator=(const DwarfSpan& other) = default;
   DwarfSpan() : start(nullptr), end(nullptr) {}
   size_t size() const { return end - start; }
   uint64_t read_uleb(bool* ok);

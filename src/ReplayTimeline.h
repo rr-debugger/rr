@@ -270,6 +270,7 @@ private:
     MarkKey(FrameTime trace_time, Ticks ticks, ReplayStepKey step_key)
         : trace_time(trace_time), ticks(ticks), step_key(step_key) {}
     MarkKey(const MarkKey& other) = default;
+    MarkKey& operator=(const MarkKey& other) = default;
     FrameTime trace_time;
     Ticks ticks;
     ReplayStepKey step_key;
