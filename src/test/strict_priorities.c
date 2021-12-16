@@ -38,6 +38,6 @@ int main(void) {
   main_thread_done = 1;
 
   atomic_puts("EXIT-SUCCESS");
-
+  (void)dummy; /* Avoid -Wunused-but-set-variable build warning. */
   return 0;
 }

@@ -13,5 +13,6 @@ int main(void) {
   }
 
   atomic_puts("EXIT-SUCCESS");
+  (void)result; /* Avoid -Wunused-but-set-variable build warning. */
   return 0;
 }
