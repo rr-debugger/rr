@@ -91,13 +91,12 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
         regno = (GdbRegister)(regno - DREG_YMM0H + DREG_64_YMM0H);
         break;
       }
-      if (regno < DREG_FIRST_FXSAVE_REG || regno > DREG_LAST_FXSAVE_REG) {
-        return RegData();
-      }
       if (regno == DREG_MXCSR) {
         regno = DREG_64_MXCSR;
       } else if (regno == DREG_PKRU) {
         regno = DREG_64_PKRU;
+      } else if (regno < DREG_FIRST_FXSAVE_REG || regno > DREG_LAST_FXSAVE_REG) {
+        return RegData();
       } else {
         regno = (GdbRegister)(regno - DREG_FIRST_FXSAVE_REG +
                               DREG_64_FIRST_FXSAVE_REG);
