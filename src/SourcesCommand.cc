@@ -15,6 +15,7 @@
 #include "RecordSession.h"
 #include "TraceStream.h"
 #include "core.h"
+#include "cpp_supplement.h"
 #include "log.h"
 #include "main.h"
 #include "util.h"
