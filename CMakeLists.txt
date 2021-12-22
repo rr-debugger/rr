@@ -814,6 +814,7 @@ set(BASIC_TESTS
   cwd_inaccessible
   daemon
   desched_blocking_poll
+  desched_sigkill
   detach_state
   detach_threads
   deterministic_sigsys
