@@ -2322,7 +2322,7 @@ RecordSession::RecordSession(const std::string& exe_path,
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 
-  if (task_map.empty()) {
+  if (task_map.size() == detached_task_map.size()) {
     result.status = STEP_EXITED;
     result.exit_status = initial_thread_group->exit_status;
     return result;
@@ -2495,7 +2495,11 @@ void RecordSession::on_create(Task* t) {
 }
 
 void RecordSession::on_destroy(Task* t) {
-  scheduler().on_destroy(static_cast<RecordTask*>(t));
+  RecordTask *rt = static_cast<RecordTask*>(t);
+  scheduler().on_destroy(rt);
+  if (rt->detached_proxy) {
+    detached_task_map.erase(rt->tid);
+  }
   Session::on_destroy(t);
 }
 
@@ -2507,9 +2511,15 @@ RecordTask* RecordSession::find_task(const TaskUid& tuid) const {
   return static_cast<RecordTask*>(Session::find_task(tuid));
 }
 
+RecordTask* RecordSession::find_detached_proxy_task(pid_t proxy_tid) const {
+  auto it = detached_task_map.find(proxy_tid);
+  return detached_task_map.end() != it ? it->second : nullptr;
+}
+
 void RecordSession::on_proxy_detach(RecordTask *t, pid_t new_tid) {
   Session::on_destroy(t);
   task_map[new_tid] = t;
+  detached_task_map[t->tid] = t;
 }
 
 uint64_t RecordSession::rr_signal_mask() const {

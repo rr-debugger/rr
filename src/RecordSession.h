@@ -172,6 +172,7 @@ public:
 
   RecordTask* find_task(pid_t rec_tid) const;
   RecordTask* find_task(const TaskUid& tuid) const;
+  RecordTask* find_detached_proxy_task(pid_t proxt_tid) const;
 
   void on_proxy_detach(RecordTask *t, pid_t new_tid);
 
@@ -254,6 +255,11 @@ private:
    * When true, wait for all tracees to exit before finishing recording.
    */
   bool wait_for_all_;
+
+  /**
+   * Keeps track of detached tasks.
+   */
+  std::map<pid_t, RecordTask*> detached_task_map;
 
   std::string output_trace_dir;
 
