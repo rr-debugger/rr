@@ -874,6 +874,9 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
   /* TODO: mask off signals and avoid this loop. */
   do {
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    if (t->is_dying()) {
+      return;
+    }
     /* We can safely ignore TIME_SLICE_SIGNAL while trying to
      * reach the disarm-desched ioctl: once we reach it,
      * the desched'd syscall will be "done" and the tracee
