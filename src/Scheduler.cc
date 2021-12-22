@@ -207,7 +207,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
                                "returned a task that must run!";
 
   if (t->detached_proxy) {
-    LOG(debug) << "  " << t->tid << " is waiting a detached proxy";
+    LOG(debug) << "  " << t->tid << " is a detached proxy";
     return false;
   }
 
@@ -503,12 +503,33 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
     }
   }
   if (!waited) {
-    LOG(debug) << "    ... but it's dead";
-    return nullptr;
+    // See if this is one of our detached proxies' original tids.
+    waited = session.find_detached_proxy_task(tid);
+    if (!waited) {
+      LOG(debug) << "    ... but it's dead";
+      return nullptr;
+    }
+
+
+    ASSERT(waited, waited->detached_proxy);
+    ASSERT(waited, status.type() == WaitStatus::FATAL_SIGNAL);
+    LOG(debug) << "    ... but it's a detached proxy";
+
+    // We received an unexpected SIGKILL for one of our detached proxies,
+    // probably because the parent or some other task tried to SIGKILL it
+    // using the original pid. Forward the SIGKILL to the detached process.
+    ::kill(waited->rec_tid, SIGKILL);
+    int raw_status;
+    pid_t npid = ::waitpid(waited->rec_tid, &raw_status, __WALL | WUNTRACED);
+    status = WaitStatus(raw_status);
+    waited->did_waitpid(status);
+    ASSERT(waited, npid == waited->rec_tid);
+    ASSERT(waited, status.type() == WaitStatus::EXIT ||
+                   status.type() == WaitStatus::FATAL_SIGNAL);
   }
   if (waited->detached_proxy) {
     pid_t parent_rec_tid = waited->get_parent_pid();
-    LOG(debug) << "    ... but it's a detached proxy.";
+    LOG(debug) << "    ... but it's a detached process.";
     RecordTask *parent = session.find_task(parent_rec_tid);
     if (parent) {
       LOG(debug) << "    ... forwarding to parent.";
@@ -728,9 +749,9 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         result.interrupted_by_signal = true;
         return result;
       }
+      LOG(debug) << "  " << tid << " changed status to " << status;
       next = find_waited_task(session, tid, status);
       now = -1; // invalid, don't use
-      LOG(debug) << "  " << tid << " changed status to " << status;
       if (next) {
         ASSERT(next,
                next->may_be_blocked() ||
