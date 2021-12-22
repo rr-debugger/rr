@@ -40,7 +40,7 @@ int main(void) {
     pids[i] = fork();
     if (pids[i] == 0) {
         test_assert(1 == write(child_to_parent[1], "x", 1));
-        test_assert(1 == read(parent_to_child[0], &ch, 1) && ch == 'y');
+        test_assert(1 == read(parent_to_child[0], &ch, 1) && ch == 'x');
         pause();
         return 77;
     }
