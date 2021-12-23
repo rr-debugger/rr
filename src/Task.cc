@@ -141,14 +141,15 @@ void Task::wait_exit() {
     int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
     if (ret == 0) {
       ASSERT(this, info.si_pid == tid) << "Expected " << tid << " got " << info.si_pid;
-      if (WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXIT) {
+      int event = WaitStatus(info).ptrace_event();
+      if (event == PTRACE_EVENT_EXIT) {
         // It's possible that the earlier exit event was synthetic, in which
         // case we're only now catching up to the real process exit. In that
         // case, just ask the process to actually exit. (TODO: We may want to
         // catch this earlier).
         return proceed_to_exit(true);
       }
-      ASSERT(this, WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC)
+      ASSERT(this, event == PTRACE_EVENT_EXEC)
         << "Expected PTRACE_EVENT_EXEC, got " << WaitStatus(info);
       // The kernel will do the reaping for us in this case
       was_reaped = true;
