@@ -169,6 +169,8 @@ void Task::proceed_to_exit(bool wait) {
   ASSERT(this, ret == 0 || (ret == -1 && errno == ESRCH))
     << "Got ret=" << ret << " errno=" << errno;
   if (wait) {
+    const int waitflag = PTRACE_O_TRACEEXIT;
+    fallible_ptrace(PTRACE_SETOPTIONS, nullptr, (void *)waitflag);
     wait_exit();
   }
 }
