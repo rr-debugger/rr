@@ -1359,6 +1359,173 @@ bool uses_invisible_guard_page() {
   return !is_pax_kernel;
 }
 
+bool read_proc_net_socket_addresses(Task* t, int fd,
+                                    std::array<typename NativeArch::sockaddr_storage, 2> &out) {
+  char buf[1000];
+
+  auto stat = t->stat_fd(fd);
+  ino_t inode = stat.st_ino;
+
+  // Check tcp first.
+  if (FILE* f = fopen("/proc/net/tcp", "r")) {
+    // Skip the first line, which contains human-readable column labels.
+    if (!fgets(buf, sizeof(buf) - 1, f)) {
+      LOG(warn) << "Can't read /proc/net/tcp";
+    }
+    while (fgets(buf, sizeof(buf) - 1, f)) {
+      // Ignore the first field.
+      strtok(buf, " ");
+      // Then come the local and remote addresses.
+      char* local_addr_str = strtok(NULL, " ");
+      char* remote_addr_str = strtok(NULL, " ");
+      // Then six more fields to ignore.
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      // Finally the inode
+      char* ino = strtok(NULL, " ");
+      ino_t inod = strtoull(ino, NULL, 10);
+      if (inod != inode) {
+        continue;
+      }
+
+      // We have a match.
+      char* next = NULL;
+      unsigned long laddr = strtoul(local_addr_str, &next, 16);
+      if ((laddr == ULONG_MAX && errno == ERANGE) || *next != ':') {
+        LOG(warn) << "Local address not in expected format";
+        break;
+      }
+      ++next;
+      unsigned long lport = strtoul(next, NULL, 16);
+      if (lport > USHRT_MAX) {
+        LOG(warn) << "Local address not in expected format";
+        break;
+      }
+      struct sockaddr_in* local_addr_in = (struct sockaddr_in*)&out[0];
+      local_addr_in->sin_family = AF_INET;
+      local_addr_in->sin_addr.s_addr = laddr;
+      local_addr_in->sin_port = lport;
+      unsigned long raddr = strtoul(remote_addr_str, &next, 16);
+      if ((raddr == ULONG_MAX && errno == ERANGE) || *next != ':') {
+        LOG(warn) << "Remote address not in expected format";
+        break;
+      }
+      ++next;
+      unsigned long rport = strtoul(next, NULL, 16);
+      if (rport > USHRT_MAX) {
+        LOG(warn) << "Remote address not in expected format";
+        break;
+      }
+      struct sockaddr_in* remote_addr_in = (struct sockaddr_in*)&out[1];
+      remote_addr_in->sin_family = AF_INET;
+      remote_addr_in->sin_addr.s_addr = raddr;
+      remote_addr_in->sin_port = rport;
+      fclose(f);
+      return true;
+    }
+    fclose(f);
+  } else {
+    LOG(warn) << "Can't open /proc/net/tcp";
+  }
+
+  // Then tcp6
+  if (FILE* f = fopen("/proc/net/tcp6", "r")) {
+    // Skip the first line, which contains human-readable column labels.
+    if (!fgets(buf, sizeof(buf) - 1, f)) {
+      LOG(warn) << "Can't read /proc/net/tcp6";
+    }
+    while (fgets(buf, sizeof(buf) - 1, f)) {
+      // Ignore the first field.
+      strtok(buf, " ");
+      // Then come the local and remote addresses.
+      char* local_addr_str = strtok(NULL, " ");
+      char* remote_addr_str = strtok(NULL, " ");
+      // Then six more fields to ignore.
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      strtok(NULL, " ");
+      // Finally the inode
+      char* ino = strtok(NULL, " ");
+      ino_t inod = strtoull(ino, NULL, 10);
+      if (inod != inode) {
+        continue;
+      }
+
+      // We have a match.
+      struct sockaddr_in6* local_addr_in6 = (struct sockaddr_in6*)&out[0];
+      local_addr_in6->sin6_family = AF_INET6;
+
+      if (strlen(local_addr_str) != 37) {
+        break;
+      }
+      char buf[9];
+      for (int i = 0; i < 4; ++i) {
+        char* c = local_addr_str + i * 8;
+        strncpy(buf, c, 8);
+        buf[8] = '\0';
+        unsigned long local_addr_component = strtoul(buf, NULL, 16);
+        if ((local_addr_component == ULONG_MAX && errno == ERANGE)) {
+          LOG(warn) << "Local address not in expected format";
+          break;
+        }
+        local_addr_in6->sin6_addr.s6_addr32[i] = local_addr_component;
+      }
+      if (*(local_addr_str + 32) != ':') {
+        LOG(warn) << "Local address not in expected format";
+        break;
+      }
+      unsigned long lport = strtoul(local_addr_str + 33, NULL, 16);
+      if (lport > USHRT_MAX) {
+        LOG(warn) << "Local address not in expected format";
+        break;
+      }
+      local_addr_in6->sin6_port = lport;
+
+      struct sockaddr_in6* remote_addr_in6 = (struct sockaddr_in6*)&out[1];
+      remote_addr_in6->sin6_family = AF_INET6;
+
+      if (strlen(remote_addr_str) != 37) {
+        break;
+      }
+      for (int i = 0; i < 4; ++i) {
+        char* c = remote_addr_str + 24 - i * 8;
+        strncpy(buf, c, 8);
+        buf[8] = '\0';
+        unsigned long remote_addr_component = strtoul(buf, NULL, 16);
+        if ((remote_addr_component == ULONG_MAX && errno == ERANGE)) {
+          LOG(warn) << "Remote address not in expected format";
+          break;
+        }
+        remote_addr_in6->sin6_addr.s6_addr32[i] = remote_addr_component;
+      }
+      if (*(remote_addr_str + 32) != ':') {
+        LOG(warn) << "Remote address not in expected format";
+        break;
+      }
+      unsigned long rport = strtoul(remote_addr_str + 33, NULL, 16);
+      if (rport > USHRT_MAX) {
+        LOG(warn) << "Remote address not in expected format";
+        break;
+      }
+      remote_addr_in6->sin6_port = rport;
+      fclose(f);
+      return true;
+    }
+    fclose(f);
+  } else {
+    LOG(warn) << "Can't open /proc/net/tcp6";
+  }
+
+  return false;
+}
+
 static bool try_copy_file_by_copy_all(int dest_fd, int src_fd)
 {
   static bool should_try_copy_all = true;
@@ -2190,5 +2357,49 @@ void SAFE_FATAL(int err, const char *msg)
   abort();
 }
 
+static int child_SIGSEGV(__attribute__((unused)) void* arg) {
+  kill(getpid(), SIGSEGV);
+  return 0;
+}
+
+bool coredumping_signal_takes_down_entire_vm() {
+  // The kernel behavior here changed in 5.16. Prior to that,
+  // a coredumping signal would bring down the entire vm.
+  // Starting with 5.16 it only brings down the thread group.
+  // -1 here indicates uninitialized, 0 the new behavior, and
+  // 1 the old behavior.
+  static int coredumping_signal_vm_behavior = -1;
+  if (coredumping_signal_vm_behavior < 0) {
+    pid_t child = -1;
+    int status = -1;
+    LOG(debug) << "Testing coredumping behavior in the presence of CLONE_VM";
+    if ((child = fork()) == 0) {
+      // Remove any handlers and make sure we get the default signal behavior.
+      signal(SIGSEGV, SIG_DFL);
+      // Don't litter the system with core dumps.
+      prctl(PR_SET_DUMPABLE, 0);
+      // Allocate a stack for the child.
+      const size_t stack_size = 1 << 20;
+      void* stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+      pid_t tid = clone(child_SIGSEGV, (void*)((uintptr_t)stack + stack_size),
+                      CLONE_VM, NULL, NULL, NULL, NULL);
+      DEBUG_ASSERT(tid > 0);
+
+      pid_t ret = waitpid(tid, &status, __WALL);
+      DEBUG_ASSERT(ret == tid);
+      DEBUG_ASSERT(WIFSIGNALED(status));
+      exit(0);
+    }
+
+    DEBUG_ASSERT(child > 0);
+    pid_t ret = waitpid(child, &status, __WALL);
+    DEBUG_ASSERT(ret == child);
+    coredumping_signal_vm_behavior = WIFSIGNALED(status);
+  }
+
+  return coredumping_signal_vm_behavior > 0;
+}
 
 } // namespace rr

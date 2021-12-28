@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <linux/auxvec.h>
 #include <linux/capability.h>
+#include <linux/cdrom.h>
 #include <linux/elf.h>
 #include <linux/ethtool.h>
 #include <linux/fb.h>
@@ -28,6 +29,7 @@
 #include <linux/perf_event.h>
 #include <linux/personality.h>
 #include <linux/prctl.h>
+#include <linux/random.h>
 #include <linux/seccomp.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
@@ -83,6 +85,7 @@
 #include "SysCpuMonitor.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "cpp_supplement.h"
 #include "ftrace.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -328,7 +331,17 @@ typedef bool (*ArgMutator)(RecordTask*, remote_ptr<void>, void*);
  * non-buffered-syscall scratch data. This is done by recording
  * the relevant syscallbuf record data in rec_process_syscall_arch.
  */
-struct TaskSyscallState {
+struct TaskSyscallState : TaskSyscallStateBase {
+  static TaskSyscallState& get(RecordTask* t) {
+    auto base = t->syscall_state.get();
+    ASSERT(t, base) << "Expected syscall-state but didn't find one";
+    return *static_cast<TaskSyscallState*>(base);
+  }
+  static TaskSyscallState* maybe_get(RecordTask* t) {
+    auto base = t->syscall_state.get();
+    return static_cast<TaskSyscallState*>(base);
+  }
+
   void init(RecordTask* t) {
     if (preparation_done) {
       return;
@@ -530,8 +543,6 @@ struct TaskSyscallState {
         preparation_done(false),
         scratch_enabled(false) {}
 };
-
-static const Property<TaskSyscallState, RecordTask> syscall_state_property;
 
 template <typename Arch>
 static void set_remote_ptr_arch(RecordTask* t, remote_ptr<void> addr,
@@ -1408,7 +1419,7 @@ static void record_page_below_stack_ptr(RecordTask* t) {
 typedef ethtool_gstrings GStrings;
 
 template <typename Arch> void get_ethtool_gstrings_arch(RecordTask* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   Registers& regs = syscall_state.syscall_entry_registers;
   bool ok = true;
   auto ifreq = t->read_mem(remote_ptr<typename Arch::ifreq>(regs.arg3()), &ok);
@@ -1735,7 +1746,9 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::termio>(3);
       return PREVENT_SWITCH;
 
+    case BLKSSZGET:
     case KDGKBMODE:
+    case RNDGETENTCNT:
     case TIOCINQ:
     case TIOCOUTQ:
     case TIOCGETD:
@@ -1798,6 +1811,14 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case FBIOGET_VSCREENINFO:
       syscall_state.reg_parameter<typename Arch::fb_var_screeninfo>(3);
+      return PREVENT_SWITCH;
+
+    case CDROMREADTOCHDR:
+      syscall_state.reg_parameter<typename Arch::cdrom_tochdr>(3);
+      return PREVENT_SWITCH;
+
+    case CDROMREADTOCENTRY:
+      syscall_state.reg_parameter<typename Arch::cdrom_tocentry>(3);
       return PREVENT_SWITCH;
   }
 
@@ -1930,6 +1951,8 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(VIDIOC_G_OUTPUT):
     case IOCTL_MASK_SIZE(VIDIOC_S_CTRL):
     case IOCTL_MASK_SIZE(VIDIOC_G_INPUT):
+    case IOCTL_MASK_SIZE(VIDIOC_QUERY_EXT_CTRL):
+    case IOCTL_MASK_SIZE(VIDIOC_G_PRIORITY):
     case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH):
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
@@ -1974,6 +1997,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
     case IOCTL_MASK_SIZE(HIDIOCGRAWINFO):
     case IOCTL_MASK_SIZE(HIDIOCGRAWNAME(0)):
+    case IOCTL_MASK_SIZE(BLKGETSIZE64):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
@@ -3355,7 +3379,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   session.set_tracee_fd_number(tracee_fd_number);
   new_t->os_exec(t->arch(), exe_path);
   session.post_exec();
-  new_t->post_exec(exe_path);
+  new_t->post_exec(exe_path, exe_path);
   new_t->post_exec_syscall();
   new_t->dup_from(t);
   // Emulate the success of the syscall in the new task
@@ -3521,11 +3545,26 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return PREVENT_SWITCH;
 
-    case Arch::execve: {
+    case Arch::execve:
+    case Arch::execveat: {
       t->session().scheduler().did_enter_execve(t);
       vector<string> cmd_line;
-      remote_ptr<typename Arch::unsigned_word> argv = regs.arg2();
+      remote_ptr<typename Arch::unsigned_word> argv;
+      string raw_filename;
+      t->did_execveat = syscallno == Arch::execveat;
       bool ok = true;
+      if (t->did_execveat) {
+        argv = regs.arg3();
+        raw_filename = t->read_c_str(regs.arg2(), &ok);
+      } else {
+        argv = regs.arg2();
+        raw_filename = t->read_c_str(regs.arg1(), &ok);
+      }
+      if (!ok) {
+        syscall_state.expect_errno = EFAULT;
+        return ALLOW_SWITCH;
+      }
+
       while (true) {
         auto p = t->read_mem(argv, &ok);
         if (!ok) {
@@ -3544,11 +3583,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
 
       // Save the event. We can't record it here because the exec might fail.
-      string raw_filename = t->read_c_str(regs.arg1(), &ok);
-      if (!ok) {
-        syscall_state.expect_errno = EFAULT;
-        return ALLOW_SWITCH;
-      }
       syscall_state.exec_saved_event =
           unique_ptr<TraceTaskEvent>(new TraceTaskEvent(
               TraceTaskEvent::for_exec(t->tid, raw_filename, cmd_line)));
@@ -3972,10 +4006,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                  (size_t)regs.arg4()));
       return PREVENT_SWITCH;
 
+    case Arch::clone3:
     case Arch::io_uring_setup:
     case Arch::io_setup:
     case Arch::rseq: {
-      // Prevent the io_setup/io_uring_setup/rseq from running and fake an ENOSYS return. We want
+      // Prevent the io_setup/io_uring_setup/rseq/clone3 from running and fake an ENOSYS return. We want
       // to stop applications from using these APIs because we don't support them currently.
       Registers r = regs;
       r.set_arg2(0);
@@ -4948,7 +4983,8 @@ static Switchable rec_prepare_syscall_internal(
 }
 
 Switchable rec_prepare_syscall(RecordTask* t) {
-  auto& syscall_state = syscall_state_property.get_or_create(*t);
+  t->syscall_state = make_unique<TaskSyscallState>();
+  auto& syscall_state = TaskSyscallState::get(t);
   syscall_state.init(t);
 
   Switchable s = rec_prepare_syscall_internal(t, syscall_state);
@@ -4956,10 +4992,10 @@ Switchable rec_prepare_syscall(RecordTask* t) {
 }
 
 void rec_abort_prepared_syscall(RecordTask* t) {
-  auto syscall_state = syscall_state_property.get(*t);
+  auto syscall_state = TaskSyscallState::maybe_get(t);
   if (syscall_state) {
     syscall_state->abort_syscall_results();
-    syscall_state_property.remove(*t);
+    t->syscall_state = nullptr;
   }
 }
 
@@ -5029,9 +5065,9 @@ static void rec_prepare_restart_syscall_internal(
 }
 
 void rec_prepare_restart_syscall(RecordTask* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   rec_prepare_restart_syscall_internal(t, syscall_state);
-  syscall_state_property.remove(*t);
+  t->syscall_state = nullptr;
 }
 
 static const char* dropped_privs_warning =
@@ -5660,6 +5696,20 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
                 "of tracees";
 }
 
+static void maybe_process_new_socket(RecordTask* t, int fd) {
+  if (t->regs().syscall_failed()) {
+    return;
+  }
+
+  std::array<typename NativeArch::sockaddr_storage, 2> socket_addresses;
+  if (!read_proc_net_socket_addresses(t, fd, socket_addresses)) {
+    return;
+  }
+
+  auto& syscall = t->ev().Syscall();
+  syscall.socket_addrs = make_shared<std::array<typename NativeArch::sockaddr_storage, 2>>(std::move(socket_addresses));
+}
+
 template <typename Arch>
 static string extra_expected_errno_info(RecordTask* t,
                                         TaskSyscallState& syscall_state) {
@@ -5785,8 +5835,20 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   }
 }
 
+static bool all_tasks_exited(AddressSpace* vm) {
+  for (Task* t : vm->task_set()) {
+    if (!t->already_exited()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
   for (AddressSpace* vm : t->session().vms()) {
+    if (all_tasks_exited(vm)) {
+      continue;
+    }
     for (auto& m : vm->maps()) {
       if ((m.map.flags() & MAP_SHARED) &&
           m.mapped_file_stat && m.mapped_file_stat->st_dev == st.st_dev &&
@@ -5959,7 +6021,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         << t->regs().syscall_result_signed() << " (errno "
         << errno_name(-t->regs().syscall_result_signed()) << ")"
         << extra_expected_errno_info<Arch>(t, syscall_state);
-    if (syscallno == Arch::execve) {
+    if (syscallno == Arch::execve || syscallno == Arch::execveat) {
       t->session().scheduler().did_exit_execve(t);
     }
     return;
@@ -5983,6 +6045,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::execve:
+    case Arch::execveat:
       t->session().scheduler().did_exit_execve(t);
       process_execve(t, syscall_state);
       if (t->emulated_ptracer) {
@@ -6117,6 +6180,14 @@ static void rec_process_syscall_arch(RecordTask* t,
         r.set_syscall_result(-EACCES);
         t->set_regs(r);
       }
+      maybe_process_new_socket(t, r.arg1());
+      break;
+    }
+
+    case Arch::accept:
+    case Arch::accept4: {
+      Registers r = t->regs();
+      maybe_process_new_socket(t, r.syscall_result());
       break;
     }
 
@@ -6231,6 +6302,18 @@ static void rec_process_syscall_arch(RecordTask* t,
             }
             break;
           }
+          case SYS_CONNECT: {
+            auto args = t->read_mem(
+                remote_ptr<typename Arch::connect_args>(t->regs().arg2()));
+            maybe_process_new_socket(t, args.sockfd);
+            break;
+          }
+          case SYS_ACCEPT:
+          case SYS_ACCEPT4: {
+            Registers r = t->regs();
+            maybe_process_new_socket(t, r.syscall_result());
+            break;
+          }
         }
       }
       break;
@@ -6248,11 +6331,36 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::fcntl:
+    case Arch::fcntl64: {
+      // Restore the registers that we may have altered.
+      Registers r = t->regs();
+      r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers.arg2());
+      r.set_arg3(syscall_state.syscall_entry_registers.arg3());
+      t->set_regs(r);
+
+      if (!r.syscall_failed() && r.arg3() == O_DIRECT) {
+        int fd = r.arg1();
+        // O_DIRECT can impose unknown alignment requirements, in which case
+        // syscallbuf records will not be properly aligned and will cause I/O
+        // to fail. Disable syscall buffering for O_DIRECT files.
+        // If it already has a monitor (e.g. somebody tries to O_DIRECT
+        // /proc/pid/mem or something) then we don't need to do anything.
+        // since syscall buffering is already disabled.
+        if (!t->fd_table()->get_monitor(fd)) {
+          LOG(info) << "Installing FileMonitor for O_DIRECT " << fd;
+          FileMonitor* file_monitor = new FileMonitor();
+          t->fd_table()->add_monitor(t, fd, file_monitor);
+        }
+      }
+      break;
+    }
+
+    case Arch::clone3:
     case Arch::close:
     case Arch::dup2:
     case Arch::dup3:
-    case Arch::fcntl:
-    case Arch::fcntl64:
     case Arch::futex_time64:
     case Arch::futex:
     case Arch::ioctl:
@@ -6446,13 +6554,13 @@ static void rec_process_syscall_internal(RecordTask* t, SupportedArch arch,
 }
 
 void rec_did_sigreturn(RecordTask *t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   aarch64_kernel_bug_workaround(t, syscall_state);
-  syscall_state_property.remove(*t);
+  t->syscall_state = nullptr;
 }
 
 void rec_process_syscall(RecordTask* t) {
-  auto& syscall_state = *syscall_state_property.get(*t);
+  auto& syscall_state = TaskSyscallState::get(t);
   const SyscallEvent& sys_ev = t->ev().Syscall();
   if (sys_ev.arch() != t->arch()) {
     static bool did_warn = false;
@@ -6468,7 +6576,7 @@ void rec_process_syscall(RecordTask* t) {
   aarch64_kernel_bug_workaround(t, syscall_state);
 
   t->on_syscall_exit(sys_ev.number, sys_ev.arch(), t->regs());
-  syscall_state_property.remove(*t);
+  t->syscall_state = nullptr;
 
   MonitoredSharedMemory::check_all(t);
 }

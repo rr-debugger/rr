@@ -15,6 +15,7 @@
 #include "RecordSession.h"
 #include "TraceStream.h"
 #include "core.h"
+#include "cpp_supplement.h"
 #include "log.h"
 #include "main.h"
 #include "util.h"
@@ -106,7 +107,7 @@ static void base_name(string& s) {
   }
 }
 
-static bool is_absolute(string& s) {
+static bool is_absolute(const string& s) {
   return s[0] == '/';
 }
 
@@ -145,38 +146,60 @@ struct DirExistsCache {
 // the build directory is some ancestor directory of original_file_name.
 // We try making comp_dir/rel_dir/file_name relative to each ancestor directory
 // of original_file_name, and if we find a file there, we return that name.
-static string resolve_file_name(const char* original_file_name,
-                                const char* comp_dir, const char* rel_dir,
-                                const char* file_name,
-                                DirExistsCache& dir_exists_cache) {
-  string path = file_name;
+// original_file_name must be absolute if not NULL.
+//
+// If non-empty, `comp_dir_substution` should replace `original_comp_dir`
+// in `rel_dir` if `original_comp_dir` is a prefix of `rel_dir`.
+// Always returns an absolute file name.
+// Returns true if we got a result, otherwise false.
+static bool resolve_file_name(const char* original_file_name,
+                              const char* comp_dir,
+                              const char* original_comp_dir,
+                              const string& comp_dir_substitution,
+                              const char* rel_dir,
+                              const char* file_name,
+                              DirExistsCache& dir_exists_cache,
+                              string& path) {
+  path = file_name;
   if (is_absolute(path)) {
-    return path;
+    return true;
   }
   if (rel_dir) {
-    prepend_path(rel_dir, path);
+    if (rel_dir[0] == '/' && !comp_dir_substitution.empty() && original_comp_dir &&
+        strncmp(rel_dir, original_comp_dir, strlen(original_comp_dir)) == 0) {
+      string rel = comp_dir_substitution + (rel_dir + strlen(original_comp_dir));
+      prepend_path(rel.c_str(), path);
+    } else {
+      prepend_path(rel_dir, path);
+    }
     if (is_absolute(path)) {
-      return path;
+      return true;
     }
   }
   if (comp_dir) {
     prepend_path(comp_dir, path);
     if (is_absolute(path)) {
-      return path;
+      return true;
     }
   }
   if (!original_file_name) {
-    return path;
+    if (is_absolute(path)) {
+      return true;
+    }
+    LOG(warn) << "Path " << path << " is relative and we can't make it absolute";
+    return false;
   }
   string original(original_file_name);
   while (true) {
     dir_name(original);
     if (original.empty()) {
-      return path;
+      LOG(warn) << "Path " << path << " is relative and we can't make it absolute";
+      return false;
     }
     string candidate = original + "/" + path;
     if (dir_exists_cache.dir_exists(candidate)) {
-      return candidate;
+      path = candidate;
+      return true;
     }
   }
 }
@@ -233,11 +256,12 @@ static bool process_compilation_units(ElfFileReader& reader,
     } else {
       cu.set_str_offsets_base(0);
     }
+    const char* original_comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);;
     const char* comp_dir;
     if (!comp_dir_substitution.empty()) {
       comp_dir = comp_dir_substitution.c_str();
     } else {
-      comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);
+      comp_dir = original_comp_dir;
       if (!ok) {
         continue;
       }
@@ -262,12 +286,16 @@ static bool process_compilation_units(ElfFileReader& reader,
         }
       }
       if (has_dwo_id) {
-        string full_name = resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, dwo_name, dir_exists_cache);
-        string c;
-        if (comp_dir) {
-          c = comp_dir;
+        string full_name;
+        if (resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, nullptr, dwo_name, dir_exists_cache, full_name)) {
+          string c;
+          if (comp_dir) {
+            c = comp_dir;
+          }
+          dwos->push_back({ dwo_name, trace_relative_name, move(c), full_name, dwo_id });
+        } else {
+          FATAL() << "DWO missing due to relative path " << full_name;
         }
-        dwos->push_back({ dwo_name, trace_relative_name, move(c), full_name, dwo_id });
       } else {
         LOG(warn) << "DW_AT_GNU_dwo_name but not DW_AT_GNU_dwo_id";
       }
@@ -277,7 +305,10 @@ static bool process_compilation_units(ElfFileReader& reader,
       continue;
     }
     if (source_file_name) {
-      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, nullptr, source_file_name, dir_exists_cache));
+      string full_name;
+      if (resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, nullptr, source_file_name, dir_exists_cache, full_name)) {
+        file_names->insert(full_name);
+      }
     }
     intptr_t stmt_list = cu.die().section_ptr_attr(DW_AT_stmt_list, &ok);
     if (stmt_list < 0 || !ok) {
@@ -293,7 +324,10 @@ static bool process_compilation_units(ElfFileReader& reader,
         continue;
       }
       const char* dir = lines.directories()[f.directory_index];
-      file_names->insert(resolve_file_name(original_file_name.c_str(), comp_dir, dir, f.file_name, dir_exists_cache));
+      string full_name;
+      if (resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, dir, f.file_name, dir_exists_cache, full_name)) {
+        file_names->insert(full_name);
+      }
     }
   } while (!debug_info.empty());
 
@@ -383,8 +417,23 @@ find_auxiliary_file(const string& original_file_name,
     }
     LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
+    // On Ubuntu 20.04 there's both a /lib/x86_64-linux-gnu/libc-2.31.so and a
+    // /usr/lib/x86_64-linux-gnu/libc-2.31.so. They are hardlinked to the same inode,
+    // and glibc debuginfo is present in the location corresponding to
+    // /lib/x86_64-linux-gnu/libc-2.31.so. But the kernel returns the /usr prefixed
+    // path from /proc/<pid>/fd/<fd>. Hack around that here.
+    if (original_file_dir.find("/usr/") == 0) {
+      full_file_name = "/usr/lib/debug" + original_file_dir.substr(sizeof("/usr") - 1) + "/" + aux_file_name;
+      normalize_file_name(full_file_name);
+      fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+      if (fd.is_open()) {
+        goto found;
+      }
+      LOG(info) << "Can't find external debuginfo file " << full_file_name;
+    }
+
     // If none of those worked, give up.
-    LOG(warn) << "Exhausted auxilliary debuginfo search locations for " << aux_file_name;
+    LOG(warn) << "Exhausted auxiliary debuginfo search locations for " << aux_file_name;
     return nullptr;
   }
 
@@ -528,7 +577,14 @@ static bool has_subdir(string& base, const char* suffix) {
   return !ret;
 }
 
+static void assert_absolute(const string& path) {
+  if (!is_absolute(path)) {
+    FATAL() << "Path " << path << " not absolute";
+  }
+}
+
 static void check_vcs_root(string& path, set<string>* vcs_dirs) {
+  assert_absolute(path);
   if (has_subdir(path, "/.git") || has_subdir(path, "/.hg")) {
     vcs_dirs->insert(path + "/");
   }
@@ -537,7 +593,7 @@ static void check_vcs_root(string& path, set<string>* vcs_dirs) {
 // Returns an empty string if the path does not exist or
 // is not accessible.
 // `path` need not be normalized, i.e. may contain .. or .
-// components.
+// components. It mus be absolute.
 // The result string, if non-empty, will be absolute,
 // normalized, and contain no symlink components.
 // The keys in resolved_dirs are absolute file paths
@@ -550,6 +606,7 @@ static string resolve_symlinks(const string& path,
                                unordered_map<string, string>* resolved_dirs,
                                vector<Symlink>* symlinks,
                                set<string>* vcs_dirs) {
+  assert_absolute(path);
   // Absolute, not normalized. We don't keep this normalized because
   // we want resolved_dirs to work well.
   // This is always a prefix of `path`.
@@ -662,6 +719,7 @@ static string resolve_symlinks(const string& path,
 
 /// Adds to vcs_dirs any directory paths under any
 /// of our resolved directories.
+/// file_names must be absolute.
 static void build_symlink_map(const set<string>& file_names,
                               set<string>* resolved_file_names,
                               vector<Symlink>* symlinks,
@@ -692,6 +750,7 @@ struct OutputCompDirSubstitution {
 
 static int sources(const map<string, string>& binary_file_names, const map<string, string>& comp_dir_substitutions, bool is_explicit) {
   vector<string> relevant_binary_names;
+  // Must be absolute.
   set<string> file_names;
   set<ExternalDebugInfo> external_debug_info;
   vector<DwoInfo> dwos;

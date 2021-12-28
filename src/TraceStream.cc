@@ -503,6 +503,12 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
           o.setDevice(opened.device);
           o.setInode(opened.inode);
         }
+      } else if (e.socket_addrs) {
+        auto addrs = data.initSocketAddrs();
+        auto localAddr = (*e.socket_addrs.get())[0];
+        auto remoteAddr = (*e.socket_addrs.get())[1];
+        addrs.setLocalAddr(Data::Reader(reinterpret_cast<uint8_t*>(&localAddr), sizeof(localAddr)));
+        addrs.setRemoteAddr(Data::Reader(reinterpret_cast<uint8_t*>(&remoteAddr), sizeof(remoteAddr)));
       }
       break;
     }
@@ -673,6 +679,21 @@ TraceFrame TraceReader::read_frame() {
             opened.device = o.getDevice();
             opened.inode = o.getInode();
           }
+          break;
+        }
+        case trace::Frame::Event::Syscall::Extra::SOCKET_ADDRS: {
+          auto addrs = data.getSocketAddrs();
+          syscall_ev.socket_addrs = make_shared<std::array<typename NativeArch::sockaddr_storage, 2>>();
+          Data::Reader local = addrs.getLocalAddr();
+          if (local.size() != sizeof(NativeArch::sockaddr_storage)) {
+            FATAL() << "Invalid sockaddr length";
+          }
+          memcpy(&(*syscall_ev.socket_addrs.get())[0], local.begin(), sizeof(NativeArch::sockaddr_storage));
+          Data::Reader remote = addrs.getRemoteAddr();
+          if (remote.size() != sizeof(NativeArch::sockaddr_storage)) {
+            FATAL() << "Invalid sockaddr length";
+          }
+          memcpy(&(*syscall_ev.socket_addrs.get())[1], remote.begin(), sizeof(NativeArch::sockaddr_storage));
           break;
         }
         default:
@@ -1394,6 +1415,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     auto quirks = header.initQuirks();
     quirks.setExplicitProcMem(false);
     quirks.setSpecialLibrrpage(false);
+    quirks.setPkeyAllocRecordedExtraRegs(true);
   }
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
@@ -1550,6 +1572,9 @@ TraceReader::TraceReader(const string& dir)
     }
     if (quirks.getSpecialLibrrpage()) {
       quirks_ |= SpecialLibRRpage;
+    }
+    if (quirks.getPkeyAllocRecordedExtraRegs()) {
+      quirks_ |= PkeyAllocRecordedExtraRegs;
     }
   }
   Data::Reader uuid = header.getUuid();

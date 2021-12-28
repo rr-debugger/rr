@@ -85,7 +85,11 @@ void print_global_options(FILE* out) {
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
       "\n"
-      "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n",
+      "Environment variables:\n"
+      " $RR_LOG        logging configuration ; e.g. RR_LOG=all:warn,Task:debug\n"
+      " $RR_TMPDIR     to use a different TMPDIR than the recorded program\n"
+      " $_RR_TRACE_DIR where traces will be stored;\n"
+      "                falls back to $XDG_DATA_HOME / $HOME/.local/share/rr\n",
       out);
 }
 
@@ -102,6 +106,10 @@ void print_usage(FILE* out) {
         "otherwise we assume the 'record' subcommand.\n\n",
         out);
   print_global_options(out);
+
+  /* we should print usage when utility being wrongly used.
+     use 'exit' with failure code */
+  exit(EXIT_FAILURE);
 }
 
 static void init_random() {
@@ -201,11 +209,24 @@ bool parse_global_option(std::vector<std::string>& args) {
   return true;
 }
 
+static char* saved_argv0_;
+static size_t saved_argv0_space_;
+
+char* saved_argv0() {
+  return saved_argv0_;
+}
+size_t saved_argv0_space() {
+  return saved_argv0_space_;
+}
+
 } // namespace rr
 
 using namespace rr;
 
 int main(int argc, char* argv[]) {
+  rr::saved_argv0_ = argv[0];
+  rr::saved_argv0_space_ = argv[argc - 1] + strlen(argv[argc - 1]) + 1 - rr::saved_argv0_;
+
   init_random();
   raise_resource_limits();
 
@@ -228,7 +249,6 @@ int main(int argc, char* argv[]) {
 
   if (args.size() == 0) {
     print_usage(stderr);
-    return 1;
   }
 
   auto command = Command::command_for_name(args[0]);
@@ -237,7 +257,6 @@ int main(int argc, char* argv[]) {
   } else {
     if (!Command::verify_not_option(args)) {
       print_usage(stderr);
-      return 1;
     }
     if (is_directory(args[0].c_str())) {
       command = ReplayCommand::get();

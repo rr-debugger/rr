@@ -34,7 +34,7 @@ option(INSTALL_TESTSUITE "Install the testsuite")
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
 # is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 5)
-set(rr_VERSION_MINOR 4)
+set(rr_VERSION_MINOR 5)
 set(rr_VERSION_PATCH 0)
 
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
@@ -342,7 +342,12 @@ foreach(file ${RR_PAGE_FILES})
   set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
-set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-z,max-page-size=0x1000 ${LINKER_FLAGS}")
+
+# Since librrpage replaces the kernel vDSO for processes exec'd by rr,
+# we want it to have the same SONAME as the real vDSO to trick things
+# like AddressSanitizer into recognising it as the vDSO.
+set_target_properties(rrpage PROPERTIES NO_SONAME ON)
+set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-z,max-page-size=0x1000 -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
 set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
 # CMake seems to have trouble generating the link line without this
 set_target_properties(rrpage PROPERTIES LINKER_LANGUAGE C)
@@ -473,6 +478,7 @@ set(RR_SOURCES
   src/GdbServer.cc
   src/HasTaskSet.cc
   src/HelpCommand.cc
+  src/ExportImportCheckpoints.cc
   src/kernel_abi.cc
   src/kernel_metadata.cc
   src/log.cc
@@ -595,13 +601,17 @@ set(RR_GDB_RESOURCES
   32bit-core.xml
   32bit-linux.xml
   32bit-sse.xml
+  32bit-pkeys.xml
   64bit-avx.xml
   64bit-core.xml
   64bit-linux.xml
   64bit-seg.xml
   64bit-sse.xml
+  64bit-pkeys.xml
+  amd64-pkeys-linux.xml
   amd64-avx-linux.xml
   amd64-linux.xml
+  i386-pkeys-linux.xml
   i386-avx-linux.xml
   i386-linux.xml
   aarch64-core.xml
@@ -672,7 +682,8 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
   endforeach(file)
 
-  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib ${LINKER_FLAGS}")
+  set_target_properties(rrpage_32 PROPERTIES NO_SONAME ON)
+  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
   set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
   set_target_properties(rrpage_32 PROPERTIES LINKER_LANGUAGE C)
 
@@ -803,6 +814,7 @@ set(BASIC_TESTS
   cwd_inaccessible
   daemon
   desched_blocking_poll
+  desched_sigkill
   detach_state
   detach_threads
   deterministic_sigsys
@@ -812,6 +824,7 @@ set(BASIC_TESTS
   doublesegv
   epoll_create
   epoll_create1
+  epoll_edge
   epoll_pwait_eintr_sigmask
   eventfd
   exec_flags
@@ -820,6 +833,7 @@ set(BASIC_TESTS
   exec_from_main_thread
   exec_from_other_thread
   exec_stopsig
+  execveat
   exit_with_syscallbuf_signal
   fadvise
   fanotify
@@ -876,12 +890,14 @@ set(BASIC_TESTS
   io
   io_uring
   ioctl
+  ioctl_blk
   ioctl_fb
   ioctl_fs
   ioctl_pty
   ioctl_sg
   ioctl_tty
   ioctl_vt
+  ioprio
   x86/ioperm
   x86/iopl
   join_threads
@@ -909,6 +925,7 @@ set(BASIC_TESTS
   mmap_adjacent_to_rr_usage
   mmap_private
   mmap_private_grow_under_map
+  mmap_recycle
   mmap_ro
   mmap_self_maps_shared
   mmap_shared
@@ -1262,6 +1279,7 @@ set(TESTS_WITH_PROGRAM
   link
   madvise_dontfork
   main_thread_exit
+  many_yields
   mmap_fd_reuse_checkpoint
   mmap_replace_most_mappings
   mmap_shared_prot
@@ -1277,6 +1295,7 @@ set(TESTS_WITH_PROGRAM
   overflow_branch_counter
   patch_page_end
   x86/patch_40_80_f6_81
+  perf_event_mmap
   priority
   ptrace_remote_unmap
   remove_latest_trace
@@ -1318,6 +1337,7 @@ set(TESTS_WITH_PROGRAM
   sysconf_onln
   target_fork
   target_process
+  tcp_sockets
   term_nonmain
   term_rr
   term_trace_reset
@@ -1379,6 +1399,7 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_prctl_name
   checkpoint_simple
   checksum_sanity_noclone
+  comm
   cont_signal
   x86/cpuid
   dead_thread_target
@@ -1399,6 +1420,7 @@ set(TESTS_WITHOUT_PROGRAM
   mprotect_step
   nested_detach
   nested_detach_kill
+  nested_release
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   post_exec_fpu_regs
@@ -1559,10 +1581,11 @@ if(BUILD_TESTS)
     set(TEST_MONITOR_DEFAULT_TIMEOUT 120)
   endif()
 
+  # The real timeouts are handled by test-monitor
+  set(CTEST_TEST_TIMEOUT 1000)
+
   function(configure_test test)
-    # The real timeouts are handled by test-monitor
-    set_tests_properties(${test}
-      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT 1000)
+    set_tests_properties(${test} PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
   endfunction(configure_test)
 
   if(INSTALL_TESTSUITE)

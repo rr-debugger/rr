@@ -207,6 +207,7 @@ const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;
 const int HLE_FEATURE_FLAG = 1 << 4;
 const int XSAVEC_FEATURE_FLAG = 1 << 1;
+const int PKU_FEATURE_FLAG = 1 << 3;
 
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers
@@ -324,6 +325,13 @@ std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
  * for stacks. grsecurity kernels don't.
  */
 bool uses_invisible_guard_page();
+
+/**
+ * Search /proc/net/ for a socket of the correct family matching the provided fd.
+ * If found, returns the local and remote addresses in out and returns true.
+ * Otherwise, returns false.
+ */
+bool read_proc_net_socket_addresses(Task* t, int fd, std::array<typename NativeArch::sockaddr_storage, 2>& out);
 
 bool copy_file(int dest_fd, int src_fd);
 
@@ -528,7 +536,8 @@ void normalize_file_name(std::string& s);
 enum NestedBehavior {
   NESTED_ERROR,
   NESTED_IGNORE,
-  NESTED_DETACH
+  NESTED_DETACH,
+  NESTED_RELEASE,
 };
 
 std::string find_exec_stub(SupportedArch arch);
@@ -548,6 +557,8 @@ int pop_count(uint64_t v);
 /* A version of fatal that uses no allocation/thread resource and is thus
   safe to use in volatile contexts */
 void SAFE_FATAL(int err, const char *msg);
+
+bool coredumping_signal_takes_down_entire_vm();
 
 } // namespace rr
 

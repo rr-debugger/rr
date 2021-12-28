@@ -14,7 +14,6 @@
 #include "ExtraRegisters.h"
 #include "FdTable.h"
 #include "PerfCounters.h"
-#include "PropertyTable.h"
 #include "Registers.h"
 #include "TaskishUid.h"
 #include "ThreadGroup.h"
@@ -420,8 +419,12 @@ public:
    * Call this method when this task has just performed an |execve()|
    * (so we're in the new address space), but before the system call has
    * returned.
+   * `exe_file` is the name of the executable file in the trace, if there is one,
+   * otherwise the original exe file name --- a best-effort filename we can
+   * pass to gdb for it to read the exe. `original_exe_file` is the
+   * original file exe file name.
    */
-  void post_exec(const std::string& exe_file);
+  void post_exec(const std::string& exe_file, const std::string& original_exe_file);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.
@@ -852,8 +855,6 @@ public:
   typedef uint8_t ThreadLocals[PRELOAD_THREAD_LOCALS_SIZE];
   ThreadLocals thread_locals;
 
-  PropertyTable& properties() { return properties_; }
-
   size_t usable_scratch_size() {
     return std::max<ssize_t>(0, scratch_size - page_size());
   }
@@ -962,6 +963,11 @@ public:
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
   /**
+   * Do PTRACE_SEIZE on this tid with the correct ptrace options.
+   */
+  static long ptrace_seize(pid_t tid, Session& session);
+
+  /**
    * Do a tgkill to send a specific signal to this task.
    */
   void tgkill(int sig);
@@ -975,6 +981,11 @@ public:
   // A map from original table to (potentially detached) clone, to preserve
   // FdTable sharing relationships during a session fork.
   using ClonedFdTables = std::unordered_map<uintptr_t, FdTable::shr_ptr>;
+
+  /**
+   * Just forget that this Task exists. Another rr process will manage it.
+   */
+  void forget();
 
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
@@ -1205,13 +1216,13 @@ protected:
   // If this is true, `seen_ptrace_exit_event` must be true.
   bool handled_ptrace_exit_event;
 
-  PropertyTable properties_;
-
   // A counter for the number of stops for which the stop may have been caused
   // by PTRACE_INTERRUPT. See description in do_waitpid
   int expecting_ptrace_interrupt_stop;
 
   bool was_reaped;
+  // Let this Task object be destroyed with no consequences.
+  bool forgotten;
 
   Task(Task&) = delete;
   Task operator=(Task&) = delete;

@@ -10,6 +10,10 @@
 namespace rr {
 
 struct Sighandlers;
+class TaskSyscallStateBase {
+public:
+  virtual ~TaskSyscallStateBase() {}
+};
 
 /** Different kinds of waits a task can do.
  */
@@ -124,7 +128,7 @@ public:
     KERNEL_WRITES_CHILD_TID,
     WRITE_CHILD_TID,
   };
-  void record_exit_event(int exitsig = 0, WriteChildTid write_child_tid = KERNEL_WRITES_CHILD_TID);
+  void record_exit_event(WriteChildTid write_child_tid = KERNEL_WRITES_CHILD_TID);
   /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
@@ -633,6 +637,7 @@ private:
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 
 public:
+  std::unique_ptr<TaskSyscallStateBase> syscall_state;
   Ticks ticks_at_last_recorded_syscall_exit;
   remote_code_ptr ip_at_last_recorded_syscall_exit;
 
@@ -783,6 +788,9 @@ public:
 
   // We've sent a SIGKILL during shutdown for this task.
   bool sent_shutdown_kill;
+
+  // Last exec system call was an execveat
+  bool did_execveat;
 
   // Set if the tracee requested an override of the ticks request.
   // Used for testing.

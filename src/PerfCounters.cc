@@ -69,7 +69,8 @@ enum CpuMicroarch {
   IntelCometlake,
   IntelIcelake,
   IntelTigerlake,
-  LastIntel = IntelTigerlake,
+  IntelAlderlake,
+  LastIntel = IntelAlderlake,
   FirstAMD,
   AMDF15R30 = FirstAMD,
   AMDZen,
@@ -124,6 +125,7 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
+  { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
   { IntelTigerlake, "Intel Tigerlake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
   { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
   { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },

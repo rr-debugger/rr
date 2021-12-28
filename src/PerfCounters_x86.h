@@ -65,8 +65,10 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x506f0:
       return IntelGoldmont;
     case 0x706e0:
+    case 0x606a0:
       return IntelIcelake;
     case 0x806c0:
+    case 0x806d0:
       return IntelTigerlake;
     case 0x806e0:
     case 0x906e0:
@@ -74,6 +76,8 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0xa0650:
     case 0xa0660:
 	return IntelCometlake;
+    case 0x90670:
+      return IntelAlderlake;
     case 0x30f00:
       return AMDF15R30;
     case 0x00f10: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen) (UNTESTED)
@@ -84,6 +88,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x30f10: // Rome, Castle Peak (Zen 2)
     case 0x60f00: // Renoir (Zen 2) (UNTESTED)
     case 0x70f10: // Matisse (Zen 2) (UNTESTED)
+    case 0x60f80: // Lucienne
       if (ext_family == 8) {
         return AMDZen;
       } else if (ext_family == 3) {
@@ -99,7 +104,7 @@ static CpuMicroarch compute_cpu_microarch() {
       break;
   }
 
-  if (!strcmp(vendor, "AuthenticAMD")) {
+  if (!strncmp(vendor, "AuthenticAMD", sizeof(vendor))) {
     CLEAN_FATAL() << "AMD CPU type " << HEX(cpu_type) << " unknown";
   } else {
     CLEAN_FATAL() << "Intel CPU type " << HEX(cpu_type) << " unknown";

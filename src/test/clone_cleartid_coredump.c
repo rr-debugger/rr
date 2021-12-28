@@ -50,16 +50,23 @@ int main(void) {
                 CLONE_VM | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
                 NULL, shared_page, NULL, shared_page);
     test_assert(tid > 0);
+
     test_assert(tid = waitpid(tid, &status, __WALL));
-    /* The child will take us down before we have the chance to get here */
-    test_assert(0);
+    test_assert(WIFSIGNALED(status));
+    return 0;
   }
 
   test_assert(child_tid > 0);
   test_assert(child_tid == waitpid(child_tid, &status, __WALL));
-  test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV);
-  test_assert(*(pid_t*)shared_page != (pid_t)-1 &&
-              *(pid_t*)shared_page != 0);
+  if (WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV) {
+    atomic_puts("Old (<5.16) kernel behavior");
+    test_assert(*(pid_t*)shared_page == 0);
+  } else if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+    atomic_puts("New (5.16+) kernel behavior");
+    test_assert(*(pid_t*)shared_page == 0);
+  } else {
+    test_assert(0);
+  }
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

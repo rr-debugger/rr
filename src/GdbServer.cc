@@ -246,13 +246,14 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
   GdbRegister end;
   // Send values for all the registers we sent XML register descriptions for.
   // Those descriptions are controlled by GdbConnection::cpu_features().
+  bool have_PKU = dbg->cpu_features() & GdbConnection::CPU_PKU;
   bool have_AVX = dbg->cpu_features() & GdbConnection::CPU_AVX;
   switch (regs.arch()) {
     case x86:
-      end = have_AVX ? DREG_YMM7H : DREG_ORIG_EAX;
+      end = have_PKU ? DREG_PKRU : (have_AVX ? DREG_YMM7H : DREG_ORIG_EAX);
       break;
     case x86_64:
-      end = have_AVX ? DREG_64_YMM15H : DREG_ORIG_RAX;
+      end = have_PKU ? DREG_64_PKRU : (have_AVX ? DREG_64_YMM15H : DREG_ORIG_RAX);
       break;
     case aarch64:
       end = DREG_FPCR;
@@ -908,8 +909,7 @@ static Task* is_in_exec(ReplayTimeline& timeline) {
   if (!t) {
     return nullptr;
   }
-  return timeline.current_session().next_step_is_successful_syscall_exit(
-             syscall_number_for_execve(t->arch()))
+  return timeline.current_session().next_step_is_successful_exec_syscall_exit()
              ? t
              : nullptr;
 }
@@ -1590,7 +1590,14 @@ static uint32_t get_cpu_features(SupportedArch arch) {
     case x86_64: {
       cpu_features = arch == x86_64 ? GdbConnection::CPU_X86_64 : 0;
       unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
-      auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+      auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
+      if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
+        // PKU (Skylake) implies AVX (Sandy Bridge).
+        cpu_features |= GdbConnection::CPU_AVX | GdbConnection::CPU_PKU;
+        break;
+      }
+
+      cpuid_data = cpuid(CPUID_GETFEATURES, 0);
       // We're assuming here that AVX support on the system making the recording
       // is the same as the AVX support during replay. But if that's not true,
       // rr is totally broken anyway.

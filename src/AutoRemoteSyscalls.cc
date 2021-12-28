@@ -463,6 +463,8 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     sizeof(msg), &msg, &ok);
 
   if (!ok) {
+    ASSERT(remote.task(), errno == ESRCH);
+    LOG(debug) << "Failed to write memory";
     return -ESRCH;
   }
   int ret = 0;
@@ -472,10 +474,13 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     ret = remote.syscall(Arch::recvmsg, child_sock, msg.remote_msg(), 0);
   }
   if (ret < 0) {
+    LOG(debug) << "Failed to recvmsg " << ret;
     return ret;
   }
   int their_fd = remote.task()->read_mem(msg.remote_cmsgdata(), &ok);
   if (!ok) {
+    ASSERT(remote.task(), errno == ESRCH);
+    LOG(debug) << "Failed to read msg";
     return -ESRCH;
   }
   return their_fd;
@@ -557,17 +562,16 @@ int AutoRemoteSyscalls::send_fd(const ScopedFd &our_fd) {
   RR_ARCH_FUNCTION(send_fd_arch, arch(), our_fd);
 }
 
-void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to) {
+void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to, int dup3_flags) {
   int remote_fd = send_fd(our_fd);
   ASSERT(task(), remote_fd >= 0);
   if (remote_fd != dup_to) {
     long ret = infallible_syscall(syscall_number_for_dup3(arch()), remote_fd,
-                                  dup_to, O_CLOEXEC);
+                                  dup_to, dup3_flags);
     ASSERT(task(), ret == dup_to);
     infallible_syscall(syscall_number_for_close(arch()), remote_fd);
   }
 }
-
 
 remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall(
     remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
@@ -608,6 +612,10 @@ int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
 }
 
 void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allow_death) {
+  if (word_size(t->arch()) == 4) {
+    // Sign-extend ret because it can be a 32-bit negative errno
+    ret = (int)ret;
+  }
   if (allow_death && ret == -ESRCH) {
     return;
   }

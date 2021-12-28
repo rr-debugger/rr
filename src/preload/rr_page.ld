@@ -39,7 +39,12 @@ SECTIONS
 }
 
 VERSION {
-  VER_1 {
-      global:__vdso_time;
+  LINUX_2.6 {
+    global:
+      __vdso_gettimeofday;
+      __vdso_clock_getres;
+      __vdso_time;
+      __vdso_clock_gettime;
+      __vdso_getcpu;
   };
 }

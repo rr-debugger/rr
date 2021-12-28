@@ -84,7 +84,6 @@ struct Flags {
 
   /**
    * Get a reference that can be used to initialize the global Flags.
-   * Can only be called once.
    */
   static Flags& get_for_init();
 

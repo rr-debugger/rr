@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cpp_supplement.h"
+
 namespace rr {
 
 enum DWTag {
@@ -77,6 +79,7 @@ class DwarfSpan {
 public:
   DwarfSpan(const uint8_t* start, const uint8_t* end) : start(start), end(end) {}
   DwarfSpan(const DwarfSpan& other) = default;
+  DwarfSpan& operator=(const DwarfSpan& other) = default;
   DwarfSpan() : start(nullptr), end(nullptr) {}
   size_t size() const { return end - start; }
   uint64_t read_uleb(bool* ok);
@@ -224,19 +227,6 @@ private:
   std::vector<const char*> directories_;
   std::vector<DwarfSourceFile> file_names_;
 };
-
-#if __cplusplus == 201103L
-
-/**
- * Implementation of make_unique for C++11 (from https://herbsutter.com/gotw/_102/).
- */
-template<typename T, typename ...Args>
-std::unique_ptr<T> make_unique( Args&& ...args )
-{
-    return std::unique_ptr<T>( new T( std::forward<Args>(args)... ) );
-}
-
-#endif /* __cplusplus == 201103L */
 
 } // namespace rr
 

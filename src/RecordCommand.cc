@@ -81,11 +81,14 @@ RecordCommand RecordCommand::singleton(
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
     "                             just the initial process.\n"
-    "  --nested=ignore            Directly start child process when running\n"
-    "                             under nested rr recording, instead of\n"
-    "                             raising an error.\n"
-    "  --nested=detach            When nested, start a separate recording\n"
-    "                             session, instead of raising an error\n"
+    "  --nested=<value>           Control behavior when run inside an outer\n"
+    "                             rr recording. Default: exit with error\n"
+    "  --nested=ignore            Directly start child process so it's part\n"
+    "                             of the outer recording\n"
+    "  --nested=detach            Start a separate recording session.\n"
+    "                             Must not share memory with the outer.\n"
+    "  --nested=release           Run the child without recording it.\n"
+    "                             Must not share memory with the outer.\n"
     "  --setuid-sudo              If running under sudo, pretend to be the\n"
     "                             user that ran sudo rather than root. This\n"
     "                             allows recording setuid/setcap binaries.\n"
@@ -321,6 +324,8 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
         flags.nested = NESTED_IGNORE;
       } else if (opt.value == "detach") {
         flags.nested = NESTED_DETACH;
+      } else if (opt.value == "release") {
+        flags.nested = NESTED_RELEASE;
       } else {
         LOG(warn) << "Unknown nesting behavior `" << opt.value << "`";
         flags.nested = NESTED_ERROR;
@@ -747,23 +752,31 @@ int RecordCommand::run(vector<string>& args) {
   }
 
   if (running_under_rr()) {
-    if (flags.nested == NESTED_IGNORE) {
-      exec_child(args);
-    } else if (flags.nested == NESTED_DETACH) {
-      int ret = syscall(SYS_rrcall_detach_teleport, (uintptr_t)0, (uintptr_t)0,
-        (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
-      if (ret < 0) {
-        FATAL() << "Failed to detach from parent rr";
+    switch (flags.nested) {
+      case NESTED_IGNORE:
+        exec_child(args);
+        return 1;
+      case NESTED_DETACH:
+      case NESTED_RELEASE: {
+        int ret = syscall(SYS_rrcall_detach_teleport, (uintptr_t)0, (uintptr_t)0,
+          (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
+        if (ret < 0) {
+          FATAL() << "Failed to detach from parent rr";
+        }
+        if (running_under_rr(false)) {
+          FATAL() << "Detaching from parent rr did not work";
+        }
+        if (flags.nested == NESTED_RELEASE) {
+          exec_child(args);
+          return 1;
+        }
+        break;
       }
-      if (running_under_rr(false)) {
-        FATAL() << "Detaching from parent rr did not work";
-      }
-      // Fall through
-    } else {
-      fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
-                      "Use `rr record --nested=ignore` to start the child "
-                      "process directly.\n");
-      return 1;
+      default:
+        fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
+                        "Use `rr record --nested=ignore` to start the child "
+                        "process directly.\n");
+        return 1;
     }
   }
 

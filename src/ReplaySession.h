@@ -219,7 +219,7 @@ public:
    * Returns true if the next step for this session is to exit a syscall with
    * the given number.
    */
-  bool next_step_is_successful_syscall_exit(int syscallno);
+  bool next_step_is_successful_exec_syscall_exit();
 
   /**
    * The current ReplayStepKey.
@@ -236,11 +236,13 @@ public:
     Flags()
       : redirect_stdio(false)
       , share_private_mappings(false)
+      , replay_stops_at_first_execve(false)
       , cpu_unbound(false) {}
-    Flags(const Flags& other) = default;
+    Flags(const Flags&) = default;
     bool redirect_stdio;
     std::string redirect_stdio_file;
     bool share_private_mappings;
+    bool replay_stops_at_first_execve;
     bool cpu_unbound;
   };
 
@@ -321,6 +323,33 @@ public:
   virtual int tracee_output_fd(int dflt) override {
     return tracee_output_fd_.get() ? tracee_output_fd_->get() : dflt;
   }
+
+  /**
+   * Get ready to detach these tasks and reattach them in a child process. Call this
+   * before forking the child.
+   */
+  void prepare_to_detach_tasks();
+  /**
+   * This ReplaySession is in a forked child. The real ReplaySession is still running in
+   * the parent, so we don't really own tasks and other shared resources. Forget about
+   * them so we don't try to tear them down when this ReplaySession is destroyed.
+   */
+  void forget_tasks();
+  /**
+   * The shared resources associated with this ReplaySession are being transferred to
+   * the child process `new_ptracer`. Prepare them for transfer (e.g. ptrace-detach the
+   * tracees) and prepare them to be traced by `new_ptracer`, and forget about them.
+   * `new_sock_fd` is the new control fd pushed into all tasks.
+   */
+  void detach_tasks(pid_t new_ptracer, ScopedFd& new_tracee_socket_receiver);
+  /**
+   * The shared resources associated with this ReplaySession are being transferred to
+   * the child process `new_ptracer`. Receive them in the child process by ptrace-attaching
+   * to them etc.
+   * `new_sock_fd` is the control fd that has been assigned to all tasks,
+   * `new_sock_receiver_fd` is its receiver end.
+   */
+  void reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_tracee_socket_receiver);
 
 private:
   ReplaySession(const std::string& dir, const Flags& flags);

@@ -22,12 +22,22 @@ int main(void) {
   write(pipe_fds[1], "x", 1);
   if (pidfd < 0 && errno == ENOSYS) {
     atomic_puts("pidfd_open not supported, skipping test");
+    write(pipe_fds[1], "x", 1);
     test_assert(wait(&status) == child);
     test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
   } else {
     siginfo_t* info;
     int ret;
     test_assert(pidfd >= 0);
+
+    ret = syscall(RR_pidfd_send_signal, pidfd, SIGURG, NULL, 0);
+    if (ret < 0) {
+      test_assert(errno == ENOSYS);
+    } else {
+      test_assert(ret == 0);
+    }
+
+    write(pipe_fds[1], "x", 1);
     ALLOCATE_GUARD(info, 'a');
     ret = waitid(RR_P_PIDFD, pidfd, info, WEXITED);
     VERIFY_GUARD(info);

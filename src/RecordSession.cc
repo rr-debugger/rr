@@ -234,7 +234,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   bool may_wait_exit = !is_coredumping_signal(exit_status.fatal_sig()) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
   record_exit_trace_event(t, exit_status);
-  t->record_exit_event(exit_status.fatal_sig(),
+  t->record_exit_event(
     (!t->already_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
   if (!t->already_reaped()) {
     t->proceed_to_exit(may_wait_exit);
@@ -302,7 +302,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
 
   // Special case: If the tracee issues a vsyscall, we will get a seccomp trap,
   // but no syscall traps whatsover. In particular, we wouldn't see it during
-  // replay either. We try to moneypatch the caller on the assumption that known
+  // replay either. We try to monkeypatch the caller on the assumption that known
   // callers of this (deprecated) interface all follow a common pattern. If we
   // can't patch the caller, this is a fatal error, since the recording will
   // otherwise be broken.
@@ -341,11 +341,11 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
 
     ASSERT(t, t->regs().ip().undo_executed_bkpt(t->arch()) == ret_addr);
 
-    // Now that we're in a sane state, ask the Moneypatcher to try and patch
+    // Now that we're in a sane state, ask the Monkeypatcher to try and patch
     // that.
     bool patch_ok = t->vm()->monkeypatcher().try_patch_vsyscall_caller(t, ret_addr);
     ASSERT(t, patch_ok) << "The tracee issues a vsyscall to " << ip
-            << " but we failed to moneypatch the caller (return address "
+            << " but we failed to monkeypatch the caller (return address "
             << ret_addr << ", sp=" << sp << "). Recording will not succeed. Exiting.";
 
     // Reset to the start of the region and continue
@@ -874,6 +874,9 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
   /* TODO: mask off signals and avoid this loop. */
   do {
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    if (t->is_dying()) {
+      return;
+    }
     /* We can safely ignore TIME_SLICE_SIGNAL while trying to
      * reach the disarm-desched ioctl: once we reach it,
      * the desched'd syscall will be "done" and the tracee
@@ -1648,7 +1651,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         WaitStatus exit_status = WaitStatus::for_fatal_sig(sig);
         record_exit_trace_event(t, exit_status);
         // Allow writing child_tid now because otherwise the write will race
-        t->record_exit_event(sig, RecordTask::WRITE_CHILD_TID);
+        t->record_exit_event(RecordTask::WRITE_CHILD_TID);
         // On a real affected kernel, we probably would have never gotten here,
         // since the signal we would be seeing was not deterministic, but let's
         // be conservative and still try to emulate the ptrace stop.
@@ -1683,11 +1686,13 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       }
 
       // Mark each task in this address space as expecting a ptrace exit
-      // to avoid causing any ptrace_exit reaces.
+      // to avoid causing any ptrace_exit races.
       if (is_fatal && is_coredumping_signal(sig)) {
         for (Task *ot : t->vm()->task_set()) {
           if (t != ot) {
-            ((RecordTask *)ot)->waiting_for_ptrace_exit = true;
+            if (t->tgid() == ot->tgid() || coredumping_signal_takes_down_entire_vm()) {
+              ((RecordTask *)ot)->waiting_for_ptrace_exit = true;
+            }
           }
         }
       }
@@ -2184,6 +2189,10 @@ static string lookup_by_path(const string& name) {
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
   string full_path = lookup_by_path(argv[0]);
+  struct stat st;
+  if (stat(full_path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+    CLEAN_FATAL() << "Provided tracee '" << argv[0] << "' is a directory, not an executable";
+  }
   ExeInfo exe_info = read_exe_info(full_path);
 
   // Strip any LD_PRELOAD that an outer rr may have inserted
@@ -2228,8 +2237,8 @@ static string lookup_by_path(const string& name) {
   if (!Session::has_cpuid_faulting()) {
     // OpenSSL uses RDRAND, but we can disable it. These bitmasks are inverted
     // and ANDed with the results of CPUID. The number below is 2^62, which is the
-    // bit for RDRAND support.
-    env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
+    // bit for RDRAND support, and 2^29, which is the bit for SHA support.
+    env.push_back("OPENSSL_ia32cap=~4611686018427387904:~536870912");
     // Disable Qt's use of RDRAND/RDSEED/RTM
     env.push_back("QT_NO_CPU_FEATURE=rdrnd rdseed rtm");
     // Disable systemd's use of RDRAND

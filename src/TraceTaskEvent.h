@@ -70,6 +70,7 @@ public:
     DEBUG_ASSERT(type() == CLONE);
     return clone_flags_;
   }
+  // Ignores `dirfd` for execveat
   const std::string& file_name() const {
     DEBUG_ASSERT(type() == EXEC);
     return file_name_;

@@ -15,4 +15,5 @@
   <xi:include href="64bit-sse.xml"/>
   <xi:include href="64bit-linux.xml"/>
   <xi:include href="64bit-seg.xml"/>
+  <xi:include href="64bit-pkeys.xml"/>
 </target>

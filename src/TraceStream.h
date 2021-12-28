@@ -25,7 +25,7 @@ namespace rr {
 /**
  * Bump this when rr changes mean that traces produced by new rr can't be replayed by old rr.
  */
-const int FORWARD_COMPATIBILITY_VERSION = 1;
+const int FORWARD_COMPATIBILITY_VERSION = 2;
 
 struct CPUIDRecord;
 struct DisableCPUIDFeatures;
@@ -480,7 +480,9 @@ public:
     ExplicitProcMem = 0x1,
     // Whether this trace requires the special librrpage replay behavior
     // added in 3aaf792 and later removed.
-    SpecialLibRRpage = 0x2
+    SpecialLibRRpage = 0x2,
+    // Whether this trace recorded extra regs for pkey_alloc(2).
+    PkeyAllocRecordedExtraRegs = 0x4
   };
 
   int quirks() const { return quirks_; }

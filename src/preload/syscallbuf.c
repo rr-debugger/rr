@@ -1522,11 +1522,17 @@ static long sys_fcntl(const struct syscall_info* call)
 #endif
 {
   switch (call->args[1]) {
+    case F_SETFL:
+      if (call->args[2] == O_DIRECT) {
+        /* This needs to go to rr so we can disable syscall buffering
+           on this fd. */
+        return traced_raw_syscall(call);
+      }
+      /* Falls through. */
     case F_DUPFD:
     case F_GETFD:
     case F_GETFL:
     case F_GETOWN:
-    case F_SETFL:
     case F_SETFD:
     case F_SETOWN:
     case F_SETSIG:

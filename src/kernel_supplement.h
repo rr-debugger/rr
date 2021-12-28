@@ -325,6 +325,14 @@ struct rr_input_mask {
 #define PR_CAP_AMBIENT_CLEAR_ALL 4
 #endif
 
+// New in the 3.17 kernel.
+#ifndef VIDIOC_QUERY_EXT_CTRL
+/* This definition omits the size because in prepare_ioctl
+   it is masked away anyway. And the real size is taken from
+   the real request by _IOC_SIZE(request). */
+#define VIDIOC_QUERY_EXT_CTRL _IOWR('V', 103, 0)
+#endif
+
 // New in the 4.6 kernel.
 #ifndef CLONE_NEWCGROUP
 #define CLONE_NEWCGROUP 0x02000000

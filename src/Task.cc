@@ -47,6 +47,7 @@
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
 #include "ThreadDb.h"
+#include "cpp_supplement.h"
 #include "fast_forward.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -95,7 +96,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       seen_ptrace_exit_event(false),
       handled_ptrace_exit_event(false),
       expecting_ptrace_interrupt_stop(0),
-      was_reaped(false) {
+      was_reaped(false),
+      forgotten(false) {
   memset(&thread_locals, 0, sizeof(thread_locals));
 }
 
@@ -242,26 +244,32 @@ WaitStatus Task::kill() {
 }
 
 Task::~Task() {
-  ASSERT(this, seen_ptrace_exit_event);
-  ASSERT(this, handled_ptrace_exit_event);
-  ASSERT(this, syscallbuf_child.is_null());
+  if (!forgotten) {
+    ASSERT(this, seen_ptrace_exit_event);
+    ASSERT(this, handled_ptrace_exit_event);
+    ASSERT(this, syscallbuf_child.is_null());
 
-  if (!session().is_recording() && !already_reaped()) {
-    // Reap the zombie.
-    int ret = waitpid(tid, NULL, __WALL);
-    if (ret == -1) {
-      ASSERT(this, errno == ECHILD || errno == ESRCH);
-    } else {
-      ASSERT(this, ret == tid);
+    if (!session().is_recording() && !already_reaped()) {
+      // Reap the zombie.
+      int ret = waitpid(tid, NULL, __WALL);
+      if (ret == -1) {
+        ASSERT(this, errno == ECHILD || errno == ESRCH);
+      } else {
+        ASSERT(this, ret == tid);
+      }
     }
+
+    LOG(debug) << "  dead";
   }
 
   session().on_destroy(this);
   tg->erase_task(this);
   as->erase_task(this);
   fds->erase_task(this);
+}
 
-  LOG(debug) << "  dead";
+void Task::forget() {
+  forgotten = true;
 }
 
 void Task::finish_emulated_syscall() {
@@ -926,7 +934,7 @@ static bool is_long_mode_segment(uint32_t segment) {
 }
 #endif
 
-void Task::post_exec(const string& exe_file) {
+void Task::post_exec(const string& exe_file, const string& original_exe_file) {
   Task* stopped_task_in_address_space = nullptr;
   bool other_task_in_address_space = false;
   for (Task* t : as->task_set()) {
@@ -977,7 +985,7 @@ void Task::post_exec(const string& exe_file) {
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone();
   fds->insert_task(this);
-  prname = prname_from_exe_image(as->exe_image());
+  prname = prname_from_exe_image(original_exe_file);
 }
 
 void Task::post_exec_syscall() {
@@ -1410,7 +1418,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   flush_regs();
 
   pid_t wait_ret = 0;
-  if (session().is_recording()) {
+  if (session().is_recording() && !is_dying()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
      * and advances to the PTRACE_EXIT_EVENT ptrace-stop just before we
      * send a PTRACE_CONT. Our PTRACE_CONT will cause it to continue and exit,
@@ -1443,7 +1451,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
           << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     }
   }
-  if (wait_ret > 0 || handled_ptrace_exit_event) {
+  if (wait_ret > 0 || is_dying()) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
     // wait() will see this and report the ptrace-exit event.
     detected_unexpected_exit = true;
@@ -2540,7 +2548,7 @@ void Task::copy_state(const CapturedState& state) {
       if (cloned_file_data_fd_child >= 0) {
         ScopedFd fd(cloned_file_data_fname.c_str(), session().as_record() ?
           O_RDWR : O_RDONLY);
-        remote.infallible_send_fd_dup(fd, cloned_file_data_fd_child);
+        remote.infallible_send_fd_dup(fd, cloned_file_data_fd_child, O_CLOEXEC);
         remote.infallible_lseek_syscall(
             cloned_file_data_fd_child, state.cloned_file_data_offset, SEEK_SET);
       }
@@ -3303,6 +3311,26 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // Never returns!
 }
 
+long Task::ptrace_seize(pid_t tid, Session& session) {
+  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+                     PTRACE_O_TRACECLONE;
+  if (!Flags::get().disable_ptrace_exit_events) {
+    options |= PTRACE_O_TRACEEXIT;
+  }
+  if (session.is_recording()) {
+    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
+  }
+
+  long ret =
+      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
+  if (ret < 0 && errno == EINVAL) {
+    // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
+    // it for more robust cleanup, so tolerate not having it.
+    ret = ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
+  }
+  return ret;
+}
+
 /*static*/ Task* Task::spawn(Session& session, ScopedFd& error_fd,
                              ScopedFd* sock_fd_out,
                              ScopedFd* sock_fd_receiver_out,
@@ -3372,22 +3400,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // any abnormal exit of the rr process will leave the child paused and
   // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
-  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACECLONE;
-  if (!Flags::get().disable_ptrace_exit_events) {
-    options |= PTRACE_O_TRACEEXIT;
-  }
-  if (session.is_recording()) {
-    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
-  }
-
-  ret =
-      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
-  if (ret < 0 && errno == EINVAL) {
-    // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
-    // it for more robust cleanup, so tolerate not having it.
-    ret = ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
-  }
+  ret = ptrace_seize(tid, session);
   if (ret) {
     // Note that although the tracee may have died due to some fatal error,
     // we haven't reaped its exit code so there's no danger of killing

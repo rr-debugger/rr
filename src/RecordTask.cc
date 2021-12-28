@@ -198,6 +198,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       waiting_for_ptrace_exit(false),
       retry_syscall_patching(false),
       sent_shutdown_kill(false),
+      did_execveat(false),
       tick_request_override((TicksRequest)0) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
@@ -253,15 +254,11 @@ RecordTask::~RecordTask() {
   }
 }
 
-void RecordTask::record_exit_event(int fatal_signo, WriteChildTid write_child_tid) {
+void RecordTask::record_exit_event(WriteChildTid write_child_tid) {
   // The kernel explicitly only clears the futex if the address space is shared.
   // If the address space has no other users then the futex will not be cleared
   // even if it lives in shared memory which other tasks can read.
-  // If however, the exit was the result of a fatal, core-dump signal, the futex
-  // is not cleared (both to preserve the coredump and because any other users
-  // of the same address space were also shot down).
-  if (!is_coredumping_signal(fatal_signo) &&
-     !tid_futex.is_null() && as->task_set().size() > 1 &&
+  if (!tid_futex.is_null() && as->task_set().size() > 1 &&
      as->has_mapping(tid_futex)) {
     int val = 0;
     record_local(tid_futex, &val);
@@ -343,18 +340,19 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
 }
 
 void RecordTask::post_exec() {
-  // Change syscall number to execve *for the new arch*. If we don't do this,
+  // Change syscall number to execve/execveat *for the new arch*. If we don't do this,
   // and the arch changes, then the syscall number for execve in the old arch/
   // is treated as the syscall we're executing in the new arch, with hilarious
   // results.
-  int syscallno = syscall_number_for_execve(arch());
-  registers.set_original_syscallno(syscallno);
+  int new_syscallno = did_execveat ? syscall_number_for_execveat(arch())
+      : syscall_number_for_execve(arch());
+  registers.set_original_syscallno(new_syscallno);
   // Fix event architecture and syscall number
-  ev().Syscall().number = syscallno;
+  ev().Syscall().number = new_syscallno;
   ev().Syscall().set_arch(arch());
 
   // The signal mask is inherited across execve so we don't need to invalidate.
-  Task::post_exec(this->exe_path());
+  Task::post_exec(exe_path(), exe_path());
   if (emulated_ptracer) {
     ASSERT(this, !(emulated_ptracer->arch() == x86 && arch() == x86_64))
         << "We don't support a 32-bit process tracing a 64-bit process";

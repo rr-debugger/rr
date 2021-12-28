@@ -41,6 +41,21 @@ int main(void) {
 
       test_assert(0 == ioctl(fd, SG_IO, &io_hdr));
     }
+
+    int ret;
+    struct cdrom_tochdr tochdr;
+    memset(&tochdr, 0, sizeof(tochdr));
+    ret = ioctl(fd, CDROMREADTOCHDR, &tochdr);
+    atomic_printf("CDROMREADTOCHDR returned ret=%d cdth_trk0=%d cdth_trk1=%d\n",
+                  ret, tochdr.cdth_trk0, tochdr.cdth_trk1);
+
+    struct cdrom_tocentry tocentry;
+    memset(&tocentry, 0, sizeof(tocentry));
+    tocentry.cdte_track = tochdr.cdth_trk0;
+    tocentry.cdte_format = CDROM_LBA;
+    ret = ioctl(fd, CDROMREADTOCENTRY, &tocentry);
+    atomic_printf("CDROMREADTOCENTRY returned ret=%d cdte_format=%d lba=%d cdte_datamode=%d\n",
+                  ret, tocentry.cdte_format, tocentry.cdte_addr.lba, tocentry.cdte_datamode);
   }
 
   atomic_puts("EXIT-SUCCESS");

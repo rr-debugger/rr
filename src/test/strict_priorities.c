@@ -18,9 +18,10 @@ static void* low_priority_func(__attribute__((unused)) void* unused) {
   return NULL;
 }
 
+static volatile int dummy;
+
 int main(void) {
   int i, j;
-  int dummy = 0;
   pthread_t low_priority_thread;
 
   pthread_create(&low_priority_thread, NULL, low_priority_func, NULL);
@@ -38,6 +39,5 @@ int main(void) {
   main_thread_done = 1;
 
   atomic_puts("EXIT-SUCCESS");
-
   return 0;
 }

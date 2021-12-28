@@ -68,8 +68,7 @@ static bool thread_group_in_exec(Task* t) {
     }
     RecordTask* rt = static_cast<RecordTask*>(tt);
     Event& ev = rt->ev();
-    if (ev.is_syscall_event() &&
-        is_execve_syscall(ev.Syscall().number, ev.Syscall().arch())) {
+    if (ev.is_syscall_event() && ev.Syscall().is_exec()) {
       return true;
     }
   }

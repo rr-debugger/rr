@@ -4,9 +4,10 @@
 
 static void breakpoint(void) {}
 
+static volatile int result;
+
 int main(void) {
   int i;
-  int result = 0;
   for (i = 0; i < 100000; ++i) {
     result += i * i;
     breakpoint();

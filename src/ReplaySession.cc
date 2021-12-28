@@ -6,6 +6,7 @@
 
 #include <linux/futex.h>
 #include <syscall.h>
+#include <sys/prctl.h>
 
 #include <algorithm>
 
@@ -164,8 +165,8 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       trace_start_time(0) {
   if (trace_in.required_forward_compatibility_version() > FORWARD_COMPATIBILITY_VERSION) {
     CLEAN_FATAL()
-      << "This rr build is too old to replay the trace (we support forward compability version "
-      << FORWARD_COMPATIBILITY_VERSION << " but the trace needs " << trace_in.required_forward_compatibility_version();
+      << "This rr build is too old to replay the trace (we support forward compatibility version "
+      << FORWARD_COMPATIBILITY_VERSION << " but the trace needs " << trace_in.required_forward_compatibility_version() << ")";
   }
 
   ticks_semantics_ = trace_in.ticks_semantics();
@@ -183,25 +184,27 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
 
   trace_start_time = trace_frame.monotonic_time();
 
-  if (!PerfCounters::supports_ticks_semantics(ticks_semantics_)) {
-    CLEAN_FATAL()
-        << "Trace was recorded on a machine that defines ticks differently\n"
-           "to this machine; replay will not work.";
-  }
-
-  if (is_x86ish(trace_in.arch())) {
-    if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
+  if (!flags.replay_stops_at_first_execve) {
+    if (!PerfCounters::supports_ticks_semantics(ticks_semantics_)) {
       CLEAN_FATAL()
-          << "Trace was recorded with CPUID faulting enabled, but this\n"
-            "system does not support CPUID faulting.";
-    }
-    if (!has_cpuid_faulting() && !cpuid_compatible(trace_in.cpuid_records())) {
-      CLEAN_FATAL()
-          << "Trace was recorded on a machine with different CPUID values\n"
-            "and CPUID faulting is not enabled; replay will not work.";
+          << "Trace was recorded on a machine that defines ticks differently\n"
+             "to this machine; replay will not work.";
     }
 
-    check_xsave_compatibility(trace_in);
+    if (is_x86ish(trace_in.arch())) {
+      if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
+        CLEAN_FATAL()
+            << "Trace was recorded with CPUID faulting enabled, but this\n"
+              "system does not support CPUID faulting.";
+      }
+      if (!has_cpuid_faulting() && !cpuid_compatible(trace_in.cpuid_records())) {
+        CLEAN_FATAL()
+            << "Trace was recorded on a machine with different CPUID values\n"
+              "and CPUID faulting is not enabled; replay will not work.";
+      }
+
+      check_xsave_compatibility(trace_in);
+    }
   }
 }
 
@@ -248,8 +251,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
  * Return true if it's possible/meaningful to make a checkpoint at the
  * |frame| that |t| will replay.
  */
-static bool can_checkpoint_at(const TraceFrame& frame) {
-  const Event& ev = frame.event();
+static bool can_checkpoint_at(const Event& ev) {
   if (ev.has_ticks_slop()) {
     return false;
   }
@@ -273,7 +275,7 @@ bool ReplaySession::can_clone() {
   finish_initializing();
 
   ReplayTask* t = current_task();
-  return t && done_initial_exec() && can_checkpoint_at(current_trace_frame());
+  return t && done_initial_exec() && can_checkpoint_at(current_trace_frame().event());
 }
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
@@ -1554,8 +1556,7 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
 
 ReplayTask* ReplaySession::revive_task_for_exec() {
   const Event& ev = trace_frame.event();
-  if (!ev.is_syscall_event() ||
-      !is_execve_syscall(ev.Syscall().number, ev.Syscall().arch())) {
+  if (!ev.is_syscall_event() || !ev.Syscall().is_exec()) {
     FATAL() << "Can't find task, but we're not in an execve";
   }
 
@@ -1724,11 +1725,12 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   return t;
 }
 
-bool ReplaySession::next_step_is_successful_syscall_exit(int syscallno) {
+bool ReplaySession::next_step_is_successful_exec_syscall_exit() {
+  const Event& ev = trace_frame.event();
   return current_step.action == TSTEP_NONE &&
-         trace_frame.event().is_syscall_event() &&
-         trace_frame.event().Syscall().number == syscallno &&
-         trace_frame.event().Syscall().state == EXITING_SYSCALL &&
+         ev.is_syscall_event() &&
+         ev.Syscall().is_exec() &&
+         ev.Syscall().state == EXITING_SYSCALL &&
          !trace_frame.regs().syscall_failed();
 }
 
@@ -1897,6 +1899,70 @@ ReplayTask* ReplaySession::find_task(const TaskUid& tuid) const {
 
 double ReplaySession::get_trace_start_time(){
   return trace_start_time;
+}
+
+void ReplaySession::prepare_to_detach_tasks() {
+  finish_initializing();
+
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    t->flush_regs();
+  }
+}
+
+void ReplaySession::forget_tasks() {
+  while (!task_map.empty()) {
+    Task* t = task_map.begin()->second;
+    t->forget();
+    delete t;
+  }
+  while (!vm_map.empty()) {
+    AddressSpace* a = vm_map.begin()->second;
+    delete a;
+  }
+}
+
+void ReplaySession::detach_tasks(pid_t new_ptracer, ScopedFd& new_tracee_socket_receiver) {
+  // First tell Yama to let new_ptracer ptrace the tracees.
+  // Do this before sending SIGSTOP to any tracees because SIGSTOP
+  // might stop threads before we do their PR_SET_PTRACER.
+  // Also push the new control socket into all tracees.
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    AutoRemoteSyscalls remote(t);
+    long ret = remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_PTRACER, new_ptracer);
+    ASSERT(t, ret >= 0 || ret == -EINVAL) << "Failed PR_SET_PTRACER";
+    remote.infallible_send_fd_dup(new_tracee_socket_receiver, tracee_socket_fd_number, 0);
+  }
+  // Now PTRACE_DETACH and stop them all with SIGSTOP.
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    t->flush_regs();
+    t->xptrace(PTRACE_DETACH, nullptr, (void*)SIGSTOP);
+  }
+  forget_tasks();
+}
+
+void ReplaySession::reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_tracee_socket_receiver) {
+  tracee_socket = make_shared<ScopedFd>(move(new_tracee_socket));
+  tracee_socket_receiver = make_shared<ScopedFd>(move(new_tracee_socket_receiver));
+  // Seize all tasks.
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    long ret = Task::ptrace_seize(t->tid, *this);
+    ASSERT(t, ret >= 0) << "Failed to PTRACE_SEIZE";
+  }
+  // Get stop events for all tasks
+  for (auto& entry : task_map) {
+    Task* t = entry.second;
+    t->wait();
+    if (SIGSTOP != t->status().group_stop()) {
+      WaitStatus failed_status = t->status();
+      FATAL() << "Unexpected stop " << failed_status << " for " << t->tid;
+    }
+    t->clear_wait_status();
+    t->open_mem_fd();
+  }
 }
 
 } // namespace rr

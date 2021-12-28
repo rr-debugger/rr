@@ -2,7 +2,10 @@
 
 #include "DumpCommand.h"
 
+#include <arpa/inet.h>
 #include <inttypes.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #include <limits>
 #include <unordered_map>
@@ -54,6 +57,7 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
   }
 
   static const OptionSpec options[] = {
+    { 0, "socket-addresses", NO_PARAMETER },
     { 'b', "syscallbuf", NO_PARAMETER },
     { 'e', "task-events", NO_PARAMETER },
     { 'm', "recorded-metadata", NO_PARAMETER },
@@ -92,6 +96,9 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
       }
       flags.only_tid = opt.int_value;
       break;
+    case 0:
+      flags.dump_socket_addrs = true;
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
   }
@@ -99,7 +106,8 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
 }
 
 static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
-                                 const TraceFrame& frame) {
+                                 const TraceFrame& frame,
+                                 bool dump_raw) {
   if (frame.event().type() != EV_SYSCALLBUF_FLUSH) {
     return;
   }
@@ -122,11 +130,61 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
             (long)record->ret, (long)record->size,
             record->desched ? ", desched:1" : "",
             record->replay_assist ? ", replay_assist:1" : "");
+    if (dump_raw) {
+      fprintf(out, "  ");
+      for (unsigned long i = 0; i < record->size; ++i) {
+        fprintf(out, "%2.2x", *(record_ptr + (uintptr_t)i));
+      }
+      fprintf(out, "\n");
+    }
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       notifying_abort();
     }
     record_ptr += stored_record_size(record->size);
+  }
+}
+
+static void print_socket_addr(FILE* out, const struct NativeArch::sockaddr_storage& sa) {
+  char buf[256];
+  auto sockaddr = reinterpret_cast<const struct sockaddr_storage*>(&sa);
+  switch (sockaddr->ss_family) {
+    case AF_INET: {
+      auto sockaddr_in = reinterpret_cast<const struct sockaddr_in*>(sockaddr);
+      if (inet_ntop(AF_INET, &sockaddr_in->sin_addr, buf, sizeof(buf) - 1)) {
+        fprintf(out, "%s:%d", buf, sockaddr_in->sin_port);
+      } else {
+        FATAL();
+      }
+      break;
+    }
+    case AF_INET6: {
+      auto sockaddr_in6 = reinterpret_cast<const struct sockaddr_in6*>(sockaddr);
+      if (inet_ntop(AF_INET6, &sockaddr_in6->sin6_addr, buf, sizeof(buf) - 1)) {
+        fprintf(out, "%s:%d", buf, sockaddr_in6->sin6_port);
+      } else {
+        FATAL();
+      }
+      break;
+    }
+    default:
+      fputs("<Unknown socket family>", out);
+      break;
+  }
+}
+
+static void dump_socket_addrs(FILE* out, const TraceFrame& frame) {
+  if (frame.event().type() != EV_SYSCALL) {
+    return;
+  }
+
+  auto syscall = frame.event().Syscall();
+  if (syscall.socket_addrs) {
+    fputs("  Local socket address '", out);
+    print_socket_addr(out, (*syscall.socket_addrs.get())[0]);
+    fputs("' Remote socket address '", out);
+    print_socket_addr(out, (*syscall.socket_addrs.get())[1]);
+    fputs("'\n", out);
   }
 }
 
@@ -199,7 +257,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         frame.dump(out);
       }
       if (flags.dump_syscallbuf) {
-        dump_syscallbuf_data(trace, out, frame);
+        dump_syscallbuf_data(trace, out, frame, flags.raw_dump);
       }
       if (flags.dump_task_events) {
         auto it = task_events.find(frame.time());
@@ -266,6 +324,9 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           }
           fputs(" }\n", out);
         }
+      }
+      if (flags.dump_socket_addrs) {
+        dump_socket_addrs(out, frame);
       }
       if (!flags.raw_dump) {
         fprintf(out, "}\n");

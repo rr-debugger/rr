@@ -445,7 +445,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   const string& exe_name = datas[exe_km].file_name.empty()
                                ? kms[exe_km].fsname()
                                : datas[exe_km].file_name;
-  t->post_exec_syscall(exe_name);
+  t->post_exec_syscall(exe_name, kms[exe_km].fsname());
 
   t->fd_table()->close_after_exec(
       t, t->current_trace_frame().event().Syscall().exec_fds_to_close);
@@ -1149,6 +1149,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
    */
   switch (non_negative_syscall(sys)) {
     case Arch::execve:
+    case Arch::execveat:
       return process_execve(t, trace_frame, step);
 
     case Arch::brk:
@@ -1263,6 +1264,13 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       t->set_regs(trace_regs);
       t->set_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;
+      return;
+
+    case Arch::pkey_alloc:
+      // Older versions of rr (incorrectly) did not record the extra regs here.
+      if (t->session().has_trace_quirk(TraceReader::PkeyAllocRecordedExtraRegs)) {
+        t->set_extra_regs(trace_frame.extra_regs());
+      }
       return;
 
     case Arch::perf_event_open: {

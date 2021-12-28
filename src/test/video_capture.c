@@ -58,6 +58,39 @@ static int open_device(void) {
   } else {
     atomic_printf("%s VIDIOC_G_INPUT returns %d\n", device_name, input);
   }
+
+#ifdef VIDIOC_QUERY_EXT_CTRL
+  struct v4l2_query_ext_ctrl qec;
+  memset(&qec, 0, sizeof(qec));
+  qec.id = V4L2_CTRL_FLAG_NEXT_CTRL | V4L2_CTRL_FLAG_NEXT_COMPOUND;
+  ret = ioctl(fd, VIDIOC_QUERY_EXT_CTRL, &qec);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_QUERY_EXT_CTRL\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_QUERY_EXT_CTRL returns id=%d, type=%d, name=%s\n",
+                  device_name, qec.id, qec.type, qec.name);
+  }
+#endif
+
+  enum v4l2_priority prio = V4L2_PRIORITY_UNSET;
+  ret = ioctl(fd, VIDIOC_G_PRIORITY, &prio);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_G_PRIORITY\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_G_PRIORITY returns prio=%d\n", device_name, prio);
+  }
+
+  struct v4l2_queryctrl qc;
+  memset(&qc, 0, sizeof(qc));
+  qc.id = V4L2_CTRL_FLAG_NEXT_CTRL;
+  ret = ioctl(fd, VIDIOC_QUERYCTRL, &qc);
+  if (ret < 0) {
+    atomic_printf("%s does not support VIDIOC_QUERYCTRL\n", device_name);
+  } else {
+    atomic_printf("%s VIDIOC_QUERYCTRL returns id=%d, type=%d, name=%s\n",
+                  device_name, qc.id, qc.type, qc.name);
+  }
+
   return fd;
 }
 

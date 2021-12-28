@@ -10,6 +10,7 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <linux/capability.h>
+#include <linux/cdrom.h>
 #include <linux/ethtool.h>
 #include <linux/fb.h>
 #include <linux/fiemap.h>

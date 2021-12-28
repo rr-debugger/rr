@@ -3,6 +3,7 @@
 #ifndef RR_EVENT_H_
 #define RR_EVENT_H_
 
+#include <memory>
 #include <ostream>
 #include <stack>
 #include <string>
@@ -221,6 +222,10 @@ struct SyscallEvent {
   /** Change the architecture for this event. */
   void set_arch(SupportedArch a) { arch_ = a; }
 
+  bool is_exec() const {
+    return is_execve_syscall(number, arch()) || is_execveat_syscall(number, arch());
+  }
+
   SupportedArch arch_;
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect
@@ -235,6 +240,7 @@ struct SyscallEvent {
   int64_t write_offset;
   std::vector<int> exec_fds_to_close;
   std::vector<OpenedFd> opened;
+  std::shared_ptr<std::array<typename NativeArch::sockaddr_storage, 2>> socket_addrs;
 
   SyscallState state;
   // Syscall number.

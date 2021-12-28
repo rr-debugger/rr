@@ -49,7 +49,7 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
       cloned_file_data_fname = trace_reader().file_data_clone_file_name(tuid());
       ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDONLY);
       ASSERT(this, clone_file.is_open());
-      remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child);
+      remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child, O_CLOEXEC);
       fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
     }
   }
@@ -61,8 +61,8 @@ void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
   RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
 }
 
-void ReplayTask::post_exec_syscall(const string& replay_exe) {
-  Task::post_exec(replay_exe);
+void ReplayTask::post_exec_syscall(const string& replay_exe, const string& original_replay_exe) {
+  Task::post_exec(replay_exe, original_replay_exe);
 
   // Perform post-exec-syscall tasks now (e.g. opening mem_fd) before we
   // switch registers. This lets us perform AutoRemoteSyscalls using the
