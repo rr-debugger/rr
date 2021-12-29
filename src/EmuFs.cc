@@ -4,6 +4,7 @@
 
 #include <syscall.h>
 #include <sys/mman.h>
+#include <linux/fs.h>
 
 #include <fstream>
 #include <sstream>
