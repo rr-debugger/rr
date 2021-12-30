@@ -38,6 +38,8 @@ WEAK_ALIAS(time, __vdso_time)
 WEAK_ALIAS(clock_gettime, __vdso_clock_gettime)
 WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 
+.symver gettimeofday,gettimeofday@LINUX_2.6
+.symver clock_gettime,clock_gettime@LINUX_2.6
 .symver __vdso_gettimeofday,__vdso_gettimeofday@LINUX_2.6
 .symver __vdso_clock_getres,__vdso_clock_getres@LINUX_2.6
 .symver __vdso_time,__vdso_time@LINUX_2.6
