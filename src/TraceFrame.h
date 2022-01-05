@@ -39,6 +39,9 @@ public:
   const Event& event() const { return ev; }
   Ticks ticks() const { return ticks_; }
   double monotonic_time() const { return monotonic_time_; }
+  // Returns address of syscall_hook if this event is in the syscallbuf
+  remote_code_ptr in_syscallbuf_syscall_hook() const { return in_syscallbuf_syscall_hook_; }
+  bool in_syscallbuf() const { return !in_syscallbuf_syscall_hook_.is_null(); }
 
   const Registers& regs() const { return recorded_regs; }
   const ExtraRegisters& extra_regs() const { return recorded_extra_regs; }
@@ -63,6 +66,7 @@ private:
 
   FrameTime global_time;
   pid_t tid_;
+  remote_code_ptr in_syscallbuf_syscall_hook_;
   Event ev;
   Ticks ticks_;
   double monotonic_time_;

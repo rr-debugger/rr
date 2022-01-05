@@ -283,6 +283,9 @@ struct Frame {
   arch @4 :Arch;
   registers @5 :Registers;
   extraRegisters @6 :ExtraRegisters;
+  # If the event ends in the syscallbuf, then the address of the 'syscall_hook'
+  # function, otherwise zero.
+  inSyscallbufSyscallHook @30 :UInt64;
   event :union {
     instructionTrap @7 :Void;
     patchSyscall @8 :Void;

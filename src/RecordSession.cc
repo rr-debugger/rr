@@ -160,10 +160,6 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->stable_exit) {
     LOG(debug) << "stable exit";
   } else {
-    /* XXX: We could try to find some tasks here to unmap our buffers, but it
-     *      seems hardly worth it.
-     */
-    t->destroy_buffers(nullptr, nullptr);
     if (!t->may_be_blocked()) {
       // might have been hit by a SIGKILL or a SECCOMP_RET_KILL, in which case
       // there might be some execution since its last recorded event that we
@@ -196,7 +192,11 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // task is already completely dead and gone.
           SyscallEvent event(t->regs().original_syscallno(), t->arch());
           event.state = ENTERING_SYSCALL;
-          t->record_event(event);
+          // Don't try to reset the syscallbuf here. The task may be exiting
+          // while in arbitrary syscallbuf code. And of course, because it's
+          // exiting, it doesn't matter if we don't reset the syscallbuf.
+          t->record_event(event, RecordTask::FLUSH_SYSCALLBUF,
+                          RecordTask::DONT_RESET_SYSCALLBUF);
         }
       } else {
         // Don't try to reset the syscallbuf here. The task may be exiting
@@ -207,6 +207,11 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
                         RecordTask::DONT_RESET_SYSCALLBUF);
       }
     }
+    /* XXX: We could try to find some tasks here to unmap our buffers, but it
+     *      seems hardly worth it.
+     * Mark buffers as gone after recording events, in case they need to flush the syscallbuf.
+     */
+    t->destroy_buffers(nullptr, nullptr);
   }
 
   record_robust_futex_changes(t);
@@ -1765,6 +1770,10 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
                               &dummy_did_enter_syscall);
           ASSERT(t, !dummy_did_enter_syscall);
         }
+        if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+          // Tracee was nuked (probably SIGKILL) during desched processing.
+          return true;
+        }
         break;
     }
     return false;
@@ -2397,6 +2406,12 @@ RecordSession::RecordResult RecordSession::record_step() {
       syscall_state_changed(t, &step_state);
     }
   } else if (rescheduled.by_waitpid && handle_signal_event(t, &step_state)) {
+    // Tracee may have exited while processing descheds; handle that.
+    if (handle_ptrace_exit_event(t)) {
+      // t may have been deleted.
+      last_task_switchable = ALLOW_SWITCH;
+      return result;
+    }
   } else {
     runnable_state_changed(t, &step_state, &result, rescheduled.by_waitpid);
 

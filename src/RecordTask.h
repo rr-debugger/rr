@@ -50,6 +50,7 @@ struct SyscallbufCodeLayout {
   remote_code_ptr syscallbuf_code_end;
   remote_code_ptr get_pc_thunks_start;
   remote_code_ptr get_pc_thunks_end;
+  remote_code_ptr syscallbuf_syscall_hook;
   remote_code_ptr syscallbuf_final_exit_instruction;
 };
 

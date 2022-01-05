@@ -447,6 +447,12 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
       // seccomp filter.
       break;
     }
+    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      LOG(debug)
+          << "  (got exit, bailing out)";
+      t->push_event(Event::noop());
+      return;
+    }
 
     // Completely ignore spurious desched signals and
     // signals that aren't going to be delivered to the

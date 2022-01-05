@@ -408,6 +408,7 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
   frame.setTid(t->tid);
   frame.setTicks(t->tick_count());
   frame.setMonotonicSec(monotonic_now_sec());
+  frame.setInSyscallbufSyscallHook(t->is_in_syscallbuf() ? t->syscallbuf_code_layout.syscallbuf_syscall_hook.register_value() : 0);
   auto mem_writes = frame.initMemWrites(raw_recs.size());
   for (size_t i = 0; i < raw_recs.size(); ++i) {
     auto w = mem_writes[i];
@@ -556,6 +557,7 @@ TraceFrame TraceReader::read_frame() {
   ret.global_time = time();
   ret.tid_ = i32_to_tid(frame.getTid());
   ret.ticks_ = frame.getTicks();
+  ret.in_syscallbuf_syscall_hook_ = frame.getInSyscallbufSyscallHook();
   if (ret.ticks_ < 0) {
     FATAL() << "Invalid ticks value";
   }

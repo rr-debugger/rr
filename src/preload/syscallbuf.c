@@ -631,6 +631,8 @@ unsigned long getauxval(unsigned long type) __attribute__((weak));
 #define AT_SYSINFO_EHDR 33
 #endif
 
+extern RR_HIDDEN long syscall_hook(const struct syscall_info* call);
+
 /**
  * Initialize process-global buffering state, if enabled.
  * NOTE: constructors go into a special section by default so this won't
@@ -820,6 +822,7 @@ static void __attribute__((constructor)) init_process(void) {
   globals.fdt_uniform = 1;
   params.breakpoint_instr_addr = &do_breakpoint_fault_addr;
   params.breakpoint_mode_sentinel = -1;
+  params.syscallbuf_syscall_hook = (void*)syscall_hook;
 
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
   int err = privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
@@ -1077,6 +1080,11 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
   return 1;
 }
 
+static void force_tick(void) {
+  __asm__ __volatile__("je 1f\n\t"
+                       "1:");
+}
+
 static void __attribute__((noinline)) do_breakpoint(size_t value)
 {
   char *unsafe_value = ((char*)-1)-0xf;
@@ -1179,6 +1187,13 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
      * has been processed.
      */
     do_breakpoint(hdr->num_rec_bytes/8);
+    /* Force a tick now.
+     * During replay, if an async event (SIGKILL) happens between committing the syscall
+     * above and before this forced tick, we can detect that because the number of ticks
+     * recorded for the SIGKILL will be less than or equal to the number of ticks reported
+     * when the replay hits do_breakpoint.
+     */
+    force_tick();
   }
 
   return ret;

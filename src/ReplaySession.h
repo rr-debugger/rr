@@ -29,6 +29,8 @@ class ReplayTask;
 struct ReplayFlushBufferedSyscallState {
   /* The offset in the syscallbuf (in 8-byte units) at which we want to stop */
   uintptr_t stop_breakpoint_offset;
+  /* This includes slop */
+  Ticks recorded_ticks;
 };
 
 /**
@@ -92,6 +94,8 @@ struct ReplayTraceStep {
     struct {
       Ticks ticks;
       int signo;
+      // Not remote_code_ptr because this has to have plain data
+      uint64_t in_syscallbuf_syscall_hook;
     } target;
 
     ReplayFlushBufferedSyscallState flush;
@@ -379,8 +383,9 @@ private:
                                           const StepConstraints& constraints);
   Completion emulate_async_signal(ReplayTask* t,
                                   const StepConstraints& constraints,
-                                  Ticks ticks);
-  void prepare_syscallbuf_records(ReplayTask* t);
+                                  Ticks ticks,
+                                  remote_code_ptr in_syscallbuf_syscall_hook);
+  void prepare_syscallbuf_records(ReplayTask* t, Ticks ticks);
   Completion flush_syscallbuf(ReplayTask* t,
                               const StepConstraints& constraints);
   Completion patch_next_syscall(ReplayTask* t,
@@ -403,6 +408,7 @@ private:
   siginfo_t last_siginfo_;
   Flags flags_;
   FastForwardStatus fast_forward_status;
+  bool skip_next_execution_event;
 
   // The clock_gettime(CLOCK_MONOTONIC) timestamp of the first trace event, used
   // during 'replay' to calculate the elapsed time between the first event and

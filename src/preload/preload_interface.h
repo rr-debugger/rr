@@ -425,6 +425,7 @@ struct rrcall_init_preload_params {
       int breakpoint_mode_sentinel;
     };
   };
+  PTR(void) syscallbuf_syscall_hook;
 };
 
 /**

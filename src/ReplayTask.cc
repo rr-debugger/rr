@@ -86,6 +86,10 @@ void ReplayTask::validate_regs(uint32_t flags) {
   if (!session().done_initial_exec()) {
     return;
   }
+  if (session().current_trace_frame().in_syscallbuf()) {
+    /* Registers may diverge here */
+    return;
+  }
 
   Registers rec_regs = current_trace_frame().regs();
 

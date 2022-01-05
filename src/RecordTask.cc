@@ -374,6 +374,8 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
 
+  t->syscallbuf_code_layout.syscallbuf_syscall_hook =
+      params.syscallbuf_syscall_hook.rptr().as_int();
   t->syscallbuf_code_layout.syscallbuf_final_exit_instruction =
       params.syscallbuf_final_exit_instruction.rptr().as_int();
   t->syscallbuf_code_layout.syscallbuf_code_start =
