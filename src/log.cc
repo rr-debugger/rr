@@ -281,15 +281,19 @@ static void flush_log_stream() {
   logging_stream->str(string());
 }
 
-void flush_log_buffer() {
-  if (log_buffer) {
-    for (char c : *log_buffer) {
+void flush_log_buffer(unique_ptr<deque<char>> &this_log_buffer) {
+  if (this_log_buffer) {
+    for (char c : *this_log_buffer) {
       // We could accumulate in a string to speed things up, but this could get
       // called in low-memory situations so be safe.
       *log_file << c;
     }
-    log_buffer->clear();
+    this_log_buffer->clear();
   }
+}
+
+void flush_log_buffer() {
+  flush_log_buffer(log_buffer);
 }
 
 template <typename T>
@@ -391,10 +395,18 @@ static void emergency_debug(Task* t) {
   if (record_session) {
     record_session->close_trace_writer(TraceWriter::CLOSE_ERROR);
   }
+
+  // Capture the log buffer now to prevent the log messages from the trace
+  // stream read below from overwriting any data from the actual failure.
+  flush_log_stream();
+  std::unique_ptr<deque<char>> captured_log_buffer = std::move(log_buffer);
+
   TraceStream* trace_stream = t->session().trace_stream();
   if (trace_stream) {
     dump_last_events(*trace_stream);
   }
+
+  flush_log_buffer(captured_log_buffer);
 
   if (probably_not_interactive() && !Flags::get().force_things &&
       !getenv("RUNNING_UNDER_TEST_MONITOR")) {
@@ -402,8 +414,6 @@ static void emergency_debug(Task* t) {
     FATAL()
         << "(session doesn't look interactive, aborting emergency debugging)";
   }
-
-  flush_log_buffer();
 
   GdbServer::emergency_debug(t);
   FATAL() << "Can't resume execution from invalid state";
