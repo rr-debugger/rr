@@ -517,22 +517,29 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
 
     // We received an unexpected SIGKILL for one of our detached proxies,
     // probably because the parent or some other task tried to SIGKILL it
-    // using the original pid. Forward the SIGKILL to the detached process.
-    ::kill(waited->rec_tid, SIGKILL);
-    int raw_status;
-    pid_t npid = ::waitpid(waited->rec_tid, &raw_status, __WALL | WUNTRACED);
-    status = WaitStatus(raw_status);
-    waited->did_waitpid(status);
-    ASSERT(waited, npid == waited->rec_tid);
-    ASSERT(waited, status.type() == WaitStatus::EXIT ||
-                   status.type() == WaitStatus::FATAL_SIGNAL);
+    // using the original pid. Forward the SIGKILL to the detached process
+    // ... unless the Task has already exited and this SIGKILL raced with
+    // us waiting for the parent to reap it.
+    if (!waited->already_exited()) {
+      LOG(debug) << "        ... sending SIGKILL to detached process " << waited->rec_tid;;
+      ::kill(waited->rec_tid, SIGKILL);
+      int raw_status;
+      pid_t npid = ::waitpid(waited->rec_tid, &raw_status, __WALL | WUNTRACED);
+      ASSERT(waited, npid == waited->rec_tid);
+      status = WaitStatus(raw_status);
+      ASSERT(waited, status.type() == WaitStatus::EXIT ||
+                     status.type() == WaitStatus::FATAL_SIGNAL);
+    } else {
+      LOG(debug) << "        ... but the detached process is already dead";
+    }
   }
   if (waited->detached_proxy) {
+    waited->did_waitpid(status);
     pid_t parent_rec_tid = waited->get_parent_pid();
     LOG(debug) << "    ... but it's a detached process.";
     RecordTask *parent = session.find_task(parent_rec_tid);
-    if (parent) {
-      LOG(debug) << "    ... forwarding to parent.";
+    if (parent && !waited->emulated_stop_pending) {
+      LOG(debug) << "    ... notifying parent.";
       waited->emulated_stop_type = CHILD_STOP;
       waited->emulated_stop_pending = true;
       waited->emulated_SIGCHLD_pending = true;
@@ -549,6 +556,7 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
       } else {
         // The task is now dead, but so is our parent, so none of our
         // tasks care about this. We can now delete the proxy task.
+        // This will also reap the rec_tid of the proxy task.
         delete waited;
       }
     }
