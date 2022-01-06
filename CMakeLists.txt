@@ -818,6 +818,7 @@ set(BASIC_TESTS
   detach_state
   detach_threads
   detach_sigkill
+  detach_sigkill_exit
   deterministic_sigsys
   dev_zero
   direct
