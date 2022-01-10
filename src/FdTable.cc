@@ -31,6 +31,14 @@ void FdTable::add_monitor(Task* t, int fd, FileMonitor* monitor) {
   update_syscallbuf_fds_disabled(fd);
 }
 
+void FdTable::replace_monitor(Task* t, int fd, FileMonitor* monitor) {
+  if (!is_monitoring(fd)) {
+    add_monitor(t, fd, monitor);
+  } else {
+    fds[fd] = FileMonitor::shr_ptr(monitor);
+  }
+}
+
 bool FdTable::is_rr_fd(int fd) {
   auto it = fds.find(fd);
   if (it == fds.end()) {

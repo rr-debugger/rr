@@ -31,6 +31,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "MmappedFileMonitor.h"
+#include "ODirectFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
 #include "ProcStatMonitor.h"
@@ -694,10 +695,16 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
     auto rt = t->session().find_task(fd.tid);
     ASSERT(t, rt) << "Can't find task " << fd.tid;
     if (rt->fd_table()->is_monitoring(fd.fd)) {
-      ASSERT(rt,
-             rt->fd_table()->get_monitor(fd.fd)->type() ==
-                 FileMonitor::Type::Mmapped);
-      ((MmappedFileMonitor*)rt->fd_table()->get_monitor(fd.fd))->revive();
+      auto type = rt->fd_table()->get_monitor(fd.fd)->type();
+      if (type == FileMonitor::Type::Mmapped) {
+        ((MmappedFileMonitor*)rt->fd_table()->get_monitor(fd.fd))->revive();
+      } else if (type == FileMonitor::Type::ODirect) {
+        rt->fd_table()->replace_monitor(rt, fd.fd, new MmappedFileMonitor(rt, emufile));
+      } else {
+        ASSERT(rt, false)
+            << "Expected monitor type Mmapped | ODirect for fd " << fd.fd << ", got monitor type "
+            << type;
+      }
     } else {
       rt->fd_table()->add_monitor(rt, fd.fd, new MmappedFileMonitor(rt, emufile));
     }
@@ -1074,7 +1081,7 @@ static void handle_opened_files(ReplayTask* t, int flags) {
     } else if (is_rr_page_lib(o.path.c_str())) {
       file_monitor = new RRPageMonitor();
     } else if (flags & O_DIRECT) {
-      file_monitor = new FileMonitor();
+      file_monitor = new ODirectFileMonitor();
     } else {
       ASSERT(t, false) << "Why did we write filename " << o.path;
     }

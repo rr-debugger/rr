@@ -21,6 +21,7 @@ public:
   typedef std::shared_ptr<FdTable> shr_ptr;
 
   void add_monitor(Task* t, int fd, FileMonitor* monitor);
+  void replace_monitor(Task* t, int fd, FileMonitor* monitor);
   bool emulate_ioctl(int fd, RecordTask* t, uint64_t* result);
   bool emulate_fcntl(int fd, RecordTask* t, uint64_t* result);
   bool emulate_read(int fd, RecordTask* t,

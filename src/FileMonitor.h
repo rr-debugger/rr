@@ -36,7 +36,8 @@ public:
     VirtualPerfCounter,
     SysCpu,
     ProcStat,
-    RRPage
+    RRPage,
+    ODirect,
   };
 
   virtual Type type() { return Base; }

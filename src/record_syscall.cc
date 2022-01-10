@@ -74,6 +74,7 @@
 #include "ElfReader.h"
 #include "Flags.h"
 #include "MmappedFileMonitor.h"
+#include "ODirectFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
 #include "ProcStatMonitor.h"
@@ -5578,12 +5579,16 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     for (auto& f : extra_fds) {
       auto rt = t->session().find_task(f.tid);
       if (rt->fd_table()->is_monitoring(f.fd)) {
-        ASSERT(rt,
-                rt->fd_table()->get_monitor(f.fd)->type() ==
-                    FileMonitor::Type::Mmapped)
-          << "Expected monitor type Mmapped for fd " << f.fd << ", got monitor type "
-          << rt->fd_table()->get_monitor(f.fd)->type();
-        ((MmappedFileMonitor*)rt->fd_table()->get_monitor(f.fd))->revive();
+        auto type = rt->fd_table()->get_monitor(f.fd)->type();
+        if (type == FileMonitor::Type::Mmapped) {
+          ((MmappedFileMonitor*)rt->fd_table()->get_monitor(f.fd))->revive();
+        } else if (type == FileMonitor::Type::ODirect) {
+          rt->fd_table()->replace_monitor(rt, f.fd, new MmappedFileMonitor(rt, f.fd));
+        } else {
+          ASSERT(rt, false)
+              << "Expected monitor type Mmapped | ODirect for fd " << f.fd << ", got monitor type "
+              << type;
+        }
       } else {
         rt->fd_table()->add_monitor(rt, f.fd, new MmappedFileMonitor(rt, f.fd));
       }
@@ -5913,8 +5918,8 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
     // O_DIRECT can impose unknown alignment requirements, in which case
     // syscallbuf records will not be properly aligned and will cause I/O
     // to fail. Disable syscall buffering for O_DIRECT files.
-    LOG(info) << "Installing FileMonitor for O_DIRECT " << fd;
-    file_monitor = new FileMonitor();
+    LOG(info) << "Installing ODirectFileMonitor for O_DIRECT " << fd;
+    file_monitor = new ODirectFileMonitor();
   }
 
   if (file_monitor) {
@@ -6349,8 +6354,8 @@ static void rec_process_syscall_arch(RecordTask* t,
         // /proc/pid/mem or something) then we don't need to do anything.
         // since syscall buffering is already disabled.
         if (!t->fd_table()->get_monitor(fd)) {
-          LOG(info) << "Installing FileMonitor for O_DIRECT " << fd;
-          FileMonitor* file_monitor = new FileMonitor();
+          LOG(info) << "Installing ODirectFileMonitor for O_DIRECT " << fd;
+          FileMonitor* file_monitor = new ODirectFileMonitor();
           t->fd_table()->add_monitor(t, fd, file_monitor);
         }
       }

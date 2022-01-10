@@ -6,7 +6,7 @@
 
 int main(void) {
   int fd = open("test.out", O_RDWR | O_DIRECT | O_CREAT | O_TRUNC, 0600);
-  void* p;
+  void *p, *q;
   int ret = posix_memalign(&p, SIZE, SIZE);
   if (fd < 0 && errno == EINVAL) {
     atomic_puts("Filesystem doesn't support O_DIRECT; skipping");
@@ -22,6 +22,10 @@ int main(void) {
   ret = pread(fd, p, SIZE, 0);
   test_assert(ret == SIZE);
 
+  q = mmap(NULL, SIZE, PROT_READ, MAP_SHARED, fd, 0);
+  test_assert(q != MAP_FAILED);
+  munmap(q, SIZE);
+
   fd = open("test.out", O_RDWR | O_CREAT | O_TRUNC, 0600);
   test_assert(fd >= 0);
   ret = fcntl(fd, F_SETFL, O_DIRECT);
@@ -32,6 +36,10 @@ int main(void) {
 
   ret = pread(fd, p, SIZE, 0);
   test_assert(ret == SIZE);
+
+  q = mmap(NULL, SIZE, PROT_READ, MAP_SHARED, fd, 0);
+  test_assert(q != MAP_FAILED);
+  munmap(q, SIZE);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
