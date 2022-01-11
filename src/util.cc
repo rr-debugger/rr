@@ -2286,6 +2286,11 @@ void normalize_file_name(string& s)
       }
       if (is_component(s.c_str() + i + 1, "..")) {
         // Peel off '/..'
+        if (out == 0) {
+          // If there's nothing to peel off, just discard this.
+          i += 2;
+          continue;
+        }
         size_t p = s.rfind('/', out - 1);
         if (p != string::npos) {
           out = p;
