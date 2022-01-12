@@ -62,6 +62,18 @@ bool is_logging_enabled(LogLevel level, const char* file);
  */
 void flush_log_buffer();
 
+/**
+ * Parse the (RR_UNDER_)RR_LOG environment variable and logging
+ * levels appropriately.
+ */
+void apply_log_spec_from_env();
+
+/**
+ * Set log level according to the specification in spec, according to the format
+ * used by (RR_UNDER_)RR_LOG and `rr --log`.
+ */
+void apply_log_spec(const char *spec);
+
 struct NewlineTerminatingOstream {
   /**
    * `file` must be a pointer that is valid forever, preferably
