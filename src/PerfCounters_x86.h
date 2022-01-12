@@ -80,7 +80,7 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelAlderlake;
     case 0x30f00:
       return AMDF15R30;
-    case 0x00f10: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen) (UNTESTED)
+    case 0x00f10: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
     case 0x10f10: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
     case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+) (UNTESTED)
     case 0x20f00: // Dali (Zen) (UNTESTED)
@@ -89,7 +89,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x60f00: // Renoir (Zen 2) (UNTESTED)
     case 0x70f10: // Matisse (Zen 2) (UNTESTED)
     case 0x60f80: // Lucienne
-      if (ext_family == 8) {
+      if (ext_family == 8 || ext_family == 0xa) {
         return AMDZen;
       } else if (ext_family == 3) {
         return AMDF15R30;
