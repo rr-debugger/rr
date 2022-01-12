@@ -102,6 +102,58 @@ size_t log_buffer_size;
 
 static void flush_log_file() { log_file->flush(); }
 
+static void init_log_globals();
+
+void apply_log_spec(const char *spec) {
+  init_log_globals();
+  char *env = strdup(spec);
+  DEBUG_ASSERT(env);
+  for (int i = 0; env[i]; ++i) {
+    env[i] = simple_to_lower(env[i]);
+  }
+  char* p = env;
+  while (*p) {
+    char* end = strchrnul(p, ',');
+    char* sep = strchrnul(p, ':');
+    string n;
+    LogLevel level;
+    if (sep >= end) {
+      n = string(p, end - p);
+      level = LOG_debug;
+    } else {
+      n = string(p, sep - p);
+      if (sep + 1 == end) {
+        level = LOG_fatal;
+      } else {
+        level = to_log_level(string(sep + 1, end - (sep + 1)));
+      }
+    }
+    if (n == "" || n == "all") {
+      level_map->clear();
+      default_level = level;
+    } else {
+      (*level_map)[n] = level;
+    }
+    if (*end) {
+      p = end + 1;
+    } else {
+      p = end;
+    }
+  }
+  free(env);
+}
+
+void apply_log_spec_from_env() {
+  const char* log_env = "RR_LOG";
+  if (running_under_rr()) {
+    log_env = "RR_UNDER_RR_LOG";
+  }
+  char* env = getenv(log_env);
+  if (env) {
+    apply_log_spec(env);
+  }
+}
+
 static void init_log_globals() {
   if (log_globals_initialized) {
     return;
@@ -141,48 +193,7 @@ static void init_log_globals() {
     log_file = &cerr;
   }
 
-  const char* log_env = "RR_LOG";
-  if (running_under_rr()) {
-    log_env = "RR_UNDER_RR_LOG";
-  }
-  char* env = getenv(log_env);
-  if (env) {
-    env = strdup(env);
-    DEBUG_ASSERT(env);
-    for (int i = 0; env[i]; ++i) {
-      env[i] = simple_to_lower(env[i]);
-    }
-    char* p = env;
-    while (*p) {
-      char* end = strchrnul(p, ',');
-      char* sep = strchrnul(p, ':');
-      string n;
-      LogLevel level;
-      if (sep >= end) {
-        n = string(p, end - p);
-        level = LOG_debug;
-      } else {
-        n = string(p, sep - p);
-        if (sep + 1 == end) {
-          level = LOG_fatal;
-        } else {
-          level = to_log_level(string(sep + 1, end - (sep + 1)));
-        }
-      }
-      if (n == "" || n == "all") {
-        level_map->clear();
-        default_level = level;
-      } else {
-        (*level_map)[n] = level;
-      }
-      if (*end) {
-        p = end + 1;
-      } else {
-        p = end;
-      }
-    }
-    free(env);
-  }
+  apply_log_spec_from_env();
 }
 
 static LogLevel get_log_level(const string& name) {

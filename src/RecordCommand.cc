@@ -770,6 +770,9 @@ int RecordCommand::run(vector<string>& args) {
           exec_child(args);
           return 1;
         }
+        // running_under_rr() changed - respect the log specification from RR_LOG
+        // just as if we hadn't been running under rr.
+        apply_log_spec_from_env();
         break;
       }
       default:
