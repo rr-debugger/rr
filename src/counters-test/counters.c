@@ -355,6 +355,7 @@ static int do_child(void) {
   test_ticks_basic();
   test_ticks_syscalls();
   test_interrupt();
+  return 0;
 }
 
 typedef uint64_t Ticks;
@@ -442,7 +443,7 @@ int main(void) {
   CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGIO);
   Ticks ticks;
   CHECK(sizeof(ticks) == read(counter_fd, &ticks, sizeof(ticks)));
-  printf("Interrupted after %lld ticks, set period to %lld ticks\n", ticks, INTERRUPT_PERIOD);
+  printf("Interrupted after %lld ticks, set period to %lld ticks\n", (long long)ticks, (long long)INTERRUPT_PERIOD);
   CHECK(ticks >= INTERRUPT_PERIOD);
   if (ticks > INTERRUPT_PERIOD + pmu->skid_size) {
     fprintf(stderr, "Skid exceeded :-(\n");
