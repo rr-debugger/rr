@@ -18,6 +18,8 @@ int main(void) {
 
   while (iteration < ULONG_MAX) {
     iteration += 1;
+    // Don't let the compiler delete this loop.
+    asm("" : : : "memory");
   }
   return 0;
 }
