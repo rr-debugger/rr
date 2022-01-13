@@ -203,7 +203,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
         // while in arbitrary syscallbuf code. And of course, because it's
         // exiting, it doesn't matter if we don't reset the syscallbuf.
         // XXX flushing the syscallbuf may be risky too...
-        t->record_event(Event::sched(), RecordTask::FLUSH_SYSCALLBUF,
+        auto event = Event::sched();
+        if (t->is_in_syscallbuf()) {
+          event.Sched().in_syscallbuf_syscall_hook = t->syscallbuf_code_layout.syscallbuf_syscall_hook;
+          ASSERT(t, event.Sched().in_syscallbuf_syscall_hook != remote_code_ptr());
+        }
+        t->record_event(event, RecordTask::FLUSH_SYSCALLBUF,
                         RecordTask::DONT_RESET_SYSCALLBUF);
       }
     }

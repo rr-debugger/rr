@@ -71,10 +71,17 @@ public:
    */
   void set_real_tid_and_update_serial(pid_t tid);
 
+  void note_sched_in_syscallbuf_syscall_hook() {
+    seen_sched_in_syscallbuf_syscall_hook = true;
+  }
+
 private:
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
 
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin);
+
+  // Set to true when we see a sched event with in_syscallbuf_syscall_hook set.
+  bool seen_sched_in_syscallbuf_syscall_hook;
 };
 
 } // namespace rr

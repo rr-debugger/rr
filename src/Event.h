@@ -117,6 +117,23 @@ struct PatchSyscallEvent {
   bool patch_vsyscall;
 };
 
+/**
+ * Sched events track points at which context switches happen that are not
+ * otherwise associated with an rr event.
+ * Also used to record the point at which a tracee is SIGKILLed, which
+ * may require special handling if in the syscallbuf.
+ */
+struct SchedEvent {
+  SchedEvent(remote_code_ptr in_syscallbuf_syscall_hook)
+    : in_syscallbuf_syscall_hook(in_syscallbuf_syscall_hook) {}
+  // If this SchedEvent is delivered while in the syscallbuf,
+  // contains then the address of the 'syscall_hook' function,
+  // otherwise zero. This only applies to SchedEvents that represent
+  // the tracee being SIGKILLed, because normal SchedEvents will
+  // not be delivered in the syscallbuf.
+  remote_code_ptr in_syscallbuf_syscall_hook;
+};
+
 struct SyscallbufFlushEvent {
   SyscallbufFlushEvent() {}
   std::vector<mprotect_record> mprotect_records;
@@ -299,6 +316,15 @@ struct Event {
     return patch;
   }
 
+  SchedEvent& Sched() {
+    DEBUG_ASSERT(is_sched_event());
+    return sched_;
+  }
+  const SchedEvent& Sched() const {
+    DEBUG_ASSERT(is_sched_event());
+    return sched_;
+  }
+
   SyscallbufFlushEvent& SyscallbufFlush() {
     DEBUG_ASSERT(EV_SYSCALLBUF_FLUSH == event_type);
     return syscallbuf_flush;
@@ -336,6 +362,9 @@ struct Event {
    * Return true if this is one of the indicated type of events.
    */
   bool is_signal_event() const;
+  bool is_sched_event() const {
+    return event_type == EV_SCHED;
+  }
   bool is_syscall_event() const;
 
   /** Return a string describing this. */
@@ -362,7 +391,11 @@ struct Event {
     ev.PatchSyscall().patch_vsyscall = false;
     return ev;
   }
-  static Event sched() { return Event(EV_SCHED); }
+  static Event sched() {
+    auto ev = Event(EV_SCHED);
+    ev.Sched().in_syscallbuf_syscall_hook = remote_code_ptr();
+    return ev;
+  }
   static Event seccomp_trap() { return Event(EV_SECCOMP_TRAP); }
   static Event syscallbuf_abort_commit() {
     return Event(EV_SYSCALLBUF_ABORT_COMMIT);
@@ -379,6 +412,7 @@ private:
   union {
     DeschedEvent desched;
     PatchSyscallEvent patch;
+    SchedEvent sched_;
     SignalEvent signal;
     SyscallEvent syscall;
     SyscallbufFlushEvent syscallbuf_flush;

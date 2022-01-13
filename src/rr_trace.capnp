@@ -285,6 +285,7 @@ struct Frame {
   extraRegisters @6 :ExtraRegisters;
   # If the event ends in the syscallbuf, then the address of the 'syscall_hook'
   # function, otherwise zero.
+  # For legacy reasons this lives here but it only applies to sched events.
   inSyscallbufSyscallHook @30 :UInt64;
   event :union {
     instructionTrap @7 :Void;

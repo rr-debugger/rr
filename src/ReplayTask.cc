@@ -14,7 +14,9 @@ namespace rr {
 
 ReplayTask::ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
                        uint32_t serial, SupportedArch a)
-    : Task(session, _tid, _rec_tid, serial, a) {}
+    : Task(session, _tid, _rec_tid, serial, a),
+      seen_sched_in_syscallbuf_syscall_hook(false)
+{}
 
 ReplaySession& ReplayTask::session() const {
   return *Task::session().as_replay();
@@ -86,7 +88,7 @@ void ReplayTask::validate_regs(uint32_t flags) {
   if (!session().done_initial_exec()) {
     return;
   }
-  if (session().current_trace_frame().in_syscallbuf()) {
+  if (seen_sched_in_syscallbuf_syscall_hook) {
     /* Registers may diverge here */
     return;
   }

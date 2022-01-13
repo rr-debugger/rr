@@ -1676,7 +1676,6 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   /* Ask the trace-interpretation code what to do next in order
    * to retire the current frame. */
   memset(&current_step, 0, sizeof(current_step));
-  uint64_t in_syscallbuf_syscall_hook = trace_frame.in_syscallbuf_syscall_hook().register_value();
 
   switch (ev.type()) {
     case EV_EXIT:
@@ -1719,13 +1718,16 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
       current_step.target.ticks = trace_frame.ticks();
       current_step.target.signo = 0;
-      current_step.target.in_syscallbuf_syscall_hook = in_syscallbuf_syscall_hook;
+      current_step.target.in_syscallbuf_syscall_hook = ev.Sched().in_syscallbuf_syscall_hook.register_value();
+      if (current_step.target.in_syscallbuf_syscall_hook) {
+        t->note_sched_in_syscallbuf_syscall_hook();
+      }
       break;
     case EV_INSTRUCTION_TRAP:
       current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
       current_step.target.ticks = -1;
       current_step.target.signo = SIGSEGV;
-      current_step.target.in_syscallbuf_syscall_hook = in_syscallbuf_syscall_hook;
+      current_step.target.in_syscallbuf_syscall_hook = 0;
       break;
     case EV_GROW_MAP:
       process_grow_map(t);
@@ -1746,14 +1748,14 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
         current_step.target.signo = ev.Signal().siginfo.si_signo;
         current_step.target.ticks = trace_frame.ticks();
       }
-      current_step.target.in_syscallbuf_syscall_hook = in_syscallbuf_syscall_hook;
+      current_step.target.in_syscallbuf_syscall_hook = 0;
       break;
     }
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
       current_step.action = TSTEP_DELIVER_SIGNAL;
       current_step.target.signo = ev.Signal().siginfo.si_signo;
-      current_step.target.in_syscallbuf_syscall_hook = in_syscallbuf_syscall_hook;
+      current_step.target.in_syscallbuf_syscall_hook = 0;
       break;
     case EV_SYSCALL:
       if (skip_next_execution_event) {

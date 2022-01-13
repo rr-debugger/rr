@@ -24,6 +24,9 @@ Event::Event(const Event& o) : event_type(o.event_type) {
     case EV_PATCH_SYSCALL:
       new (&PatchSyscall()) PatchSyscallEvent(o.PatchSyscall());
       return;
+    case EV_SCHED:
+      new (&Sched()) SchedEvent(o.Sched());
+      return;
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
