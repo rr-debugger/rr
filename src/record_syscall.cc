@@ -1644,10 +1644,13 @@ static Switchable prepare_ioctl(RecordTask* t,
   /* Some ioctl()s are irregular and don't follow the _IOC()
    * conventions.  Special case them here. */
   switch (request) {
-    case SIOCETHTOOL: {
+    case 0xc020462a: // Nvidia driver ioctl
+      syscall_state.emulate_result(-ENOTTY);
+      return PREVENT_SWITCH;
+
+    case SIOCETHTOOL:
       prepare_ethtool_ioctl<Arch>(t, syscall_state);
       return PREVENT_SWITCH;
-    }
 
     case SIOCGIFCONF: {
       auto ifconfp =
