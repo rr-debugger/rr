@@ -2,7 +2,6 @@
 #include "util.h"
 
 #include <linux/bpf.h>
-#include <unistd.h>
 
 int bpf(int cmd, union bpf_attr *attr, unsigned int size)
 {

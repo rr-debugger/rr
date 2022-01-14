@@ -70,6 +70,7 @@
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
+#include "BpfMapMonitor.h"
 #include "DiversionSession.h"
 #include "ElfReader.h"
 #include "Flags.h"
@@ -2087,6 +2088,17 @@ static Switchable prepare_ioctl(RecordTask* t,
   return PREVENT_SWITCH;
 }
 
+template <typename Arch> static BpfMapMonitor* bpf_map_monitor(RecordTask* t,
+    TaskSyscallState& syscall_state, remote_ptr<typename Arch::bpf_attr>* argsp_out) {
+  auto argsp = syscall_state.reg_parameter<typename Arch::bpf_attr>(2, IN);
+  auto args = t->read_mem(argsp);
+  FileMonitor* monitor = t->fd_table()->get_monitor(args.map_fd);
+  ASSERT(t, monitor) << "We need a BpfMapMonitor to handle this, but couldn't find it for fd " << args.map_fd;
+  ASSERT(t, monitor->type() == FileMonitor::BpfMap);
+  *argsp_out = argsp;
+  return static_cast<BpfMapMonitor*>(monitor);
+}
+
 template <typename Arch>
 static Switchable prepare_bpf(RecordTask* t,
                               TaskSyscallState& syscall_state) {
@@ -2095,7 +2107,7 @@ static Switchable prepare_bpf(RecordTask* t,
     case BPF_MAP_CREATE:
     case BPF_MAP_UPDATE_ELEM:
     case BPF_MAP_DELETE_ELEM:
-      return PREVENT_SWITCH;
+      break;
     case BPF_OBJ_GET:
       return ALLOW_SWITCH;
     case BPF_PROG_LOAD: {
@@ -2104,15 +2116,27 @@ static Switchable prepare_bpf(RecordTask* t,
       auto args = t->read_mem(argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, log_buf),
                                       args.log_size);
-      return PREVENT_SWITCH;
+      break;
     }
-    // These are hard to support because we have to track the key_size/value_size :-(
-    // case BPF_MAP_LOOKUP_ELEM:
-    // case BPF_MAP_GET_NEXT_KEY:
+    case BPF_MAP_LOOKUP_ELEM: {
+      remote_ptr<typename Arch::bpf_attr> argsp;
+      BpfMapMonitor* monitor = bpf_map_monitor<Arch>(t, syscall_state, &argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, value),
+                                      monitor->value_size());
+      break;
+    }
+    case BPF_MAP_GET_NEXT_KEY: {
+      remote_ptr<typename Arch::bpf_attr> argsp;
+      BpfMapMonitor* monitor = bpf_map_monitor<Arch>(t, syscall_state, &argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, next_key),
+                                      monitor->key_size());
+      break;
+    }
     default:
       syscall_state.expect_errno = EINVAL;
-      return PREVENT_SWITCH;
+      break;
   }
+  return PREVENT_SWITCH;
 }
 
 static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
@@ -6148,6 +6172,21 @@ static void rec_process_syscall_arch(RecordTask* t,
         }
         default:
           break;
+      }
+      break;
+
+    case Arch::bpf:
+      if (!t->regs().syscall_failed()) {
+        switch ((int)t->regs().arg1()) {
+          case BPF_MAP_CREATE: {
+            int fd = t->regs().syscall_result_signed();
+            auto attr = t->read_mem(remote_ptr<typename Arch::bpf_attr>(t->regs().arg2()));
+            t->fd_table()->add_monitor(t, fd, new BpfMapMonitor(attr.key_size, attr.value_size));
+            break;
+          }
+          default:
+            break;
+        }
       }
       break;
 

@@ -39,6 +39,7 @@ public:
     ProcStat,
     RRPage,
     ODirect,
+    BpfMap,
   };
 
   virtual Type type() { return Base; }
