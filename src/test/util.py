@@ -116,7 +116,7 @@ def send(prog, what):
 def set_up():
     global gdb_rr
     try:
-        gdb_rr = pexpect.spawn(*get_rr_cmd(), timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open('gdb_rr.log', 'w'))
+        gdb_rr = pexpect.spawn(*get_rr_cmd(), codec_errors='ignore', timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open('gdb_rr.log', 'w'))
         gdb_rr.delaybeforesend = 0
         expect_gdb('\(rr\)')
     except Exception as e:
