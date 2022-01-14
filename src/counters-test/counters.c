@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/random.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
