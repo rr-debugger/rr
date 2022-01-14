@@ -31,6 +31,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "MmappedFileMonitor.h"
+#include "NonvirtualPerfCounterMonitor.h"
 #include "ODirectFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
@@ -1286,13 +1287,20 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       unsigned long flags = trace_regs.arg5();
       int fd = trace_regs.syscall_result_signed();
       int allowed_perf_flags = PERF_FLAG_FD_CLOEXEC;
+      bool virtualize = false;
       if (target && cpu == -1 && !(flags & ~allowed_perf_flags)) {
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.orig_arg1()));
-        if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
+        virtualize = VirtualPerfCounterMonitor::should_virtualize(attr);
+        if (virtualize) {
           t->fd_table()->add_monitor(t,
               fd, new VirtualPerfCounterMonitor(t, target, attr));
         }
+      }
+      // Ignoring perf_event_open from syscallbuf; we'll attach a PreserveFileMonitor to it if it stays open
+      if (!virtualize &&
+          t->ip() != t->vm()->privileged_traced_syscall_ip().increment_by_syscall_insn_length(t->arch())) {
+        t->fd_table()->add_monitor(t, fd, new NonvirtualPerfCounterMonitor());
       }
     }
       RR_FALLTHROUGH;

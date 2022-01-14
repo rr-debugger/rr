@@ -34,6 +34,7 @@ public:
     ProcMem,
     Stdio,
     VirtualPerfCounter,
+    NonvirtualPerfCounter,
     SysCpu,
     ProcStat,
     RRPage,

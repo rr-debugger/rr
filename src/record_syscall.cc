@@ -74,6 +74,7 @@
 #include "ElfReader.h"
 #include "Flags.h"
 #include "MmappedFileMonitor.h"
+#include "NonvirtualPerfCounterMonitor.h"
 #include "ODirectFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
@@ -6159,20 +6160,24 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::perf_event_open:
-      if (t->regs().original_syscallno() == Arch::inotify_init1) {
-        ASSERT(t, !t->regs().syscall_failed());
+      if (!t->regs().syscall_failed()) {
         int fd = t->regs().syscall_result_signed();
-        Registers r = t->regs();
-        r.set_original_syscallno(
-            syscall_state.syscall_entry_registers.original_syscallno());
-        r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
-        t->set_regs(r);
-        auto attr =
-            t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().orig_arg1()));
-        t->fd_table()->add_monitor(t,
-            fd, new VirtualPerfCounterMonitor(
-                    t, t->session().find_task((pid_t)t->regs().arg2_signed()),
-                    attr));
+        if (t->regs().original_syscallno() == Arch::inotify_init1) {
+          Registers r = t->regs();
+          r.set_original_syscallno(
+              syscall_state.syscall_entry_registers.original_syscallno());
+          r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
+          t->set_regs(r);
+          auto attr =
+              t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().orig_arg1()));
+          t->fd_table()->add_monitor(t,
+              fd, new VirtualPerfCounterMonitor(
+                      t, t->session().find_task((pid_t)t->regs().arg2_signed()),
+                      attr));
+        } else if (t->ip() != t->vm()->privileged_traced_syscall_ip().increment_by_syscall_insn_length(t->arch())) {
+          // Ignoring perf_event_open from syscallbuf; we'll attach a PreserveFileMonitor to it if it stays open
+          t->fd_table()->add_monitor(t, fd, new NonvirtualPerfCounterMonitor());
+        }
       }
       break;
 
