@@ -1390,7 +1390,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   r.set_ip(r.ip().increment_by_movrm_insn_length(t->arch()));
   t->set_regs(r);
 
-  if (current_step.flush.recorded_ticks <= t->tick_count()) {
+  if (current_step.flush.recorded_ticks <= t->tick_count() && has_trace_quirk(TraceReader::BufferedSyscallForcedTick)) {
     // We've reached the breakpoint and executed at least as many ticks as were recorded for the FLUSH_SYSCALLBUF.
     // That means the flush was actually performed before we left the syscallbuf code, i.e. due to a SIGKILL
     // in syscallbuf code. We will have recorded another execution event that triggered a flush, but just ignore it,

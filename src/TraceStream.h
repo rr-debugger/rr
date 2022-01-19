@@ -25,7 +25,7 @@ namespace rr {
 /**
  * Bump this when rr changes mean that traces produced by new rr can't be replayed by old rr.
  */
-const int FORWARD_COMPATIBILITY_VERSION = 2;
+const int FORWARD_COMPATIBILITY_VERSION = 3;
 
 struct CPUIDRecord;
 struct DisableCPUIDFeatures;
@@ -482,7 +482,9 @@ public:
     // added in 3aaf792 and later removed.
     SpecialLibRRpage = 0x2,
     // Whether this trace recorded extra regs for pkey_alloc(2).
-    PkeyAllocRecordedExtraRegs = 0x4
+    PkeyAllocRecordedExtraRegs = 0x4,
+    // Whether this trace forced a tick after buffered syscalls.
+    BufferedSyscallForcedTick = 0x8
   };
 
   int quirks() const { return quirks_; }
