@@ -110,6 +110,10 @@ struct Header {
     # Whether the version of rr that recorded this saved the extra registers
     # for the pkey_alloc syscall.
     pkeyAllocRecordedExtraRegs @20 :Bool = false;
+
+    # Whether the version of rr that recorded this forced a tick after each
+    # buffered syscall.
+    bufferedSyscallForcedTick @21 :Bool = false;
   }
   # Are we known to be in chaos mode? Useful for debugging.
   chaosMode @16 :ChaosMode = unknown;
