@@ -1562,6 +1562,20 @@ TraceReader::TraceReader(const string& dir)
   PackedFdMessageReader header_msg(version_fd);
 
   trace::Header::Reader header = header_msg.getRoot<trace::Header>();
+  uint16_t syscallbuf_protocol_version = header.getSyscallbufProtocolVersion();
+  if (syscallbuf_protocol_version > SYSCALLBUF_PROTOCOL_VERSION) {
+    fprintf(stderr, "\n"
+                    "rr: error: Recorded trace `%s' has an incompatible "
+                    "syscallbuf protocol version %d; expected\n"
+                    "           %d.  Did you record `%s' with an older version "
+                    "of rr?  If so,\n"
+                    "           you'll need to replay `%s' with that older "
+                    "version.  Otherwise,\n"
+                    "           your trace is likely corrupted.\n"
+                    "\n",
+            path.c_str(), syscallbuf_protocol_version, SYSCALLBUF_PROTOCOL_VERSION, path.c_str(), path.c_str());
+    exit(EX_DATAERR);
+  }
   bind_to_cpu = header.getBindToCpu();
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
