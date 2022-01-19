@@ -1,0 +1,18 @@
+steps:
+  - label: "Build and test"
+    agents:
+      os: "linux"
+      queue: "juliaecosystem"
+    timeout_in_minutes: 60
+    commands: |
+      echo "Print kernel information"
+      uname -a
+      echo "--- Generate build environment"
+      rm -rf obj
+      mkdir obj
+      cd obj
+      cmake ..
+      echo "--- Build"
+      make -j8
+      echo "--- Test"
+      ctest -j8
