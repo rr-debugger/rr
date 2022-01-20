@@ -60,8 +60,12 @@ int main(void) {
   ALLOCATE_GUARD(pgrp, 'c');
   test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
   VERIFY_GUARD(pgrp);
-  atomic_printf("TIOCGPGRP returned process group %d\n", *pgrp);
-  test_assert(0 == ioctl(fd, TIOCSPGRP, pgrp));
+  if (*pgrp != 0) {
+    atomic_printf("TIOCGPGRP returned process group %d\n", *pgrp);
+    test_assert(0 == ioctl(fd, TIOCSPGRP, pgrp));
+  } else {
+    atomic_printf("Skipping TIOCSPGRP test - controlling tty outside PID ns.");
+  }
 
   ALLOCATE_GUARD(navail, 'd');
   test_assert(0 == ioctl(fd, TIOCINQ, navail));
