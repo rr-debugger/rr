@@ -598,6 +598,11 @@ static void run_diversion_function(ReplaySession& replay, Task* task,
       ASSERT(task, false) << "Unexpected signal "
                           << *result.break_status.signal;
     }
+
+    if (result.status == DiversionSession::DiversionStatus::DIVERSION_EXITED) {
+        LOG(debug) << "DIVERSION_EXITED, breaking out of diversion_step() loop";
+        break;
+    }
   }
 }
 
