@@ -29,4 +29,6 @@ steps:
       echo "--- Build"
       make --output-sync -j8
       echo "--- Test"
+      mkdir -p Testing/Temporary
+      mv ../.buildkite/CTestCostData.txt Testing/Temporary
       ctest -j8
