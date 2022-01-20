@@ -5,7 +5,7 @@
 int main(void) {
   pid_t sid = getsid(0);
   atomic_printf("getsid(0) session ID: %d\n", sid);
-  test_assert(sid > 0);
+  test_assert(sid >= 0);
 
   atomic_puts("EXIT-SUCCESS");
 
