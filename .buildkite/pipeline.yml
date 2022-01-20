@@ -15,6 +15,10 @@ steps:
     commands: |
       echo "--- Print kernel information"
       uname -a
+      echo "--- Print CPU information"
+      # These machines have multiple cores. However, it should be sufficient to just print
+      # the information for one of the cores. 
+      sed -n '1,/^\$/p' /proc/cpuinfo
       echo "--- Generate build environment"
       rm -rf obj
       mkdir obj
