@@ -10,8 +10,8 @@ steps:
           persist_depot_dirs: packages,artifacts,compiled
           version: '1.6'
       - staticfloat/sandbox#v1:
-          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v4.15/rr.x86_64.tar.gz
-          rootfs_treehash: "8b5c776db01b54e8632c31fece119b5fe7d86f91"
+          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v4.16/rr.x86_64.tar.gz
+          rootfs_treehash: "add05412f938d36107ffba501572e99823ab3fb0"
           # workspaces:
           #   - "/cache/repos:/cache/repos"
     timeout_in_minutes: 30
