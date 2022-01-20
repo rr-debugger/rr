@@ -25,7 +25,7 @@ class Task;
  * treatment because (i) they were most likely modified during
  * recording, so (ii) the original file contents only exist as
  * snapshots in the trace, but (iii) all mappings of the file must
- * point at the same underling resource, so that modifications are
+ * point at the same underlying resource, so that modifications are
  * seen by all mappees.
  *
  * The rr EmuFs creates "emulated files" in shared memory during
@@ -53,7 +53,6 @@ class Task;
  * disjoint.  And F_0 being GC'd at that point is the important
  * assumption mentioned above.
  */
-
 
 class EmuFile;
 struct FileId {
