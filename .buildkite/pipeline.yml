@@ -15,9 +15,6 @@ steps:
           # workspaces:
           #   - "/cache/repos:/cache/repos"
     timeout_in_minutes: 30
-    notify:
-      - github_commit_status:
-          context: "CI"
     commands: |
       echo "--- Print kernel information"
       uname -a
