@@ -1,11 +1,25 @@
+agents:
+  queue: "juliaecosystem"
+  sandbox.jl: "true"
+  os: "linux"
 steps:
   - label: "Build and test"
-    agents:
-      os: "linux"
-      queue: "juliaecosystem"
-    timeout_in_minutes: 60
+    plugins:
+      - JuliaCI/julia#v1:
+          # Drop default "registries" directory, so it is not persisted from execution to execution
+          persist_depot_dirs: packages,artifacts,compiled
+          version: '1.6'
+      - staticfloat/sandbox#v1:
+          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v4.15/rr.x86_64.tar.gz
+          rootfs_treehash: "8b5c776db01b54e8632c31fece119b5fe7d86f91"
+          # workspaces:
+          #   - "/cache/repos:/cache/repos"
+    timeout_in_minutes: 30
+    notify:
+      - github_commit_status:
+          context: "CI"
     commands: |
-      echo "Print kernel information"
+      echo "--- Print kernel information"
       uname -a
       echo "--- Generate build environment"
       rm -rf obj
@@ -13,6 +27,6 @@ steps:
       cd obj
       cmake ..
       echo "--- Build"
-      make -j8
+      make --output-sync -j8
       echo "--- Test"
       ctest -j8
