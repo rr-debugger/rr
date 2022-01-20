@@ -31,4 +31,4 @@ steps:
       echo "--- Test"
       mkdir -p Testing/Temporary
       mv ../.buildkite/CTestCostData.txt Testing/Temporary
-      ctest -j8
+      ctest --output-on-failure -j8
