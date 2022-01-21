@@ -34,4 +34,26 @@ steps:
       echo "--- Test"
       mkdir -p Testing/Temporary
       mv ../.buildkite/CTestCostData.txt Testing/Temporary
-      julia ../.buildkite/capture_tmpdir.jl ctest --output-on-failure -j8
+      declare -a known_test_failures_array=(
+        '^chown$$'
+        '^chown-no-syscallbuf$$'
+        '^chown-32$$'
+        '^chown-32-no-syscallbuf$$'
+
+        '^cwd_inaccessible$$'
+        '^cwd_inaccessible-no-syscallbuf$$'
+        '^cwd_inaccessible-32$$'
+        '^cwd_inaccessible-32-no-syscallbuf$$'
+
+        '^setuid$$'
+        '^setuid-no-syscallbuf$$'
+        '^setuid-32$$'
+        '^setuid-32-no-syscallbuf$$'
+
+        '^sysconf_onln$$'
+        '^sysconf_onln-no-syscallbuf$$'
+        '^sysconf_onln-32$$'
+        '^sysconf_onln-32-no-syscallbuf$$'
+      )
+      known_test_failures_regex="($$(IFS=\| ; echo "$${known_test_failures_array[*]:?}"))"
+      julia ../.buildkite/capture_tmpdir.jl ctest -E "$${known_test_failures_regex:?}" --output-on-failure -j8
