@@ -306,10 +306,38 @@ static void check_for_zen_speclockmap() {
   }
 }
 
+static void check_for_freeze_on_smi() {
+  ScopedFd fd = ScopedFd("/sys/devices/cpu/freeze_on_smi", O_RDONLY);
+  if (!fd.is_open()) {
+    LOG(debug) << "/sys/devices/cpu/freeze_on_smi not present";
+    return;
+  }
+
+  char freeze_on_smi = 0;
+  read(fd, &freeze_on_smi, 1);
+  if (freeze_on_smi == 0) {
+    LOG(warn) << "Failed to read freeze_on_smi";
+  } else if (freeze_on_smi == '1') {
+    LOG(debug) << "freeze_on_smi is set";
+  } else if (freeze_on_smi == '0') {
+    LOG(warn) << "freeze_on_smi is not set";
+    if (!Flags::get().suppress_environment_warnings) {
+      fprintf(stderr,
+              "Freezing performance counters on SMIs should be turned on for maximum rr\n"
+              "reliability. Consider putting 'w /sys/devices/cpu/freeze_on_smi - - - - 1' in\n"
+              "/etc/tmpfiles.d/10-rr.conf\n"
+              "See 'man 5 sysfs', 'man 5 tmpfiles.d' (systemd systems)\n");
+    }
+  } else {
+    LOG(warn) << "Unrecognized freeze_on_smi value " << freeze_on_smi;
+  }
+}
+
 static void check_for_arch_bugs(CpuMicroarch uarch) {
   if (uarch >= FirstIntel && uarch <= LastIntel) {
     check_for_kvm_in_txcp_bug();
     check_for_xen_pmi_bug();
+    check_for_freeze_on_smi();
   }
   if (uarch == AMDZen) {
     check_for_zen_speclockmap();
