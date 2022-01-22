@@ -3,7 +3,8 @@ agents:
   sandbox.jl: "true"
   os: "linux"
 steps:
-  - label: "Build and test"
+  - label: "x86_64"
+    key: "x86_64"
     plugins:
       - JuliaCI/julia#v1:
           persist_depot_dirs: packages,artifacts,compiled
@@ -11,11 +12,15 @@ steps:
       - staticfloat/sandbox#v1:
           rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v4.17/rr.x86_64.tar.gz
           rootfs_treehash: "838680473e6ffd8977e1957904d418640e75f69e"
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          version: '1.6'
     timeout_in_minutes: 30
     commands: |
       echo "--- Print kernel information"
       uname -a
       echo "--- Generate build environment"
+      cmake --version
       rm -rf obj
       mkdir obj
       cd obj
@@ -25,4 +30,4 @@ steps:
       echo "--- Test"
       mkdir -p Testing/Temporary
       mv ../.buildkite/CTestCostData.txt Testing/Temporary
-      ctest --output-on-failure -j8
+      julia ../.buildkite/capture_tmpdir.jl ctest --output-on-failure -j8
