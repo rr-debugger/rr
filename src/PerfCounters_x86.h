@@ -75,7 +75,7 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelKabylake;
     case 0xa0650:
     case 0xa0660:
-	return IntelCometlake;
+      return IntelCometlake;
     case 0x90670:
       return IntelAlderlake;
     case 0x30f00:
@@ -324,8 +324,8 @@ static void check_for_freeze_on_smi() {
     if (!Flags::get().suppress_environment_warnings) {
       fprintf(stderr,
               "Freezing performance counters on SMIs should be turned on for maximum rr\n"
-              "reliability. Consider putting 'w /sys/devices/cpu/freeze_on_smi - - - - 1' in\n"
-              "/etc/tmpfiles.d/10-rr.conf\n"
+              "reliability on Comet Lake and later CPUs. Consider putting\n"
+              "'w /sys/devices/cpu/freeze_on_smi - - - - 1' in /etc/tmpfiles.d/10-rr.conf\n"
               "See 'man 5 sysfs', 'man 5 tmpfiles.d' (systemd systems)\n");
     }
   } else {
@@ -337,6 +337,8 @@ static void check_for_arch_bugs(CpuMicroarch uarch) {
   if (uarch >= FirstIntel && uarch <= LastIntel) {
     check_for_kvm_in_txcp_bug();
     check_for_xen_pmi_bug();
+  }
+  if (uarch >= IntelCometlake && uarch <= LastIntel) {
     check_for_freeze_on_smi();
   }
   if (uarch == AMDZen) {
