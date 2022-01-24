@@ -368,20 +368,22 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
   }
   t.pid = strtol(str, &endp, 16);
   parser_assert(endp);
-  if ('\0' == *endp) {
+
+  /* terminators (single process, no PID or TID, depending on 'p' prefix) */ 
+  if (*endp == '\0' || *endp == ';' || *endp == ',') {
     if (multiprocess) {
       t.tid = -1;
     } else {
       t.tid = t.pid;
       t.pid = -1;
     }
-    *endptr = endp;
-    return t;
+  /* multiprocess syntax "<pid>.<tid>" */
+  } else if (*endp == '.') {
+    str = endp + 1;
+    t.tid = strtol(str, &endp, 16);
   }
 
-  parser_assert('.' == *endp);
-  str = endp + 1;
-  t.tid = strtol(str, &endp, 16);
+  parser_assert(*endp == '\0' || *endp == ';' || *endp == ',');
 
   *endptr = endp;
   return t;
