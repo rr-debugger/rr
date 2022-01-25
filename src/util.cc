@@ -1660,22 +1660,32 @@ ScopedFd open_socket(const char* address, unsigned short* port,
   do {
     addr.sin_port = htons(*port);
     ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
-    if (ret && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
+    if (ret && probe == PROBE_PORT && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
       continue;
     }
     if (ret) {
-      FATAL() << "Couldn't bind to port " << *port;
+      CLEAN_FATAL() << "Couldn't bind to port " << *port;
     }
 
     ret = listen(listen_fd, 1 /*backlogged connection*/);
-    if (ret && EADDRINUSE == errno) {
+    if (ret && probe == PROBE_PORT && EADDRINUSE == errno) {
+      *port = 0;
       continue;
     }
     if (ret) {
       FATAL() << "Couldn't listen on port " << *port;
     }
+    if (*port == 0) {
+      socklen_t sa_size = sizeof(addr);
+      ret = getsockname(listen_fd, (struct sockaddr*)&addr, &sa_size);
+      if (ret) {
+        FATAL() << "Could not get socket port";
+      }
+
+      *port = ntohs(addr.sin_port);
+    }
     break;
-  } while (++(*port), probe == PROBE_PORT);
+  } while (probe == PROBE_PORT);
   return listen_fd;
 }
 
