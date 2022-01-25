@@ -11,7 +11,7 @@ int main(void) {
   int ret;
   int status;
 
-  if (!p) {
+  if (!p || p->pw_uid == (uint16_t)-2) {
     atomic_puts("User 'nobody' does not exist, can't run test");
     atomic_puts("EXIT-SUCCESS");
     return 0;
