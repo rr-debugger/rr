@@ -1661,6 +1661,7 @@ ScopedFd open_socket(const char* address, unsigned short* port,
     addr.sin_port = htons(*port);
     ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
     if (ret && probe == PROBE_PORT && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
+      *port = 0;
       continue;
     }
     if (ret) {
