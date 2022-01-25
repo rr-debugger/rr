@@ -44,11 +44,14 @@ int main(void) {
   ngroups = getgroups(ngroups_max, groups);
   test_assert(ngroups > 0);
 
-  other_group = groups[0];
-  if (this_group == other_group && ngroups > 1) {
-    other_group = groups[1];
+  other_group = this_group;
+  for (int i = 0; i < ngroups; i++) {
+    if (groups[i] != this_group && groups[i] != (uint16_t)-2) {
+      other_group = groups[i];
+      break;
+    }
   }
-  if (this_group == other_group) {
+  if (other_group == this_group) {
     atomic_puts("WARNING: unable to properly test chown()");
   }
 
