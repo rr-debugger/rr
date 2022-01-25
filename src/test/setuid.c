@@ -28,8 +28,9 @@ int main(int argc, char** argv) {
 
   ret = setgid(new_g);
   if (ret == -1) {
-    test_assert(errno == EPERM);
-    atomic_puts("Test did nothing because process does not have CAP_SETUID?");
+    test_assert(errno == EPERM || errno == EINVAL);
+    atomic_puts("Test did nothing because process does not have CAP_SETUID\n"
+                "or is running inside user namespace with unmapped `nobody`.");
     atomic_puts("EXIT-SUCCESS");
     return 0;
   }
