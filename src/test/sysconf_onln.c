@@ -23,6 +23,11 @@ int main(int argc, char* argv[]) {
   // Test reading /sys/devices/system/cpu/online directly, making sure that
   // rr properly emulates the fd position
   int fd = open("/sys/devices/system/cpu/online", O_RDONLY);
+  if (fd < 0 && errno == ENOENT) {
+    atomic_puts("Warning: sysfs not mapped. Skipping test.");
+    atomic_puts("EXIT-SUCCESS");
+    return 77;
+  }
   test_assert(fd >= 0);
 
   char result[1024];
