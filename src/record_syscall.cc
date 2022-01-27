@@ -1968,6 +1968,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(TIOCGPTLCK):
     case IOCTL_MASK_SIZE(TIOCGEXCL):
     case IOCTL_MASK_SIZE(USBDEVFS_GET_CAPABILITIES):
+    case IOCTL_MASK_SIZE(FS_IOC_FSGETXATTR):
     // FS_IOC_GETVERSION has the same number as VIDIOCGCAP (but different size)
     // but the same treatment works for both.
     case IOCTL_MASK_SIZE(FS_IOC_GETVERSION):
