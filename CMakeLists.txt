@@ -1750,7 +1750,9 @@ if(BUILD_TESTS)
   add_executable(test-monitor src/test-monitor/test-monitor.cc)
 
   add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
-  add_executable(counters src/counters-test/counters.c)
+  if (x86ish)
+    add_executable(counters src/counters-test/counters.c)
+  endif()
 endif()
 
 include(ProcessorCount)
