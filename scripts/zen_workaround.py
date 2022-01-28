@@ -5,6 +5,11 @@ import os
 import struct
 import sys
 
+import array
+from os.path import join
+from fcntl import ioctl
+from enum import Enum
+
 parser = argparse.ArgumentParser()
 group = parser.add_mutually_exclusive_group()
 group.add_argument('--reset', action='store_true')
@@ -15,6 +20,32 @@ args = parser.parse_args()
 MSR = 0xc0011020
 # Disable SpecLockMap
 BIT = 1 << 54
+
+
+EFIVARS_PATH   = '/sys/firmware/efi/efivars/'
+SecureBoot = Enum("SecureBoot", "enabled disabled checkfailed")
+def is_secure_boot_enabled():
+    if not os.path.isdir(EFIVARS_PATH):
+        return SecureBoot.checkfailed
+
+    files = [f for f in os.listdir(EFIVARS_PATH) if f.startswith("SecureBoot-")]
+    var_path = join(EFIVARS_PATH, files[0])
+    attr = []
+    data = []
+    try:
+        if os.path.exists(var_path):
+            with open(var_path, 'rb') as fd:
+                buffer = fd.read()
+
+                attr = buffer[:4]
+                data = buffer[4:]
+        if int(data[0]) == 1:
+            return SecureBoot.enabled
+        else:
+            return SecureBoot.disabled
+    except:
+        return SecureBoot.checkfailed
+
 
 if not os.path.exists('/dev/cpu/0/msr'):
     ret = os.system('modprobe msr')
@@ -43,7 +74,18 @@ if not args.check:
             val |= BIT
         msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_WRONLY)
         os.lseek(msr, MSR, os.SEEK_SET)
-        os.write(msr, struct.pack('<q', val))
+        try:
+          os.write(msr, struct.pack('<q', val))
+        except PermissionError:
+            check = is_secure_boot_enabled() 
+            if check == SecureBoot.enabled:
+                print("Permission denied writing to MSR. Secure Boot is enabled, which causes this error. Try disabling Secure Boot")
+            elif check == SecureBoot.disabled:
+                print("Permission denied writing to MSR. Secure Boot is disabled so that's not the problem")
+            else:
+                print("Permission denied writing to MSR")
+            os.close(msr)
+            break
         os.close(msr)
 
 ssb_status = 'unknown'
