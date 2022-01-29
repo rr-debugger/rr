@@ -1750,7 +1750,7 @@ if(BUILD_TESTS)
   add_executable(test-monitor src/test-monitor/test-monitor.cc)
 
   add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
-  if (x86ish)
+  if (x86ish AND rr_64BIT)
     add_executable(counters src/counters-test/counters.c)
   endif()
 endif()
