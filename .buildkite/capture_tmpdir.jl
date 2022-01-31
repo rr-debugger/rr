@@ -54,10 +54,12 @@ if length(ARGS) < 1
     throw(ErrorException("Usage: julia $(basename(@__FILE__)) [command...]"))
 end
 
-const build_number                      = get_from_env("BUILDKITE_BUILD_NUMBER") |> cleanup_string
-const job_name                          = get_from_env("BUILDKITE_STEP_KEY")     |> cleanup_string
-const commit_full                       = get_from_env("BUILDKITE_COMMIT")       |> cleanup_string
-const commit_short                      = first(commit_full, 10)
+const build_number    = get_from_env("BUILDKITE_BUILD_NUMBER") |> cleanup_string
+const job_name        = get_from_env("BUILDKITE_STEP_KEY")     |> cleanup_string
+const commit_full     = get_from_env("BUILDKITE_COMMIT")       |> cleanup_string
+const commit_short    = first(commit_full, 10)
+const timeout_minutes = 30
+const cleanup_minutes = 10
 
 @info(
     "",
@@ -65,6 +67,8 @@ const commit_short                      = first(commit_full, 10)
     job_name,
     commit_full,
     commit_short,
+    timeout_minutes,
+    cleanup_minutes,
 )
 
 const my_archives_dir    = joinpath(pwd(), "my_archives_dir")
@@ -88,6 +92,33 @@ mktempdir(my_temp_parent_dir) do dir
     new_env["TMPDIR"] = TMPDIR
     command = setenv(`$ARGS`, new_env)
     global proc = run(command, (stdin, stdout, stderr); wait = false)
+
+    # Start asynchronous timer that will kill the process.
+    @async begin
+        sleep(timeout_minutes * 60)
+
+        # If we've exceeded the timeout and the process is still running, kill it with `SIGTERM`.
+        if isopen(proc)
+            println(stderr, "\n\nProcess timed out (with a timeout of $(timeout_minutes) minutes). Signalling for force-cleanup!")
+            kill(proc, Base.SIGTERM)
+
+            # Give the process a chance to cleanup and upload.
+            # Note: this time period includes the time to upload the `rr` trace files
+            # as Buildkite artifacts, so make sure it is long enough to allow the
+            # uploads to finish.
+            sleep(cleanup_minutes * 60)
+
+            if isopen(proc)
+                println(stderr, "\n\nProcess failed to cleanup and upload within $(cleanup_minutes) minutes, killing and exiting immediately!")
+                kill(proc, Base.SIGKILL)
+
+                # make sure to exit with a non-zero exit code
+                exit(1)
+            end
+        end
+    end
+
+    # Wait for the process to finish, either through naturally finishing its run, or `SIGTERM`.
     wait(proc)
 
     if proc.termsignal != 0
