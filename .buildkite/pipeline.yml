@@ -34,5 +34,7 @@ steps:
       make --output-sync -j8
       echo "--- Test"
       mkdir -p Testing/Temporary
-      mv ../.buildkite/CTestCostData.txt Testing/Temporary
+      rm -rf ../.buildkite/CTestCostData.txt
+      rm -rf Testing
       julia ../.buildkite/capture_tmpdir.jl ctest --output-on-failure -j8
+      buildkite-agent artifact upload Testing/Temporary/CTestCostData.txt
