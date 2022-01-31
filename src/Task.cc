@@ -2278,6 +2278,9 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   t->fds->insert_task(t);
 
   t->top_of_stack = stack;
+  if (rseq_state) {
+    t->rseq_state = make_unique<RseqState>(*rseq_state);
+  }
   // Clone children, both thread and fork, inherit the parent
   // prname.
   t->prname = prname;
@@ -2493,6 +2496,10 @@ Task::CapturedState Task::capture_state() {
     bool ok = read_aarch64_tls_register(&state.tls_register);
     ASSERT(this, ok);
   }
+  if (rseq_state) {
+    state.rseq_state = make_unique<RseqState>(*rseq_state);
+  }
+
   state.thread_areas = thread_areas_;
   state.desched_fd_child = desched_fd_child;
   state.cloned_file_data_fd_child = cloned_file_data_fd_child;
@@ -2567,6 +2574,9 @@ void Task::copy_state(const CapturedState& state) {
 
   ticks = state.ticks;
   own_namespace_rec_tid = state.own_namespace_rec_tid;
+  if (state.rseq_state) {
+    rseq_state = make_unique<RseqState>(*state.rseq_state);
+  }
 }
 
 remote_ptr<const struct syscallbuf_record> Task::next_syscallbuf_record() {
@@ -3876,6 +3886,49 @@ void Task::move_to_signal_stop()
     // Ignore any pending TIME_SLICE_SIGNALs and continue until we get our
     // SYSCALLBUF_DESCHED_SIGNAL.
   } while (stop_sig() == PerfCounters::TIME_SLICE_SIGNAL);
+}
+
+bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip,
+                                   bool* invalid_rseq_cs) {
+  if (!rseq_state) {
+    return false;
+  }
+  // We're relying on the fact that rseq_t is the same across architectures
+  auto rseq = read_mem(rseq_state->ptr.cast<typename NativeArch::rseq_t>());
+  if (!rseq.rseq_cs) {
+    return false;
+  }
+  uint32_t flag;
+  switch (event_type) {
+    case EV_SCHED:
+      flag = 1 << RR_RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT;
+      break;
+    case EV_SIGNAL:
+      flag = 1 << RR_RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT;
+      break;
+    default:
+      ASSERT(this, false) << "Unsupported event type";
+      return false;
+  }
+  auto rseq_cs = read_mem(remote_ptr<typename NativeArch::rseq_cs>(rseq.rseq_cs));
+  if ((rseq.flags | rseq_cs.flags) & flag) {
+    return false;
+  }
+  if (rseq_cs.version ||
+      rseq_cs.start_ip + rseq_cs.post_commit_offset < rseq_cs.start_ip ||
+      rseq_cs.abort_ip - rseq_cs.start_ip < rseq_cs.post_commit_offset) {
+    *invalid_rseq_cs = true;
+    return false;
+  }
+  uint32_t sig = read_mem(remote_ptr<uint32_t>(rseq_cs.abort_ip - 4));
+  if (sig != rseq_state->abort_prefix_signature) {
+    *invalid_rseq_cs = true;
+    return false;
+  }
+  if (ip().register_value() - rseq_cs.start_ip < rseq_cs.post_commit_offset) {
+    *new_ip = remote_code_ptr(rseq_cs.abort_ip);
+  }
+  return true;
 }
 
 }

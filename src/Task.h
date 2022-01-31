@@ -112,6 +112,13 @@ struct TrapReasons {
   bool breakpoint;
 };
 
+struct RseqState {
+  remote_ptr<void> ptr;
+  uint32_t abort_prefix_signature;
+  RseqState(remote_ptr<void> ptr, uint32_t abort_prefix_signature)
+    : ptr(ptr), abort_prefix_signature(abort_prefix_signature) {}
+};
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -548,6 +555,11 @@ public:
   /** Set the tracee's extra registers to |regs|. */
   void set_extra_regs(const ExtraRegisters& regs);
 
+  /** Adjust IP for rseq abort if necessary and return true if an abort is required.
+   * Sets *rseq_cs_invalid if it was invalid */
+  bool should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip,
+                               bool* invalid_rseq_cs);
+
   /**
    * Read the aarch64 TLS register via ptrace. Returns true on success, false
    * on failure. On success `result` is set to the tracee's TLS register.
@@ -835,6 +847,8 @@ public:
   int cloned_file_data_fd_child;
   /* The filename opened by the child's cloned_file_data_fd */
   std::string cloned_file_data_fname;
+  // Current rseq state if registered
+  std::unique_ptr<RseqState> rseq_state;
 
   PerfCounters hpc;
 
@@ -880,6 +894,7 @@ public:
     remote_ptr<void> scratch_ptr;
     ssize_t scratch_size;
     remote_ptr<void> top_of_stack;
+    std::unique_ptr<RseqState> rseq_state;
     uint64_t cloned_file_data_offset;
     ThreadLocals thread_locals;
     pid_t rec_tid;

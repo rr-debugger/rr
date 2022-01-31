@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+compare_test EXIT-SUCCESS
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+debug rseq "-f $TARGET_PID"

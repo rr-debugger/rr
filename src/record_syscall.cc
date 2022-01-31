@@ -4038,14 +4038,81 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::clone3:
     case Arch::io_uring_setup:
-    case Arch::io_setup:
-    case Arch::rseq: {
-      // Prevent the io_setup/io_uring_setup/rseq/clone3 from running and fake an ENOSYS return. We want
+    case Arch::io_setup: {
+      // Prevent the io_setup/io_uring_setup/clone3 from running and fake an ENOSYS return. We want
       // to stop applications from using these APIs because we don't support them currently.
       Registers r = regs;
       r.set_arg2(0);
       t->set_regs(r);
       syscall_state.emulate_result(-ENOSYS);
+      return PREVENT_SWITCH;
+    }
+
+    case Arch::rseq: {
+      auto rseq = remote_ptr<typename Arch::rseq_t>(regs.arg1());
+      uint32_t rseq_len = regs.arg2();
+      int flags = regs.arg3();
+      uint32_t sig = regs.arg4();
+
+      // Clear size to ensure syscall fails.
+      Registers r = regs;
+      r.set_arg2(0);
+      t->set_regs(r);
+
+      if (flags & RR_RSEQ_FLAG_UNREGISTER) {
+        if ((flags & ~RR_RSEQ_FLAG_UNREGISTER) || !t->rseq_state ||
+            t->rseq_state->ptr != rseq || rseq_len != sizeof(typename Arch::rseq_t)) {
+          syscall_state.emulate_result(-EINVAL);
+        } else if (t->rseq_state->abort_prefix_signature != sig) {
+          syscall_state.emulate_result(-EPERM);
+        } else {
+          auto addr = REMOTE_PTR_FIELD(rseq, cpu_id);
+          uint32_t cpu_id = RR_RSEQ_CPU_ID_UNINITIALIZED;
+          t->write_mem(addr, cpu_id);
+          t->record_local(addr, &cpu_id);
+          addr = REMOTE_PTR_FIELD(rseq, cpu_id_start);
+          uint32_t cpu_id_start = 0;
+          t->write_mem(addr, cpu_id_start);
+          t->record_local(addr, &cpu_id_start);
+          t->rseq_state = nullptr;
+          syscall_state.emulate_result(0);
+        }
+        return PREVENT_SWITCH;
+      }
+
+      if (flags) {
+        syscall_state.emulate_result(-EINVAL);
+        return PREVENT_SWITCH;
+      }
+
+      if (t->rseq_state) {
+        if (t->rseq_state->ptr != rseq || rseq_len != sizeof(typename Arch::rseq_t)) {
+          syscall_state.emulate_result(-EINVAL);
+        } else if (t->rseq_state->abort_prefix_signature != sig) {
+          syscall_state.emulate_result(-EPERM);
+        } else {
+          syscall_state.emulate_result(-EBUSY);
+        }
+        return PREVENT_SWITCH;
+      }
+
+      if ((rseq.as_int() & 31) || rseq_len != sizeof(typename Arch::rseq_t)) {
+        syscall_state.emulate_result(-EINVAL);
+        return PREVENT_SWITCH;
+      }
+
+      t->rseq_state = make_unique<RseqState>(rseq, sig);
+      ASSERT(t, t->session().trace_writer().bound_to_cpu() >= 0) << "rseq not supported with unbound tasks";
+      uint32_t cpu_id = t->session().trace_writer().bound_to_cpu();
+      auto addr = REMOTE_PTR_FIELD(rseq, cpu_id);
+      // We can only support rseq when the tracee is bound to a specific CPU. otherwise cpu_id_start
+      // and cpu_id fields would need to be managed by rr and would not match reality.
+      t->write_mem(addr, cpu_id);
+      t->record_local(addr, &cpu_id);
+      addr = REMOTE_PTR_FIELD(rseq, cpu_id_start);
+      t->write_mem(addr, cpu_id);
+      t->record_local(addr, &cpu_id);
+      syscall_state.emulate_result(0);
       return PREVENT_SWITCH;
     }
 

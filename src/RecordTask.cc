@@ -1851,8 +1851,25 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     ip_at_last_recorded_syscall_exit = registers->ip();
   }
 
+  remote_code_ptr rseq_new_ip = ip();
+  bool invalid_rseq_cs = false;
+  if (should_apply_rseq_abort(ev.type(), &rseq_new_ip, &invalid_rseq_cs)) {
+    auto addr = REMOTE_PTR_FIELD(rseq_state->ptr.cast<typename NativeArch::rseq_t>(), rseq_cs);
+    uint64_t value = 0;
+    write_mem(addr, value);
+    record_local(addr, &value);
+  } else {
+    ASSERT(this, !invalid_rseq_cs) << "Invalid rseq_cs found, not currently emulated properly by rr (should segfault)";
+  }
+
   trace_writer().write_frame(this, ev, registers, extra_registers);
   LOG(debug) << "Wrote event " << ev << " for time " << current_time;
+
+  if (rseq_new_ip != ip()) {
+    Registers r = regs();
+    r.set_ip(rseq_new_ip);
+    set_regs(r);
+  }
 
   if (!ev.has_ticks_slop() && reset == ALLOW_RESET_SYSCALLBUF) {
     ASSERT(this, flush == FLUSH_SYSCALLBUF);

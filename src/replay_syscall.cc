@@ -1281,6 +1281,19 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       }
       return;
 
+    case Arch::rseq: {
+      Registers r = t->regs();
+      auto rseq = remote_ptr<typename Arch::rseq_t>(r.arg1());
+      int flags = r.arg3();
+      uint32_t sig = r.arg4();
+      if (flags & RR_RSEQ_FLAG_UNREGISTER) {
+        t->rseq_state = nullptr;
+      } else {
+        t->rseq_state = make_unique<RseqState>(rseq, sig);
+      }
+      return;
+    }
+
     case Arch::perf_event_open: {
       Task* target = t->session().find_task((pid_t)trace_regs.arg2_signed());
       int cpu = trace_regs.arg3_signed();

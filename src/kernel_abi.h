@@ -1531,6 +1531,21 @@ struct BaseArch : public wordsize,
     struct hci_dev_stats stat;
   };
 
+  struct rseq_t {
+    uint32_t cpu_id_start;
+    uint32_t cpu_id;
+    uint64_t rseq_cs;
+    uint32_t flags;
+  } __attribute__((aligned(32)));
+
+  struct rseq_cs {
+    uint32_t version;
+    uint32_t flags;
+    uint64_t start_ip;
+    uint64_t post_commit_offset;
+    uint64_t abort_ip;
+  } __attribute__((aligned(32)));
+
   typedef struct ifbond {
     int32_t bond_mode;
     int32_t num_slaves;

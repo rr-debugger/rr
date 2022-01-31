@@ -1528,7 +1528,7 @@ Completion ReplaySession::advance_to_ticks_target(
 Completion ReplaySession::try_one_trace_step(
     ReplayTask* t, const StepConstraints& constraints) {
   if (constraints.ticks_target > 0 && !trace_frame.event().has_ticks_slop() &&
-      t->current_trace_frame().ticks() > constraints.ticks_target) {
+      current_trace_frame().ticks() > constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
     // that happens before this event completes.
     // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF
@@ -1547,8 +1547,21 @@ Completion ReplaySession::try_one_trace_step(
     case TSTEP_DETERMINISTIC_SIGNAL:
       return emulate_deterministic_signal(t, current_step.target.signo,
                                           constraints);
-    case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(t, constraints, current_step.target.ticks, current_step.target.in_syscallbuf_syscall_hook);
+    case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT: {
+      Completion completion = emulate_async_signal(t, constraints, current_step.target.ticks, current_step.target.in_syscallbuf_syscall_hook);
+      if (completion == COMPLETE) {
+        remote_code_ptr rseq_new_ip = t->ip();
+        bool invalid_rseq_cs;
+        if (t->should_apply_rseq_abort(current_trace_frame().event().type(), &rseq_new_ip, &invalid_rseq_cs)
+            && t->ip() != rseq_new_ip) {
+          Registers r = t->regs();
+          r.set_ip(rseq_new_ip);
+          t->set_regs(r);
+        }
+        t->apply_all_data_records_from_trace();
+      }
+      return completion;
+    }
     case TSTEP_DELIVER_SIGNAL:
       return emulate_signal_delivery(t, current_step.target.signo);
     case TSTEP_FLUSH_SYSCALLBUF:

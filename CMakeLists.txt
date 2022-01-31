@@ -1049,7 +1049,6 @@ set(BASIC_TESTS
   rename
   rlimit
   robust_futex
-  rseq
   rusage
   samask
   save_data_fd
@@ -1303,11 +1302,8 @@ set(TESTS_WITH_PROGRAM
   perf_event_mmap
   priority
   ptrace_remote_unmap
-  remove_latest_trace
-  # Not called ps, because that interferes with using real 'ps' in tests
-  rr_ps
-  rr_ps_ns
   read_big_struct
+  remove_latest_trace
   restart_abnormal_exit
   reverse_continue_breakpoint
   reverse_continue_multiprocess
@@ -1316,6 +1312,10 @@ set(TESTS_WITH_PROGRAM
   reverse_step_long
   reverse_step_threads
   reverse_step_threads_break
+  # Not called ps, because that interferes with using real 'ps' in tests
+  rr_ps
+  rr_ps_ns
+  rseq
   search
   seccomp_blocks_rr
   seccomp_signals
