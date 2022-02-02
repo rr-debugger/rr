@@ -565,6 +565,11 @@ if(strip)
   set(RR_MAIN_LINKER_FLAGS "-s ${RR_MAIN_LINKER_FLAGS}")
 endif()
 
+# Add -flto option to linking step if release
+if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
+  set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto")
+endif()
+
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   -lrt
