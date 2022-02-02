@@ -37,7 +37,7 @@
  * 'ftrace_helper <path>' creates an AF_UNIX socket at <path> and makes it
  * world-writable. Only one connection is allowed to this socket, then the
  * socket name is removed.
- * 'trace_helper' without arguments spawns itself with 'sudo' and creates the
+ * 'ftrace_helper' without arguments spawns itself with 'sudo' and creates the
  * socket at $HOME/.local/share/rr/ftrace.
  *
  * Over this connection the client can establish a series of sessions. All
