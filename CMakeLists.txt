@@ -1411,6 +1411,7 @@ set(TESTS_WITHOUT_PROGRAM
   checksum_sanity_noclone
   comm
   cont_signal
+  copy_all
   x86/cpuid
   dead_thread_target
   desched_ticks

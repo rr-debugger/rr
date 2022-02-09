@@ -121,10 +121,22 @@ remote_ptr<void> read_interpreter_base(std::vector<uint8_t> auxv) {
 }
 
 std::string read_ld_path(Task* t, remote_ptr<void> interpreter_base) {
-  if (!interpreter_base || !t->vm()->has_mapping(interpreter_base)) {
+  if (!interpreter_base) {
     return {};
   }
-  return t->vm()->mapping_of(interpreter_base).map.fsname();
+  // Find first executable mapping after the interpreter_base and use its fsname().
+  // Non-executable maps may not have a file name.
+  remote_ptr<void> addr = interpreter_base;
+  while (true) {
+    if (!t->vm()->has_mapping(addr)) {
+      return {};
+    }
+    const KernelMapping& map = t->vm()->mapping_of(addr).map;
+    if (map.prot() & PROT_EXEC) {
+      return map.fsname();
+    }
+    addr = map.end();
+  }
 }
 
 template <typename Arch> void patch_auxv_vdso_arch(RecordTask* t, uintptr_t search, uintptr_t new_entry_native) {

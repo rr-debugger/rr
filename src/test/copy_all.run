@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+RR_COPY_ALL_FILES=1 record simple$bitness
+debug copy_all

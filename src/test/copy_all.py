@@ -1,0 +1,3 @@
+from util import *
+
+ok()
