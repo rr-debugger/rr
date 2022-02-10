@@ -138,6 +138,7 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
   // Check that sizes and offsets of supported XSAVE areas area all identical.
   // An Intel employee promised this on a mailing list...
   // https://lists.xen.org/archives/html/xen-devel/2013-09/msg00484.html
+  // His promise isn't binding on AMD though.
   for (int feature = 2; feature <= 63; ++feature) {
     if (!(tracee_xcr0 & our_xcr0 & (uint64_t(1) << feature))) {
       continue;
@@ -149,8 +150,10 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
         record->out.ebx != data.ebx ||
         (check_alignment && (record->out.ecx & 2) != (data.ecx & 2))) {
       CLEAN_FATAL()
-          << "XSAVE offset/size/alignment differs for feature " << feature
-          << "; H. Peter Anvin said this would never happen!";
+          << "XSAVE offset/size/alignment differs for feature " << feature << "\n"
+          << "Expected " << record->out.eax << " == " << data.eax << " && "
+          << record->out.ebx << " == " << data.ebx << " && (!" << check_alignment
+          << " || " << (record->out.ecx & 2) << " == " << (data.ecx & 2) << ")";
     }
   }
 }
