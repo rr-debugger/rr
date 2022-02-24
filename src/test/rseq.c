@@ -33,6 +33,7 @@ static volatile uint32_t dummy;
 
 static void do_section(void) {
   int did_abort = 0;
+
   rs.rseq_cs = (uint64_t)(uintptr_t)&rs_cs;
 #if defined(__x86_64__) || defined(__i386__)
   __asm__ __volatile__ (
@@ -59,13 +60,19 @@ static void do_section(void) {
   rs.rseq_cs = 0;
 }
 
-int main(void) {
-  rs.cpu_id_start = 10000000;
-  rs.cpu_id = 10000001;
+static int main_child_thread(__attribute__((unused)) void* arg) {
+  struct rseq rs;
+  int ret = syscall(RR_rseq, &rs, sizeof(rs), 0, RSEQ_SIG);
+  test_assert(ret == 0);
+  return 0;
+}
+
+static int main_child(void) {
   int ret = syscall(RR_rseq, &rs, sizeof(rs), 0, RSEQ_SIG);
   int i;
   int status;
   pid_t child;
+
   if (ret == -1 && errno == ENOSYS) {
     atomic_puts("rseq not supported; ignoring test");
     atomic_puts("EXIT-SUCCESS");
@@ -80,6 +87,15 @@ int main(void) {
   rs_cs.post_commit_offset = (uint64_t)(uintptr_t)&end_ip - rs_cs.start_ip;
   rs_cs.abort_ip = (uint64_t)(uintptr_t)&abort_ip;
 #endif
+
+  const size_t stack_size = 1 << 20;
+  void* stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  test_assert(stack != MAP_FAILED);
+
+  clone(main_child_thread, stack + stack_size,
+        CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD | CLONE_SIGHAND,
+        NULL, NULL, NULL, NULL);
 
   child = fork();
   if (!child) {
@@ -101,4 +117,23 @@ int main(void) {
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
+}
+
+static int main_child_wrapper(__attribute__((unused)) void* arg) {
+  exit(main_child());
+}
+
+int main(void) {
+  const size_t stack_size = 1 << 20;
+  void* stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  test_assert(stack != MAP_FAILED);
+
+  rs.cpu_id_start = 10000000;
+  rs.cpu_id = 10000001;
+
+  clone(main_child_wrapper, stack + stack_size,
+        CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD | CLONE_SIGHAND,
+        NULL, NULL, NULL, NULL);
+  pause();
 }

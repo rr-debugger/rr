@@ -2257,8 +2257,13 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
         }
       }
     }
+    // rseq state is not cloned into new threads
   } else {
     t->as = new_task_session->clone(t, as);
+    if (rseq_state) {
+      // rseq state is cloned into non-thread children
+      t->rseq_state = make_unique<RseqState>(*rseq_state);
+    }
   }
 
   t->syscallbuf_size = syscallbuf_size;
@@ -2278,9 +2283,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   t->fds->insert_task(t);
 
   t->top_of_stack = stack;
-  if (rseq_state) {
-    t->rseq_state = make_unique<RseqState>(*rseq_state);
-  }
   // Clone children, both thread and fork, inherit the parent
   // prname.
   t->prname = prname;
