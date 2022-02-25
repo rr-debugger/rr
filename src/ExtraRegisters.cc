@@ -41,6 +41,7 @@ static const uint8_t fxsave_387_ctrl_offsets[] = {
 };
 
 static const int fip_offset = 8;
+static const int fop_offset = 6;
 static const int fdp_offset = 16;
 static const int mxcsr_offset = 24;
 
@@ -240,6 +241,17 @@ uint64_t ExtraRegisters::read_fip(bool* defined) const {
 
   uint64_t ret;
   memcpy(&ret, data_.data() + fip_offset, sizeof(ret));
+  return ret;
+}
+
+uint16_t ExtraRegisters::read_fop(bool* defined) const {
+  if (format_ != XSAVE) {
+    *defined = false;
+    return 0;
+  }
+
+  uint16_t ret;
+  memcpy(&ret, data_.data() + fop_offset, sizeof(ret));
   return ret;
 }
 

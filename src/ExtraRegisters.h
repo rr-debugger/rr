@@ -84,6 +84,11 @@ public:
   uint64_t read_fip(bool* defined) const;
 
   /**
+   * Read FOP field
+   */
+  uint16_t read_fop(bool* defined) const;
+
+  /**
    * Read MXCSR field
    */
   uint32_t read_mxcsr(bool* defined) const;

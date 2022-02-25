@@ -85,6 +85,7 @@ enum TraceFieldKind {
   TRACE_XMM_REG,           // outputs 128-bit value
   TRACE_YMM_REG,           // outputs 256-bit value
   TRACE_FIP,               // outputs 64-bit value
+  TRACE_FOP,               // outputs 16-bit value
   TRACE_TID,               // outputs 32-bit value
   TRACE_MXCSR,             // outputs 32-bit value
   TRACE_TICKS,             // outputs 64-bit value
@@ -365,6 +366,12 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
         print_value("fip", &value, sizeof(value), flags, out);
         break;
       }
+      case TRACE_FOP: {
+        bool defined;
+        uint16_t value = t->extra_regs().read_fop(&defined);
+        print_value("fop", &value, sizeof(value), flags, out);
+        break;
+      }
       case TRACE_MXCSR: {
         bool defined;
         uint32_t value = t->extra_regs().read_mxcsr(&defined);
@@ -453,6 +460,8 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       out->push_back({ TRACE_XINUSE, 0 });
     } else if (reg == "fip") {
       out->push_back({ TRACE_FIP, 0 });
+    } else if (reg == "fop") {
+      out->push_back({ TRACE_FOP, 0 });
     } else if (reg == "mxcsr") {
       out->push_back({ TRACE_MXCSR, 0});
     } else if (reg == "tid") {
