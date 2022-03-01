@@ -38,3 +38,4 @@ ln -s @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/RPMS/@CPACK_PAC
 %changelog
 * Tue Jun 25 2013 Chris Jones <cjones@triton> - 
 - Initial build.
+we
