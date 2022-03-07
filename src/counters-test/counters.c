@@ -423,7 +423,17 @@ int main(void) {
     Ticks ticks = reset_counting(child, counter_fd, MAX_PERIOD);
     /* NUM_VOLATILE_UPDATES conditional branches for the inner loop, plus one conditional branch
        for the outer loop. */
-    check_ticks(ticks, NUM_VOLATILE_UPDATES + 1);
+    int expect;
+    if (i == 0) {
+      if (ticks == NUM_VOLATILE_UPDATES + 1) {
+        expect = ticks;
+      } else {
+        expect = NUM_VOLATILE_UPDATES + 2;
+      }
+    } else {
+      expect = NUM_VOLATILE_UPDATES + 2;
+    }
+    check_ticks(ticks, expect);
   }
 
   reset_counting(child, counter_fd, MAX_PERIOD);
