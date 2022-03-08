@@ -210,9 +210,17 @@ public:
    * Arranges for 'fd' to be transmitted to the tracee and returns
    * a file descriptor in the tracee that corresponds to the same file
    * description.
-   * Returns a negative value if the process dies or has died.
+   * Returns a negative value if this fails.
    */
   int send_fd(const ScopedFd &fd);
+
+  /**
+   * Arranges for 'fd' to be transmitted to the tracee and returns
+   * a file descriptor in the tracee that corresponds to the same file
+   * description.
+   * Aborts if that fails.
+   */
+  int infallible_send_fd(const ScopedFd& our_fd);
 
   /**
    * `send_fd` the given file descriptor, making sure that it ends up as fd

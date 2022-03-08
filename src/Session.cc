@@ -399,8 +399,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
-  int remote_fd = remote.send_fd(emu_file->fd());
-  ASSERT(remote.task(), remote_fd >= 0);
+  int remote_fd = remote.infallible_send_fd(emu_file->fd());
   struct stat real_file = remote.task()->stat_fd(remote_fd);
   string real_file_name = remote.task()->file_name_of_fd(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
@@ -441,8 +440,7 @@ KernelMapping Session::create_shared_mmap(
    * cleaning up this segment in error conditions. */
   unlink(path);
 
-  int child_shmem_fd = remote.send_fd(shmem_fd);
-  ASSERT(remote.task(), child_shmem_fd >= 0);
+  int child_shmem_fd = remote.infallible_send_fd(shmem_fd);
   resize_shmem_segment(shmem_fd, size);
   LOG(debug) << "created shmem segment " << path;
 

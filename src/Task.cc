@@ -3667,7 +3667,7 @@ void Task::dup_from(Task *other) {
       }
       int remote_fd_flags = remote_other.infallible_syscall(
         syscall_number_for_fcntl(this->arch()), fd, F_GETFD);
-      int remote_fd = remote_this.send_fd(here);
+      int remote_fd = remote_this.infallible_send_fd(here);
       if (remote_fd != fd) {
         remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
         remote_this.infallible_syscall(syscall_number_for_close(this->arch()), remote_fd);
@@ -3685,7 +3685,7 @@ void Task::dup_from(Task *other) {
     {
       ScopedFd fd = remote_other.retrieve_fd(child_fd);
       remote_other.syscall(syscall_number_for_close(other->arch()), child_fd);
-      child_fd = remote_this.send_fd(fd);
+      child_fd = remote_this.infallible_send_fd(fd);
       remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
       remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
     }

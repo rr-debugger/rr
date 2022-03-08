@@ -470,8 +470,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
         session().use_read_cloning()) {
       cloned_file_data_fname = trace_writer().file_data_clone_file_name(tuid());
       ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDWR | O_CREAT, 0600);
-      int cloned_file_data = remote.send_fd(clone_file.get());
-      ASSERT(this, cloned_file_data >= 0);
+      int cloned_file_data = remote.infallible_send_fd(clone_file.get());
       int free_fd = find_free_file_descriptor(tid);
       cloned_file_data_fd_child =
           remote.syscall(syscall_number_for_dup3(arch()), cloned_file_data,

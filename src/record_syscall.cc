@@ -6078,7 +6078,7 @@ static void fake_gcrypt_file(RecordTask* t, Registers* r) {
   {
     AutoRemoteSyscalls remote(t);
     lseek(fd, 0, SEEK_SET);
-    child_fd = remote.send_fd(fd);
+    child_fd = remote.infallible_send_fd(fd);
   }
 
   // And hand out our fake file.

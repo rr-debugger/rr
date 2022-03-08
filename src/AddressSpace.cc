@@ -311,8 +311,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   {
     ScopedFd page(path.c_str(), O_RDONLY);
     ASSERT(t, page.is_open()) << "Failed to open rrpage library " << path;
-    long child_fd = remote.send_fd(page.get());
-    ASSERT(t, child_fd >= 0);
+    int child_fd = remote.infallible_send_fd(page.get());
     if (t->session().is_recording()) {
       remote.infallible_mmap_syscall(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
                                     child_fd, 0);

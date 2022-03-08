@@ -562,9 +562,15 @@ int AutoRemoteSyscalls::send_fd(const ScopedFd &our_fd) {
   RR_ARCH_FUNCTION(send_fd_arch, arch(), our_fd);
 }
 
+int AutoRemoteSyscalls::infallible_send_fd(const ScopedFd &our_fd) {
+  int child_fd = send_fd(our_fd);
+  ASSERT(t, child_fd >= 0) << "Failed to send fd; err="
+                           << errno_name(-child_fd);
+  return child_fd;
+}
+
 void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to, int dup3_flags) {
-  int remote_fd = send_fd(our_fd);
-  ASSERT(task(), remote_fd >= 0);
+  int remote_fd = infallible_send_fd(our_fd);
   if (remote_fd != dup_to) {
     long ret = infallible_syscall(syscall_number_for_dup3(arch()), remote_fd,
                                   dup_to, dup3_flags);
