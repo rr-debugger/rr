@@ -972,6 +972,7 @@ void Task::post_exec(const string& exe_file, const string& original_exe_file) {
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
   preload_globals = nullptr;
+  rseq_state = nullptr;
   thread_group()->execed = true;
 
   thread_areas_.clear();
