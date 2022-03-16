@@ -12,6 +12,6 @@ expect_gdb('Breakpoint 1')
 
 send_gdb('disable 1')
 send_gdb('c')
-expect_gdb('exited normally')
+expect_gdb('rogram stopped')
 
 ok()
