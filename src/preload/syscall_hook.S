@@ -478,6 +478,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
         cmpq $0xfffffffffffff000,%rax
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_c3)
+        callq __morestack
+        mov %rax,%rbx
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_c3)
+
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
          callq __morestack
          /* The original instruction after the syscall is movq (%rsp),%rdi. */

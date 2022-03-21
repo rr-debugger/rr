@@ -666,6 +666,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c3(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_5a_5e_c3(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c2_f7_da(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
@@ -697,6 +698,13 @@ static void __attribute__((constructor)) init_process(void) {
       4,
       { 0x48, 0x8b, 0x3c, 0x24 },
       (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
+    /* Some syscall wrappers (e.g. read) have 'syscall' followed
+     * by
+     * mov %rax,%rbx */
+    { 0,
+      3,
+      { 0x48, 0x89, 0xc3 },
+      (uintptr_t)_syscall_hook_trampoline_48_89_c3 },
     /* __lll_unlock_wake has 'syscall' followed by
      * pop %rdx; pop %rsi; ret */
     { PATCH_IS_MULTIPLE_INSTRUCTIONS,
