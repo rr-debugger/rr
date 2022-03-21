@@ -29,6 +29,7 @@
 #include <string>
 #include <numeric>
 #include <random>
+#include <sstream>
 
 #include "preload/preload_interface.h"
 
@@ -1324,9 +1325,14 @@ string find_helper_library(const char *basepath)
 vector<string> read_proc_status_fields(pid_t tid, const char* name,
                                        const char* name2, const char* name3) {
   vector<string> result;
+  FILE *f;
   char buf[1000];
-  sprintf(buf, "/proc/%d/status", tid);
-  FILE* f = fopen(buf, "r");
+  if (tid == 0) {
+    f = fopen("/proc/self/status", "r");
+  } else {
+    sprintf(buf, "/proc/%d/status", tid);
+    f = fopen(buf, "r");
+  }
   if (!f) {
     return result;
   }
@@ -1974,10 +1980,12 @@ static vector<int> get_cgroup_cpus() {
   if (cpuset_path.empty()) {
     return cpus;
   }
-  ifstream cpuset("/sys/fs/cgroup/cpuset" + cpuset_path + "/cpuset.cpus");
-  if (!cpuset.good()) {
+  vector<string> allowed_cpus = read_proc_status_fields(0, "Cpus_allowed_list", NULL, NULL);
+  DEBUG_ASSERT(allowed_cpus.size() <= 1);
+  if (allowed_cpus.empty()) {
     return cpus;
   }
+  stringstream cpuset(allowed_cpus[0]);
   while (true) {
     int cpu1;
     cpuset >> cpu1;
