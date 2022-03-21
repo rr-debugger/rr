@@ -750,6 +750,13 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
     LOG(debug) << "  copying " << mapping.fsname();
     return true;
   }
+  if (mapping.fsname().rfind("/etc/passwd", 0) == 0 ||
+      mapping.fsname().rfind("/etc/group", 0) == 0) {
+    // These files (and suffixes such as .cache etc) change very frequently in
+    // some environments.
+    LOG(debug) << "  copying " << mapping.fsname();
+    return true;
+  }
   if (private_mapping && (prot & PROT_EXEC)) {
     /* Be optimistic about private executable mappings */
     LOG(debug) << "  (no copy for +x private mapping " << mapping.fsname() << ")";
