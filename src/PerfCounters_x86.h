@@ -326,10 +326,14 @@ static void check_for_freeze_on_smi() {
     LOG(warn) << "freeze_on_smi is not set";
     if (!Flags::get().suppress_environment_warnings) {
       fprintf(stderr,
-              "Freezing performance counters on SMIs should be turned on for maximum rr\n"
-              "reliability on Comet Lake and later CPUs. Consider putting\n"
-              "'w /sys/devices/cpu/freeze_on_smi - - - - 1' in /etc/tmpfiles.d/10-rr.conf\n"
-              "See 'man 5 sysfs', 'man 5 tmpfiles.d' (systemd systems)\n");
+              "Freezing performance counters on SMIs should be enabled for maximum rr\n"
+              "reliability on Comet Lake and later CPUs. To manually enable this setting, run\n"
+              "\techo 1 | sudo tee /sys/devices/cpu/freeze_on_smi\n"
+              "On systemd systems, consider putting\n"
+              "'w /sys/devices/cpu/freeze_on_smi - - - - 1' into /etc/tmpfiles.d/10-rr.conf\n"
+              "to automatically apply this setting on every reboot.\n"
+              "See 'man 5 sysfs', 'man 5 tmpfiles.d'.\n"
+              "If you are seeing this message, the setting has not been enabled.\n");
     }
   } else {
     LOG(warn) << "Unrecognized freeze_on_smi value " << freeze_on_smi;
