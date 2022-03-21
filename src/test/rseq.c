@@ -110,6 +110,9 @@ static int main_child(void) {
       do_section();
     }
 
+    /* Test that it's OK to do system calls with rseq_cs set as long as we're
+       not in the section */
+    rs_ptr->rseq_cs = (uint64_t)(uintptr_t)&rs_cs;
     atomic_printf("Detected %lld aborts, %lld jump aborts\n",
                   (long long)aborts, (long long)jump_aborts);
     /* Test that execve works */

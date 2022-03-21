@@ -3901,6 +3901,16 @@ bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip
   if (!rseq.rseq_cs) {
     return false;
   }
+  auto rseq_cs = read_mem(remote_ptr<typename NativeArch::rseq_cs>(rseq.rseq_cs));
+  if (rseq_cs.version ||
+      rseq_cs.start_ip + rseq_cs.post_commit_offset < rseq_cs.start_ip ||
+      rseq_cs.abort_ip - rseq_cs.start_ip < rseq_cs.post_commit_offset) {
+    *invalid_rseq_cs = true;
+    return false;
+  }
+  if (ip().register_value() - rseq_cs.start_ip >= rseq_cs.post_commit_offset) {
+    return false;
+  }
   uint32_t flag;
   switch (event_type) {
     case EV_SCHED:
@@ -3910,17 +3920,11 @@ bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip
       flag = 1 << RR_RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT;
       break;
     default:
+      /* A system call inside the rseq region should SIGSEGV but we don't emulate that yet */
       ASSERT(this, false) << "Unsupported event type";
       return false;
   }
-  auto rseq_cs = read_mem(remote_ptr<typename NativeArch::rseq_cs>(rseq.rseq_cs));
   if ((rseq.flags | rseq_cs.flags) & flag) {
-    return false;
-  }
-  if (rseq_cs.version ||
-      rseq_cs.start_ip + rseq_cs.post_commit_offset < rseq_cs.start_ip ||
-      rseq_cs.abort_ip - rseq_cs.start_ip < rseq_cs.post_commit_offset) {
-    *invalid_rseq_cs = true;
     return false;
   }
   uint32_t sig = read_mem(remote_ptr<uint32_t>(rseq_cs.abort_ip - 4));
@@ -3928,9 +3932,7 @@ bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip
     *invalid_rseq_cs = true;
     return false;
   }
-  if (ip().register_value() - rseq_cs.start_ip < rseq_cs.post_commit_offset) {
-    *new_ip = remote_code_ptr(rseq_cs.abort_ip);
-  }
+  *new_ip = remote_code_ptr(rseq_cs.abort_ip);
   return true;
 }
 
