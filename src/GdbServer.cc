@@ -253,7 +253,7 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
       end = have_PKU ? DREG_PKRU : (have_AVX ? DREG_YMM7H : DREG_ORIG_EAX);
       break;
     case x86_64:
-      end = have_PKU ? DREG_64_PKRU : (have_AVX ? DREG_64_YMM15H : DREG_ORIG_RAX);
+      end = have_PKU ? DREG_64_PKRU : (have_AVX ? DREG_64_YMM15H : DREG_GS_BASE);
       break;
     case aarch64:
       end = DREG_FPCR;
