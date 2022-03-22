@@ -1410,11 +1410,6 @@ static bool preinject_signal(RecordTask* t) {
      */
     LOG(debug) << "    maybe not in signal-stop (status " << t->status()
                << "); doing tgkill(SYSCALLBUF_DESCHED_SIGNAL)";
-    // Always send SYSCALLBUF_DESCHED_SIGNAL because other signals (except
-    // TIME_SLICE_SIGNAL) will be blocked by
-    // RecordTask::will_resume_execution().
-    t->tgkill(t->session().syscallbuf_desched_sig());
-
     t->move_to_signal_stop();
 
     if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
