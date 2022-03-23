@@ -5,12 +5,18 @@
 int main(void) {
   long ncpus = sysconf(_SC_NPROCESSORS_CONF);
   unsigned cpu;
-  int ret;
-
-  atomic_printf("sysconf says %ld processors are configured\n", ncpus);
-  ret = getcpu(&cpu, NULL);
+  int ret = getcpu(&cpu, NULL);
   test_assert(ret == 0);
-  test_assert(cpu < (unsigned)ncpus);
+  atomic_printf("sysconf says %ld processors are configured, getcpu()=%d\n", ncpus, cpu);
+
+  if (cpu >= (unsigned)ncpus) {
+    system("ls /sys/devices/system/cpu");
+    atomic_puts("present:");
+    system("cat /sys/devices/system/cpu/present");
+    atomic_puts("possible:");
+    system("cat /sys/devices/system/cpu/possible");
+    abort();
+  }
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
