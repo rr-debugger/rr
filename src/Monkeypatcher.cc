@@ -27,15 +27,17 @@ namespace rr {
 #include "AssemblyTemplates.generated"
 
 static void write_and_record_bytes(RecordTask* t, remote_ptr<void> child_addr,
-                                   size_t size, const void* buf) {
-  t->write_bytes_helper(child_addr, size, buf);
-  t->record_local(child_addr, size, buf);
+                                   size_t size, const void* buf, bool* ok = nullptr) {
+  t->write_bytes_helper(child_addr, size, buf, ok);
+  if (!ok || *ok) {
+    t->record_local(child_addr, size, buf);
+  }
 }
 
 template <size_t N>
 static void write_and_record_bytes(RecordTask* t, remote_ptr<void> child_addr,
-                                   const uint8_t (&buf)[N]) {
-  write_and_record_bytes(t, child_addr, N, buf);
+                                   const uint8_t (&buf)[N], bool* ok = nullptr) {
+  write_and_record_bytes(t, child_addr, N, buf, ok);
 }
 
 template <typename T>
@@ -275,11 +277,11 @@ template <typename JumpPatch, typename ExtendedJumpPatch>
 static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook) {
-  uint8_t jump_patch[JumpPatch::size];
+  uint8_t jump_patch[syscall_instruction_length(x86_64) + hook.patch_region_length];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
   auto jump_patch_start = t->regs().ip().to_data_ptr<uint8_t>();
-  auto jump_patch_end = jump_patch_start + sizeof(jump_patch);
+  auto jump_patch_end = jump_patch_start + JumpPatch::size;
   auto return_addr = t->regs().ip().to_data_ptr<uint8_t>().as_int() +
                      syscall_instruction_length(x86_64) +
                      hook.patch_region_length;
@@ -311,21 +313,18 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   ASSERT(t, jump_offset32 == jump_offset)
       << "allocate_extended_jump didn't work";
 
-  JumpPatch::substitute(jump_patch, jump_offset32);
-  write_and_record_bytes(t, jump_patch_start, jump_patch);
-
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
   DEBUG_ASSERT(syscall_instruction_length(x86_64) ==
                syscall_instruction_length(x86));
-  size_t nops_bufsize = syscall_instruction_length(x86_64) +
-                        hook.patch_region_length - sizeof(jump_patch);
-  std::unique_ptr<uint8_t[]> nops(new uint8_t[nops_bufsize]);
-  memset(nops.get(), NOP, nops_bufsize);
-  write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops.get(),
-                       nops_bufsize);
-
-  return true;
+  memset(jump_patch, NOP, sizeof(jump_patch));
+  JumpPatch::substitute(jump_patch, jump_offset32);
+  bool ok = true;
+  write_and_record_bytes(t, jump_patch_start, sizeof(jump_patch), jump_patch, &ok);
+  if (!ok) {
+    LOG(warn) << "Couldn't write patch; errno=" << errno;
+  }
+  return ok;
 }
 
 template <>
@@ -711,6 +710,10 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
                             sizeof(syscall_patch_hook::patch_region_bytes)));
 
       success = patch_syscall_with_hook(*this, t, hook);
+      if (!success && entering_syscall) {
+        // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
+        t->enter_syscall();
+      }
       break;
     }
   }

@@ -253,10 +253,10 @@ public:
                           off64_t backing_offset_pages,
                           struct stat& real_file, std::string& real_file_name);
 
+  void check_syscall_result(long ret, int syscallno, bool allow_death=false);
+
 private:
   void setup_path(bool enable_singlestep_path);
-
-  void check_syscall_result(long ret, int syscallno, bool allow_death=false);
 
   /**
    * "Recursively" build the set of syscall registers in

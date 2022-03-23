@@ -852,6 +852,7 @@ void Task::enter_syscall() {
     static_cast<RecordTask*>(this)->stash_sig();
   }
   apply_syscall_entry_regs();
+  canonicalize_regs(arch());
 }
 
 bool Task::exit_syscall() {
@@ -2868,14 +2869,29 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
 
   AutoRemoteSyscalls remote(t);
   int mprotect_syscallno = syscall_number_for_mprotect(t->arch());
+  bool failed_access = false;
   for (auto& m : mappings_to_fix) {
-    remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
-                              m.prot() | PROT_WRITE);
+    long ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot() | PROT_WRITE);
+    if ((int)ret == -EACCES) {
+      // We could be trying to write to a read-only shared file. In that case we should
+      // report the error without dying.
+      failed_access = true;
+    } else {
+      remote.check_syscall_result(ret, mprotect_syscallno);
+    }
   }
-  ssize_t nwritten = pwrite_all_fallible(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
+  ssize_t nwritten;
+  if (failed_access) {
+    nwritten = -1;
+  } else {
+    nwritten = pwrite_all_fallible(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
+  }
   for (auto& m : mappings_to_fix) {
     remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
                               m.prot());
+  }
+  if (failed_access) {
+    errno = EACCES;
   }
   return nwritten;
 }
