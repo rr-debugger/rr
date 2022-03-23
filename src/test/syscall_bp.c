@@ -17,8 +17,11 @@ static uintptr_t my_syscall(uintptr_t syscall, uintptr_t arg1, uintptr_t arg2,
   uintptr_t ret;
 #ifdef __x86_64__
   __asm__ volatile("syscall\n\t"
+                   /* Make sure we don't patch this syscall for syscall buffering */
+                   "cmp $0x77,%%rax\n\t"
                    : "=a"(ret)
-                   : "a"(syscall), "D"(arg1), "S"(arg2), "d"(arg3));
+                   : "a"(syscall), "D"(arg1), "S"(arg2), "d"(arg3)
+                   : "flags");
 #elif defined(__i386__)
   __asm__ volatile("xchg %%esi,%%edi\n\t"
                    "int $0x80\n\t"
