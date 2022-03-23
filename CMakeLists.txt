@@ -1152,6 +1152,7 @@ set(BASIC_TESTS
   syscallbuf_timeslice
   syscallbuf_timeslice2
   sysconf
+  sysconf_conf
   sysctl
   sysemu_singlestep
   x86/sysfs

@@ -123,13 +123,15 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
 long __sysconf(int name);
 
 /**
- *  Pretend that only 1 processor is configured/online, because rr
- *  binds all tracees to one logical CPU.
+ * Pretend that only 1 processor is online, because rr
+ * binds all tracees to one logical CPU.
+ * We return the correct value for processors configured,
+ * since applications may assume that CPU IDs (e.g.
+ * obtained via getcpu() or rseq) are less than that value.
  */
 long sysconf(int name) {
   switch (name) {
     case _SC_NPROCESSORS_ONLN:
-    case _SC_NPROCESSORS_CONF:
       return globals.pretend_num_cores ? globals.pretend_num_cores : 1;
   }
   return __sysconf(name);
