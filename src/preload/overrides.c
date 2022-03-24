@@ -111,32 +111,6 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
   return real_pthread_mutex_trylock(mutex);
 }
 
-/**
- * Exported glibc synonym for |sysconf()|.  We can't use |dlsym()| to
- * resolve the next "sysconf" symbol, because
- *  - dlysym usually calls malloc()
- *  - custom allocators like jemalloc may use sysconf()
- *  - if our sysconf wrapper is re-entered during initialization, it
- *    has nothing to fall back on to get the conf name, and chaos will
- *    likely ensue if we return something random.
- */
-long __sysconf(int name);
-
-/**
- * Pretend that only 1 processor is online, because rr
- * binds all tracees to one logical CPU.
- * We return the correct value for processors configured,
- * since applications may assume that CPU IDs (e.g.
- * obtained via getcpu() or rseq) are less than that value.
- */
-long sysconf(int name) {
-  switch (name) {
-    case _SC_NPROCESSORS_ONLN:
-      return globals.pretend_num_cores ? globals.pretend_num_cores : 1;
-  }
-  return __sysconf(name);
-}
-
 typedef void* Dlopen(const char* filename, int flags);
 
 void* dlopen(const char* filename, int flags) {
