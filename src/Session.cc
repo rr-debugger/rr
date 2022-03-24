@@ -731,6 +731,9 @@ void Session::do_bind_cpu(TraceStream &trace) {
         FATAL() << "Can't bind to requested CPU " << cpu_index
                 << ", and CPUID faulting not available";
       }
+    } else if (!is_recording()) {
+      // Make sure to mark this CPU as in use in the cpu_lock.
+      (void)choose_cpu((BindCPU)cpu_index, cpu_lock);
     }
   }
 }
