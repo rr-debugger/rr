@@ -2067,6 +2067,8 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
     }
   }
 
+  FILE *ctty = fopen("/dev/tty", "w");
+
   // Pin tracee tasks to a random logical CPU, both in
   // recording and replay.  Tracees can see which HW
   // thread they're running on by asking CPUID, and we
@@ -2091,7 +2093,13 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
         .l_pid = 0
       };
       // Try to acquire the lock for this CPU
-      (void)fcntl(cpu_lock_fd_out, F_SETLK, &lock);
+      int err = fcntl(cpu_lock_fd_out, F_SETLK, &lock);
+      if (ctty) {
+        if (err == 0)
+          fprintf(ctty, "[%d] Acquired lock on cpu %d for replay\n", getpid(), bind_cpu);
+        else
+          fprintf(ctty, "[%d] Failed to acquire lock on cpu %d for replay\n", getpid(), bind_cpu);
+      }
       // Ignore fcntl errors - nothing we can do
     }
     return bind_cpu;
@@ -2112,6 +2120,8 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
         // Try to acquire the lock for this CPU
         int err = fcntl(cpu_lock_fd_out, F_SETLK, &lock);
         if (err == 0) {
+          if (ctty)
+            fprintf(ctty, "[%d] Acquired lock for record on %d\n", getpid(), cpu);
           return cpu;
         }
         else if (err == -1) {
@@ -2125,7 +2135,10 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
 
   // Didn't work - just use a random CPU
   cpu_lock_fd_out.close();
-  return cpus[random() % cpus.size()];
+  int cpu = cpus[random() % cpus.size()];
+  if (ctty)
+    fprintf(ctty, "[%d] Failed to acquire lock - recording on random CPU %d\n", getpid(), cpu);
+  return cpu;
 }
 
 uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len) {
