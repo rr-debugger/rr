@@ -10,8 +10,8 @@ int main(void) {
   atomic_printf("sysconf says %ld processors are configured, getcpu()=%d\n", ncpus, cpu);
 
   if (cpu >= (unsigned)ncpus) {
-    if (ncpus == 1 && access("/sys/devices/system", X_OK) < 0) {
-      atomic_puts("Can't access /sys/devices/system; _SC_NPROCESSORS_CONF is probably broken, skipping test");
+    if (ncpus == 1 && access("/sys/devices/system/cpu", X_OK) < 0) {
+      atomic_puts("Can't access /sys/devices/system/cpu; _SC_NPROCESSORS_CONF is probably broken, skipping test");
       atomic_puts("EXIT-SUCCESS");
       return 0;
     }
