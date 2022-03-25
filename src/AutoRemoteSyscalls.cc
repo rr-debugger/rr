@@ -549,6 +549,7 @@ template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &ou
        buffer so it doesn't get read by another child later! */
     int fd = recvmsg_socket(task()->session().tracee_socket_receiver_fd());
     if (fd >= 0) {
+      ASSERT(t, fd != our_fd.get()) << "This should always return a fresh fd!";
       close(fd);
     }
     return -ESRCH;
