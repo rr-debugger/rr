@@ -623,7 +623,7 @@ void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allo
     // Sign-extend ret because it can be a 32-bit negative errno
     ret = (int)ret;
   }
-  if (allow_death && ret == -ESRCH) {
+  if (ret == -ESRCH && allow_death && !t->session().is_replaying()) {
     return;
   }
   if (-4096 < ret && ret < 0) {
