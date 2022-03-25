@@ -150,6 +150,8 @@ public:
     return syscall_helper<1>(syscallno, callregs, args...);
   }
 
+  // Aborts on all errors.
+  // DEPRECATED. Use infallible_syscall_if_alive instead.
   template <typename... Rest>
   long infallible_syscall(int syscallno, Rest... args) {
     Registers callregs = regs();
@@ -157,10 +159,12 @@ public:
     // our syscall-arg-index template parameter starts
     // with "1".
     long ret = syscall_helper<1>(syscallno, callregs, args...);
-    check_syscall_result(ret, syscallno);
+    check_syscall_result(ret, syscallno, false);
     return ret;
   }
 
+  // Aborts on all errors other than -ESRCH. Aborts on -ESRCH
+  // if this is a replay task (they should never unexpectedly die).
   template <typename... Rest>
   long infallible_syscall_if_alive(int syscallno, Rest... args) {
     Registers callregs = regs();
@@ -168,7 +172,7 @@ public:
     // our syscall-arg-index template parameter starts
     // with "1".
     long ret = syscall_helper<1>(syscallno, callregs, args...);
-    check_syscall_result(ret, syscallno, true);
+    check_syscall_result(ret, syscallno);
     return ret;
   }
 
@@ -176,7 +180,7 @@ public:
   remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
     Registers callregs = regs();
     long ret = syscall_helper<1>(syscallno, callregs, args...);
-    check_syscall_result(ret, syscallno);
+    check_syscall_result(ret, syscallno, false);
     return ret;
   }
 
@@ -253,7 +257,8 @@ public:
                           off64_t backing_offset_pages,
                           struct stat& real_file, std::string& real_file_name);
 
-  void check_syscall_result(long ret, int syscallno, bool allow_death=false);
+  // Calling this with allow_death false is DEPRECATED.
+  void check_syscall_result(long ret, int syscallno, bool allow_death = true);
 
 private:
   void setup_path(bool enable_singlestep_path);

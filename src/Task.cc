@@ -2877,7 +2877,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
       // report the error without dying.
       failed_access = true;
     } else {
-      remote.check_syscall_result(ret, mprotect_syscallno);
+      remote.check_syscall_result(ret, mprotect_syscallno, false);
     }
   }
   ssize_t nwritten;
