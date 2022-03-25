@@ -109,6 +109,8 @@ mktempdir(my_temp_parent_dir) do dir
             ".tar.zst",
         )
         dst_full_path = joinpath(my_archives_dir, dst_file_name)
+        run(`find . -type p`) # list the named pipes before we delete them
+        run(`find . -type p -delete`)
         zstdmt() do zstdp
             tarproc = open(`$(zstdp) -o $(dst_full_path)`, "w")
             Tar.create(artifact_input_dir, tarproc)
