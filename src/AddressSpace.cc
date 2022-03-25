@@ -311,27 +311,29 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   {
     ScopedFd page(path.c_str(), O_RDONLY);
     ASSERT(t, page.is_open()) << "Failed to open rrpage library " << path;
-    int child_fd = remote.infallible_send_fd(page.get());
-    if (t->session().is_recording()) {
-      remote.infallible_mmap_syscall(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
-                                    child_fd, 0);
-    }
-    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                   child_fd, offset_pages);
+    int child_fd = remote.infallible_send_fd_if_alive(page.get());
+    if (child_fd >= 0) {
+      if (t->session().is_recording()) {
+        remote.infallible_mmap_syscall(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
+                                      child_fd, 0);
+      }
+      remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
+                                     child_fd, offset_pages);
 
-    struct stat fstat = t->stat_fd(child_fd);
-    file_name = t->file_name_of_fd(child_fd);
+      struct stat fstat = t->stat_fd(child_fd);
+      file_name = t->file_name_of_fd(child_fd);
 
-    remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
+      remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
-    map(t, rr_page_start(), rr_page_size(), prot, flags,
-        offset_pages * page_size(), file_name,
-        fstat.st_dev, fstat.st_ino);
-    mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
-    if (t->session().is_recording()) {
-      map(t, rr_page_start() - offset_bytes, offset_bytes, prot, flags,
-          0, file_name,
+      map(t, rr_page_start(), rr_page_size(), prot, flags,
+          offset_pages * page_size(), file_name,
           fstat.st_dev, fstat.st_ino);
+      mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
+      if (t->session().is_recording()) {
+        map(t, rr_page_start() - offset_bytes, offset_bytes, prot, flags,
+            0, file_name,
+            fstat.st_dev, fstat.st_ino);
+      }
     }
   }
 

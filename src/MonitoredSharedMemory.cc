@@ -32,6 +32,10 @@ void MonitoredSharedMemory::maybe_monitor(RecordTask* t,
   AutoRemoteSyscalls remote(t);
 
   ScopedFd fd = remote.retrieve_fd(tracee_fd);
+  if (!fd.is_open()) {
+    // Tracee died
+    return;
+  }
   uint8_t* real_mem = static_cast<uint8_t*>(
       mmap(NULL, m.map.size(), PROT_READ, MAP_SHARED, fd, offset));
   ASSERT(t, real_mem != MAP_FAILED);
@@ -42,6 +46,10 @@ void MonitoredSharedMemory::maybe_monitor(RecordTask* t,
   const AddressSpace::Mapping& shared =
       Session::steal_mapping(remote, m, move(result));
   // m may be invalid now
+  if (!shared.local_addr) {
+    // tracee died
+    return;
+  }
   memcpy(shared.local_addr, real_mem, shared.map.size());
 }
 
@@ -73,6 +81,10 @@ void MonitoredSharedMemory::check_for_changes(RecordTask* t,
     auto msm = m.monitored_shared_memory;
     m = Session::recreate_shared_mmap(remote, m, Session::DISCARD_CONTENTS,
                                       move(msm));
+    if (!m.local_addr) {
+      // Tracee died.
+      return;
+    }
   }
   if (!memcmp(m.local_addr, real_mem, size)) {
     return;

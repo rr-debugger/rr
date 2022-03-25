@@ -6078,10 +6078,14 @@ static void fake_gcrypt_file(RecordTask* t, Registers* r) {
   {
     AutoRemoteSyscalls remote(t);
     lseek(fd, 0, SEEK_SET);
-    child_fd = remote.infallible_send_fd(fd);
+    child_fd = remote.infallible_send_fd_if_alive(fd);
+    if (child_fd < 0) {
+      // Tracee died.
+      return;
+    }
   }
 
-  // And hand out our fake file.
+  // And hand out our fake file
   r->set_syscall_result(child_fd);
 }
 

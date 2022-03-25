@@ -3684,27 +3684,31 @@ void Task::dup_from(Task *other) {
       }
       int remote_fd_flags = remote_other.infallible_syscall(
         syscall_number_for_fcntl(this->arch()), fd, F_GETFD);
-      int remote_fd = remote_this.infallible_send_fd(here);
-      if (remote_fd != fd) {
-        remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
-        remote_this.infallible_syscall(syscall_number_for_close(this->arch()), remote_fd);
+      int remote_fd = remote_this.infallible_send_fd_if_alive(here);
+      if (remote_fd >= 0) {
+        if (remote_fd != fd) {
+          remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
+          remote_this.infallible_syscall(syscall_number_for_close(this->arch()), remote_fd);
+        }
+        remote_other.infallible_syscall(
+          syscall_number_for_fcntl(this->arch()),
+          fd, F_SETFD, remote_fd_flags);
       }
-      remote_other.infallible_syscall(
-        syscall_number_for_fcntl(this->arch()),
-        fd, F_SETFD, remote_fd_flags);
     }
     string path = ".";
     AutoRestoreMem child_path(remote_other, path.c_str());
-    long child_fd =
-      remote_other.syscall(syscall_number_for_openat(other->arch()), AT_FDCWD,
-                     child_path.get(), O_RDONLY);
-    ASSERT(other, child_fd != -1);
     {
+      long child_fd =
+        remote_other.syscall(syscall_number_for_openat(other->arch()), AT_FDCWD,
+                       child_path.get(), O_RDONLY);
+      ASSERT(other, child_fd != -1);
       ScopedFd fd = remote_other.retrieve_fd(child_fd);
       remote_other.syscall(syscall_number_for_close(other->arch()), child_fd);
-      child_fd = remote_this.infallible_send_fd(fd);
-      remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
-      remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
+      child_fd = remote_this.infallible_send_fd_if_alive(fd);
+      if (child_fd >= 0) {
+        remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
+        remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
+      }
     }
 
     // Copy rlimits

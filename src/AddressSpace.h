@@ -257,7 +257,7 @@ public:
             std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
     ~Mapping();
     Mapping(const Mapping&);
-    Mapping() = default;
+    Mapping() : local_addr(nullptr), flags(0) {}
     const Mapping& operator=(const Mapping& other) {
       this->~Mapping();
       new (this) Mapping(other);

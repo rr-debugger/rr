@@ -176,6 +176,7 @@ public:
     return ret;
   }
 
+  /** TODO replace with infallible_syscall_ptr_if_alive */
   template <typename... Rest>
   remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
     Registers callregs = regs();
@@ -187,11 +188,13 @@ public:
   /**
    * Remote mmap syscalls are common and non-trivial due to the need to
    * select either mmap2 or mmap.
+   * TODO replace with infallble_mmap_syscall_if_alive
    */
   remote_ptr<void> infallible_mmap_syscall(remote_ptr<void> addr, size_t length,
                                            int prot, int flags, int child_fd,
                                            uint64_t offset_pages);
 
+  /** TODO replace with infallible_lseek_syscall_if_alive */
   int64_t infallible_lseek_syscall(int fd, int64_t offset, int whence);
 
   /** The Task in the context of which we're making syscalls. */
@@ -223,12 +226,14 @@ public:
    * a file descriptor in the tracee that corresponds to the same file
    * description.
    * Aborts if that fails.
+   * Returns -ESRCH if the tracee is dead (and is not replaying)
    */
-  int infallible_send_fd(const ScopedFd& our_fd);
+  int infallible_send_fd_if_alive(const ScopedFd& our_fd);
 
   /**
    * `send_fd` the given file descriptor, making sure that it ends up as fd
    * `dup_to`, (dup'ing it there and closing the original if necessary)
+   * TODO replace with infallible_send_fd_dup_if_alive
    */
   void infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to, int dup3_flags);
 
