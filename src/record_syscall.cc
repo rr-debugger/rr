@@ -3137,12 +3137,12 @@ static void init_scratch_memory(RecordTask* t,
     AutoRemoteSyscalls remote(t);
 
     if (addr_type == DYNAMIC_ADDRESS) {
-      t->scratch_ptr = remote.infallible_mmap_syscall(remote_ptr<void>(), sz,
-                                                      prot, flags, -1, 0);
+      t->scratch_ptr = remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(), sz,
+                                                               prot, flags, -1, 0);
     } else {
       t->scratch_ptr =
-          remote.infallible_mmap_syscall(remote_ptr<void>(FIXED_SCRATCH_PTR),
-                                         sz, prot, flags | MAP_FIXED, -1, 0);
+          remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(FIXED_SCRATCH_PTR),
+                                                  sz, prot, flags | MAP_FIXED, -1, 0);
     }
     t->scratch_size = scratch_size;
   }
@@ -5406,8 +5406,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
         remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                                   km.start() - page_size(), page_size());
       }
-      remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(), flags,
-                                     -1, 0);
+      remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(), flags,
+                                              -1, 0);
       t->write_mem(km.start().cast<uint8_t>(), buf.data(), buf.size());
     }
   }

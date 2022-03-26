@@ -203,7 +203,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
 
   {
     AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
-    remote.infallible_mmap_syscall(
+    remote.infallible_mmap_syscall_if_alive(
         new_start, it->map.start() - new_start, it->map.prot(),
         (it->map.flags() & ~MAP_GROWSDOWN) | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   }

@@ -314,11 +314,11 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
     int child_fd = remote.infallible_send_fd_if_alive(page.get());
     if (child_fd >= 0) {
       if (t->session().is_recording()) {
-        remote.infallible_mmap_syscall(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
-                                      child_fd, 0);
+        remote.infallible_mmap_syscall_if_alive(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
+                                                child_fd, 0);
       }
-      remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                     child_fd, offset_pages);
+      remote.infallible_mmap_syscall_if_alive(rr_page_start(), rr_page_size(), prot, flags,
+                                              child_fd, offset_pages);
 
       struct stat fstat = t->stat_fd(child_fd);
       file_name = t->file_name_of_fd(child_fd);
@@ -1546,7 +1546,7 @@ void AddressSpace::ensure_replay_matches_single_recorded_mapping(Task* t, Memory
       t->read_bytes_helper(mapping.map.start(), buffer.size(), buffer.data());
       {
         AutoRemoteSyscalls remote(t);
-        remote.infallible_mmap_syscall(mapping.map.start(), buffer.size(),
+        remote.infallible_mmap_syscall_if_alive(mapping.map.start(), buffer.size(),
             mapping.map.prot(), mapping.map.flags() | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
       }
       t->write_bytes_helper(mapping.map.start(), buffer.size(), buffer.data());

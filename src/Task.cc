@@ -3498,14 +3498,17 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
   if (km.is_real_device() && !file_was_deleted(km.fsname())) {
-    struct stat real_file; string real_file_name;
+    struct stat real_file;
+    string real_file_name;
     remote.finish_direct_mmap(km.start(), km.size(), km.prot(), km.flags(),
       km.fsname(), O_RDONLY, km.file_offset_bytes()/page_size(),
       real_file, real_file_name);
   } else {
-    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
-                                  km.flags() | MAP_FIXED | MAP_ANONYMOUS, -1,
-                                  0);
+    auto ret = remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(),
+                                                       km.flags() | MAP_FIXED | MAP_ANONYMOUS, -1,
+                                                       0);
+    ASSERT(t, ret || t->vm()->task_set().size() == t->thread_group()->task_set().size())
+      << "Not handling shared address spaces where one threadgroup unexpectedly dies";
   }
   t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), km.file_offset_bytes(),
                real_file_name, device, inode, nullptr, &km);

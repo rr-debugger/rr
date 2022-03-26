@@ -219,7 +219,11 @@ static remote_ptr<uint8_t> allocate_extended_jump(
       AutoRemoteSyscalls remote(t);
       int prot = PROT_READ | PROT_EXEC;
       int flags = MAP_ANONYMOUS | MAP_FIXED | MAP_PRIVATE;
-      remote.infallible_mmap_syscall(addr, page_size(), prot, flags, -1, 0);
+      auto ret = remote.infallible_mmap_syscall_if_alive(addr, page_size(), prot, flags, -1, 0);
+      if (!ret) {
+        /* Tracee died */
+        return nullptr;
+      }
       KernelMapping recorded(addr, addr + page_size(), string(),
                              KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                              prot, flags);

@@ -411,14 +411,20 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   struct stat real_file = remote.task()->stat_fd(remote_fd);
   string real_file_name = remote.task()->file_name_of_fd(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
-  remote.infallible_mmap_syscall(m.map.start(), m.map.size(), m.map.prot(),
-                                 // The remapped segment *must* be
-                                 // remapped at the same address,
-                                 // or else many things will go
-                                 // haywire.
-                                 (m.map.flags() & ~MAP_ANONYMOUS) | MAP_FIXED,
-                                 remote_fd,
-                                 m.map.file_offset_bytes() / page_size());
+  // The remapped segment *must* be remapped at the same address,
+  // or else many things will go haywire.
+  auto ret = remote.infallible_mmap_syscall_if_alive(m.map.start(), m.map.size(), m.map.prot(),
+                                                     (m.map.flags() & ~MAP_ANONYMOUS) | MAP_FIXED,
+                                                     remote_fd,
+                                                     m.map.file_offset_bytes() / page_size());
+  if (!ret) {
+    if (remote.task()->vm()->task_set().size() > remote.task()->thread_group()->task_set().size()) {
+      // XXX not sure how to handle the case where the tracee died after
+      // we unmapped the area
+      FATAL() << "Unexpected task death leaving this address space in a bad state";
+    }
+    return;
+  }
 
   // We update the AddressSpace mapping too, since that tracks the real file
   // name and we need to update that.
@@ -453,21 +459,26 @@ KernelMapping Session::create_shared_mmap(
   if (child_shmem_fd < 0) {
     return km;
   }
-  resize_shmem_segment(shmem_fd, size);
   LOG(debug) << "created shmem segment " << path;
 
   // Map the segment in ours and the tracee's address spaces.
   void* map_addr;
   int flags = MAP_SHARED;
-  if ((void*)-1 == (map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                                    flags, shmem_fd, 0))) {
-    FATAL() << "Failed to mmap shmem region";
-  }
   if (!map_hint.is_null()) {
     flags |= MAP_FIXED;
   }
-  remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall(
+  remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall_if_alive(
       map_hint, size, tracee_prot, flags, child_shmem_fd, 0);
+  if (!child_map_addr) {
+    // tracee unexpectedly died
+    return km;
+  }
+
+  if ((void*)-1 == (map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                                    MAP_SHARED, shmem_fd, 0))) {
+    FATAL() << "Failed to mmap shmem region";
+  }
+  resize_shmem_segment(shmem_fd, size);
 
   struct stat st;
   ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));

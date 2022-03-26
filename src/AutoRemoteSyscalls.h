@@ -176,23 +176,23 @@ public:
     return ret;
   }
 
-  /** TODO replace with infallible_syscall_ptr_if_alive */
+  /** Returns null if the tracee is dead */
   template <typename... Rest>
-  remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
+  remote_ptr<void> infallible_syscall_ptr_if_alive(int syscallno, Rest... args) {
     Registers callregs = regs();
     long ret = syscall_helper<1>(syscallno, callregs, args...);
-    check_syscall_result(ret, syscallno, false);
-    return ret;
+    check_syscall_result(ret, syscallno);
+    return ret == -ESRCH ? 0 : ret;
   }
 
   /**
    * Remote mmap syscalls are common and non-trivial due to the need to
    * select either mmap2 or mmap.
-   * TODO replace with infallble_mmap_syscall_if_alive
+   * Returns null if the process dies or has died.
    */
-  remote_ptr<void> infallible_mmap_syscall(remote_ptr<void> addr, size_t length,
-                                           int prot, int flags, int child_fd,
-                                           uint64_t offset_pages);
+  remote_ptr<void> infallible_mmap_syscall_if_alive(remote_ptr<void> addr, size_t length,
+                                                    int prot, int flags, int child_fd,
+                                                    uint64_t offset_pages);
 
   /** TODO replace with infallible_lseek_syscall_if_alive */
   int64_t infallible_lseek_syscall(int fd, int64_t offset, int whence);

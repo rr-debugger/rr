@@ -87,8 +87,8 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
 
   {
     AutoRemoteSyscalls remote(t);
-    remote.infallible_mmap_syscall(t->scratch_ptr, sz, km.prot(),
-                                   km.flags() | MAP_FIXED, -1, 0);
+    remote.infallible_mmap_syscall_if_alive(t->scratch_ptr, sz, km.prot(),
+                                            km.flags() | MAP_FIXED, -1, 0);
     t->vm()->map(t, t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
                  KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
                  &km);
@@ -342,9 +342,9 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
     case TraceReader::SOURCE_TRACE:
     case TraceReader::SOURCE_ZERO:
       flags |= MAP_ANONYMOUS;
-      remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
-                                     (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1,
-                                     0);
+      remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(),
+                                              (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1,
+                                              0);
       // The data, if any, will be written back by
       // ReplayTask::apply_all_data_records_from_trace
       break;
@@ -513,9 +513,9 @@ static void process_brk(ReplayTask* t) {
   if (km.flags()) {
     AutoRemoteSyscalls remote(t);
     ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
-    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
-                                   MAP_ANONYMOUS | MAP_FIXED | km.flags(), -1,
-                                   0);
+    remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(),
+                                            MAP_ANONYMOUS | MAP_FIXED | km.flags(), -1,
+                                            0);
     t->vm()->map(t, km.start(), km.size(), km.prot(),
                  MAP_ANONYMOUS | km.flags(), 0, "[heap]",
                  KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
@@ -538,10 +538,10 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   KernelMapping recorded_km = t->trace_reader().read_mapped_region(&data);
   EmuFile::shr_ptr emu_file;
   if (!(flags & MAP_SHARED)) {
-    remote.infallible_mmap_syscall(rec_addr, length, prot,
-                                   // Tell the kernel to take |rec_addr|
-                                   // seriously.
-                                   (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1, 0);
+    remote.infallible_mmap_syscall_if_alive(rec_addr, length, prot,
+                                            // Tell the kernel to take |rec_addr|
+                                            // seriously.
+                                            (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1, 0);
   } else {
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
     emu_file = t->session().emufs().get_or_create(recorded_km);
@@ -636,7 +636,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                 TraceReader::MappedData& data) {
   LOG(debug) << "  finishing private mmap of " << km.fsname();
 
-  remote.infallible_mmap_syscall(
+  remote.infallible_mmap_syscall_if_alive(
       rec_addr, length, prot,
       // Tell the kernel to take |rec_addr| seriously.
       (flags & ~MAP_GROWSDOWN) | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
@@ -835,15 +835,15 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
     if (new_addr == old_addr) {
       // Non-moving mremap. Don't pass MREMAP_FIXED or MREMAP_MAYMOVE
       // since that triggers EINVAL when the new map overlaps the old map.
-      remote.infallible_syscall_ptr(trace_regs.original_syscallno(), new_addr,
-                                    old_size, new_size, 0);
+      remote.infallible_syscall_if_alive(trace_regs.original_syscallno(), new_addr,
+                                         old_size, new_size, 0);
     } else {
       // Force the mremap to use the destination address from recording.
       // XXX could the new mapping overlap the old, with different start
       // addresses? Hopefully the kernel doesn't do that to us!!!
-      remote.infallible_syscall_ptr(trace_regs.original_syscallno(), old_addr,
-                                    old_size, new_size,
-                                    MREMAP_MAYMOVE | MREMAP_FIXED, new_addr);
+      remote.infallible_syscall_if_alive(trace_regs.original_syscallno(), old_addr,
+                                         old_size, new_size,
+                                         MREMAP_MAYMOVE | MREMAP_FIXED, new_addr);
     }
 
     remote.regs().set_syscall_result(new_addr);
@@ -873,8 +873,8 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
       // Shared non-EmuFs mappings must be of immutable files so it's OK to
       // just copy the file data into a private mapping here.
       int map_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED;
-      remote.infallible_mmap_syscall(new_addr, new_size, mapping.map.prot(),
-                                     map_flags, -1, 0);
+      remote.infallible_mmap_syscall_if_alive(new_addr, new_size, mapping.map.prot(),
+                                              map_flags, -1, 0);
       t->vm()->unmap(t, new_addr, new_size);
       t->vm()->map(t, new_addr, new_size, mapping.map.prot(), map_flags,
                    mapping.map.file_offset_bytes(), string(),

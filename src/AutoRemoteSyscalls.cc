@@ -186,10 +186,12 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   if (found_stack.start().is_null()) {
     AutoRemoteSyscalls remote(t, DISABLE_MEMORY_PARAMS);
     found_stack =
-        MemoryRange(remote.infallible_mmap_syscall(
+        MemoryRange(remote.infallible_mmap_syscall_if_alive(
                         remote_ptr<void>(), 4096, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0),
                     4096);
+    ASSERT(t, !found_stack.start().is_null())
+      << "Tracee unexpectedly died here";
     scratch_mem_was_mapped = true;
   }
 
@@ -581,7 +583,7 @@ void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_
   }
 }
 
-remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall(
+remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
     remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
     uint64_t offset_pages) {
   // The first syscall argument is called "arg 1", so
@@ -589,13 +591,13 @@ remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall(
   // with "1".
   remote_ptr<void> ret =
       has_mmap2_syscall(arch())
-          ? infallible_syscall_ptr(syscall_number_for_mmap2(arch()), addr,
-                                   length, prot, flags, child_fd,
-                                   (off_t)offset_pages)
-          : infallible_syscall_ptr(syscall_number_for_mmap(arch()), addr,
-                                   length, prot, flags, child_fd,
-                                   offset_pages * page_size());
-  if (flags & MAP_FIXED) {
+          ? infallible_syscall_ptr_if_alive(syscall_number_for_mmap2(arch()), addr,
+                                            length, prot, flags, child_fd,
+                                            (off_t)offset_pages)
+          : infallible_syscall_ptr_if_alive(syscall_number_for_mmap(arch()), addr,
+                                            length, prot, flags, child_fd,
+                                            offset_pages * page_size());
+  if (ret && (flags & MAP_FIXED)) {
     ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
   }
   return ret;
@@ -663,7 +665,7 @@ void AutoRemoteSyscalls::finish_direct_mmap(
                             backing_file_open_flags);
   }
   /* And mmap that file. */
-  infallible_mmap_syscall(rec_addr, length,
+  infallible_mmap_syscall_if_alive(rec_addr, length,
                           /* (We let SHARED|WRITEABLE
                           * mappings go through while
                           * they're not handled properly,
