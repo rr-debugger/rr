@@ -1,1 +1,3 @@
+source `dirname $0`/util.sh
 RECORD_ARGS=--syscall-buffer-sig=SIGPROF
+compare_test EXIT-SUCCESS

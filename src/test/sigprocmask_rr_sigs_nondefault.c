@@ -13,10 +13,11 @@ int main(void) {
   err = sigprocmask(SIG_BLOCK, &mask, &oldmask);
   test_assert(err == 0);
 
-  test_assert(sigismember(&mask, SIGPROF) == 1);
-
-  /* But SIGPWR should be usable now */
-  raise(SIGPWR);
+  err = sigprocmask(SIG_BLOCK, &mask, &oldmask);
+  test_assert(err == 0);
+  test_assert(!sigismember(&oldmask, SIGPROF));
+  /* But SIGPWR should be maskable now */
+  test_assert(sigismember(&oldmask, SIGPWR));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

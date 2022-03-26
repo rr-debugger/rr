@@ -12,7 +12,9 @@ int main(void) {
   err = sigprocmask(SIG_BLOCK, &mask, &oldmask);
   test_assert(err == 0);
 
-  test_assert(sigismember(&mask, SIGPWR) == 1);
+  err = sigprocmask(SIG_BLOCK, &mask, &oldmask);
+  test_assert(err == 0);
+  test_assert(!sigismember(&oldmask, SIGPWR));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
