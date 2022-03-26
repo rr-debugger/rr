@@ -1,3 +1,4 @@
 source `dirname $0`/util.sh
+if [ $TIMEOUT -lt 300 ]; then TIMEOUT=300; fi
 ${OBJDIR}/bin/cont_race$bitness killer &
 compare_test EXIT-SUCCESS
