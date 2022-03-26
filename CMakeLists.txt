@@ -1112,6 +1112,7 @@ set(BASIC_TESTS
   sigprocmask_in_syscallbuf_sighandler
   sigprocmask_rr_sigs
   sigprocmask_syscallbuf
+  sigpwr
   sigqueueinfo
   x86/sigreturn
   sigreturn_reg
