@@ -16,7 +16,7 @@ steps:
           # Mount in the julia installation we used to create the sandbox in the first place
           workspaces:
             - "/cache:/cache"
-    timeout_in_minutes: 45
+    timeout_in_minutes: 14
     commands: |
       echo "--- Print kernel information"
       uname -a
