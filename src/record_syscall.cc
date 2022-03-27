@@ -3423,7 +3423,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   new_t->reenable_cpuid_tsc();
   {
     AutoRemoteSyscalls remote(new_t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
-    remote.syscall(syscall_number_for_close(new_t->arch()), tracee_fd_number);
+    remote.infallible_close_syscall_if_alive(tracee_fd_number);
   }
   t->vm()->monkeypatcher().unpatch_syscalls_in(new_t);
   // Try to reset the scheduler affinity that we enforced upon the task.
@@ -6333,7 +6333,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         if (gcrypt || is_blacklisted_filename(pathname.c_str())) {
           {
             AutoRemoteSyscalls remote(t);
-            remote.infallible_syscall(syscall_number_for_close(remote.arch()), fd);
+            remote.infallible_close_syscall_if_alive(fd);
           }
           if (gcrypt) {
             fake_gcrypt_file(t, &r);

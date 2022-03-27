@@ -197,6 +197,9 @@ public:
   /** TODO replace with infallible_lseek_syscall_if_alive */
   int64_t infallible_lseek_syscall(int fd, int64_t offset, int whence);
 
+  /** Close the fd in the child. If the child died, just ignore that. */
+  void infallible_close_syscall_if_alive(int child_fd);
+
   /** The Task in the context of which we're making syscalls. */
   Task* task() const { return t; }
 

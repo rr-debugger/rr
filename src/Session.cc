@@ -433,7 +433,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
       m.map.file_offset_bytes(), real_file_name, real_file.st_dev,
       real_file.st_ino, nullptr, &m.recorded_map, emu_file);
 
-  remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
+  remote.infallible_close_syscall_if_alive(remote_fd);
 }
 
 /*static*/ const char* Session::rr_mapping_prefix() { return "/rr-shared-"; }
@@ -488,8 +488,7 @@ KernelMapping Session::create_shared_mmap(
       std::move(monitored));
 
   shmem_fd.close();
-  remote.infallible_syscall(syscall_number_for_close(remote.arch()),
-                            child_shmem_fd);
+  remote.infallible_close_syscall_if_alive(child_shmem_fd);
   return km;
 }
 

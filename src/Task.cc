@@ -427,18 +427,15 @@ void Task::did_kill()
  * Must be idempotent.
  */
 void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other, bool really_close) {
-  auto arch = remote.task()->arch();
   if (other->desched_fd_child >= 0) {
     if (session().is_recording() && really_close) {
-      remote.infallible_syscall(syscall_number_for_close(arch),
-                                other->desched_fd_child);
+      remote.infallible_close_syscall_if_alive(other->desched_fd_child);
     }
     fds->did_close(other->desched_fd_child);
   }
   if (other->cloned_file_data_fd_child >= 0) {
     if (really_close) {
-      remote.infallible_syscall(syscall_number_for_close(arch),
-                                other->cloned_file_data_fd_child);
+      remote.infallible_close_syscall_if_alive(other->cloned_file_data_fd_child);
     }
     fds->did_close(other->cloned_file_data_fd_child);
   }
@@ -2638,8 +2635,8 @@ bool Task::open_mem_fd() {
     int remote_mem_fd = remote.syscall(syscall_number_for_openat(arch()),
                         remote_mem_dir_fd, remote_path.get(), O_RDWR);
     fd = remote.retrieve_fd(remote_mem_fd);
-    remote.syscall(syscall_number_for_close(arch()), remote_mem_fd);
-    remote.syscall(syscall_number_for_close(arch()), remote_mem_dir_fd);
+    remote.infallible_close_syscall_if_alive(remote_mem_fd);
+    remote.infallible_close_syscall_if_alive(remote_mem_dir_fd);
   }
 
   if (!fd.is_open()) {
@@ -3691,7 +3688,7 @@ void Task::dup_from(Task *other) {
       if (remote_fd >= 0) {
         if (remote_fd != fd) {
           remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
-          remote_this.infallible_syscall(syscall_number_for_close(this->arch()), remote_fd);
+          remote_this.infallible_close_syscall_if_alive(remote_fd);
         }
         remote_other.infallible_syscall(
           syscall_number_for_fcntl(this->arch()),
@@ -3706,11 +3703,11 @@ void Task::dup_from(Task *other) {
                        child_path.get(), O_RDONLY);
       ASSERT(other, child_fd != -1);
       ScopedFd fd = remote_other.retrieve_fd(child_fd);
-      remote_other.syscall(syscall_number_for_close(other->arch()), child_fd);
+      remote_other.infallible_close_syscall_if_alive(child_fd);
       child_fd = remote_this.infallible_send_fd_if_alive(fd);
       if (child_fd >= 0) {
         remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
-        remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
+        remote_this.infallible_close_syscall_if_alive(child_fd);
       }
     }
 

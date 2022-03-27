@@ -565,6 +565,10 @@ int AutoRemoteSyscalls::send_fd(const ScopedFd &our_fd) {
   RR_ARCH_FUNCTION(send_fd_arch, arch(), our_fd);
 }
 
+void AutoRemoteSyscalls::infallible_close_syscall_if_alive(int child_fd) {
+  infallible_syscall_if_alive(syscall_number_for_close(arch()), child_fd);
+}
+
 int AutoRemoteSyscalls::infallible_send_fd_if_alive(const ScopedFd &our_fd) {
   int child_fd = send_fd(our_fd);
   ASSERT(t, child_fd >= 0 || (child_fd == -ESRCH && !t->session().is_replaying()))
@@ -579,7 +583,7 @@ void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_
     long ret = infallible_syscall(syscall_number_for_dup3(arch()), remote_fd,
                                   dup_to, dup3_flags);
     ASSERT(task(), ret == dup_to);
-    infallible_syscall(syscall_number_for_close(arch()), remote_fd);
+    infallible_close_syscall_if_alive(remote_fd);
   }
 }
 
@@ -684,7 +688,7 @@ void AutoRemoteSyscalls::finish_direct_mmap(
 
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
-  infallible_syscall(syscall_number_for_close(arch()), fd);
+  infallible_close_syscall_if_alive(fd);
 }
 
 

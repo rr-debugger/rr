@@ -486,8 +486,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
           // its own file with this fd.
           fds->add_monitor(this, cloned_file_data_fd_child,
                             new PreserveFileMonitor());
-          remote.infallible_syscall(syscall_number_for_close(arch()),
-                                    cloned_file_data);
+          remote.infallible_close_syscall_if_alive(cloned_file_data);
         }
         args.cloned_file_data_fd = cloned_file_data_fd_child;
       }

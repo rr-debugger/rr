@@ -323,7 +323,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
       struct stat fstat = t->stat_fd(child_fd);
       file_name = t->file_name_of_fd(child_fd);
 
-      remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
+      remote.infallible_close_syscall_if_alive(child_fd);
 
       map(t, rr_page_start(), rr_page_size(), prot, flags,
           offset_pages * page_size(), file_name,
