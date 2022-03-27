@@ -33,19 +33,6 @@
 #define RR_FALLTHROUGH
 #endif
 
-/* use of assert() causes "unused variable" warnings in non-DEBUG builds
- * when a variable is only used in an assertion. DEBUG_ASSERT fixes that
- * problem. Use DEBUG_ASSERT instead of assert().
- */
-#ifdef DEBUG
-#define DEBUG_ASSERT(cond) assert(cond)
-#else
-#define DEBUG_ASSERT(cond)                                                     \
-  do {                                                                         \
-    size_t s __attribute__((unused)) = sizeof(cond);                           \
-  } while (0)
-#endif
-
 #ifdef __cplusplus
 
 namespace rr {

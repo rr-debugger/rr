@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core.h"
+#include "log.h"
 #include "remote_ptr.h"
 
 namespace rr {

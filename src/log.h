@@ -188,6 +188,25 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
     }                                                                          \
   } while (0)
 
+/* use of assert() causes "unused variable" warnings in non-DEBUG builds
+ * when a variable is only used in an assertion. DEBUG_ASSERT fixes that
+ * problem. Use DEBUG_ASSERT instead of assert().
+ * This also gives us a stack trace if the assertion fails.
+ */
+#ifdef DEBUG
+#define DEBUG_ASSERT(cond) \
+  do {                     \
+    if (!(cond)) {         \
+      FATAL() << #cond;    \
+    }                      \
+  } while(0)
+#else
+#define DEBUG_ASSERT(cond)                                                     \
+  do {                                                                         \
+    size_t s __attribute__((unused)) = sizeof(cond);                           \
+  } while (0)
+#endif
+
 /**
  * Ensure that |_v| is streamed in hex format.
  * We make sure that signed types are *not* sign-extended.

@@ -4,6 +4,7 @@
 #define RR_MEMORY_RANGE_H_
 
 #include "core.h"
+#include "log.h"
 #include "remote_ptr.h"
 
 namespace rr {
