@@ -144,7 +144,7 @@ mktempdir(my_temp_parent_dir) do dir
         end
 
         buildkite_upload_cmd = `buildkite-agent artifact upload $(dst_file_name)`
-        if is_buildkite && !success(proc)
+        if !success(proc)
             run(setenv(buildkite_upload_cmd; dir = my_archives_dir))
         end
     end
