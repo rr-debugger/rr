@@ -92,6 +92,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x60f00: // Renoir (Zen 2) (UNTESTED)
     case 0x70f10: // Matisse (Zen 2) (UNTESTED)
     case 0x60f80: // Lucienne
+    case 0x90f00: // Van Gogh (Zen 2)
       if (ext_family == 8 || ext_family == 0xa) {
         return AMDZen;
       } else if (ext_family == 3) {
@@ -108,7 +109,8 @@ static CpuMicroarch compute_cpu_microarch() {
   }
 
   if (!strncmp(vendor, "AuthenticAMD", sizeof(vendor))) {
-    CLEAN_FATAL() << "AMD CPU type " << HEX(cpu_type) << " unknown";
+    CLEAN_FATAL() << "AMD CPU type " << HEX(cpu_type) <<
+                     " (ext family " << HEX(ext_family) << ") unknown";
   } else {
     CLEAN_FATAL() << "Intel CPU type " << HEX(cpu_type) << " unknown";
   }
