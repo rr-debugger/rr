@@ -1859,7 +1859,7 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
                        ->privileged_traced_syscall_ip()
                        .increment_by_syscall_insn_length(t->arch()))
       << "Stashed signal pending on syscall entry when it shouldn't be: "
-      << *si << "; IP=" << t->ip();
+      << *si << "; regs=" << t->regs();
   }
 
   // We just entered a syscall.
