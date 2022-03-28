@@ -126,11 +126,9 @@ struct PatchSyscallEvent {
 struct SchedEvent {
   SchedEvent(remote_code_ptr in_syscallbuf_syscall_hook)
     : in_syscallbuf_syscall_hook(in_syscallbuf_syscall_hook) {}
-  // If this SchedEvent is delivered while in the syscallbuf,
-  // contains then the address of the 'syscall_hook' function,
-  // otherwise zero. This only applies to SchedEvents that represent
-  // the tracee being SIGKILLed, because normal SchedEvents will
-  // not be delivered in the syscallbuf.
+  // If this SchedEvent represents the tracee being SIGKILLed,
+  // and syscall buffering is enabled, this contains the address
+  // of the 'syscall_hook' function, otherwise zero.
   remote_code_ptr in_syscallbuf_syscall_hook;
 };
 
