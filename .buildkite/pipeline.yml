@@ -3,8 +3,8 @@ agents:
   sandbox.jl: "true"
   os: "linux"
 steps:
-  - label: "x86_64"
-    key: "x86_64"
+  - label: "Run-Tests-x86_64"
+    key: "Run-Tests-x86_64"
     plugins:
       - JuliaCI/julia#v1:
           persist_depot_dirs: packages,artifacts,compiled
@@ -16,13 +16,13 @@ steps:
           # Mount in the julia installation we used to create the sandbox in the first place
           workspaces:
             - "/cache:/cache"
-    timeout_in_minutes: 30
+    timeout_in_minutes: 45
     commands: |
       echo "--- Print kernel information"
       uname -a
       echo "--- Print CPU information"
       # These machines have multiple cores. However, it should be sufficient to just print
-      # the information for one of the cores. 
+      # the information for one of the cores.
       sed -n '1,/^\$/p' /proc/cpuinfo
       echo "--- Generate build environment"
       cmake --version

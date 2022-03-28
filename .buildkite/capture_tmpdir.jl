@@ -26,20 +26,8 @@ function my_exit(process::Base.Process)
     exit(process.exitcode)
 end
 
-function get_bool_from_env(name::AbstractString, default_value::Bool)
-    value = get(ENV, name, "$(default_value)") |> strip |> lowercase
-    result = parse(Bool, value)::Bool
-    return result
-end
-
-const is_buildkite = get_bool_from_env("BUILDKITE", false)
-
 function get_from_env(name::AbstractString)
-    if is_buildkite
-        value = ENV[name]
-    else
-        value = get(ENV, name, "")
-    end
+    value = ENV[name]
     result = convert(String, strip(value))::String
     return result
 end
@@ -55,9 +43,24 @@ if length(ARGS) < 1
 end
 
 const build_number                      = get_from_env("BUILDKITE_BUILD_NUMBER") |> cleanup_string
-const job_name                          = get_from_env("BUILDKITE_STEP_KEY")     |> cleanup_string
 const commit_full                       = get_from_env("BUILDKITE_COMMIT")       |> cleanup_string
-const commit_short                      = first(commit_full, 10)
+const job_name                          = get_from_env("BUILDKITE_STEP_KEY")     |> cleanup_string
+const buildkite_timeout_minutes_string  = get_from_env("BUILDKITE_TIMEOUT")
+
+const commit_short = first(commit_full, 10)
+const buildkite_timeout_minutes = parse(Int, buildkite_timeout_minutes_string)::Int
+const cleanup_minutes = 15
+const ctest_timeout_minutes = buildkite_timeout_minutes - cleanup_minutes
+if ctest_timeout_minutes < 1
+    msg = "ctest_timeout_minutes must be strictly positive"
+    @error(
+        msg,
+        ctest_timeout_minutes,
+        buildkite_timeout_minutes,
+        cleanup_minutes,
+    )
+    throw(ErrorException(msg))
+end
 
 @info(
     "",
@@ -65,6 +68,9 @@ const commit_short                      = first(commit_full, 10)
     job_name,
     commit_full,
     commit_short,
+    ctest_timeout_minutes,
+    buildkite_timeout_minutes,
+    cleanup_minutes,
 )
 
 const my_archives_dir    = joinpath(pwd(), "my_archives_dir")
@@ -88,6 +94,26 @@ mktempdir(my_temp_parent_dir) do dir
     new_env["TMPDIR"] = TMPDIR
     command = setenv(`$ARGS`, new_env)
     global proc = run(command, (stdin, stdout, stderr); wait = false)
+
+    # Start asynchronous timer that will kill `ctest`
+    @async begin
+        sleep(ctest_timeout_minutes * 60)
+
+        # If we've exceeded the timeout and `ctest` is still running, kill it
+        if isopen(proc)
+            @error(
+                string(
+                    "Process timed out ",
+                    "(with a timeout of $(ctest_timeout_minutes) minutes). ",
+                    "Killing with SIGTERM.",
+
+                )
+            )
+            kill(proc, Base.SIGTERM)
+        end
+    end
+
+    # Wait for `ctest` to finish, either through naturally finishing its run, or `SIGTERM`
     wait(proc)
 
     if proc.termsignal != 0
@@ -118,7 +144,7 @@ mktempdir(my_temp_parent_dir) do dir
         end
 
         buildkite_upload_cmd = `buildkite-agent artifact upload $(dst_file_name)`
-        if is_buildkite && !success(proc)
+        if !success(proc)
             run(setenv(buildkite_upload_cmd; dir = my_archives_dir))
         end
     end
