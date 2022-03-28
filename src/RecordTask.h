@@ -278,14 +278,16 @@ public:
   void stash_synthetic_sig(const siginfo_t& si,
                            SignalDeterministic deterministic);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
-  const siginfo_t* stashed_sig_not_synthetic_SIGCHLD() const;
-  bool has_stashed_sig(int sig) const;
   struct StashedSignal {
-    StashedSignal(const siginfo_t& siginfo, SignalDeterministic deterministic)
-        : siginfo(siginfo), deterministic(deterministic) {}
+    StashedSignal(const siginfo_t& siginfo, SignalDeterministic deterministic,
+                  remote_code_ptr ip)
+        : siginfo(siginfo), deterministic(deterministic), ip(ip) {}
     siginfo_t siginfo;
     SignalDeterministic deterministic;
+    remote_code_ptr ip;
   };
+  const StashedSignal* stashed_sig_not_synthetic_SIGCHLD() const;
+  bool has_stashed_sig(int sig) const;
   const StashedSignal* peek_stashed_sig_to_deliver() const;
   void pop_stash_sig(const StashedSignal* stashed);
   void stashed_signal_processed();

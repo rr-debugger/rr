@@ -1354,7 +1354,7 @@ void RecordTask::stash_sig() {
   }
 
   const siginfo_t& si = get_siginfo();
-  stashed_signals.push_back(StashedSignal(si, is_deterministic_signal(this)));
+  stashed_signals.push_back(StashedSignal(si, is_deterministic_signal(this), ip()));
   // Once we've stashed a signal, stop at the next traced/untraced syscall to
   // check whether we need to process the signal before it runs.
   stashed_signals_blocking_more_signals =
@@ -1387,7 +1387,7 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
   }
 
   stashed_signals.insert(stashed_signals.begin(),
-                         StashedSignal(si, deterministic));
+                         StashedSignal(si, deterministic, ip()));
   stashed_signals_blocking_more_signals =
       break_at_syscallbuf_final_instruction =
           break_at_syscallbuf_traced_syscalls =
@@ -1403,10 +1403,10 @@ bool RecordTask::has_stashed_sig(int sig) const {
   return false;
 }
 
-const siginfo_t* RecordTask::stashed_sig_not_synthetic_SIGCHLD() const {
+const RecordTask::StashedSignal* RecordTask::stashed_sig_not_synthetic_SIGCHLD() const {
   for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
     if (!is_synthetic_SIGCHLD(it->siginfo)) {
-      return &it->siginfo;
+      return &*it;
     }
   }
   return nullptr;
