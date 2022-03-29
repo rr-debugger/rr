@@ -2659,6 +2659,9 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   sprintf(name, "syscallbuf.%d", rec_tid);
   KernelMapping km =
       Session::create_shared_mmap(remote, syscallbuf_size, map_hint, name);
+  if (!km.size()) {
+    return km;
+  }
   auto& m = remote.task()->vm()->mapping_of(km.start());
   remote.task()->vm()->mapping_flags_of(km.start()) |=
       AddressSpace::Mapping::IS_SYSCALLBUF;
