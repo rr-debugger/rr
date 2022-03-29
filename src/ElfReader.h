@@ -71,6 +71,7 @@ public:
 struct SectionOffsets {
   uint64_t start;
   uint64_t end;
+  bool compressed;
 };
 
 class ElfReader {
@@ -106,7 +107,7 @@ public:
   // relocated address in memory.
   bool addr_to_offset(uintptr_t addr, uintptr_t& offset);
   SectionOffsets find_section_file_offsets(const char* name);
-  DwarfSpan dwarf_section(const char* name);
+  DwarfSpan dwarf_section(const char* name, bool known_to_be_compressed = false);
 private:
   ElfReaderImplBase& impl();
   std::unique_ptr<ElfReaderImplBase> impl_;

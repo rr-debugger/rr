@@ -221,11 +221,23 @@ static bool process_compilation_units(ElfFileReader& reader,
                                       set<string>* file_names, vector<DwoInfo>* dwos,
                                       DirExistsCache& dir_exists_cache) {
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
+  if (debug_info.empty()) {
+    debug_info = reader.dwarf_section(".zdebug_info", true);
+  }
   DwarfSpan debug_abbrev = reader.dwarf_section(".debug_abbrev");
+  if (debug_abbrev.empty()) {
+    debug_abbrev = reader.dwarf_section(".zdebug_abbrev", true);
+  }
   DwarfSpan debug_str = reader.dwarf_section(".debug_str");
+  if (debug_str.empty()) {
+    debug_str = reader.dwarf_section(".zdebug_str", true);
+  }
   DwarfSpan debug_str_sup = sup_reader ? sup_reader->dwarf_section(".debug_str") : DwarfSpan();
   DwarfSpan debug_str_offsets = reader.dwarf_section(".debug_str_offsets");
   DwarfSpan debug_line = reader.dwarf_section(".debug_line");
+  if (debug_line.empty()) {
+    debug_line = reader.dwarf_section(".zdebug_line", true);
+  }
   DwarfSpan debug_line_str = reader.dwarf_section(".debug_line_str");
   if (debug_info.empty() || debug_abbrev.empty() ||
       (debug_str.empty() && debug_str_sup.empty()) ||
