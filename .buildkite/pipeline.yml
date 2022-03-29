@@ -10,8 +10,8 @@ steps:
           persist_depot_dirs: packages,artifacts,compiled
           version: '1.6'
       - staticfloat/sandbox#v1:
-          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v4.17/rr.x86_64.tar.gz
-          rootfs_treehash: "838680473e6ffd8977e1957904d418640e75f69e"
+          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v5.6/rr.x86_64.tar.gz
+          rootfs_treehash: "4ed1bdc3ca5752376779d658ba9baca74deebbf7"
           verbose: true
           # Mount in the julia installation we used to create the sandbox in the first place
           workspaces:
