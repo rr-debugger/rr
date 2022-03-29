@@ -80,6 +80,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0xa0670:
       return IntelRocketlake;
     case 0x90670:
+    case 0x906a0:
       return IntelAlderlake;
     case 0x30f00:
       return AMDF15R30;
