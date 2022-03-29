@@ -12,36 +12,6 @@
 
 using namespace std;
 
-namespace {
-
-struct DecompressedSection {
-  uint64_t compressed_start;
-  uint8_t* start;
-  size_t length;
-
-  DecompressedSection(uint64_t compressed_start, uint8_t* start, size_t length)
-    : compressed_start(compressed_start),
-      start(start),
-      length(length)
-  {}
-
-  DecompressedSection(const DecompressedSection&) = delete;
-  DecompressedSection(DecompressedSection&& other) {
-    compressed_start = other.compressed_start;
-    start = other.start;
-    length = other.length;
-    other.start = nullptr;
-  }
-
-  ~DecompressedSection() {
-    if (start) {
-      munmap(start, length);
-    }
-  }
-};
-
-}
-
 namespace rr {
 
 class ElfReaderImplBase {
@@ -55,12 +25,12 @@ public:
   virtual string read_buildid() = 0;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
-  virtual DecompressedSection* decompress_section(SectionOffsets offsets) = 0;
+  virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) = 0;
   bool ok() { return ok_; }
 
 protected:
   ElfReader& r;
-  vector<DecompressedSection> decompressed_sections;
+  vector<unique_ptr<vector<uint8_t>>> decompressed_sections;
   bool ok_;
 };
 
@@ -75,7 +45,7 @@ public:
   virtual string read_buildid() override;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
-  virtual DecompressedSection* decompress_section(SectionOffsets offsets) override;
+  virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
@@ -173,9 +143,8 @@ SectionOffsets ElfReaderImpl<Arch>::find_section_file_offsets(
 }
 
 template <typename Arch>
-DecompressedSection* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offsets) {
+const vector<uint8_t>* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offsets) {
   DEBUG_ASSERT(offsets.compressed);
-  auto start = offsets.start;
   auto hdr = r.read<typename Arch::ElfChdr>(offsets.start);
   if (!hdr) {
     LOG(warn) << "section at " << offsets.start
@@ -201,12 +170,8 @@ DecompressedSection* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offs
     }
   }
 
-  uint8_t* buf = (uint8_t*)mmap(NULL, decompressed_size, PROT_READ | PROT_WRITE,
-                                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (buf == MAP_FAILED) {
-    FATAL() << "OOM";
-    return nullptr;
-  }
+  unique_ptr<vector<uint8_t>> v(new vector<uint8_t>());
+  v->resize(decompressed_size);
 
   z_stream stream;
   memset(&stream, 0, sizeof(stream));
@@ -218,8 +183,8 @@ DecompressedSection* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offs
 
   stream.avail_in = offsets.end - offsets.start;
   stream.next_in = (unsigned char*)r.read_bytes(offsets.start, stream.avail_in);
-  stream.next_out = buf;
-  stream.avail_out = decompressed_size;
+  stream.next_out = &v->front();
+  stream.avail_out = v->size();
   result = inflate(&stream, Z_FINISH);
   if (result != Z_STREAM_END) {
     FATAL() << "inflate failed!";
@@ -232,11 +197,8 @@ DecompressedSection* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offs
     return nullptr;
   }
 
-  mprotect(buf, decompressed_size, PROT_READ);
-
-  auto section = DecompressedSection(start, buf, decompressed_size);
-  decompressed_sections.push_back(std::move(section));
-  return &decompressed_sections.back();
+  decompressed_sections.push_back(std::move(v));
+  return decompressed_sections.back().get();
 }
 
 template <typename Arch>
@@ -523,7 +485,7 @@ DwarfSpan ElfReader::dwarf_section(const char* name, bool known_to_be_compressed
   offsets.compressed |= known_to_be_compressed;
   if (offsets.start && offsets.compressed) {
     auto decompressed = impl().decompress_section(offsets);
-    return DwarfSpan(decompressed->start, decompressed->start + decompressed->length);
+    return DwarfSpan(&decompressed->front(), &decompressed->back());
   }
   return DwarfSpan(map + offsets.start, map + offsets.end);
 }
