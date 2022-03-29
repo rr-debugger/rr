@@ -203,11 +203,10 @@ DecompressedSection* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offs
 
   uint8_t* buf = (uint8_t*)mmap(NULL, decompressed_size, PROT_READ | PROT_WRITE,
                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (!buf) {
+  if (buf == MAP_FAILED) {
     FATAL() << "OOM";
     return nullptr;
   }
-
 
   z_stream stream;
   memset(&stream, 0, sizeof(stream));
