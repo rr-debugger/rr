@@ -189,6 +189,8 @@ endif()
 
 set(REQUIRED_LIBS
   capnp
+# zlib is required to handle ELF compression
+  zlib
 )
 
 foreach(required_lib ${REQUIRED_LIBS})
@@ -573,6 +575,7 @@ endif()
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   -lrt
+  ${ZLIB_LDFLAGS}
   brotli
 )
 

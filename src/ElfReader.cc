@@ -5,11 +5,42 @@
 #include <elf.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <zlib.h>
 
 #include "log.h"
 #include "util.h"
 
 using namespace std;
+
+namespace {
+
+struct DecompressedSection {
+  uint64_t compressed_start;
+  uint8_t* start;
+  size_t length;
+
+  DecompressedSection(uint64_t compressed_start, uint8_t* start, size_t length)
+    : compressed_start(compressed_start),
+      start(start),
+      length(length)
+  {}
+
+  DecompressedSection(const DecompressedSection&) = delete;
+  DecompressedSection(DecompressedSection&& other) {
+    compressed_start = other.compressed_start;
+    start = other.start;
+    length = other.length;
+    other.start = nullptr;
+  }
+
+  ~DecompressedSection() {
+    if (start) {
+      munmap(start, length);
+    }
+  }
+};
+
+}
 
 namespace rr {
 
@@ -24,10 +55,12 @@ public:
   virtual string read_buildid() = 0;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
+  virtual DecompressedSection* decompress_section(SectionOffsets offsets) = 0;
   bool ok() { return ok_; }
 
 protected:
   ElfReader& r;
+  vector<DecompressedSection> decompressed_sections;
   bool ok_;
 };
 
@@ -42,6 +75,7 @@ public:
   virtual string read_buildid() override;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
+  virtual DecompressedSection* decompress_section(SectionOffsets offsets) override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
@@ -127,14 +161,83 @@ const typename Arch::ElfShdr* ElfReaderImpl<Arch>::find_section(const char* n) {
 template <typename Arch>
 SectionOffsets ElfReaderImpl<Arch>::find_section_file_offsets(
     const char* name) {
-  SectionOffsets offsets = { 0, 0 };
+  SectionOffsets offsets = { 0, 0, false };
   const typename Arch::ElfShdr* section = find_section(name);
   if (!section) {
     return offsets;
   }
   offsets.start = section->sh_offset;
   offsets.end = section->sh_offset + section->sh_size;
+  offsets.compressed = !!(section->sh_flags & SHF_COMPRESSED);
   return offsets;
+}
+
+template <typename Arch>
+DecompressedSection* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offsets) {
+  DEBUG_ASSERT(offsets.compressed);
+  auto start = offsets.start;
+  auto hdr = r.read<typename Arch::ElfChdr>(offsets.start);
+  if (!hdr) {
+    LOG(warn) << "section at " << offsets.start
+              << " is marked compressed but is too small";
+    return nullptr;
+  }
+
+  size_t decompressed_size = 0;
+  if (hdr->ch_type == ELFCOMPRESS_ZLIB) {
+    decompressed_size = hdr->ch_size;
+    offsets.start += sizeof(typename Arch::ElfChdr);
+  } else {
+    auto legacy_hdr = r.read_bytes(offsets.start, 4);
+    if (!memcmp("ZLIB", legacy_hdr, 4)) {
+      auto be_size = r.read<uint64_t>(offsets.start + 4);
+      decompressed_size = be64toh(*be_size);
+      offsets.start += 12;
+    } else {
+      LOG(warn) << "section at " << offsets.start
+                << " is marked compressed but uses unrecognized"
+                << " type " << HEX(hdr->ch_type);
+      return nullptr;
+    }
+  }
+
+  uint8_t* buf = (uint8_t*)mmap(NULL, decompressed_size, PROT_READ | PROT_WRITE,
+                                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (!buf) {
+    FATAL() << "OOM";
+    return nullptr;
+  }
+
+
+  z_stream stream;
+  memset(&stream, 0, sizeof(stream));
+  int result = inflateInit(&stream);
+  if (result != Z_OK) {
+    FATAL() << "inflateInit failed!";
+    return nullptr;
+  }
+
+  stream.avail_in = offsets.end - offsets.start;
+  stream.next_in = (unsigned char*)r.read_bytes(offsets.start, stream.avail_in);
+  stream.next_out = buf;
+  stream.avail_out = decompressed_size;
+  result = inflate(&stream, Z_FINISH);
+  if (result != Z_STREAM_END) {
+    FATAL() << "inflate failed!";
+    return nullptr;
+  }
+
+  result = inflateEnd(&stream);
+  if (result != Z_OK) {
+    FATAL() << "inflateEnd failed!";
+    return nullptr;
+  }
+
+  mprotect(buf, decompressed_size, PROT_READ);
+
+  auto section = DecompressedSection(start, buf, decompressed_size);
+  decompressed_sections.push_back(std::move(section));
+  return &decompressed_sections.back();
 }
 
 template <typename Arch>
@@ -416,8 +519,13 @@ SectionOffsets ElfReader::find_section_file_offsets(const char* name) {
   return impl().find_section_file_offsets(name);
 }
 
-DwarfSpan ElfReader::dwarf_section(const char* name) {
+DwarfSpan ElfReader::dwarf_section(const char* name, bool known_to_be_compressed) {
   SectionOffsets offsets = impl().find_section_file_offsets(name);
+  offsets.compressed |= known_to_be_compressed;
+  if (offsets.start && offsets.compressed) {
+    auto decompressed = impl().decompress_section(offsets);
+    return DwarfSpan(decompressed->start, decompressed->start + decompressed->length);
+  }
   return DwarfSpan(map + offsets.start, map + offsets.end);
 }
 
