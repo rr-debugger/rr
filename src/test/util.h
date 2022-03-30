@@ -187,7 +187,7 @@ inline static int check_cond(int cond) {
 
 inline static int atomic_assert(int cond, const char *str) {
   if (!check_cond(cond)) {
-    atomic_printf("FAILED: !%s\n", str);
+    atomic_printf("FAILED: !(%s)\n", str);
     raise(SIGABRT);
   }
   return 1;
