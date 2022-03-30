@@ -48,17 +48,16 @@ static void handler(int sig, siginfo_t* si, void* p) {
 #endif
 #endif
 
-  if (syscallno == SYS_geteuid) {
+  int return_value = syscallno == SYS_geteuid ? 42 : -EACCES;
 #ifdef __i386__
-    ctx->uc_mcontext.gregs[REG_EAX] = 42;
+  ctx->uc_mcontext.gregs[REG_EAX] = return_value;
 #elif defined(__x86_64__)
-    ctx->uc_mcontext.gregs[REG_RAX] = 42;
+  ctx->uc_mcontext.gregs[REG_RAX] = return_value;
 #elif defined(__aarch64__)
-    ctx->uc_mcontext.regs[0] = 42;
+  ctx->uc_mcontext.regs[0] = return_value;
 #else
 #error define architecture here
 #endif
-  }
 
 #ifdef si_syscall
   test_assert(si->si_syscall == syscallno);

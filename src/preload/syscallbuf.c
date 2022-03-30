@@ -2089,15 +2089,21 @@ static int supported_open(const char* file_name, int flags) {
 static long sys_readlinkat(const struct syscall_info* call, int privileged);
 
 static int check_file_open_ok(const struct syscall_info* call, int ret, int did_abort) {
-  if (did_abort || ret < 0) {
+  if (ret < 0) {
     return ret;
   }
   char buf[100];
   sprintf(buf, "/proc/self/fd/%d", ret);
   char link[PATH_MAX];
-  struct syscall_info readlink_call =
-    { SYS_readlinkat, { -1, (long)buf, (long)link, sizeof(link), 0, 0 } };
-  long link_ret = sys_readlinkat(&readlink_call, 1);
+  long link_ret;
+  if (did_abort) {
+    /* Don't add any new syscallbuf records, that won't work. */
+    link_ret = privileged_traced_syscall4(SYS_readlinkat, -1, (long)buf, (long)link, sizeof(link));
+  } else {
+    struct syscall_info readlink_call =
+      { SYS_readlinkat, { -1, (long)buf, (long)link, sizeof(link), 0, 0 } };
+    link_ret = sys_readlinkat(&readlink_call, 1);
+  }
   if (link_ret >= 0 && link_ret < (ssize_t)sizeof(link)) {
     link[link_ret] = 0;
     if (allow_buffered_open(link)) {
@@ -2108,6 +2114,7 @@ static int check_file_open_ok(const struct syscall_info* call, int ret, int did_
      opening it again, traced this time.
      Use a privileged traced syscall for the close to ensure it
      can't fail due to lack of privilege.
+     We expect this to return an error.
      We could try an untraced close syscall here, falling back to traced
      syscall, but that's a bit more complicated and we're already on
      the slow (and hopefully rare) path. */
