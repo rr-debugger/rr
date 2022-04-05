@@ -3,8 +3,8 @@ agents:
   sandbox.jl: "true"
   os: "linux"
 steps:
-  - label: "Run-Tests-x86_64"
-    key: "Run-Tests-x86_64"
+  - label: "Run Tests (x86_64)"
+    key: "runtests:linux:x86_64"
     plugins:
       - JuliaCI/julia#v1:
           persist_depot_dirs: packages,artifacts,compiled
