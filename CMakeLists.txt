@@ -1328,6 +1328,7 @@ set(TESTS_WITH_PROGRAM
   rseq
   search
   seccomp_blocks_rr
+  seccomp_open
   seccomp_signals
   segfault
   shared_map

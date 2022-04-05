@@ -2088,15 +2088,23 @@ static int supported_open(const char* file_name, int flags) {
 
 static long sys_readlinkat(const struct syscall_info* call, int privileged);
 
-static int check_file_open_ok(const struct syscall_info* call, int ret, int did_abort) {
-  if (ret < 0) {
+struct check_open_state {
+  uint8_t did_abort;
+  uint8_t did_fail_during_preparation;
+};
+
+static int check_file_open_ok(const struct syscall_info* call, int ret, struct check_open_state state) {
+  /* If we failed during preparation then a SIGSYS or similar prevented the syscall
+     from doing anything, so there is nothing for us to do here and we shouldn't
+     try to interpret the "syscall result". */
+  if (state.did_fail_during_preparation || ret < 0) {
     return ret;
   }
   char buf[100];
   sprintf(buf, "/proc/self/fd/%d", ret);
   char link[PATH_MAX];
   long link_ret;
-  if (did_abort) {
+  if (state.did_abort) {
     /* Don't add any new syscallbuf records, that won't work. */
     link_ret = privileged_traced_syscall4(SYS_readlinkat, -1, (long)buf, (long)link, sizeof(link));
   } else {
@@ -2120,6 +2128,13 @@ static int check_file_open_ok(const struct syscall_info* call, int ret, int did_
      the slow (and hopefully rare) path. */
   privileged_traced_syscall1(SYS_close, ret);
   return traced_raw_syscall(call);
+}
+
+static struct check_open_state capture_check_open_state(void) {
+  struct check_open_state ret;
+  ret.did_abort = buffer_hdr()->abort_commit;
+  ret.did_fail_during_preparation = buffer_hdr()->failed_during_preparation;
+  return ret;
 }
 
 #if defined(SYS_open)
@@ -2148,9 +2163,9 @@ static long sys_open(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall3(syscallno, pathname, flags, mode);
-  int did_abort = buffer_hdr()->abort_commit;
+  struct check_open_state state = capture_check_open_state();
   ret = commit_raw_syscall(syscallno, ptr, ret);
-  return check_file_open_ok(call, ret, did_abort);
+  return check_file_open_ok(call, ret, state);
 }
 #endif
 
@@ -2180,9 +2195,9 @@ static long sys_openat(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall4(syscallno, dirfd, pathname, flags, mode);
-  int did_abort = buffer_hdr()->abort_commit;
+  struct check_open_state state = capture_check_open_state();
   ret = commit_raw_syscall(syscallno, ptr, ret);
-  return check_file_open_ok(call, ret, did_abort);
+  return check_file_open_ok(call, ret, state);
 }
 
 #if defined(SYS_poll)

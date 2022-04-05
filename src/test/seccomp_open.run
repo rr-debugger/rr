@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+record $TESTNAME 75>rr-test-blacklist-file_name
+replay
+check EXIT-SUCCESS
+grep -q EXIT-SUCCESS rr-test-blacklist-file_name || failed "Didn't write success to rr-test-blacklist-file_name"
