@@ -4,10 +4,16 @@
 #define RR_LOG_H
 
 #include <features.h>
+#include <signal.h>
 
 #include <iostream>
 #include <type_traits>
 #include <vector>
+
+/**
+ * Print siginfo on ostream.
+ */
+std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo);
 
 namespace rr {
 

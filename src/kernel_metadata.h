@@ -61,11 +61,6 @@ const char *errno_name_cstr(int err);
  */
 std::string sicode_name(int code, int sig);
 
-/**
- * Print siginfo on ostream.
- */
-std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo);
-
 int shm_flags_to_mmap_prot(int flags);
 
 /**

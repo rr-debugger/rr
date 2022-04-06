@@ -411,23 +411,6 @@ string sicode_name(int code, int sig) {
   return string(buf);
 }
 
-ostream& operator<<(ostream& stream, const siginfo_t& siginfo) {
-  stream << "{signo:" << signal_name(siginfo.si_signo)
-         << ",errno:" << errno_name(siginfo.si_errno)
-         << ",code:" << sicode_name(siginfo.si_code, siginfo.si_signo);
-  switch (siginfo.si_signo) {
-    case SIGILL:
-    case SIGFPE:
-    case SIGSEGV:
-    case SIGBUS:
-    case SIGTRAP:
-      stream << ",addr:" << siginfo.si_addr;
-      break;
-  }
-  stream << "}";
-  return stream;
-}
-
 int shm_flags_to_mmap_prot(int flags) {
   return PROT_READ | ((flags & SHM_RDONLY) ? 0 : PROT_WRITE) |
          ((flags & SHM_EXEC) ? PROT_EXEC : 0);

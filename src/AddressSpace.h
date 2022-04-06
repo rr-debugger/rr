@@ -25,6 +25,7 @@
 #include "TraceStream.h"
 #include "core.h"
 #include "kernel_abi.h"
+#include "log.h"
 #include "remote_code_ptr.h"
 #include "util.h"
 
