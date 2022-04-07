@@ -683,16 +683,17 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       if (monotonic_now_sec() - term_requested > TRACEE_SIGTERM_RESPONSE_MAX_TIME) {
         /* time ran out for the tracee to respond to SIGTERM; kill everything */
         session->terminate_tracees();
-        if (!did_term_detached_tasks) {
-          session->term_detached_tasks();
-          did_term_detached_tasks = true;
-        }
       } else if (!did_forward_SIGTERM) {
         session->forward_SIGTERM();
         // Start a thread to send a SIGTERM to ourselves (again)
         // in case the tracee doesn't respond to SIGTERM.
         pthread_create(&term_repeater_thread, NULL, repeat_SIGTERM, NULL);
         did_forward_SIGTERM = true;
+      }
+      /* Forward SIGTERM to detached tasks immediately */
+      if (!did_term_detached_tasks) {
+        session->term_detached_tasks();
+        did_term_detached_tasks = true;
       }
     }
   } while (step_result.status == RecordSession::STEP_CONTINUE);
