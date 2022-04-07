@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+record $TESTNAME || failed "$TESTNAME failed"
+replay
+check EXIT-SUCCESS

@@ -2474,6 +2474,12 @@ void RecordSession::terminate_tracees() {
   }
 }
 
+void RecordSession::forward_SIGTERM() {
+  if (!initial_thread_group->task_set().empty()) {
+    kill(initial_thread_group->tgid, SIGTERM);
+  }
+}
+
 void RecordSession::term_detached_tasks() {
   // Send SIGTERM to all detached child tasks first, so they may clean up
   // in parallel.

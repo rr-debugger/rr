@@ -1356,6 +1356,7 @@ set(TESTS_WITH_PROGRAM
   tcp_sockets
   term_nonmain
   term_rr
+  term_rr_ok
   term_trace_reset
   term_trace_syscall
   thread_exit_signal

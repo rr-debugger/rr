@@ -2,10 +2,14 @@
 
 #include "util.h"
 
+static void handler(__attribute__((unused)) int sig) {
+  exit(0);
+}
+
 int main(void) {
-  signal(SIGTERM, SIG_IGN);
-  kill(getppid(), SIGTERM);
+  signal(SIGTERM, handler);
   atomic_puts("EXIT-SUCCESS");
+  kill(getppid(), SIGTERM);
   sleep(10000);
   return 0;
 }

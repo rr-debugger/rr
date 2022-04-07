@@ -194,6 +194,11 @@ public:
    */
   void term_detached_tasks();
 
+  /**
+   * Forward SIGTERM to initial task
+   */
+  void forward_SIGTERM();
+
 private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,
