@@ -77,6 +77,8 @@ static int main_child(void) {
   int status;
   pid_t child;
   int ret;
+  volatile char* stop_flag = (char*)mmap(NULL, 1, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+  test_assert(stop_flag != MAP_FAILED);
 
   ret = syscall(RR_rseq, rs_ptr, sizeof(*rs_ptr), 0, RSEQ_SIG);
   if (ret == -1 && errno == ENOSYS) {
@@ -106,7 +108,7 @@ static int main_child(void) {
   child = fork();
   if (!child) {
     char* exec_argv[] = { passed_argv[0], passed_argv[0], NULL };
-    for (i = 0; i < 300000000; ++i) {
+    while (!*stop_flag) {
       do_section();
     }
 
@@ -121,9 +123,11 @@ static int main_child(void) {
     abort();
   }
   atomic_printf("child %d\n", child);
-  for (i = 0; i < 1000; ++i) {
+  /* Try to interrupt the child 50 times */
+  for (i = 0; i < 50; ++i) {
     sched_yield();
   }
+  *stop_flag = 1;
   ret = waitpid(child, &status, 0);
   test_assert(ret == child);
   test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
