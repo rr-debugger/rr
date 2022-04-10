@@ -121,6 +121,14 @@ open = IrregularEmulatedSyscall(x86=5, x64=2)
 # the lock).
 close = IrregularEmulatedSyscall(x86=6, x64=3, generic=57)
 
+#  int close_range(unsigned int first, unsigned int last, unsigned int flags);
+#
+# The close_range() system call closes all open file descriptors
+# from first to last (included).
+#
+# Errors closing a given file descriptor are currently ignored.
+close_range = IrregularEmulatedSyscall(x86=436, x64=436, generic=436)
+
 #  pid_t waitpid(pid_t pid, int *status, int options);
 #
 # The waitpid() system call suspends execution of the calling process

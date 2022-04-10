@@ -815,6 +815,7 @@ set(BASIC_TESTS
   clone_untraced
   clone_vfork_pidfd
   cloned_sigmask
+  close_range
   constructor
   copy_file_range
   x86/cpuid_same_state
