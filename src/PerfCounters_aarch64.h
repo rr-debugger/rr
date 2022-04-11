@@ -39,6 +39,14 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
       return ARMNeoverseN1;
     }
     break;
+  case 0x61: // Apple
+    switch (cpuid.part) {
+    case 0x22:
+      return AppleM1Icestorm;
+    case 0x23:
+      return AppleM1Firestorm;
+    }
+    break;
   }
   CLEAN_FATAL() << "Unknown aarch64 CPU type " << cpuid;
   return UnknownCpu; // not reached

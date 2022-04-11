@@ -92,7 +92,9 @@ enum CpuMicroarch {
   LastAMD = AMDZen,
   FirstARM,
   ARMNeoverseN1 = FirstARM,
-  LastARM = ARMNeoverseN1,
+  AppleM1Icestorm,
+  AppleM1Firestorm,
+  LastARM = AppleM1Firestorm,
 };
 
 /*
@@ -169,7 +171,11 @@ static const PmuConfig pmu_configs[] = {
   // 0x6F == STREX_SPEC - Speculatively executed strex instructions
   // 0x11 == CPU_CYCLES - Cycle
   { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
-    "armv8_pmuv3_0", 0x11, -1, -1 }
+    "armv8_pmuv3_0", 0x11, -1, -1 },
+  { AppleM1Icestorm, "Apple M1 Icestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "apple_icestorm_pmu", 0x8c, -1, -1 },
+  { AppleM1Firestorm, "Apple M1 Firestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "apple_firestorm_pmu", 0x8c, -1, -1 },
 };
 
 #define RR_SKID_MAX 10000
