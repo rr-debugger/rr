@@ -123,7 +123,11 @@ static inline const char* extract_file_name(const char* s) {
 
 /* Must match generate_rr_page.py */
 #define RR_PAGE_ADDR 0x70000000
+#ifdef __aarch64__
+#define PRELOAD_LIBRARY_PAGE_SIZE 65536
+#else
 #define PRELOAD_LIBRARY_PAGE_SIZE 4096
+#endif
 #define RR_PAGE_SYSCALL_ADDR(index)                                            \
   ((void*)(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * (index)))
 #define RR_PAGE_SYSCALL_TRACED RR_PAGE_SYSCALL_ADDR(0)

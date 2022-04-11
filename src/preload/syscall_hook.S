@@ -1,4 +1,8 @@
+#if defined(__aarch64__)
+        .set preload_thread_locals,0x70010000
+#else
         .set preload_thread_locals,0x70001000
+#endif
 
         .global _syscallbuf_code_start
         .hidden _syscallbuf_code_start
