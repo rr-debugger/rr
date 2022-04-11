@@ -5,7 +5,11 @@
 #define MAX_ERRNO 4095
 
 #define RR_PAGE_ADDR 0x70000000
+#ifdef __aarch64__
+#define RR_THREAD_LOCALS_PAGE_ADDR 0x70010000
+#else
 #define RR_THREAD_LOCALS_PAGE_ADDR 0x70001000
+#endif
 
 struct Unmaps {
   uintptr_t unmappings[1000];

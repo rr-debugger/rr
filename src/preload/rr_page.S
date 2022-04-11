@@ -60,8 +60,8 @@
     brk #0; \
     ret
 #define PAGE_ALIGN \
-    .align 12
-#define PRELOAD_LIBRARY_PAGE_SIZE 0x1000
+    .align 16
+#define PRELOAD_LIBRARY_PAGE_SIZE 0x10000
 #endif
 
 .section .sh_placeholder, "a"
