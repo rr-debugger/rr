@@ -941,6 +941,7 @@ void Task::post_exec(const string& exe_file, const string& original_exe_file) {
     }
   }
   if (stopped_task_in_address_space) {
+    LOG(warn) << "Unmapping buffers using tid " << stopped_task_in_address_space->tid;
     AutoRemoteSyscalls remote(stopped_task_in_address_space);
     unmap_buffers_for(remote, this, syscallbuf_child);
   } else if (other_task_in_address_space) {

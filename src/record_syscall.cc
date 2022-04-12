@@ -4984,6 +4984,31 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case SYS_rrcall_freeze_tid: {
+      Registers r = t->regs();
+      bool arguments_are_zero = true;
+      for (int i = 3; i <= 6; ++i) {
+        arguments_are_zero &= r.arg(i) == 0;
+      }
+      pid_t tid = r.arg(1);
+      int enable = r.arg(2);
+      if (!arguments_are_zero || (enable != 0 && enable != 1)) {
+        syscall_state.emulate_result((uintptr_t)-EINVAL);
+        syscall_state.expect_errno = ENOSYS;
+        return PREVENT_SWITCH;
+      }
+      RecordTask *requested_task = t->session().find_task(tid);
+      if (!requested_task) {
+        syscall_state.emulate_result((uintptr_t)-ESRCH);
+        syscall_state.expect_errno = ENOSYS;
+        return PREVENT_SWITCH;
+      }
+      requested_task->schedule_frozen = enable;
+      syscall_state.emulate_result(0);
+      syscall_state.expect_errno = ENOSYS;
+      return PREVENT_SWITCH;
+    }
+
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:

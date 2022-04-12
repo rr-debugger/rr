@@ -601,6 +601,8 @@ public:
    */
   void send_synthetic_SIGCHLD_if_necessary();
 
+  void set_sigmask(sig_set_t mask);
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
@@ -798,6 +800,10 @@ public:
   // Set if the tracee requested an override of the ticks request.
   // Used for testing.
   TicksRequest tick_request_override;
+
+  // Set to prevent the scheduler from scheduling this tid, even
+  // if it is otherwise considered runnable. Used for testing.
+  bool schedule_frozen;
 };
 
 } // namespace rr

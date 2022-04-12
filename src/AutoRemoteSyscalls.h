@@ -308,6 +308,9 @@ private:
 
   MemParamsEnabled enable_mem_params_;
 
+  bool restore_sigmask;
+  sig_set_t sigmask_to_restore;
+
   bool need_sigpending_renable;
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
