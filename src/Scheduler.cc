@@ -220,9 +220,14 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
     return false;
   }
 
+
   LOG(debug) << "Task event is " << t->ev();
   if (!t->may_be_blocked()) {
     LOG(debug) << "  " << t->tid << " isn't blocked";
+    if (t->schedule_frozen) {
+      LOG(debug) << "  " << t->tid << "  but is frozen";
+      return false;
+    }
     return true;
   }
 
@@ -261,7 +266,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   if (t->waiting_for_ptrace_exit) {
     LOG(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
   } else if (!t->is_running()) {
-    LOG(debug) << "  was already stopped with status " << t->status();
+    LOG(debug) << "  " << t->tid << "  was already stopped with status " << t->status();
+    if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
+      LOG(debug) << "   but is frozen";
+      return false;
+    }
     // If we have may_be_blocked, but we aren't running, then somebody noticed
     // this event earlier and already called did_waitpid for us. Just pretend
     // we did that here.
@@ -271,6 +280,10 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   } else if (EV_SYSCALL == t->ev().type() &&
       PROCESSING_SYSCALL == t->ev().Syscall().state &&
       treat_syscall_as_nonblocking(t->ev().Syscall().number, t->arch())) {
+    if (t->schedule_frozen) {
+      LOG(debug) << "  " << t->tid << " is frozen in sched_yield";
+      return false;
+    }
     // These syscalls never really block but the kernel may report that
     // the task is not stopped yet if we pass WNOHANG. To make them
     // behave predictably, do a blocking wait.
@@ -288,10 +301,14 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   bool did_wait_for_t;
   did_wait_for_t = t->try_wait();
   if (did_wait_for_t) {
+    LOG(debug) << "  ready with status " << t->status();
+    if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
+      LOG(debug) << "   but is frozen";
+      return false;
+    }
     *by_waitpid = true;
     ntasks_running--;
     must_run_task = t;
-    LOG(debug) << "  ready with status " << t->status();
     return true;
   }
   LOG(debug) << "  still blocked";

@@ -88,6 +88,7 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       scratch_mem_was_mapped(false),
       use_singlestep_path(false),
       enable_mem_params_(enable_mem_params),
+      restore_sigmask(false),
       need_sigpending_renable(false) {
   if (initial_at_seccomp) {
     // This should only ever happen during recording - we don't use the
@@ -130,6 +131,18 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
     // To work around this, we forcibly re-enable TIF_SIGPENDING when cleaning up
     // AutoRemoteSyscall (see below).
     need_sigpending_renable = true;
+  }
+  if (t->session().is_recording()) {
+    RecordTask *rt = static_cast<RecordTask*>(t);
+    if (rt->schedule_frozen) {
+      // If we're explicitly controlling the schedule, make sure not to accidentally run
+      // any signals that we were not meant to be able to see.
+      restore_sigmask = true;
+      sigmask_to_restore = rt->get_sigmask();
+      sig_set_t all_blocked;
+      memset(&all_blocked, 0xff, sizeof(all_blocked));
+      rt->set_sigmask(all_blocked);
+    }
   }
 }
 
@@ -259,6 +272,9 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     t->set_regs(regs);
   }
   t->set_status(restore_wait_status);
+  if (restore_sigmask) {
+    static_cast<RecordTask*>(t)->set_sigmask(sigmask_to_restore);
+  }
   if (need_sigpending_renable) {
     // The purpose of this PTRACE_INTERRUPT is to re-enable TIF_SIGPENDING on
     // the tracee, without forcing any actual signals on it. Since PTRACE_INTERRUPT

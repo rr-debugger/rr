@@ -15,4 +15,9 @@ void rr_detach_teleport(void) {
   test_assert(err == 0);
 }
 
+void rr_freeze_tid(pid_t tid, int freeze) {
+  int err = syscall(SYS_rrcall_freeze_tid, tid, freeze, 0, 0, 0, 0);
+  test_assert(err == 0 && "Failed to freeze tid");
+}
+
 #endif /* RRUTIL_INTERNAL_H */

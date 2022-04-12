@@ -84,3 +84,14 @@
  * cases between the time slice signal and other rr behavior.
  */
 #define SYS_rrcall_arm_time_slice (RR_CALL_BASE + 10)
+/**
+ * Use as
+ *
+ *  int rr_freeze_tid(pid_t tid, int freeze) {
+ *      return syscall(SYS_rrcall_freeze_tid, tid, freeze, 0, 0, 0, 0); }
+ *
+ * With `freeze=1`, requests that rr's Scheduler not schedule task `tid` again
+ * until unfrozen using `rr_freeze_tid(tid, 0)`. Note that kernel scheduling
+ * behavior is unaffected. Used for testing Scheduler-sensitive scenarios.
+ */
+#define SYS_rrcall_freeze_tid (RR_CALL_BASE + 11)

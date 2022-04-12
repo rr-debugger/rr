@@ -199,7 +199,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       retry_syscall_patching(false),
       sent_shutdown_kill(false),
       did_execveat(false),
-      tick_request_override((TicksRequest)0) {
+      tick_request_override((TicksRequest)0),
+      schedule_frozen(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
@@ -610,17 +611,7 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       // We're injecting a signal, so make sure that signal is unblocked.
       sigset &= ~signal_bit(sig);
     }
-    int ret = fallible_ptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &sigset);
-    if (ret < 0) {
-      if (errno == EIO) {
-        FATAL() << "PTRACE_SETSIGMASK not supported; rr requires Linux kernel >= 3.11";
-      }
-      ASSERT(this, errno == EINVAL);
-    } else {
-      LOG(debug) << "Set signal mask to block all signals (bar "
-                 << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
-                 << " have a stashed signal";
-    }
+    set_sigmask(sigset);
   }
 
   // RESUME_NO_TICKS means that tracee code is not going to run so there's no
@@ -1250,6 +1241,11 @@ sig_set_t RecordTask::get_sigmask() {
 void RecordTask::unblock_signal(int sig) {
   sig_set_t mask = get_sigmask();
   mask &= ~signal_bit(sig);
+  set_sigmask(mask);
+  invalidate_sigmask();
+}
+
+void RecordTask::set_sigmask(sig_set_t mask) {
   int ret = fallible_ptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &mask);
   if (ret < 0) {
     if (errno == EIO) {
@@ -1261,7 +1257,6 @@ void RecordTask::unblock_signal(int sig) {
                << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
                << " have a stashed signal";
   }
-  invalidate_sigmask();
 }
 
 void RecordTask::set_sig_handler_default(int sig) {

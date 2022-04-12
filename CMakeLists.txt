@@ -882,6 +882,7 @@ set(BASIC_TESTS
   futex_pi
   futex_priorities
   futex_requeue
+  futex_restart_race
   gcrypt_rdrand
   getcpu
   getgroups
