@@ -2380,7 +2380,7 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     struct hw_bp dbg_regs[16];
   };
 
-  struct sigcontext {
+  struct __attribute((aligned(16))) sigcontext {
     __u64 fault_addr;
     user_pt_regs regs;
     // ISA extension state follows here
