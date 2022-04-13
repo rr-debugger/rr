@@ -308,6 +308,8 @@ private:
 
   MemParamsEnabled enable_mem_params_;
 
+  bool need_sigpending_renable;
+
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
 };
