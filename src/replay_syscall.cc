@@ -738,11 +738,12 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
         if (fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
           if (offset_bytes == 0 && !(flags & MAP_FIXED) &&
-              length <= 2*page_size() && addr == (RR_PAGE_ADDR - page_size())) {
+              length <= 2 * PRELOAD_LIBRARY_PAGE_SIZE &&
+              addr == (RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE)) {
             // We only mapped the first page during record. Do the same here
-            length = page_size();
+            length = PRELOAD_LIBRARY_PAGE_SIZE;
           }
-          if (offset_bytes == (off64_t)page_size() && length == page_size() &&
+          if (offset_bytes == PRELOAD_LIBRARY_PAGE_SIZE && length == PRELOAD_LIBRARY_PAGE_SIZE &&
               addr == RR_PAGE_ADDR && t->vm()->has_rr_page()) {
             // We skipped this during recording. Setting length to zero here
             // will have the same effect.
