@@ -217,13 +217,14 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   auto regs = initial_regs;
   regs.set_ip(initial_ip);
   regs.set_sp(initial_sp);
-  // Restore stomped registers.
-  t->set_regs(regs);
   // If we were sitting at a seccomp trap, try to get back there by resuming
   // here. Since the original register contents caused a seccomp trap,
   // re-running the syscall with the same registers should put us right back
   // to this same seccomp trap.
   if (initial_at_seccomp && t->ptrace_event() != PTRACE_EVENT_SECCOMP) {
+    regs.set_ip(initial_ip.decrement_by_syscall_insn_length(t->arch()));
+    regs.set_syscallno(regs.original_syscallno());
+    t->set_regs(regs);
     RecordTask* rt = static_cast<RecordTask*>(t);
     while (true) {
       rt->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
@@ -232,6 +233,9 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
       rt->stash_sig();
     }
     ASSERT(rt, rt->ptrace_event() == PTRACE_EVENT_SECCOMP);
+  } else {
+    // Restore stomped registers.
+    t->set_regs(regs);
   }
   t->set_status(restore_wait_status);
 }
@@ -279,7 +283,8 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
-  if (use_singlestep_path) {
+  bool from_seccomp = initial_at_seccomp && t->ptrace_event() == PTRACE_EVENT_SECCOMP;
+  if (use_singlestep_path && !from_seccomp) {
     while (true) {
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
       LOG(debug) << "Used singlestep path; status=" << t->status();
@@ -305,12 +310,12 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       ASSERT(t, false) << "Unexpected status " << t->status();
     }
   } else {
-    if (initial_at_seccomp && t->ptrace_event() == PTRACE_EVENT_SECCOMP) {
+    if (from_seccomp) {
       LOG(debug) << "Skipping enter_syscall - already at seccomp stop";
     } else {
       t->enter_syscall();
+      LOG(debug) << "Used enter_syscall; status=" << t->status();
     }
-    LOG(debug) << "Used enter_syscall; status=" << t->status();
     // proceed to syscall exit
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
     LOG(debug) << "syscall exit status=" << t->status();
