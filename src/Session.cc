@@ -416,7 +416,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   auto ret = remote.infallible_mmap_syscall_if_alive(m.map.start(), m.map.size(), m.map.prot(),
                                                      (m.map.flags() & ~MAP_ANONYMOUS) | MAP_FIXED,
                                                      remote_fd,
-                                                     m.map.file_offset_bytes() / page_size());
+                                                     m.map.file_offset_bytes());
   if (!ret) {
     if (remote.task()->vm()->task_set().size() > remote.task()->thread_group()->task_set().size()) {
       // XXX not sure how to handle the case where the tracee died after

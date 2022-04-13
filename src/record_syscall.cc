@@ -5578,14 +5578,13 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
 }
 
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
-                         int fd, off_t offset_pages) {
+                         int fd, off64_t offset) {
   if (t->regs().syscall_failed()) {
     // We purely emulate failed mmaps.
     return;
   }
 
   size_t size = ceil_page_size(length);
-  off64_t offset = offset_pages * 4096;
   remote_ptr<void> addr = t->regs().syscall_result();
   if (flags & MAP_ANONYMOUS) {
     KernelMapping km;
@@ -5704,7 +5703,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   // at an assertion, in the worst case, we'd end up modifying the underlying
   // file.
   if (!(flags & MAP_SHARED)) {
-    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd,
+    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset, fd,
                                               Monkeypatcher::MMAP_SYSCALL);
   }
 
@@ -6194,7 +6193,7 @@ static void rec_process_syscall_arch(RecordTask* t,
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(t->regs().orig_arg1()));
           process_mmap(t, args.len, args.prot, args.flags, args.fd,
-                       args.offset / 4096);
+                       args.offset);
           break;
         }
         case Arch::RegisterArguments: {
@@ -6203,7 +6202,7 @@ static void rec_process_syscall_arch(RecordTask* t,
           r.set_arg4(syscall_state.syscall_entry_registers.arg4_signed());
           process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
                        (int)r.arg4_signed(), (int)r.arg5_signed(),
-                       ((off_t)r.arg6_signed()) / 4096);
+                       ((off_t)r.arg6_signed()));
           r.set_arg2(syscall_state.syscall_entry_registers.arg2_signed());
           r.set_arg3(syscall_state.syscall_entry_registers.arg3_signed());
           t->set_regs(r);
@@ -6218,7 +6217,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_arg4(syscall_state.syscall_entry_registers.arg4_signed());
       process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
                    (int)r.arg4_signed(), (int)r.arg5_signed(),
-                   (off_t)r.arg6_signed());
+                   (off_t)r.arg6_signed() * 4096);
       r.set_arg2(syscall_state.syscall_entry_registers.arg2_signed());
       r.set_arg3(syscall_state.syscall_entry_registers.arg3_signed());
       t->set_regs(r);

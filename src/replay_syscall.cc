@@ -333,7 +333,7 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
       // Private mapping, so O_RDONLY is always OK.
       remote.finish_direct_mmap(km.start(), km.size(), km.prot(),
                          km.flags(), data.file_name, O_RDONLY,
-                         data.data_offset_bytes / page_size(), real_file,
+                         data.data_offset_bytes, real_file,
                          real_file_name);
       device = real_file.st_dev;
       inode = real_file.st_ino;
@@ -631,7 +631,7 @@ static void write_mapped_data(ReplayTask* t,
 
 static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                 remote_ptr<void> rec_addr, size_t length,
-                                int prot, int flags, off64_t offset_pages,
+                                int prot, int flags, off64_t offset_bytes,
                                 const KernelMapping& km,
                                 TraceReader::MappedData& data) {
   LOG(debug) << "  finishing private mmap of " << km.fsname();
@@ -645,7 +645,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // kernel-bug-workarounds when writing to tracee memory see the up-to-date
   // virtual map.
   t->vm()->map(t, rec_addr, length, prot, flags | MAP_ANONYMOUS,
-               page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
+               offset_bytes, string(), KernelMapping::NO_DEVICE,
                KernelMapping::NO_INODE, nullptr, &km);
 
   /* Restore the map region we copied. */
@@ -655,7 +655,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                remote_ptr<void> rec_addr, size_t length,
                                int prot, int flags, const vector<TraceRemoteFd>& fds,
-                               off64_t offset_pages,
+                               off64_t offset_bytes,
                                const KernelMapping& km,
                                TraceReader::MappedData& data) {
   // Ensure there's a virtual file for the file that was mapped
@@ -671,7 +671,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // Emufs file, so open it read-write in case we want to write to it through
   // the task's mem fd.
   remote.finish_direct_mmap(rec_addr, km.size(), prot, flags,
-                     emufile->proc_path(), O_RDWR, offset_pages, real_file,
+                     emufile->proc_path(), O_RDWR, offset_bytes, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
   //
@@ -682,7 +682,6 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // Update AddressSpace before loading data from the trace. This ensures our
   // kernel-bug-workarounds when writing to tracee memory see the up-to-date
   // virtual map.
-  uint64_t offset_bytes = page_size() * offset_pages;
   t->vm()->map(t, rec_addr, km.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, nullptr, &km,
                emufile);
@@ -714,7 +713,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                          size_t length, int prot, int flags, int fd,
-                         off64_t offset_pages, ReplayTraceStep* step) {
+                         off64_t offset_bytes, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
   {
@@ -738,12 +737,12 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
       if (t->session().has_trace_quirk(TraceReader::SpecialLibRRpage)) {
         FileMonitor *fd_monitor = t->fd_table()->get_monitor(fd);
         if (fd_monitor && fd_monitor->type() == FileMonitor::RRPage) {
-          if (offset_pages == 0 && !(flags & MAP_FIXED) &&
+          if (offset_bytes == 0 && !(flags & MAP_FIXED) &&
               length <= 2*page_size() && addr == (RR_PAGE_ADDR - page_size())) {
             // We only mapped the first page during record. Do the same here
             length = page_size();
           }
-          if (offset_pages == 1 && length == page_size() &&
+          if (offset_bytes == (off64_t)page_size() && length == page_size() &&
               addr == RR_PAGE_ADDR && t->vm()->has_rr_page()) {
             // We skipped this during recording. Setting length to zero here
             // will have the same effect.
@@ -759,15 +758,15 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         uint64_t map_bytes = min(ceil_page_size(data.file_size_bytes) - data.data_offset_bytes, length);
         remote.finish_direct_mmap(addr, map_bytes, prot, flags,
                            data.file_name, O_RDONLY,
-                           data.data_offset_bytes / page_size(), real_file,
+                           data.data_offset_bytes, real_file,
                            real_file_name);
         KernelMapping km_sub = km.subrange(km.start(), km.start() + ceil_page_size(map_bytes));
         t->vm()->map(t, km.start(), map_bytes, prot, flags,
-                     page_size() * offset_pages, real_file_name,
+                     offset_bytes, real_file_name,
                      real_file.st_dev, real_file.st_ino, nullptr, &km_sub);
         addr += map_bytes;
         length -= map_bytes;
-        offset_pages += ceil_page_size(map_bytes) / page_size();
+        offset_bytes += ceil_page_size(map_bytes);
         data.source = TraceReader::SOURCE_ZERO;
         km = km.subrange(km_sub.end(), km.end());
       }
@@ -777,11 +776,11 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
             extra_fds.push_back({ t->rec_tid, fd });
           }
           finish_shared_mmap(t, remote, addr, length, prot, flags, extra_fds,
-                              offset_pages, km, data);
+                              offset_bytes, km, data);
         } else {
           ASSERT(t, extra_fds.empty());
           finish_private_mmap(t, remote, addr, length, prot, flags,
-                              offset_pages, km, data);
+                              offset_bytes, km, data);
         }
       }
     }
@@ -1169,20 +1168,20 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(trace_regs.orig_arg1()));
           return process_mmap(t, trace_frame, args.len, args.prot, args.flags,
-                              args.fd, args.offset / page_size(), step);
+                              args.fd, args.offset, step);
         }
         case Arch::RegisterArguments:
           return process_mmap(t, trace_frame, trace_regs.arg2(),
                               trace_regs.arg3(), trace_regs.arg4(),
                               trace_regs.arg5(),
-                              trace_regs.arg6() / page_size(), step);
+                              trace_regs.arg6(), step);
       }
       break;
     }
     case Arch::mmap2:
       return process_mmap(t, trace_frame, trace_regs.arg2(), trace_regs.arg3(),
                           trace_regs.arg4(), trace_regs.arg5(),
-                          trace_regs.arg6(), step);
+                          trace_regs.arg6() * 4096, step);
 
     case Arch::shmat:
       return process_shmat(t, trace_frame, trace_regs.arg3(), step);

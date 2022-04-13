@@ -99,7 +99,7 @@ public:
    * patch libpthread.so.
    */
   void patch_after_mmap(RecordTask* t, remote_ptr<void> start, size_t size,
-                        size_t offset_pages, int child_fd, MmapMode mode);
+                        size_t offset_bytes, int child_fd, MmapMode mode);
 
   /**
    * The list of pages we've allocated to hold our extended jumps.

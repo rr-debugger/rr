@@ -589,7 +589,10 @@ void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_
 
 remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
     remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
-    uint64_t offset_pages) {
+    uint64_t offset_bytes) {
+  ASSERT(t, offset_bytes % page_size() == 0)
+    << "mmap offset (" << offset_bytes << ") must be multiple of page size ("
+    << page_size() << ")";
   // The first syscall argument is called "arg 1", so
   // our syscall-arg-index template parameter starts
   // with "1".
@@ -597,10 +600,10 @@ remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
       has_mmap2_syscall(arch())
           ? infallible_syscall_ptr_if_alive(syscall_number_for_mmap2(arch()), addr,
                                             length, prot, flags, child_fd,
-                                            (off_t)offset_pages)
+                                            (off_t)offset_bytes / 4096)
           : infallible_syscall_ptr_if_alive(syscall_number_for_mmap(arch()), addr,
                                             length, prot, flags, child_fd,
-                                            offset_pages * page_size());
+                                            offset_bytes);
   if (ret && (flags & MAP_FIXED)) {
     ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
   }
@@ -650,13 +653,13 @@ void AutoRemoteSyscalls::finish_direct_mmap(
                                int prot, int flags,
                                const string& backing_file_name,
                                int backing_file_open_flags,
-                               off64_t backing_offset_pages,
+                               off64_t backing_offset_bytes,
                                struct stat& real_file, string& real_file_name) {
   int fd;
 
   LOG(debug) << "directly mmap'ing " << length << " bytes of "
-             << backing_file_name << " at page offset "
-             << HEX(backing_offset_pages);
+             << backing_file_name << " at offset "
+             << HEX(backing_offset_bytes);
 
   ASSERT(task(), !(flags & MAP_GROWSDOWN));
 
@@ -680,7 +683,7 @@ void AutoRemoteSyscalls::finish_direct_mmap(
                           * memory devices (requires
                           * MAP_SHARED_VALIDATE). Drop it for the
                           * backing file. */
-                          backing_offset_pages);
+                          backing_offset_bytes);
 
   // While it's open, grab the link reference.
   real_file = task()->stat_fd(fd);
