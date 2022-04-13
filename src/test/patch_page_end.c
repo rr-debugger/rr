@@ -37,7 +37,7 @@ static long do_call(uint8_t* p) {
 #elif defined(__aarch64__)
   register long x8 __asm__("x8") = SYS_getpid;
   register long x0 __asm__("x0") = 0;
-  __asm__ __volatile__("blr %2" : "=r"(x0) : "r"(x8), "r"(p));
+  __asm__ __volatile__("blr %2" : "=r"(x0) : "r"(x8), "r"(p) : "x30"); // x30 = lr
   ret = x0;
 #else
   #error unsupported arch
