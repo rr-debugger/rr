@@ -318,7 +318,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
                                                 child_fd, 0);
       }
       remote.infallible_mmap_syscall_if_alive(rr_page_start(), rr_page_size(), prot, flags,
-                                              child_fd, offset_pages);
+                                              child_fd, offset_bytes);
 
       struct stat fstat = t->stat_fd(child_fd);
       file_name = t->file_name_of_fd(child_fd);
@@ -326,7 +326,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
       remote.infallible_close_syscall_if_alive(child_fd);
 
       map(t, rr_page_start(), rr_page_size(), prot, flags,
-          offset_pages * page_size(), file_name,
+          offset_bytes, file_name,
           fstat.st_dev, fstat.st_ino);
       mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
       if (t->session().is_recording()) {

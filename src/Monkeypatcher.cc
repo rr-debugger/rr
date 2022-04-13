@@ -861,12 +861,11 @@ void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
 static remote_ptr<void> resolve_address(ElfReader& reader, uintptr_t elf_addr,
                                         remote_ptr<void> map_start,
                                         size_t map_size,
-                                        size_t map_offset_pages) {
+                                        uintptr_t map_offset) {
   uintptr_t file_offset;
   if (!reader.addr_to_offset(elf_addr, file_offset)) {
     LOG(warn) << "ELF address " << HEX(elf_addr) << " not in file";
   }
-  uintptr_t map_offset = uintptr_t(map_offset_pages) * page_size();
   if (file_offset < map_offset || file_offset + 32 > map_offset + map_size) {
     // The value(s) to be set are outside the mapped range. This happens
     // because code and data can be mapped in separate, partial mmaps in which
@@ -879,9 +878,9 @@ static remote_ptr<void> resolve_address(ElfReader& reader, uintptr_t elf_addr,
 static void set_and_record_bytes(RecordTask* t, ElfReader& reader,
                                  uintptr_t elf_addr, const void* bytes,
                                  size_t size, remote_ptr<void> map_start,
-                                 size_t map_size, size_t map_offset_pages) {
+                                 size_t map_size, size_t map_offset) {
   remote_ptr<void> addr =
-    resolve_address(reader, elf_addr, map_start, map_size, map_offset_pages);
+    resolve_address(reader, elf_addr, map_start, map_size, map_offset);
   if (!addr) {
     return;
   }
@@ -904,12 +903,12 @@ static void patch_dl_runtime_resolve(Monkeypatcher& patcher,
                                      uintptr_t elf_addr,
                                      remote_ptr<void> map_start,
                                      size_t map_size,
-                                     size_t map_offset_pages) {
+                                     size_t map_offset) {
   if (t->arch() != x86_64) {
     return;
   }
   remote_ptr<void> addr =
-    resolve_address(reader, elf_addr, map_start, map_size, map_offset_pages);
+    resolve_address(reader, elf_addr, map_start, map_size, map_offset);
   if (!addr) {
     return;
   }
@@ -974,7 +973,7 @@ static bool file_may_need_instrumentation(const AddressSpace::Mapping& map) {
 }
 
 void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
-                                     size_t size, size_t offset_pages,
+                                     size_t size, size_t offset_bytes,
                                      int child_fd, MmapMode mode) {
   const auto& map = t->vm()->mapping_of(start);
   if (file_may_need_instrumentation(map) &&
@@ -1020,7 +1019,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
         // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
         // in glibc's elide.h.
         set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
-                             start, size, offset_pages);
+                             start, size, offset_bytes);
       }
       if (syms.is_name(i, "elision_init")) {
         // Make elision_init return without doing anything. This means
@@ -1029,7 +1028,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
         // elision-conf.c.
         static const uint8_t ret = 0xC3;
         set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
-                             size, offset_pages);
+                             size, offset_bytes);
       }
       // The following operations can only be applied once because after the
       // patch is applied the code no longer matches the expected template.
@@ -1041,7 +1040,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
            syms.is_name(i, "_dl_runtime_resolve_xsave") ||
            syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
         patch_dl_runtime_resolve(*this, t, reader, syms.addr(i), start, size,
-                                 offset_pages);
+                                 offset_bytes);
       }
     }
   }

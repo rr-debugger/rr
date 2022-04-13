@@ -3501,7 +3501,7 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
     struct stat real_file;
     string real_file_name;
     remote.finish_direct_mmap(km.start(), km.size(), km.prot(), km.flags(),
-      km.fsname(), O_RDONLY, km.file_offset_bytes()/page_size(),
+      km.fsname(), O_RDONLY, km.file_offset_bytes(),
       real_file, real_file_name);
   } else {
     auto ret = remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(),

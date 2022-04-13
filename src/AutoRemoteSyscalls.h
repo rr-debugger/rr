@@ -192,7 +192,7 @@ public:
    */
   remote_ptr<void> infallible_mmap_syscall_if_alive(remote_ptr<void> addr, size_t length,
                                                     int prot, int flags, int child_fd,
-                                                    uint64_t offset_pages);
+                                                    uint64_t offset_bytes);
 
   /** TODO replace with infallible_lseek_syscall_if_alive */
   int64_t infallible_lseek_syscall(int fd, int64_t offset, int whence);
@@ -262,7 +262,7 @@ public:
                           int prot, int flags,
                           const std::string& backing_file_name,
                           int backing_file_open_flags,
-                          off64_t backing_offset_pages,
+                          off64_t backing_offset_bytes,
                           struct stat& real_file, std::string& real_file_name);
 
   // Calling this with allow_death false is DEPRECATED.
