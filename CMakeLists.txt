@@ -56,10 +56,13 @@ set(x86ish false)
 if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
   set(supports32bit false)
   set(FLAGS_COMMON "${FLAGS_COMMON} -march=armv8.3-a")
+  set(PRELOAD_LIBRARY_PAGE_SIZE 4096)
 else()
   set(x86ish true)
   set(FLAGS_COMMON "${FLAGS_COMMON} -msse2 -D__MMX__ -D__SSE__ -D__SSE2__")
+  set(PRELOAD_LIBRARY_PAGE_SIZE 4096)
 endif()
+configure_file(src/preload/rr_page.ld.in src/preload/rr_page.ld @ONLY)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
@@ -336,7 +339,6 @@ set(RR_PAGE_SOURCE_FILES
   ${RR_PAGE_FILES}
   rr_page_instructions.S
   rr_vdso.S
-  rr_page.ld
 )
 add_library(rrpage)
 foreach(file ${RR_PAGE_FILES})
@@ -349,13 +351,13 @@ endforeach(file)
 # we want it to have the same SONAME as the real vDSO to trick things
 # like AddressSanitizer into recognising it as the vDSO.
 set_target_properties(rrpage PROPERTIES NO_SONAME ON)
-set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-z,max-page-size=0x1000 -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
-set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
+set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-z,max-page-size=${PRELOAD_LIBRARY_PAGE_SIZE} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
+set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_BINARY_DIR}/src/preload/rr_page.ld)
 # CMake seems to have trouble generating the link line without this
 set_target_properties(rrpage PROPERTIES LINKER_LANGUAGE C)
 
 add_custom_command(TARGET rrpage POST_BUILD
-                   COMMAND ${CMAKE_SOURCE_DIR}/src/preload/tweak_librrpage.py $<TARGET_FILE:rrpage>)
+                   COMMAND ${CMAKE_SOURCE_DIR}/src/preload/tweak_librrpage.py $<TARGET_FILE:rrpage> ${PRELOAD_LIBRARY_PAGE_SIZE})
 
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # raw_syscall.S must be before overrides.c, which must be last.
@@ -649,6 +651,11 @@ foreach(file ${RR_PAGE_SOURCE_FILES})
   install(FILES src/preload/${file}
           DESTINATION ${CMAKE_INSTALL_DATADIR}/rr/src/preload)
 endforeach(file)
+configure_file("${CMAKE_CURRENT_BINARY_DIR}/src/preload/rr_page.ld"
+               "${CMAKE_CURRENT_BINARY_DIR}/share/rr/src/preload/rr_page.ld"
+               COPYONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/src/preload/rr_page.ld"
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/rr/src/preload)
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/rr-collect-symbols.py"
                "${CMAKE_CURRENT_BINARY_DIR}/bin/rr-collect-symbols.py"
@@ -691,12 +698,12 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   set_target_properties(rrpage_32 PROPERTIES NO_SONAME ON)
-  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
-  set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/src/preload/rr_page.ld)
+  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
+  set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS ${CMAKE_BINARY_DIR}/src/preload/rr_page.ld)
   set_target_properties(rrpage_32 PROPERTIES LINKER_LANGUAGE C)
 
   add_custom_command(TARGET rrpage_32 POST_BUILD
-                    COMMAND ${CMAKE_SOURCE_DIR}/src/preload/tweak_librrpage.py $<TARGET_FILE:rrpage_32>)
+                    COMMAND ${CMAKE_SOURCE_DIR}/src/preload/tweak_librrpage.py $<TARGET_FILE:rrpage_32> ${PRELOAD_LIBRARY_PAGE_SIZE})
 
 
   add_library(rrpreload_32)

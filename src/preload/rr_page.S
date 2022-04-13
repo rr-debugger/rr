@@ -35,6 +35,7 @@
     ret
 #define PAGE_ALIGN \
     .align 0x1000
+#define PRELOAD_LIBRARY_PAGE_SIZE 0x1000
 #elif defined(__x86_64__)
 #define CALL \
     syscall; \
@@ -47,6 +48,7 @@
     ret
 #define PAGE_ALIGN \
     .align 0x1000
+#define PRELOAD_LIBRARY_PAGE_SIZE 0x1000
 #elif defined(__aarch64__)
 #define CALL \
     svc #0; \
@@ -59,11 +61,12 @@
     ret
 #define PAGE_ALIGN \
     .align 12
+#define PRELOAD_LIBRARY_PAGE_SIZE 0x1000
 #endif
 
 .section .sh_placeholder, "a"
 PAGE_ALIGN
-.fill 0x1000, 1, 0xff
+.fill PRELOAD_LIBRARY_PAGE_SIZE, 1, 0xff
 
 .section .vdso.text, "a", @progbits
 PAGE_ALIGN
