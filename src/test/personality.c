@@ -15,8 +15,12 @@ int main(void) {
   rr_personality(PER_LINUX);
   test_assert(rr_personality(0xffffffff) == PER_LINUX);
 
-  rr_personality(PER_LINUX32);
-  test_assert(rr_personality(0xffffffff) == PER_LINUX32);
+  int ret = rr_personality(PER_LINUX32);
+#ifndef __aarch64__
+  test_assert(ret != -1);
+#endif
+  if (ret != -1)
+    test_assert(rr_personality(0xffffffff) == PER_LINUX32);
 
   rr_personality(ADDR_NO_RANDOMIZE);
   test_assert(rr_personality(0xffffffff) == ADDR_NO_RANDOMIZE);
