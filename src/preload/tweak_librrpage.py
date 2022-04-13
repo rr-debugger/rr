@@ -8,8 +8,8 @@ import sys
 
 # How much space (and where) we reserved in the middle of the file for
 # the section header
-new_table_offset = 0x1000
-reserved_size = 0x1000
+new_table_offset = int(sys.argv[2])
+reserved_size = int(sys.argv[2])
 
 # Force this alignment for any sections
 sect_align = 0x10
