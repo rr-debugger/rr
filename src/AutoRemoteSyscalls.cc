@@ -87,7 +87,8 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       new_tid_(-1),
       scratch_mem_was_mapped(false),
       use_singlestep_path(false),
-      enable_mem_params_(enable_mem_params) {
+      enable_mem_params_(enable_mem_params),
+      need_sigpending_renable(false) {
   if (initial_at_seccomp) {
     // This should only ever happen during recording - we don't use the
     // seccomp traps during replay.
@@ -109,6 +110,26 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
              is_SIGTRAP_default_and_unblocked(t));
   if (enable_mem_params == ENABLE_MEMORY_PARAMS) {
     maybe_fix_stack_pointer();
+  }
+  if (t->status().is_syscall() && t->regs().syscall_may_restart()) {
+    // VERY rare corner case alert: It is possible for the following sequence
+    // of events to occur:
+    //
+    // 1. Thread A is in a blocking may-restart syscall and gets interrupted by a tg-targeted signal
+    // 2. Thread B dequeues the signal
+    // 3. Thread A is in the syscall-exit-stop with TIF_SIGPENDING set (with registers indicating syscall restart)
+    // 4. We get here to perform an AutoRemoteSyscall
+    // 5. During AutoRemoteSyscall, TIF_SIGPENDING gets cleared on return to userspace
+    // 6. We finish the AutoRemoteSyscall and re-apply the registers.
+    // 7. ... As a result, the kernel does not check whether it needs to perform the
+    ///   syscall-restart register adjustment because TIF_SIGPENDING is not set.
+    // 8. The -ERESTART error code leaks to userspace.
+    //
+    // Arguably this is a kernel bug, but it's not clear how the behavior should be changed.
+    //
+    // To work around this, we forcibly re-enable TIF_SIGPENDING when cleaning up
+    // AutoRemoteSyscall (see below).
+    need_sigpending_renable = true;
   }
 }
 
@@ -238,6 +259,14 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     t->set_regs(regs);
   }
   t->set_status(restore_wait_status);
+  if (need_sigpending_renable) {
+    // The purpose of this PTRACE_INTERRUPT is to re-enable TIF_SIGPENDING on
+    // the tracee, without forcing any actual signals on it. Since PTRACE_INTERRUPT
+    // needs to be able to interrupt re-startable system calls, it is required
+    // to set TIF_SIGPENDING, but the fact that this works is of course a very
+    // deep implementation detail.
+    t->ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+  }
 }
 
 static bool ignore_signal(Task* t) {
