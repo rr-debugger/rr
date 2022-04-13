@@ -311,11 +311,10 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.use_file_cloning = false;
       break;
     case 2:
-      if (!opt.verify_valid_int(4, 1024 * 1024) ||
-          (opt.int_value & (page_size() / 1024 - 1))) {
+      if (!opt.verify_valid_int(4, 1024 * 1024)) {
         return false;
       }
-      flags.syscall_buffer_size = opt.int_value * 1024;
+      flags.syscall_buffer_size = ceil_page_size(opt.int_value * 1024);
       break;
     case 3:
       if (opt.value == "default" || opt.value == "error") {
