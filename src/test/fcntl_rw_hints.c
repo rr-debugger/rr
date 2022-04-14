@@ -58,6 +58,12 @@ int main(void) {
 
   hint = RWH_WRITE_LIFE_LONG;
   ret = fcntl(fd, F_SET_FILE_RW_HINT, &hint);
+  if (ret < 0) {
+    test_assert(errno == EINVAL);
+    atomic_puts("F_SET_FILE_RW_HINT support removed");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(ret == 0);
   hint = 99;
   ret = fcntl(fd, F_GET_FILE_RW_HINT, &hint);
