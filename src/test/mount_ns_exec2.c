@@ -6,11 +6,12 @@
 int main(int argc, char* argv[]) {
   if (argc > 1 && strcmp(argv[1], "in_copy") == 0) {
     // Try to do an mmap call, just to stress that code path
+    long pagesize = sysconf(_SC_PAGESIZE);
     int selffd = open("/proc/self/exe", O_RDONLY);
     test_assert(selffd != -1);
-    void *addr = mmap(NULL, 4096, PROT_READ, MAP_PRIVATE, selffd, 4096);
+    void *addr = mmap(NULL, pagesize, PROT_READ, MAP_PRIVATE, selffd, pagesize);
     test_assert(addr != MAP_FAILED);
-    check_data(addr, 4096);
+    check_data(addr, pagesize);
     atomic_puts("EXIT-SUCCESS");
     return 0;
   }
