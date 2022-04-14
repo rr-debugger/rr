@@ -1874,6 +1874,8 @@ void GdbServer::emergency_debug(Task* t) {
   unsigned short port = t->tid;
   ScopedFd listen_fd = open_socket(localhost_addr.c_str(), &port, PROBE_PORT);
 
+  dump_rr_stack();
+
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
   if (test_monitor_pid) {
     pid_t pid = atoi(test_monitor_pid);
@@ -1886,7 +1888,6 @@ void GdbServer::emergency_debug(Task* t) {
     }
     kill(pid, SIGURG);
   } else {
-    dump_rr_stack();
     fputs("Launch gdb with\n  ", stderr);
     print_debugger_launch_command(t, localhost_addr, port, "gdb", stderr);
   }
