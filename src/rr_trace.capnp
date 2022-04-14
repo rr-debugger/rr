@@ -122,6 +122,10 @@ struct Header {
   exclusionRangeEnd @18 :RemotePtr;
   # Replaying this trace requires at least this forward-compabilitity-version
   requiredForwardCompatibilityVersion @19 :Int32;
+  # real page size of the recorded process
+  runtimePageSize @22 :Int32;
+  # rr page size, i.e. the one used to build the librr_page.so
+  preloadLibraryPageSize @23 :Int32;
 }
 
 # A file descriptor belonging to a task
