@@ -1435,6 +1435,8 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   MemoryRange exclusion_range = AddressSpace::get_global_exclusion_range();
   header.setExclusionRangeStart(exclusion_range.start().as_int());
   header.setExclusionRangeEnd(exclusion_range.end().as_int());
+  header.setRuntimePageSize(page_size());
+  header.setPreloadLibraryPageSize(PRELOAD_LIBRARY_PAGE_SIZE);
 
   try {
     writePackedMessageToFd(version_fd, header_msg);
