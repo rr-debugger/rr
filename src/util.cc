@@ -1717,6 +1717,7 @@ ScopedFd open_socket(const char* address, unsigned short* port,
 
 void notifying_abort() {
   flush_log_buffer();
+  dump_rr_stack();
 
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
   if (test_monitor_pid) {
@@ -1725,8 +1726,6 @@ void notifying_abort() {
     // do so.
     kill(pid, SIGURG);
     sleep(10000);
-  } else {
-    dump_rr_stack();
   }
 
   abort();
