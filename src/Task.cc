@@ -2021,6 +2021,12 @@ void Task::did_waitpid(WaitStatus status) {
   LOG(debug) << "  (refreshing register cache)";
   Ticks more_ticks = 0;
 
+  bool was_stopped = is_stopped;
+  // Mark as stopped now. If we fail one of the ticks assertions below,
+  // the test-monitor (or user) might want to attach the emergency debugger,
+  // which needs to know that the tracee is stopped.
+  is_stopped = true;
+
   if (status.reaped()) {
     was_reaped = true;
     if (handled_ptrace_exit_event) {
@@ -2030,7 +2036,6 @@ void Task::did_waitpid(WaitStatus status) {
       // its thread group. This has now reaped the task, so all we need to do
       // here is get out quickly and the higher-level function should go ahead
       // and delete us.
-      is_stopped = true;
       wait_status = status;
       return;
     }
@@ -2054,7 +2059,7 @@ void Task::did_waitpid(WaitStatus status) {
     // In fact if we didn't start the thread, we may not have flushed dirty
     // registers but still received a PTRACE_EVENT_EXIT, in which case the
     // task's register values are not what they should be.
-    if (!is_stopped && !registers_dirty) {
+    if (!was_stopped && !registers_dirty) {
       LOG(debug) << "Requesting registers from tracee " << tid;
       NativeArch::user_regs_struct ptrace_regs;
 
@@ -2099,7 +2104,6 @@ void Task::did_waitpid(WaitStatus status) {
     }
   }
 
-  is_stopped = true;
   wait_status = status;
   // We stop counting here because there may be things we want to do to the
   // tracee that would otherwise generate ticks.
