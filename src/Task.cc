@@ -3916,7 +3916,7 @@ void Task::move_to_signal_stop()
 
 bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip,
                                    bool* invalid_rseq_cs) {
-  if (!rseq_state) {
+  if (!rseq_state || is_dying()) {
     return false;
   }
   // We're relying on the fact that rseq_t is the same across architectures
