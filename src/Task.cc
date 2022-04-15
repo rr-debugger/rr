@@ -3919,13 +3919,15 @@ bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip
   if (!rseq_state) {
     return false;
   }
-  // We're relying on the fact that rseq_t is the same across architectures
-  auto rseq = read_mem(rseq_state->ptr.cast<typename NativeArch::rseq_t>());
-  if (!rseq.rseq_cs) {
+  // We're relying on the fact that rseq_t is the same across architectures.
+  // These reads might fail if the task is dead and gone.
+  bool ok = true;
+  auto rseq = read_mem(rseq_state->ptr.cast<typename NativeArch::rseq_t>(), &ok);
+  if (!ok || !rseq.rseq_cs) {
     return false;
   }
-  auto rseq_cs = read_mem(remote_ptr<typename NativeArch::rseq_cs>(rseq.rseq_cs));
-  if (rseq_cs.version ||
+  auto rseq_cs = read_mem(remote_ptr<typename NativeArch::rseq_cs>(rseq.rseq_cs), &ok);
+  if (!ok || rseq_cs.version ||
       rseq_cs.start_ip + rseq_cs.post_commit_offset < rseq_cs.start_ip ||
       rseq_cs.abort_ip - rseq_cs.start_ip < rseq_cs.post_commit_offset) {
     *invalid_rseq_cs = true;
@@ -3950,8 +3952,8 @@ bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip
   if ((rseq.flags | rseq_cs.flags) & flag) {
     return false;
   }
-  uint32_t sig = read_mem(remote_ptr<uint32_t>(rseq_cs.abort_ip - 4));
-  if (sig != rseq_state->abort_prefix_signature) {
+  uint32_t sig = read_mem(remote_ptr<uint32_t>(rseq_cs.abort_ip - 4), &ok);
+  if (!ok || sig != rseq_state->abort_prefix_signature) {
     *invalid_rseq_cs = true;
     return false;
   }
