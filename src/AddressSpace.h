@@ -669,17 +669,12 @@ public:
    * use.
    */
   static remote_ptr<void> rr_page_start() { return RR_PAGE_ADDR; }
-  /**
-   * This might not be the length of an actual system page, but we allocate
-   * at least this much space.
-   */
-  static uint32_t rr_page_size() { return 4096; }
   static remote_ptr<void> rr_page_end() {
-    return rr_page_start() + rr_page_size();
+    return rr_page_start() + RR_PAGE_SIZE;
   }
 
   static remote_ptr<void> preload_thread_locals_start() {
-    return rr_page_start() + rr_page_size();
+    return rr_page_start() + RR_PAGE_SIZE;
   }
   static uint32_t preload_thread_locals_size() {
     return PRELOAD_THREAD_LOCALS_SIZE;
