@@ -788,7 +788,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
     patcher.patch_after_mmap(t, km.start(), km.size(),
-                             km.file_offset_bytes()/page_size(), -1,
+                             km.file_offset_bytes(), -1,
                              Monkeypatcher::MMAP_EXEC);
   }
 
@@ -808,7 +808,7 @@ void patch_after_exec_arch<ARM64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
     patcher.patch_after_mmap(t, km.start(), km.size(),
-                             km.file_offset_bytes()/page_size(), -1,
+                             km.file_offset_bytes(), -1,
                              Monkeypatcher::MMAP_EXEC);
   }
 
