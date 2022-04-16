@@ -1924,7 +1924,7 @@ static ScopedFd generate_fake_proc_maps(Task* t) {
         auto m2 = *it2;
         if (m2.flags & AddressSpace::Mapping::IS_RR_PAGE) {
           // Extend this mapping
-          map_end += RR_PAGE_SIZE;
+          map_end += PRELOAD_LIBRARY_PAGE_SIZE;
           // Skip the rr page
           ++it;
         }
