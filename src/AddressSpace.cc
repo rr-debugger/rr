@@ -306,7 +306,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   path += fname;
   size_t offset_pages = t->session().is_recording() ?
     RRPAGE_RECORD_PAGE_OFFSET : RRPAGE_REPLAY_PAGE_OFFSET;
-  size_t offset_bytes = offset_pages * RR_PAGE_SIZE;
+  size_t offset_bytes = offset_pages * PRELOAD_LIBRARY_PAGE_SIZE;
 
   {
     ScopedFd page(path.c_str(), O_RDONLY);
@@ -317,7 +317,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
         remote.infallible_mmap_syscall_if_alive(rr_page_start() - offset_bytes, offset_bytes, prot, flags,
                                                 child_fd, 0);
       }
-      remote.infallible_mmap_syscall_if_alive(rr_page_start(), RR_PAGE_SIZE, prot, flags,
+      remote.infallible_mmap_syscall_if_alive(rr_page_start(), PRELOAD_LIBRARY_PAGE_SIZE, prot, flags,
                                               child_fd, offset_bytes);
 
       struct stat fstat = t->stat_fd(child_fd);
@@ -325,7 +325,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
 
       remote.infallible_close_syscall_if_alive(child_fd);
 
-      map(t, rr_page_start(), RR_PAGE_SIZE, prot, flags,
+      map(t, rr_page_start(), PRELOAD_LIBRARY_PAGE_SIZE, prot, flags,
           offset_bytes, file_name,
           fstat.st_dev, fstat.st_ino);
       mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;

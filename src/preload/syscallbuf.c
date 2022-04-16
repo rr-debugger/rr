@@ -792,8 +792,8 @@ static void __attribute__((constructor)) init_process(void) {
 
   // Check if the rr page is mapped. We avoid a syscall if it looks like
   // rr places librrpage as the vdso
-  if ((!getauxval || (getauxval(AT_SYSINFO_EHDR) != RR_PAGE_ADDR - 3*RR_PAGE_SIZE)) &&
-      msync((void*)RR_PAGE_ADDR, RR_PAGE_SIZE, MS_ASYNC) != 0) {
+  if ((!getauxval || (getauxval(AT_SYSINFO_EHDR) != RR_PAGE_ADDR - 3*PRELOAD_LIBRARY_PAGE_SIZE)) &&
+      msync((void*)RR_PAGE_ADDR, PRELOAD_LIBRARY_PAGE_SIZE, MS_ASYNC) != 0) {
     // The RR page is not mapped - this process is not rr traced.
     buffer_enabled = 0;
     return;
@@ -841,7 +841,7 @@ static void __attribute__((constructor)) init_process(void) {
     // preloaded without rr listening, which is allowed (e.g. after detach).
     // Otherwise give an intelligent error message indicating that our connection
     // to rr is broken.
-    if (msync((void*)RR_PAGE_ADDR + RR_PAGE_SIZE, RR_PAGE_SIZE, MS_ASYNC) == 0) {
+    if (msync((void*)RR_PAGE_ADDR + PRELOAD_LIBRARY_PAGE_SIZE, PRELOAD_LIBRARY_PAGE_SIZE, MS_ASYNC) == 0) {
       fatal("Failed to communicated with rr tracer.\n"
             "Perhaps a restrictive seccomp filter is in effect (e.g. docker?)?\n"
             "Adjust the seccomp filter to allow syscalls above 1000, disable it,\n"

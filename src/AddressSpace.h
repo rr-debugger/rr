@@ -670,11 +670,11 @@ public:
    */
   static remote_ptr<void> rr_page_start() { return RR_PAGE_ADDR; }
   static remote_ptr<void> rr_page_end() {
-    return rr_page_start() + RR_PAGE_SIZE;
+    return rr_page_start() + PRELOAD_LIBRARY_PAGE_SIZE;
   }
 
   static remote_ptr<void> preload_thread_locals_start() {
-    return rr_page_start() + RR_PAGE_SIZE;
+    return rr_page_start() + PRELOAD_LIBRARY_PAGE_SIZE;
   }
   static uint32_t preload_thread_locals_size() {
     return PRELOAD_THREAD_LOCALS_SIZE;
