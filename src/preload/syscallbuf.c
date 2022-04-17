@@ -146,13 +146,6 @@ static int buffer_enabled;
 static int process_inited;
 
 RR_HIDDEN struct preload_globals globals;
-RR_HIDDEN char impose_syscall_delay;
-RR_HIDDEN char impose_spurious_desched;
-RR_HIDDEN int (*real_pthread_mutex_init)(void* mutex, const void* attr);
-RR_HIDDEN int (*real_pthread_mutex_lock)(void* mutex);
-RR_HIDDEN int (*real_pthread_mutex_trylock)(void* mutex);
-RR_HIDDEN int (*real_pthread_mutex_timedlock)(void* mutex,
-                                              const struct timespec* abstime);
 
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
@@ -858,11 +851,6 @@ static void __attribute__((constructor)) init_process(void) {
       return;
     }
   }
-
-  real_pthread_mutex_init = dlsym(RTLD_NEXT, "pthread_mutex_init");
-  real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-  real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
-  real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
 
   process_inited = 1;
 }

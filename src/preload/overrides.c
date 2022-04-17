@@ -26,6 +26,19 @@
 #endif
 #endif
 
+static int (*real_pthread_mutex_init)(void* mutex, const void* attr);
+static int (*real_pthread_mutex_lock)(void* mutex);
+static int (*real_pthread_mutex_trylock)(void* mutex);
+static int (*real_pthread_mutex_timedlock)(void* mutex,
+                                           const struct timespec* abstime);
+
+static void __attribute__((constructor)) init_override(void) {
+  real_pthread_mutex_init = dlsym(RTLD_NEXT, "pthread_mutex_init");
+  real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
+  real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+  real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+}
+
 static void fix_mutex_kind(pthread_mutex_t* mutex) {
   /* Disable priority inheritance. */
   mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
@@ -138,6 +151,9 @@ void* XShmCreateImage(__attribute__((unused)) register void* dpy,
   return 0;
 }
 
+RR_HIDDEN char impose_syscall_delay;
+RR_HIDDEN char impose_spurious_desched;
+
 /**
  * This is for testing purposes only.
  */
@@ -172,6 +188,8 @@ uid_t geteuid(void) {
   return syscall(SYS_geteuid);
 #endif
 }
+
+#ifndef __aarch64__
 
 /**
  * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
@@ -230,3 +248,5 @@ void _ZNSt13random_device7_M_initERKSs(void* this,
   }
   random_init(this, token);
 }
+
+#endif
