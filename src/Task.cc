@@ -3690,7 +3690,7 @@ void Task::dup_from(Task *other) {
       int remote_fd = remote_this.infallible_send_fd_if_alive(here);
       if (remote_fd >= 0) {
         if (remote_fd != fd) {
-          remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
+          remote_this.infallible_syscall(syscall_number_for_dup3(this->arch()), remote_fd, fd, 0);
           remote_this.infallible_close_syscall_if_alive(remote_fd);
         }
         remote_other.infallible_syscall(
