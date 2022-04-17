@@ -139,7 +139,7 @@ static bool syscall_shares_vm(Registers r)
 {
   switch (r.original_syscallno()) {
     case Arch::clone:
-      return (CLONE_VM & r.arg1());
+      return (CLONE_VM & r.orig_arg1());
     case Arch::vfork:
       return true;
     case Arch::fork:

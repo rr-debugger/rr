@@ -6249,7 +6249,7 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::bpf:
       if (!t->regs().syscall_failed()) {
-        switch ((int)t->regs().arg1()) {
+        switch ((int)t->regs().orig_arg1()) {
           case BPF_MAP_CREATE: {
             int fd = t->regs().syscall_result_signed();
             auto attr = t->read_mem(remote_ptr<typename Arch::bpf_attr>(t->regs().arg2()));
@@ -6304,7 +6304,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         r.set_syscall_result(-EACCES);
         t->set_regs(r);
       }
-      maybe_process_new_socket(t, r.arg1());
+      maybe_process_new_socket(t, r.orig_arg1());
       break;
     }
 
@@ -6465,7 +6465,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       t->set_regs(r);
 
       if (!r.syscall_failed() && r.arg3() == O_DIRECT) {
-        int fd = r.arg1();
+        int fd = r.orig_arg1();
         // O_DIRECT can impose unknown alignment requirements, in which case
         // syscallbuf records will not be properly aligned and will cause I/O
         // to fail. Disable syscall buffering for O_DIRECT files.
@@ -6617,7 +6617,7 @@ static void rec_process_syscall_arch(RecordTask* t,
           ASSERT(t,
                  ret == -ENOENT || ret == -ENODEV || ret == -ENOTBLK ||
                      ret == -EINVAL)
-              << " unknown quotactl(" << HEX(t->regs().arg1() >> SUBCMDSHIFT)
+              << " unknown quotactl(" << HEX(t->regs().orig_arg1() >> SUBCMDSHIFT)
               << ")";
           break;
         }
