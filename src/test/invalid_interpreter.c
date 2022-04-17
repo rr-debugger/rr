@@ -9,11 +9,15 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
+#define N_MAX_TO_UNMAP 1024
+static int n_to_unmap = 0;
+static map_properties_t to_unmap[N_MAX_TO_UNMAP];
+
 void callback(__attribute__((unused)) uint64_t env, char* name, map_properties_t* props) {
   if (strstr(name, "/ld-") != 0) {
-    test_assert(0 == munmap((void*)(uintptr_t)props->start, page_size));
-    void* p = (void*)mmap((void*)(uintptr_t)props->start, page_size, PROT_NONE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
-    test_assert(p != MAP_FAILED);
+    if (n_to_unmap >= N_MAX_TO_UNMAP)
+      return;
+    to_unmap[n_to_unmap++] = *props;
   }
 }
 
@@ -21,6 +25,13 @@ int main(void) {
   page_size = sysconf(_SC_PAGESIZE);
   FILE* maps_file = fopen("/proc/self/maps", "r");
   iterate_maps(0, callback, maps_file);
+  test_assert(n_to_unmap > 0);
+  for (int i = 0; i < n_to_unmap; i++) {
+    map_properties_t *props = &to_unmap[i];
+    test_assert(0 == munmap((void*)(uintptr_t)props->start, page_size));
+    void* p = (void*)mmap((void*)(uintptr_t)props->start, page_size, PROT_NONE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+    test_assert(p != MAP_FAILED);
+  }
   breakpoint();
   return 0;
 }
