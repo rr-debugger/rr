@@ -112,13 +112,15 @@ void Task::detach() {
 }
 
 void Task::reenable_cpuid_tsc() {
-  AutoRemoteSyscalls remote(this);
-  if (session().has_cpuid_faulting()) {
-    remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
-                          ARCH_SET_CPUID, 1);
+  if (is_x86ish(arch())) {
+    AutoRemoteSyscalls remote(this);
+    if (session().has_cpuid_faulting()) {
+      remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
+                            ARCH_SET_CPUID, 1);
+    }
+    remote.infallible_syscall(syscall_number_for_prctl(arch()),
+                          PR_SET_TSC, PR_TSC_ENABLE);
   }
-  remote.infallible_syscall(syscall_number_for_prctl(arch()),
-                        PR_SET_TSC, PR_TSC_ENABLE);
 }
 
 void Task::wait_exit() {
