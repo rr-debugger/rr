@@ -18,6 +18,7 @@ expect_gdb('Old value = 1')
 expect_gdb('New value = 0')
 
 send_gdb('reverse-finish')
+send_gdb('bt')
 expect_gdb('raise')
 
 send_gdb('reverse-stepi')
