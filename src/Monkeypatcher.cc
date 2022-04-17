@@ -473,7 +473,7 @@ void unpatch_syscalls_arch<X64Arch>(Monkeypatcher &patcher, Task *t) {
 template <>
 void unpatch_syscalls_arch<ARM64Arch>(Monkeypatcher &patcher, Task *t) {
   (void)patcher; (void)t;
-  FATAL() << "Unimplemented";
+  // FATAL() << "Unimplemented";
 }
 
 void Monkeypatcher::unpatch_syscalls_in(Task *t) {
