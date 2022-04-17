@@ -359,19 +359,24 @@ add_custom_command(TARGET rrpage POST_BUILD
 
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # raw_syscall.S must be before overrides.c, which must be last.
-set(PRELOAD_FILES
-  syscall_hook.S
-  syscallbuf.c
-  raw_syscall.S
-  overrides.c
-)
+if(x86ish)
+  set(PRELOAD_FILES
+    syscall_hook.S
+    syscallbuf.c
+    raw_syscall.S
+    overrides.c
+    )
+else()
+  set(PRELOAD_FILES
+    overrides.c
+    )
+endif()
 set(PRELOAD_SOURCE_FILES
   ${PRELOAD_FILES}
   preload_interface.h
   rrcalls.h
   syscallbuf.h
 )
-if (x86ish)
 add_library(rrpreload)
 foreach(file ${PRELOAD_FILES})
   target_sources(rrpreload PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
@@ -380,7 +385,6 @@ foreach(file ${PRELOAD_FILES})
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles ${LINKER_FLAGS}")
 set_target_properties(rrpreload PROPERTIES INSTALL_RPATH "\$ORIGIN")
-endif()
 
 set(AUDIT_FILES
   rtld-audit.c
@@ -591,11 +595,9 @@ endif()
 
 set_target_properties(rr PROPERTIES LINK_FLAGS "${RR_MAIN_LINKER_FLAGS}")
 
-if (x86ish)
 target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
 )
-endif()
 
 add_executable(rr_exec_stub src/exec_stub.c)
 post_build_executable(rr_exec_stub)
@@ -662,9 +664,7 @@ install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
 set(RR_INSTALL_LIBS rrpage rraudit rr_exec_stub)
-if (x86ish)
-  set(RR_INSTALL_LIBS rrpreload ${RR_INSTALL_LIBS})
-endif()
+set(RR_INSTALL_LIBS rrpreload ${RR_INSTALL_LIBS})
 install(TARGETS ${RR_BIN} ${RR_INSTALL_LIBS}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
