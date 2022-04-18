@@ -572,7 +572,6 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
 vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
     SupportedArch arch) const {
-  DEBUG_ASSERT(format_ == XSAVE);
   switch (arch) {
     case x86:
       DEBUG_ASSERT(format_ == XSAVE);
@@ -598,9 +597,9 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
 
 void ExtraRegisters::set_user_fpregs_struct(Task* t, SupportedArch arch,
                                             void* data, size_t size) {
-  DEBUG_ASSERT(format_ == XSAVE);
   switch (arch) {
     case x86:
+      DEBUG_ASSERT(format_ == XSAVE);
       ASSERT(t, size >= sizeof(X86Arch::user_fpregs_struct));
       ASSERT(t, data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
       convert_x86_fpregs_to_fxsave(
@@ -608,9 +607,16 @@ void ExtraRegisters::set_user_fpregs_struct(Task* t, SupportedArch arch,
           reinterpret_cast<X86Arch::user_fpxregs_struct*>(data_.data()));
       return;
     case x86_64:
+      DEBUG_ASSERT(format_ == XSAVE);
       ASSERT(t, data_.size() >= sizeof(X64Arch::user_fpregs_struct));
       ASSERT(t, size >= sizeof(X64Arch::user_fpregs_struct));
       memcpy(data_.data(), data, sizeof(X64Arch::user_fpregs_struct));
+      return;
+    case aarch64:
+      DEBUG_ASSERT(format_ == NT_FPR);
+      ASSERT(t, size >= sizeof(ARM64Arch::user_fpregs_struct));
+      ASSERT(t, data_.size() >= sizeof(ARM64Arch::user_fpregs_struct));
+      memcpy(data_.data(), data, sizeof(ARM64Arch::user_fpregs_struct));
       return;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
