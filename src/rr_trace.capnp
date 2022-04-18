@@ -123,9 +123,9 @@ struct Header {
   # Replaying this trace requires at least this forward-compabilitity-version
   requiredForwardCompatibilityVersion @19 :Int32;
   # real page size of the recorded process
-  runtimePageSize @22 :Int32;
+  runtimePageSize @22 :UInt32 = 4096;
   # rr page size, i.e. the one used to build the librr_page.so
-  preloadLibraryPageSize @23 :Int32;
+  preloadLibraryPageSize @23 :UInt32 = 4096;
 }
 
 # A file descriptor belonging to a task
