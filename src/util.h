@@ -447,6 +447,12 @@ void good_random(void* out, size_t out_len);
 
 std::vector<std::string> current_env();
 
+/**
+ * Returns the number of CPUs online. This is useful for sizing a thread
+ * pool.
+ * We might see CPUs with an index >= this value, so this is not useful
+ * for comparing with CPU indices.
+ */
 int get_num_cpus();
 
 enum class TrappedInstruction {

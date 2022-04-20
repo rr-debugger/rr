@@ -1882,8 +1882,12 @@ vector<string> current_env() {
 }
 
 int get_num_cpus() {
-  int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  return cpus > 0 ? cpus : 1;
+  cpu_set_t affinity_mask;
+  int ret = sched_getaffinity(0, sizeof(affinity_mask), &affinity_mask);
+  if (ret < 0) {
+    FATAL() << "sched_getaffinity failed";
+  }
+  return CPU_COUNT(&affinity_mask);
 }
 
 static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
@@ -1971,60 +1975,6 @@ bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip) {
   return false;
 }
 
-/**
- * Read and parse the available CPU list then select a random CPU from the list.
- */
-static vector<int> get_cgroup_cpus() {
-  vector<int> cpus;
-  ifstream self_cpuset("/proc/self/cpuset");
-  if (!self_cpuset.is_open()) {
-    return cpus;
-  }
-  string cpuset_path;
-  getline(self_cpuset, cpuset_path);
-  self_cpuset.close();
-  if (cpuset_path.empty()) {
-    return cpus;
-  }
-  vector<string> allowed_cpus = read_proc_status_fields(0, "Cpus_allowed_list", NULL, NULL);
-  DEBUG_ASSERT(allowed_cpus.size() <= 1);
-  if (allowed_cpus.empty()) {
-    return cpus;
-  }
-  stringstream cpuset(allowed_cpus[0]);
-  while (true) {
-    int cpu1;
-    cpuset >> cpu1;
-    if (cpuset.fail()) {
-      return std::vector<int>{};
-    }
-    cpus.push_back(cpu1);
-    char c = cpuset.get();
-    if (cpuset.eof() || c == '\n') {
-      break;
-    } else if (c == ',') {
-      continue;
-    } else if (c != '-') {
-      return std::vector<int>{};;
-    }
-    int cpu2;
-    cpuset >> cpu2;
-    if (cpuset.fail()) {
-      return std::vector<int>{};
-    }
-    for (int cpu = cpu1 + 1; cpu <= cpu2; cpu++) {
-      cpus.push_back(cpu);
-    }
-    c = cpuset.get();
-    if (cpuset.eof() || c == '\n') {
-      break;
-    } else if (c != ',') {
-      return std::vector<int>{};
-    }
-  }
-  return cpus;
-}
-
 static string get_cpu_lock_file() {
   const char* lock_file = getenv("_RR_CPU_LOCK_FILE");
   return lock_file ? lock_file : trace_save_dir() + "/cpu_lock";
@@ -2040,10 +1990,19 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
   }
 
   // Find out which CPUs we're allowed to run on at all
-  std::vector<int> cpus = get_cgroup_cpus();
+  cpu_set_t affinity_mask;
+  int ret = sched_getaffinity(0, sizeof(affinity_mask), &affinity_mask);
+  if (ret < 0) {
+    FATAL() << "sched_getaffinity failed";
+  }
+  std::vector<int> cpus;
+  for (int i = 0; i < CPU_SETSIZE; ++i) {
+    if (CPU_ISSET(i, &affinity_mask)) {
+      cpus.push_back(i);
+    }
+  }
   if (cpus.empty()) {
-    cpus.resize(get_num_cpus());
-    std::iota(cpus.begin(), cpus.end(), 0);
+    FATAL() << "Can't find a valid CPU to run on";
   }
 
   // When many copies of rr are running on the same machine, it's easy for them
@@ -2059,8 +2018,9 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
     struct stat stat;
     int err = fstat(cpu_lock_fd_out, &stat);
     DEBUG_ASSERT(err == 0);
-    if (stat.st_size < get_num_cpus()) {
-      if (ftruncate(cpu_lock_fd_out, get_num_cpus())) {
+    int configured_cpus = (int)sysconf(_SC_NPROCESSORS_CONF);
+    if (stat.st_size < configured_cpus) {
+      if (ftruncate(cpu_lock_fd_out, configured_cpus)) {
         FATAL() << "Failed to resize locks file";
       }
     }
