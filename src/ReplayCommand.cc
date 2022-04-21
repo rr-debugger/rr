@@ -34,6 +34,9 @@ ReplayCommand ReplayCommand::singleton(
     "<EVENT-NUM>\n"
     "                             in the trace.  See -M in the general "
     "options.\n"
+    "  -e, --goto-exit            start a debug server at the end of the "
+    "recording\n"
+    "                             or the end of the specified process.\n"
     "  -o, --debugger-option=<OPTION>\n"
     "                             pass <OPTION> to debugger\n"
     "  -p, --onprocess=<PID>|<COMMAND>\n"
@@ -156,6 +159,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
   static const OptionSpec options[] = {
     { 'a', "autopilot", NO_PARAMETER },
     { 'd', "debugger", HAS_PARAMETER },
+    { 'e', "goto-exit", NO_PARAMETER },
     { 'k', "keep-listening", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
     { 'g', "goto", HAS_PARAMETER },
@@ -186,6 +190,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       break;
     case 'd':
       flags.gdb_binary_file_path = opt.value;
+      break;
+    case 'e':
+      flags.goto_event = -1;
       break;
     case 'f':
       if (!opt.verify_valid_int(1, INT32_MAX)) {
@@ -489,6 +496,11 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
+      if (target.event == -1 && target.pid == 0) {
+        // If `replay -e` is specified without a pid, go to the exit
+        // of the first process (rather than the first exit of a process).
+        target.pid = session->trace_reader().peek_frame().tid();
+      }
       GdbServer server(session, target);
 
       server_ptr = &server;

@@ -78,5 +78,6 @@ int main(void) {
   joined_threads();
 
   atomic_puts("EXIT-SUCCESS");
-  return 0;
+  exit(0);
+  return -1;
 }
