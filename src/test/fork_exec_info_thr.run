@@ -11,3 +11,4 @@ TARGET_EVENT=$(grep 'thread 2 launched ' record.out | tr ']' ' ' | awk '{print $
 echo Targeting recorded pid $TARGET_PID at event $TARGET_EVENT ...
 debug get_thread_list "-p $TARGET_PID -g 1"
 debug expect_in_atomic_printf "-p $TARGET_PID -g $TARGET_EVENT"
+debug expect_in_exit "-p $TARGET_PID -e"

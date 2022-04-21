@@ -43,6 +43,7 @@ GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
       final_event(UINT32_MAX),
       stop_replaying_to_target(false),
       interrupt_pending(false),
+      exit_sigkill_pending(false),
       emergency_debug_session(&t->session()),
       file_scope_pid(0) {
   memset(&stop_siginfo, 0, sizeof(stop_siginfo));
@@ -1311,6 +1312,18 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     }
   }
 
+  if (exit_sigkill_pending) {
+    Task* t = timeline.current_session().current_task();
+    if (t->thread_group()->tguid() == debuggee_tguid) {
+      exit_sigkill_pending = false;
+      if (req.cont().run_direction == RUN_FORWARD) {
+        dbg->notify_stop(get_threadid(t), SIGKILL);
+        memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+        return CONTINUE_DEBUGGING;
+      }
+    }
+  }
+
   if (req.cont().run_direction == RUN_FORWARD) {
     if (is_in_exec(timeline) &&
         timeline.current_session().current_task()->thread_group()->tguid() ==
@@ -1380,7 +1393,16 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
   return CONTINUE_DEBUGGING;
 }
 
-bool GdbServer::at_target() {
+static bool target_event_reached(const ReplayTimeline& timeline, const GdbServer::Target& target, const ReplayResult& result) {
+  if (target.event == -1) {
+    return is_last_thread_exit(result.break_status) &&
+      (target.pid <= 0 || result.break_status.task_context.thread_group->tgid == target.pid);
+  } else {
+    return timeline.current_session().current_trace_frame().time() > target.event;
+  }
+}
+
+bool GdbServer::at_target(ReplayResult& result) {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
   if (!timeline.current_session().done_initial_exec()) {
@@ -1390,7 +1412,8 @@ bool GdbServer::at_target() {
   if (!t) {
     return false;
   }
-  if (!timeline.can_add_checkpoint()) {
+  bool target_is_exit = target.event == -1;
+  if (!(timeline.can_add_checkpoint() || target_is_exit)) {
     return false;
   }
   if (stop_replaying_to_target) {
@@ -1409,14 +1432,13 @@ bool GdbServer::at_target() {
   // group happens to be scheduled here.  We don't take
   // "attach to process" to mean "attach to thread-group
   // leader".
-  return timeline.current_session().current_trace_frame().time() >
-             target.event &&
+  return target_event_reached(timeline, target, result) &&
          (!target.pid || t->tgid() == target.pid) &&
          (!target.require_exec || t->execed()) &&
          // Ensure we're at the start of processing an event. We don't
          // want to attach while we're finishing an exec() since that's a
          // slightly confusing state for ReplayTimeline's reverse execution.
-         !timeline.current_session().current_step_key().in_execution();
+         (!timeline.current_session().current_step_key().in_execution() || target_is_exit);
 }
 
 /**
@@ -1427,19 +1449,27 @@ void GdbServer::activate_debugger() {
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
   FrameTime event_now = next_frame.time();
   Task* t = timeline.current_session().current_task();
-  if (target.event > 0 || target.pid) {
+  if (target.event || target.pid) {
     if (stop_replaying_to_target) {
       fprintf(stderr, "\a\n"
                       "--------------------------------------------------\n"
                       " ---> Interrupted; attached to NON-TARGET process %d at event %llu.\n"
                       "--------------------------------------------------\n",
               t->tgid(), (long long)event_now);
-    } else {
+    } else if (target.event >= 0) {
       fprintf(stderr, "\a\n"
                       "--------------------------------------------------\n"
                       " ---> Reached target process %d at event %llu.\n"
                       "--------------------------------------------------\n",
               t->tgid(), (long long)event_now);
+    } else {
+      ASSERT(t, target.event == -1);
+      fprintf(stderr, "\a\n"
+                      "--------------------------------------------------\n"
+                      " ---> Reached exit of target process %d at event %llu.\n"
+                      "--------------------------------------------------\n",
+              t->tgid(), (long long)event_now);
+      exit_sigkill_pending = true;
     }
   }
 
@@ -1566,9 +1596,9 @@ void GdbServer::restart_session(const GdbRequest& req) {
     target.event = req.restart().param;
     target.event = min(final_event - 1, target.event);
     timeline.seek_to_before_event(target.event);
+    ReplayResult result;
     do {
-      ReplayResult result =
-          timeline.replay_step_forward(RUN_CONTINUE, target.event);
+      result = timeline.replay_step_forward(RUN_CONTINUE, target.event);
       // We should never reach the end of the trace without hitting the stop
       // condition below.
       DEBUG_ASSERT(result.status != REPLAY_EXITED);
@@ -1578,7 +1608,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
         in_debuggee_end_state = true;
         break;
       }
-    } while (!at_target());
+    } while (!at_target(result));
   }
   activate_debugger();
 }
@@ -1706,14 +1736,14 @@ static void print_debugger_launch_command(Task* t, const string& host,
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
+  ReplayResult result;
   do {
-    ReplayResult result =
-        timeline.replay_step_forward(RUN_CONTINUE, target.event);
+    result = timeline.replay_step_forward(RUN_CONTINUE, target.event);
     if (result.status == REPLAY_EXITED) {
       LOG(info) << "Debugger was not launched before end of trace";
       return;
     }
-  } while (!at_target());
+  } while (!at_target(result));
 
   unsigned short port = flags.dbg_port > 0 ? flags.dbg_port : getpid();
   // Don't probe if the user specified a port.  Explicitly

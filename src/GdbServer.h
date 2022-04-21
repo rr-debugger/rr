@@ -142,7 +142,7 @@ private:
    */
   void dispatch_debugger_request(Session& session, const GdbRequest& req,
                                  ReportState state);
-  bool at_target();
+  bool at_target(ReplayResult& result);
   void activate_debugger();
   void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(ReportState state = REPORT_NORMAL);
@@ -233,6 +233,8 @@ private:
   // True when a DREQ_INTERRUPT has been received but not handled, or when
   // we've restarted and want the first continue to be interrupted immediately.
   bool interrupt_pending;
+  // True when a user has run to exit before attaching the debugger.
+  bool exit_sigkill_pending;
 
   ReplayTimeline timeline;
   Session* emergency_debug_session;

@@ -89,6 +89,7 @@ public:
    * Use ReplayTimeline's breakpoint methods.
    */
   ReplaySession& current_session() { return *current; }
+  const ReplaySession& current_session() const { return *current; }
 
   /**
    * Return a mark for the current state. A checkpoint need not be retained,
