@@ -70,6 +70,7 @@ public:
         in_debuggee_end_state(false),
         stop_replaying_to_target(false),
         interrupt_pending(false),
+        exit_sigkill_pending(false),
         timeline(std::move(session)),
         emergency_debug_session(nullptr) {
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
