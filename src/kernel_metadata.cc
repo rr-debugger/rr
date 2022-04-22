@@ -101,6 +101,8 @@ string ptrace_req_name(int request) {
     CASE(PTRACE_SEIZE);
     CASE(PTRACE_INTERRUPT);
     CASE(PTRACE_LISTEN);
+    CASE(PTRACE_GETSIGMASK);
+    CASE(PTRACE_SETSIGMASK);
     // These aren't part of the official ptrace-request enum.
     PTRACE_ARCH_CASE(PTRACE_SYSEMU);
     PTRACE_ARCH_CASE(PTRACE_SYSEMU_SINGLESTEP);
