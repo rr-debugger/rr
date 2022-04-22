@@ -3274,6 +3274,14 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   new_task->set_regs(new_r);
   new_task->canonicalize_regs(new_task->arch());
   new_task->set_termination_signal(termination_signal);
+  // If the task got killed right away, we need to treat this
+  // as if we are just finished a syscall
+  // so as not to trigger the logic in handle_ptrace_exit_event().
+  // Otherwise, we'll capture the current registers as if it's a syscall entry
+  // which would look like a clone/fork/vfork syscall on the dead thread.
+  // During replay, we'll see this ghost clone and would fail to find
+  // the resulting thread from the clone and crash.
+  new_task->ip_at_last_recorded_syscall_exit = new_r.ip();
 
   /* record child id here */
   if (is_clone_syscall(original_syscall, r.arch())) {
