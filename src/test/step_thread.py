@@ -71,7 +71,8 @@ stopped_locations = {
                     '(0x[0-9a-f]+ in )?syscall_traced',
                     '(0x[0-9a-f]+ in )?rr_page_start'
                     ],
-    'aarch64': ['(0x[0-9a-f]+ in )?futex_wait'],
+    'aarch64': ['(0x[0-9a-f]+ in )?pthread_barrier_wait',
+                '(0x[0-9a-f]+ in )?futex_wait'],
 }
 
 location_regex = '|'.join(stopped_locations[arch])
