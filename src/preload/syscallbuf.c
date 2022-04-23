@@ -196,6 +196,37 @@ static void local_memcpy(void* dest, const void* source, int n) {
                        : "+S"(source), "+D"(dest), "+c"(n)
                        :
                        : "cc", "memory");
+#elif defined(__aarch64__)
+  long c1;
+  long c2;
+  __asm__ __volatile__("subs %4, %2, 16\n\t"
+                       "b.lt 2f\n\t"
+                       "1:\n\t"
+                       "mov %2, %4\n\t"
+                       "ldp %3, %4, [%1], #16\n\t"
+                       "stp %3, %4, [%0], #16\n\t"
+                       "subs %4, %2, #16\n\t"
+                       "b.ge 1b\n"
+                       "2:\n\t"
+                       "tbz %2, 3, 3f\n\t"
+                       "ldr %3, [%1], #8\n\t"
+                       "str %3, [%0], #8\n\t"
+                       "3:\n\t"
+                       "tbz %2, 2, 3f\n\t"
+                       "ldr %w3, [%1], #4\n\t"
+                       "str %w3, [%0], #4\n\t"
+                       "3:\n\t"
+                       "tbz %2, 1, 3f\n\t"
+                       "ldrh %w3, [%1], #2\n\t"
+                       "strh %w3, [%0], #2\n\t"
+                       "3:\n\t"
+                       "tbz %2, 0, 3f\n\t"
+                       "ldrb %w3, [%1]\n\t"
+                       "strb %w3, [%0]\n\t"
+                       "3:\n\t"
+                       : "+r"(dest), "+r"(source), "+r"(n), "=&r"(c1), "=&r"(c2)
+                       :
+                       : "cc", "memory");
 #else
 #error Unknown architecture
 #endif
@@ -212,6 +243,27 @@ static void local_memset(void* dest, uint8_t c, int n) {
    */
   __asm__ __volatile__("rep stosb\n\t"
                        : "+a"(c), "+D"(dest), "+c"(n)
+                       :
+                       : "cc", "memory");
+#elif defined(__aarch64__)
+  double v1;
+  long n2;
+  __asm__ __volatile__("subs %4, %2, 32\n\t"
+                       "b.lt 2f\n\t"
+                       "dup %3.16b, %w0\n"
+                       "1:\n\t"
+                       "mov %2, %4\n\t"
+                       "stp %q3, %q3, [%1], #32\n\t"
+                       "subs %4, %2, #32\n\t"
+                       "b.ge 1b\n"
+                       "2:\n\t"
+                       "cbz %2, 4f\n"
+                       "3:\n\t"
+                       "strb %w0, [%1], #1\n\t"
+                       "subs %2, %2, #1\n\t"
+                       "b.ne 3b\n"
+                       "4:\n\t"
+                       : "+r"(c), "+r"(dest), "+r"(n), "=x"(v1), "=r"(n2)
                        :
                        : "cc", "memory");
 #else
@@ -370,7 +422,6 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
   thread_locals->pending_untraced_syscall_result = &rec->ret;
   long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
                           syscall_instruction, 0, 0);
-  unsigned char tmp_in_replay = globals.in_replay;
 /* During replay, return the result that's already in the buffer, instead
    of what our "syscall" returned. */
 #if defined(__i386__) || defined(__x86_64__)
@@ -382,11 +433,24 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
    * This all assumes the compiler doesn't create unnecessary temporaries
    * holding values like |ret|. Inspection of generated code shows it doesn't.
    */
+  unsigned char tmp_in_replay = globals.in_replay;
   __asm__("test %1,%1\n\t"
           "cmovne %2,%0\n\t"
           "xor %1,%1\n\t"
           : "+a"(ret), "+c"(tmp_in_replay)
           : "m"(rec->ret)
+          : "cc");
+#elif defined(__aarch64__)
+  unsigned char *globals_in_replay = &globals.in_replay;
+  long *rec_ret = &rec->ret;
+  __asm__("ldrb %w1, [%1]\n\t" // tmp_in_replay = globals.in_replay
+          "ldr %2, [%2]\n\t" // tmp = rec->ret
+          "cmp %w1, #0\n\t"
+          "csel %0, %0, %2, eq\n\t" // ret = tmp_in_replay ? tmp : ret
+          "subs %1, xzr, xzr\n\t" // clear tmp_in_replay and flag
+          "mov %2, xzr\n\t" // clear tmp
+          : "+r"(ret), "+r"(globals_in_replay), "+r"(rec_ret)
+          :
           : "cc");
 #else
 #error Unknown architecture
@@ -1094,8 +1158,15 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
 }
 
 static void force_tick(void) {
+#if defined(__i386__) || defined(__x86_64__)
   __asm__ __volatile__("je 1f\n\t"
                        "1:");
+#elif defined(__aarch64__)
+  __asm__ __volatile__("cbz xzr, 1f\n"
+                       "1:");
+#else
+#error Unknown architecture
+#endif
 }
 
 static void __attribute__((noinline)) do_breakpoint(size_t value)
@@ -1103,6 +1174,7 @@ static void __attribute__((noinline)) do_breakpoint(size_t value)
   char *unsafe_value = ((char*)-1)-0xf;
   char **safe_value = &unsafe_value;
   uint64_t *breakpoint_value_addr = &globals.breakpoint_value;
+#if defined(__i386__) || defined(__x86_64__)
   __asm__ __volatile__(
                       "mov (%1),%1\n\t"
                       "cmp %0,%1\n\t"
@@ -1121,6 +1193,22 @@ static void __attribute__((noinline)) do_breakpoint(size_t value)
                         "+S"(safe_value), "+c"(unsafe_value)
                       :
                       : "cc", "memory");
+#elif defined(__aarch64__)
+  __asm__ __volatile__("ldr %1, [%1]\n\t"
+                       "cmp %0, %1\n\t"
+                       "csel %0, %3, %2, eq\n\t"
+                       "do_breakpoint_fault_addr:\n\t"
+                       ".global do_breakpoint_fault_addr\n\t"
+                       "ldr %0, [%0]\n\t"
+                       "subs %0, xzr, xzr\n\t"
+                       "mov %1, xzr\n\t"
+                       : "+r"(value), "+r"(breakpoint_value_addr),
+                         "+r"(safe_value), "+r"(unsafe_value)
+                       :
+                       : "cc", "memory");
+#else
+#error Unknown architecture
+#endif
 }
 
 /**
@@ -1253,6 +1341,45 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
                        : "+a"(tmp_in_replay), "+D"(buf), "+S"(src), "+c"(size)
                        :
                        : "cc", "memory");
+#elif defined(__aarch64__)
+  long c1;
+  long c2;
+  unsigned char *globals_in_replay = &globals.in_replay;
+  __asm__ __volatile__("ldrb %w3, [%5]\n\t"
+                       "cmp %3, #0\n\t" // eq -> record
+                       "csel %1, %1, %0, eq\n\t"
+                       "subs %4, %2, 16\n\t"
+                       "b.lt 2f\n\t"
+                       "1:\n\t"
+                       "mov %2, %4\n\t"
+                       "ldp %3, %4, [%1], #16\n\t"
+                       "stp %3, %4, [%0], #16\n\t"
+                       "subs %4, %2, #16\n\t"
+                       "b.ge 1b\n"
+                       "2:\n\t"
+                       "tbz %2, 3, 3f\n\t"
+                       "ldr %3, [%1], #8\n\t"
+                       "str %3, [%0], #8\n\t"
+                       "3:\n\t"
+                       "tbz %2, 2, 3f\n\t"
+                       "ldr %w3, [%1], #4\n\t"
+                       "str %w3, [%0], #4\n\t"
+                       "3:\n\t"
+                       "tbz %2, 1, 3f\n\t"
+                       "ldrh %w3, [%1], #2\n\t"
+                       "strh %w3, [%0], #2\n\t"
+                       "3:\n\t"
+                       "tbz %2, 0, 3f\n\t"
+                       "ldrb %w3, [%1]\n\t"
+                       "strb %w3, [%0]\n\t"
+                       "3:\n\t"
+                       "subs %3, xzr, xzr\n\t"
+                       "mov %4, xzr\n\t"
+                       "mov %1, xzr\n\t"
+                       : "+r"(buf), "+r"(src),
+                         "+r"(size), "=&r"(c1), "=&r"(c2), "+r"(globals_in_replay)
+                       :
+                       : "cc", "memory");
 #else
 #error Unknown architecture
 #endif
@@ -1277,8 +1404,6 @@ static void rdtsc_recording_only(uint32_t buf[2]) {
                        : "S"(buf)
                        : "cc", "memory", "rdx");
 }
-#else
-#error Unknown architecture
 #endif
 
 /**
@@ -1299,6 +1424,19 @@ static void copy_futex_int(uint32_t* buf, uint32_t* real) {
                        "xor %0,%0\n\t"
                        : "+a"(tmp_in_replay)
                        : "m"(*buf), "m"(*real)
+                       : "cc", "memory");
+#elif defined(__aarch64__)
+  unsigned char *globals_in_replay = &globals.in_replay;
+  __asm__ __volatile__("ldrb %w2, [%2]\n\t"
+                       "cmp %w2, #0\n\t" // eq -> record
+                       "csel %2, %1, %0, eq\n\t"
+                       "ldr %w2, [%2]\n\t"
+                       "csel %0, %0, %1, eq\n\t"
+                       "str %w2, [%0]\n\t"
+                       "subs %0, xzr, xzr\n\t"
+                       "mov %2, xzr\n\t"
+                       : "+r"(buf), "+r"(real), "+r"(globals_in_replay)
+                       :
                        : "cc", "memory");
 #else
 #error Unknown architecture
