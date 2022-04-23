@@ -566,6 +566,9 @@ void SAFE_FATAL(int err, const char *msg);
 
 bool coredumping_signal_takes_down_entire_vm();
 
+/* Parse tid from the proc file system path /proc/<pid>/<property> or /proc/<pid>/task/<tid>/<property> */
+int parse_tid_from_proc_path(const std::string& pathname, const std::string& property);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
