@@ -29,7 +29,24 @@ static void close_upper_fds(void) {
   closedir(dir);
 }
 
-int main(void) {
+int opener(void) {
+  const char proc_fd_path[] = "/proc/self/fd";
+  int fd = syscall(SYS_openat, -1, proc_fd_path, O_DIRECTORY);
+  test_assert(fd >= 0);
+  return fd;
+}
+
+int opener_task_tid(void) {
+  char buf[1024];
+  int dir_fd = open("/proc/self", O_PATH);
+  test_assert(dir_fd >= 0);
+  sprintf(buf, "task/%d/fd", gettid());
+  int fd = syscall(SYS_openat, dir_fd, buf, O_DIRECTORY);
+  test_assert(fd >= 0);
+  return fd;
+}
+
+void do_test(int (*opener)(void)) {
   // Empirically tested to be enough to make ProcFdDirMonitor
   // repeat the getdents call.
   const int NUM_THREADS = 20;
@@ -55,9 +72,7 @@ int main(void) {
 
   pthread_barrier_wait(&bar);
 
-  const char proc_fd_path[] = "/proc/self/fd";
-  int fd = syscall(SYS_openat, -1, proc_fd_path, O_DIRECTORY);
-  test_assert(fd >= 0);
+  int fd = opener();
 
   char buf[128];
   char* current;
@@ -74,6 +89,11 @@ int main(void) {
       current += ent->d_reclen;
     }
   }
+}
+
+int main(void) {
+  do_test(opener);
+  do_test(opener_task_tid);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

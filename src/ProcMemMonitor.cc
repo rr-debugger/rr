@@ -17,16 +17,11 @@ namespace rr {
 ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
   // XXX this makes some assumptions about namespaces... Probably fails
   // if |t| is not the same pid namespace as rr
-  if (pathname.substr(0, 6) == string("/proc/") &&
-      pathname.substr(pathname.size() - 4, 4) == string("/mem")) {
-    string s = pathname.substr(6, pathname.size() - 10);
-    char* end;
-    int tid = strtol(s.c_str(), &end, 10);
-    if (!*end) {
-      Task* target = t->session().find_task(tid);
-      if (target) {
-        auid = target->vm()->uid();
-      }
+  int tid = parse_tid_from_proc_path(pathname, "/mem");
+  if (tid > 0) {
+    Task* target = t->session().find_task(tid);
+    if (target) {
+      auid = target->vm()->uid();
     }
   }
 }

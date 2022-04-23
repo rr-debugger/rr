@@ -19,14 +19,43 @@ static int do_openat(int child) {
   return fd;
 }
 
+static int do_openat_task_tid(int child) {
+  char buf[1024];
+  int fd;
+  int dir_fd = open("/proc", O_PATH);
+  test_assert(dir_fd >= 0);
+  sprintf(buf, "%d/task/%d/mem", child, child);
+  fd = openat(dir_fd, buf, O_RDWR);
+  close(dir_fd);
+  return fd;
+}
+
+static int do_openat_task_tid2(int child) {
+  char buf[1024];
+  int fd;
+  sprintf(buf, "/proc/%d/task", child);
+  int dir_fd = open(buf, O_PATH);
+  test_assert(dir_fd >= 0);
+  sprintf(buf, "%d/mem", child);
+  fd = openat(dir_fd, buf, O_RDWR);
+  close(dir_fd);
+  return fd;
+}
+
 static int do_open(int child) {
   char buf[1024];
   sprintf(buf, "/proc/%d/mem", child);
   return open(buf, O_RDWR);
 }
 
-static int do_cmsg_generic(int child, int use_recvmmsg) {
-  int fd = do_open(child);
+static int do_open_task_tid(int child) {
+  char buf[1024];
+  sprintf(buf, "/proc/%d/task/%d/mem", child, child);
+  return open(buf, O_RDWR);
+}
+
+static int do_cmsg_generic(int (*opener)(int), int child, int use_recvmmsg) {
+  int fd = opener(child);
   /* launder it through SCM_RIGHTS */
   char ch = 0;
   struct mmsghdr msgvec;
@@ -68,9 +97,17 @@ static int do_cmsg_generic(int child, int use_recvmmsg) {
   return fd;
 }
 
-static int do_cmsg(int child) { return do_cmsg_generic(child, 0); }
+static int do_cmsg(int child) { return do_cmsg_generic(do_open, child, 0); }
+static int do_cmsg_open_task_tid(int child) { return do_cmsg_generic(do_open_task_tid, child, 0); }
+static int do_cmsg_openat(int child) { return do_cmsg_generic(do_openat, child, 0); }
+static int do_cmsg_openat_task_tid(int child) { return do_cmsg_generic(do_openat_task_tid, child, 0); }
+static int do_cmsg_openat_task_tid2(int child) { return do_cmsg_generic(do_openat_task_tid2, child, 0); }
 
-static int do_cmsg_recvmmsg(int child) { return do_cmsg_generic(child, 1); }
+static int do_cmsg_recvmmsg(int child) { return do_cmsg_generic(do_open, child, 1); }
+static int do_cmsg_recvmmsg_open_task_tid(int child) { return do_cmsg_generic(do_open_task_tid, child, 1); }
+static int do_cmsg_recvmmsg_openat(int child) { return do_cmsg_generic(do_openat, child, 1); }
+static int do_cmsg_recvmmsg_openat_task_tid(int child) { return do_cmsg_generic(do_openat_task_tid, child, 1); }
+static int do_cmsg_recvmmsg_openat_task_tid2(int child) { return do_cmsg_generic(do_openat_task_tid2, child, 1); }
 
 static void do_test(int (*opener)(int)) {
   pid_t child;
@@ -112,9 +149,20 @@ static void do_test(int (*opener)(int)) {
 
 int main(void) {
   do_test(do_open);
+  do_test(do_open_task_tid);
   do_test(do_openat);
+  do_test(do_openat_task_tid);
+  do_test(do_openat_task_tid2);
   do_test(do_cmsg);
+  do_test(do_cmsg_open_task_tid);
+  do_test(do_cmsg_openat);
+  do_test(do_cmsg_openat_task_tid);
+  do_test(do_cmsg_openat_task_tid2);
   do_test(do_cmsg_recvmmsg);
+  do_test(do_cmsg_recvmmsg_open_task_tid);
+  do_test(do_cmsg_recvmmsg_openat);
+  do_test(do_cmsg_recvmmsg_openat_task_tid);
+  do_test(do_cmsg_recvmmsg_openat_task_tid2);
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

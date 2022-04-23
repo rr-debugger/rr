@@ -2404,4 +2404,36 @@ bool coredumping_signal_takes_down_entire_vm() {
   return coredumping_signal_vm_behavior > 0;
 }
 
+int parse_tid_from_proc_path(const std::string& pathname,
+                             const std::string& property) {
+  // XXX When rr becomes c++17 - use string view instead. Has better API for
+  // this stuff.
+  const auto proc_length = 6;
+  const auto prop_should_begin =
+      pathname.size() - property.size() - (pathname.back() == '/');
+  if (pathname.substr(prop_should_begin, property.size()) == property) {
+    const auto task = "task/"s;
+    const auto pos = pathname.find(task);
+    if (pos == std::string::npos) {
+      auto s = pathname.substr(proc_length);
+      if (pathname.back() == '/')
+        s.pop_back();
+      char* end;
+      const int tid = strtol(s.c_str(), &end, 10);
+      if (end == property) {
+        return tid;
+      }
+    } else {
+      auto s = pathname.substr(pos + task.size());
+      if (pathname.back() == '/')
+        s.pop_back();
+      char* end;
+      const int tid = strtol(s.c_str(), &end, 10);
+      if (end == property) {
+        return tid;
+      }
+    }
+  }
+  return -1;
+}
 } // namespace rr
