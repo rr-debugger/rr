@@ -53,6 +53,7 @@ configure_file(
 set(FLAGS_COMMON "-D__USE_LARGEFILE64 -pthread")
 set(supports32bit true)
 set(x86ish false)
+set(has_syscallbuf false)
 if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
   set(supports32bit false)
   set(FLAGS_COMMON "${FLAGS_COMMON} -march=armv8.3-a -moutline-atomics")
@@ -60,6 +61,7 @@ if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
   set(VDSO_NAME "LINUX_2.6.39")
 else()
   set(x86ish true)
+  set(has_syscallbuf true)
   set(FLAGS_COMMON "${FLAGS_COMMON} -msse2 -D__MMX__ -D__SSE__ -D__SSE2__")
   set(PRELOAD_LIBRARY_PAGE_SIZE 4096)
   set(VDSO_NAME "LINUX_2.6")
@@ -410,7 +412,7 @@ add_custom_command(TARGET rrpage POST_BUILD
 
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # raw_syscall.S must be before overrides.c, which must be last.
-if(x86ish)
+if(has_syscallbuf)
   set(PRELOAD_FILES
     syscall_hook.S
     syscallbuf.c
