@@ -837,7 +837,7 @@ template <>
 void patch_at_preload_init_arch<ARM64Arch>(RecordTask* t,
                                            Monkeypatcher&) {
   auto params = t->read_mem(
-      remote_ptr<rrcall_init_preload_params<ARM64Arch>>(t->regs().arg1()));
+      remote_ptr<rrcall_init_preload_params<ARM64Arch>>(t->regs().orig_arg1()));
   if (!params.syscallbuf_enabled) {
     return;
   }
