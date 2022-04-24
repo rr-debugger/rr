@@ -835,13 +835,15 @@ void patch_at_preload_init_arch<X64Arch>(RecordTask* t,
 
 template <>
 void patch_at_preload_init_arch<ARM64Arch>(RecordTask* t,
-                                           Monkeypatcher&) {
+                                           Monkeypatcher& patcher) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<ARM64Arch>>(t->regs().orig_arg1()));
   if (!params.syscallbuf_enabled) {
     return;
   }
-  FATAL() << "Unimplemented";
+
+  patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
+                                        params.syscall_patch_hooks);
 }
 
 void Monkeypatcher::patch_after_exec(RecordTask* t) {
