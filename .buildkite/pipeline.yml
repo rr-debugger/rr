@@ -1,7 +1,3 @@
-agents:
-  queue: "juliaecosystem"
-  sandbox.jl: "true"
-  os: "linux"
 steps:
   - label: "Run Tests (x86_64)"
     key: "runtests:linux:x86_64"
@@ -17,6 +13,11 @@ steps:
           workspaces:
             - "/cache:/cache"
     timeout_in_minutes: 45
+    agents:
+    queue: "juliaecosystem"
+    sandbox.jl: "true"
+    os: "linux"
+    arch: "x86_64"
     commands: |
       echo "--- Print kernel information"
       uname -a
