@@ -308,6 +308,10 @@ public:
    * Emulate a jump to a new IP, updating the ticks counter as appropriate.
    */
   void emulate_jump(remote_code_ptr);
+  void count_direct_jump()
+  {
+    ticks += PerfCounters::ticks_for_unconditional_direct_branch(this);
+  }
 
   /**
    * Return true if this is at an arm-desched-event or

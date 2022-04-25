@@ -125,13 +125,15 @@ public:
   };
   std::vector<ExtendedJumpPage> extended_jump_pages;
 
-  bool is_jump_stub_instruction(remote_code_ptr p);
+  bool is_jump_stub_instruction(remote_code_ptr p, bool include_safearea);
 
   struct patched_syscall {
     // Pointer to hook inside the syscall_hooks array, which gets initialized
     // once and is fixed afterwars.
     const syscall_patch_hook *hook;
     size_t size;
+    uint16_t safe_prefix = 0;
+    uint16_t safe_suffix = 0;
   };
 
   /**

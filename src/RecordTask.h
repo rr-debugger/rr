@@ -357,6 +357,10 @@ public:
   /**
    * Return true if this is within the syscallbuf library.  This
    * *does not* imply that $ip is at a buffered syscall.
+   * This also includes the runtime stub code that runs
+   * before entering syscallbuf but does not include the "safe area".
+   * Returning true from this function implies that the code will execute
+   * `_syscallbuf_final_exit_instruction` before returning to normal code.
    */
   bool is_in_syscallbuf();
   /**
