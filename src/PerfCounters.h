@@ -79,6 +79,10 @@ public:
    */
   static Ticks ticks_for_unconditional_indirect_branch(Task*);
   /**
+   * Return the number of ticks we need for an emulated direct branch.
+   */
+  static Ticks ticks_for_unconditional_direct_branch(Task*);
+  /**
    * Return the number of ticks we need for a direct call.
    */
   static Ticks ticks_for_direct_call(Task*);

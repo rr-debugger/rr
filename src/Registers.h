@@ -414,6 +414,16 @@ public:
     u.arm64regs.x[7] = x7;
   }
 
+  void set_x15(uintptr_t x15) {
+    DEBUG_ASSERT(arch() == aarch64);
+    u.arm64regs.x[15] = x15;
+  }
+
+  void set_xlr(uintptr_t xlr) {
+    DEBUG_ASSERT(arch() == aarch64);
+    u.arm64regs.x[30] = xlr;
+  }
+
   uintptr_t x1() const {
     DEBUG_ASSERT(arch() == aarch64);
     return u.arm64regs.x[1];

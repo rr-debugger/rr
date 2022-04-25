@@ -1549,7 +1549,7 @@ bool RecordTask::is_in_syscallbuf() {
       p = addr;
     }
   }
-  return as->monkeypatcher().is_jump_stub_instruction(p) ||
+  return as->monkeypatcher().is_jump_stub_instruction(p, false) ||
          (syscallbuf_code_layout.syscallbuf_code_start <= p &&
           p < syscallbuf_code_layout.syscallbuf_code_end);
 }

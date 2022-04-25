@@ -728,7 +728,13 @@ void PerfCounters::stop_counting() {
   }
 }
 
+// Note that on aarch64 this is also used to get the count for `ret`
 Ticks PerfCounters::ticks_for_unconditional_indirect_branch(Task*) {
+  DEBUG_ASSERT(attributes_initialized);
+  return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
+}
+
+Ticks PerfCounters::ticks_for_unconditional_direct_branch(Task*) {
   DEBUG_ASSERT(attributes_initialized);
   return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }

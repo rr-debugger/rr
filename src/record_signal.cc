@@ -244,6 +244,17 @@ static remote_code_ptr get_stub_scratch_1(RecordTask* t) {
   RR_ARCH_FUNCTION(get_stub_scratch_1_arch, t->arch(), t);
 }
 
+template <typename Arch>
+static void get_stub_scratch_2_arch(RecordTask* t, void *buff, size_t sz) {
+  auto locals = t->read_mem(AddressSpace::preload_thread_locals_start()
+                                .cast<preload_thread_locals<Arch>>());
+  memcpy(buff, locals.stub_scratch_2, sz);
+}
+
+static void get_stub_scratch_2(RecordTask* t, void *buff, size_t sz) {
+  RR_ARCH_FUNCTION(get_stub_scratch_2_arch, t->arch(), t, buff, sz);
+}
+
 /**
  * This function is responsible for handling breakpoints we set in syscallbuf
  * code to detect sigprocmask calls and syscallbuf exit. It's called when we
@@ -257,8 +268,23 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
   if (t->is_at_syscallbuf_final_instruction_breakpoint()) {
     LOG(debug) << "Reached final syscallbuf instruction, singlestepping to "
                   "enable signal dispatch";
-    // This is a single instruction that jumps to the location stored in
-    // preload_thread_locals::stub_scratch_1. Emulate it.
+    // Emulate the effect of the return from syscallbuf.
+    // On x86, this is a single instruction that jumps to the location stored in
+    // preload_thread_locals::stub_scratch_1.
+    // On aarch64, the target of the jump is an instruction that restores
+    // x15 and x30 and then jump back to the syscall.
+    // To minimize the surprise to the tracee if we decide to deliver a signal
+    // we'll emulate the register restore and return directly to the syscall site.
+    // The address in stub_scratch_1 is already the correct address for this.
+    if (t->arch() == aarch64) {
+      uint64_t x15_x30[2];
+      get_stub_scratch_2(t, x15_x30, 16);
+      Registers r = t->regs();
+      r.set_x15(x15_x30[0]);
+      r.set_xlr(x15_x30[1]);
+      t->set_regs(r);
+      t->count_direct_jump();
+    }
     t->emulate_jump(get_stub_scratch_1(t));
 
     restore_sighandler_if_not_default(t, SIGTRAP);
