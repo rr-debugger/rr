@@ -13,6 +13,8 @@ steps:
           workspaces:
             - "/cache:/cache"
     timeout_in_minutes: 45
+    priority: -99
+    parallelism: 100
     agents:
       queue: "juliaecosystem"
       sandbox.jl: "true"
