@@ -145,7 +145,12 @@ static inline const char* extract_file_name(const char* s) {
 /* PRELOAD_THREAD_LOCALS_ADDR should not change.
  * Tools depend on this address. */
 #define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PRELOAD_LIBRARY_PAGE_SIZE)
-#define PRELOAD_THREAD_LOCALS_SIZE 104
+#ifdef __aarch64__
+#define PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE (1024 + 8 * 2)
+#else
+#define PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE 0
+#endif
+#define PRELOAD_THREAD_LOCALS_SIZE (104 + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE)
 
 #include "rrcalls.h"
 
@@ -369,6 +374,8 @@ struct preload_thread_locals {
   size_t usable_scratch_size;
 
   PTR(struct msghdr) notify_control_msg;
+
+  uint8_t stub_scratch_2[PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE];
 };
 
 // The set of flags that can be set for each fd in syscallbuf_fds_disabled.

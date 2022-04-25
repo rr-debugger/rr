@@ -2246,6 +2246,10 @@ static void setup_preload_thread_locals_from_clone_arch(Task* t, Task* origin) {
     locals->saved_flags = origin_locals->saved_flags;
     // clone() syscalls set the child stack pointer, so the child is no
     // longer in the syscallbuf code even if the parent was.
+    if (PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE >= 8 * 2) {
+      // On aarch64, we use this to save and restore some register values across clone
+      memcpy(locals->stub_scratch_2, origin_locals->stub_scratch_2, 8 * 2);
+    }
   }
 }
 
