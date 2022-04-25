@@ -934,7 +934,10 @@ static void __attribute__((constructor)) init_process(void) {
       (uintptr_t)_syscall_hook_trampoline_b8_ca_00_00_00 },
   };
 #elif defined(__aarch64__)
-  struct syscall_patch_hook syscall_patch_hooks[] = {};
+  extern RR_HIDDEN void _syscall_hook_trampoline_raw(void);
+  struct syscall_patch_hook syscall_patch_hooks[] = {
+    { 0, 4, { 0x01, 0, 0, 0xd4 }, (uintptr_t)_syscall_hook_trampoline_raw }
+  };
 #endif
 
   assert(sizeof(struct preload_thread_locals) <= PRELOAD_THREAD_LOCALS_SIZE);
