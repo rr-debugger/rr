@@ -833,7 +833,6 @@ static void __attribute__((constructor)) init_process(void) {
   params.breakpoint_mode_sentinel = -1;
   params.syscallbuf_syscall_hook = (void*)syscall_hook;
 
-  privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
   int err = privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
   if (err != 0) {
     // Check if the rr tracer is present by looking for the thread local page
