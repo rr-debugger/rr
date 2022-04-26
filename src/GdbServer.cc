@@ -71,6 +71,9 @@ static const string& gdb_rr_macros() {
        << "document seek-ticks\n"
        << "restart at given ticks value\n"
        << "end\n"
+       << "define jump\n"
+       << "  rr-denied jump\n"
+       << "end\n"
        // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
        // issued before any user-generated resume-execution command
        // results in gdb hanging just after the inferior hits an internal
