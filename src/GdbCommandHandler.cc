@@ -86,6 +86,17 @@ class RRWhere(gdb.Command):
 
 RRWhere()
 
+class RRDenied(gdb.Command):
+    """Helper to prevent use of breaking commands. Used by auto-args"""
+    def __init__(self):
+        gdb.Command.__init__(self, 'rr-denied',
+                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, False)
+
+    def invoke(self, arg, from_tty):
+        raise gdb.GdbError("Execution of '" + arg + "' is not possible in recorded executions.")
+
+RRDenied()
+
 class RRCmd(gdb.Command):
     def __init__(self, name, auto_args):
         gdb.Command.__init__(self, name,
