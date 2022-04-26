@@ -5,7 +5,7 @@
 int main(void) {
   long ncpus = sysconf(_SC_NPROCESSORS_CONF);
   unsigned cpu;
-  int ret = getcpu(&cpu, NULL);
+  int ret = sys_getcpu(&cpu, NULL);
   test_assert(ret == 0);
   atomic_printf("sysconf says %ld processors are configured, getcpu()=%d\n", ncpus, cpu);
 

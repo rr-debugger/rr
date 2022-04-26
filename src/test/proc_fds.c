@@ -40,7 +40,7 @@ int opener_task_tid(void) {
   char buf[1024];
   int dir_fd = open("/proc/self", O_PATH);
   test_assert(dir_fd >= 0);
-  sprintf(buf, "task/%d/fd", gettid());
+  sprintf(buf, "task/%d/fd", sys_gettid());
   int fd = syscall(SYS_openat, dir_fd, buf, O_DIRECTORY);
   test_assert(fd >= 0);
   return fd;

@@ -201,6 +201,14 @@ inline static int atomic_assert(int cond, const char *str) {
 inline static pid_t sys_gettid(void) { return syscall(SYS_gettid); }
 
 /**
+ * get the current cpu/node
+ */
+inline static int sys_getcpu(unsigned int* cpu, unsigned int* node) {
+  /* The 'tcache' parameter is unused in all kernels rr works on */
+  return syscall(SYS_getcpu, cpu, node, (void*)0);
+}
+
+/**
  * Ensure that |len| bytes of |buf| are the same across recording and
  * replay.
  */
