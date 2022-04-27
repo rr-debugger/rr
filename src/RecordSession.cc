@@ -888,6 +888,9 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
     if (t->is_dying()) {
       return;
     }
+    if (t->status().is_syscall()) {
+      t->apply_syscall_entry_regs();
+    }
     /* We can safely ignore TIME_SLICE_SIGNAL while trying to
      * reach the disarm-desched ioctl: once we reach it,
      * the desched'd syscall will be "done" and the tracee

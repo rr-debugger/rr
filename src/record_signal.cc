@@ -426,6 +426,7 @@ static void handle_desched_event(RecordTask* t) {
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
 
     if (t->status().is_syscall()) {
+      t->apply_syscall_entry_regs();
       if (t->is_arm_desched_event_syscall()) {
         continue;
       }
