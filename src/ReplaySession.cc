@@ -533,6 +533,7 @@ Completion ReplaySession::cont_syscall_boundary(
     return INCOMPLETE;
   }
 
+  t->apply_syscall_entry_regs();
   return COMPLETE;
 }
 
