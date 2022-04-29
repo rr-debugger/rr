@@ -533,22 +533,7 @@ static void handle_seccomp_trap(RecordTask* t,
   si.native_api.si_signo = SIGSYS;
   si.native_api.si_errno = seccomp_data;
   si.native_api.si_code = SYS_SECCOMP;
-  switch (r.arch()) {
-    case x86:
-      si.native_api._sifields._sigsys._arch = AUDIT_ARCH_I386;
-      break;
-    case x86_64:
-      si.native_api._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
-      break;
-    #ifdef AUDIT_ARCH_AARCH64
-    case aarch64:
-      si.native_api._sifields._sigsys._arch = AUDIT_ARCH_AARCH64;
-      break;
-    #endif
-    default:
-      DEBUG_ASSERT(0 && "Unknown architecture");
-      break;
-  }
+  si.native_api._sifields._sigsys._arch = to_audit_arch(r.arch());
   si.native_api._sifields._sigsys._syscall = syscallno;
   // Documentation says that si_call_addr is the address of the syscall
   // instruction, but in tests it's immediately after the syscall
@@ -731,9 +716,25 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         t->did_waitpid(status);
       }
       t->post_exec();
+      t->session().scheduler().did_exit_execve(t);
 
-      // Skip past the ptrace event.
-      step_state->continue_type = CONTINUE_SYSCALL;
+      // Forward ptrace exec notification
+      if (t->emulated_ptracer) {
+        if (t->emulated_ptrace_options & PTRACE_O_TRACEEXEC) {
+          t->emulate_ptrace_stop(
+              WaitStatus::for_ptrace_event(PTRACE_EVENT_EXEC));
+        } else if (!t->emulated_ptrace_seized) {
+          // Inject legacy SIGTRAP-after-exec
+          t->tgkill(SIGTRAP);
+        }
+      }
+
+      if (t->emulated_stop_pending) {
+        step_state->continue_type = DONT_CONTINUE;
+      } else {
+        // Skip past the ptrace event.
+        step_state->continue_type = CONTINUE_SYSCALL;
+      }
       break;
     }
 
@@ -1033,11 +1034,11 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
 
 static void maybe_trigger_emulated_ptrace_syscall_exit_stop(RecordTask* t) {
   if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL) {
-    t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
+    t->emulate_ptrace_stop(WaitStatus::for_syscall(t), SYSCALL_EXIT_STOP);
   } else if (is_ptrace_any_singlestep(t->arch(), t->emulated_ptrace_cont_command)) {
     // Deliver the singlestep trap now that we've finished executing the
     // syscall.
-    t->emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGTRAP), nullptr,
+    t->emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGTRAP), SIGNAL_DELIVERY_STOP, nullptr,
                            SI_KERNEL);
   }
 }
@@ -1904,7 +1905,7 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
         t->emulated_ptrace_cont_command)) &&
       !is_in_privileged_syscall(t)) {
     t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
-    t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
+    t->emulate_ptrace_stop(WaitStatus::for_syscall(t), SYSCALL_ENTRY_STOP);
     t->record_current_event();
 
     t->ev().Syscall().in_sysemu = is_ptrace_any_sysemu(t->arch(),
@@ -2401,6 +2402,7 @@ RecordSession::RecordResult RecordSession::record_step() {
       handle_ptrace_event(&t, &step_state, &result, &did_enter_syscall)) {
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {
+      last_task_switchable = ALLOW_SWITCH;
       return result;
     }
 

@@ -39,6 +39,13 @@ int main(void) {
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f));
 
+  test_assert(0 == ptrace(PTRACE_CONT, child, NULL, 0));
+  test_assert(0 == ptrace(PTRACE_INTERRUPT, child, NULL, 0));
+  test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f) ||
+              status == (((SIGTRAP | 0x80) << 8) | 0x7f));
+
+  test_assert(WIFSTOPPED(status));
+
   test_assert(0 == kill(child, SIGKILL));
 
   atomic_puts("EXIT-SUCCESS");

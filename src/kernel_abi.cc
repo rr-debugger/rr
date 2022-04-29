@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <elf.h>
 #include <fcntl.h>
+#include <linux/audit.h>
 #include <linux/capability.h>
 #include <linux/cdrom.h>
 #include <linux/ethtool.h>
@@ -105,6 +106,22 @@ CHECK_ELF(EM_386 == EM::I386);
 CHECK_ELF(EM_X86_64 == EM::X86_64);
 
 CHECK_ELF(ELFDATA2LSB == ELFENDIAN::DATA2LSB);
+
+int to_audit_arch(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+      return AUDIT_ARCH_I386;
+    case x86_64:
+      return AUDIT_ARCH_X86_64;
+#ifdef AUDIT_ARCH_AARCH64
+    case aarch64:
+      return AUDIT_ARCH_AARCH64;
+#endif
+    default:
+      FATAL() << "Unknown architecture";
+      return 0;
+  }
+}
 
 static const uint8_t int80_insn[] = { 0xcd, 0x80 };
 static const uint8_t sysenter_insn[] = { 0x0f, 0x34 };

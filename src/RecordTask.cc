@@ -715,7 +715,7 @@ void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
   }
 }
 
-bool RecordTask::emulate_ptrace_stop(WaitStatus status,
+bool RecordTask::emulate_ptrace_stop(WaitStatus status, EmulatedStopType stop_type,
                                      const siginfo_t* siginfo, int si_code) {
   ASSERT(this, emulated_stop_type == NOT_STOPPED);
   if (!emulated_ptracer) {
@@ -735,12 +735,12 @@ bool RecordTask::emulate_ptrace_stop(WaitStatus status,
     }
     save_ptrace_signal_siginfo(si);
   }
-  force_emulate_ptrace_stop(status);
+  force_emulate_ptrace_stop(status, stop_type);
   return true;
 }
 
-void RecordTask::force_emulate_ptrace_stop(WaitStatus status) {
-  emulated_stop_type = status.group_stop() ? GROUP_STOP : SIGNAL_DELIVERY_STOP;
+void RecordTask::force_emulate_ptrace_stop(WaitStatus status, EmulatedStopType stop_type) {
+  emulated_stop_type = stop_type;
   emulated_stop_code = status;
   emulated_stop_pending = true;
   emulated_ptrace_SIGCHLD_pending = true;
