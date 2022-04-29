@@ -143,6 +143,8 @@ _raw_syscall:
         .type _raw_syscall, @function
 _raw_syscall:
         .cfi_startproc
+        // The two stack arguments are already on the stack
+        // right above the stack pointer just as what we need them
         mov x8,x0
         mov x0,x1
         mov x1,x2
@@ -150,8 +152,7 @@ _raw_syscall:
         mov x3,x4
         mov x4,x5
         mov x5,x6
-        svc #0
-        ret
+        br  x7
         .cfi_endproc
         .size _raw_syscall, . - _raw_syscall
 #else
