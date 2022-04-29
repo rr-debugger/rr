@@ -32,6 +32,8 @@ inline bool is_x86ish(SupportedArch arch_) {
   return arch_ == x86 || arch_ == x86_64;
 }
 
+int to_audit_arch(SupportedArch arch);
+
 template <SupportedArch a, typename system_type, typename rr_type>
 struct Verifier {
   // Optimistically say we are the same size.
@@ -1860,6 +1862,28 @@ struct BaseArch : public wordsize,
     uint8_t cdte_datamode;
   };
   RR_VERIFY_TYPE(cdrom_tocentry);
+
+  struct ptrace_syscall_info {
+    uint8_t op;
+    uint32_t arch;
+    uint64_t instruction_pointer;
+    uint64_t stack_pointer;
+    union {
+        struct {
+            uint64_t nr;
+            uint64_t args[6];
+        } entry;
+        struct {
+            int64_t rval;
+            uint8_t is_error;
+        } exit;
+        struct {
+            uint64_t nr;
+            uint64_t args[6];
+            uint32_t ret_data;
+        } seccomp;
+    };
+  };
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {

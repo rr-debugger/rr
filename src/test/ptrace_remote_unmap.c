@@ -149,6 +149,12 @@ int main(void) {
   test_assert(wret == child);
   test_assert(status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)));
 
+  // Continue to syscall exit event
+  checked_ptrace(PTRACE_SYSCALL, child, 0, 0);
+  wret = waitpid(child, &status, __WALL | WSTOPPED);
+  test_assert(wret == child);
+  test_assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
+
   // On kernels with aggressive ASLR, the executable mapping may
   // not be in the same place that it is now. Find it again.
   ssize_t path_size = readlink("/proc/self/exe", exe_path, 200);

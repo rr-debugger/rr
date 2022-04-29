@@ -36,6 +36,9 @@ enum EmulatedStopType {
   NOT_STOPPED,
   GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
   SIGNAL_DELIVERY_STOP,// Stopped before delivering a signal. ptracees only.
+  SYSCALL_ENTRY_STOP,  // Stopped at syscall entry. ptracees only
+  SYSCALL_EXIT_STOP,   // Stopped at syscall exit. ptracees only
+  SECCOMP_STOP,        // Stopped at seccomp stop. ptracees only
   CHILD_STOP           // All other kinds of non-ptrace stops
 };
 
@@ -112,11 +115,17 @@ public:
    * Returns true if the task is stopped-for-emulated-ptrace, false otherwise.
    */
   bool emulate_ptrace_stop(WaitStatus status,
+                           const siginfo_t* siginfo = nullptr, int si_code = 0) {
+    return emulate_ptrace_stop(status, status.group_stop() ? GROUP_STOP : SIGNAL_DELIVERY_STOP,
+      siginfo, si_code);
+  }
+  bool emulate_ptrace_stop(WaitStatus status, EmulatedStopType stop_type,
                            const siginfo_t* siginfo = nullptr, int si_code = 0);
+
   /**
    * Force the ptrace-stop state no matter what state the task is currently in.
    */
-  void force_emulate_ptrace_stop(WaitStatus status);
+  void force_emulate_ptrace_stop(WaitStatus status, EmulatedStopType stop_type);
   /**
    * If necessary, signal the ptracer that this task has exited.
    */

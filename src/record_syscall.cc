@@ -2202,7 +2202,8 @@ static bool maybe_pause_instead_of_waiting(RecordTask* t, int options) {
 
 static RecordTask* verify_ptrace_target(RecordTask* tracer,
                                         TaskSyscallState& syscall_state,
-                                        pid_t pid) {
+                                        pid_t pid,
+                                        bool require_stopped = true) {
   RecordTask* tracee = tracer->session().find_task(pid);
   if (!tracee) {
     LOG(debug) << "tracee pid " << pid << " is unknown to rr";
@@ -2214,7 +2215,7 @@ static RecordTask* verify_ptrace_target(RecordTask* tracer,
     syscall_state.emulate_result(-ESRCH);
     return nullptr;
   }
-  if (tracee->emulated_stop_type == NOT_STOPPED) {
+  if (require_stopped && tracee->emulated_stop_type == NOT_STOPPED) {
     LOG(debug) << pid << " is not in a ptrace stop";
     syscall_state.emulate_result(-ESRCH);
     return nullptr;
@@ -2394,7 +2395,7 @@ static void ptrace_attach_to_already_stopped_task(RecordTask* t) {
   ASSERT(t, t->emulated_stop_type == GROUP_STOP);
   // tracee is already stopped because of a group-stop signal.
   // Sending a SIGSTOP won't work, but we don't need to.
-  t->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP));
+  t->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP), t->emulated_stop_type);
   siginfo_t si;
   memset(&si, 0, sizeof(si));
   si.si_signo = SIGSTOP;
@@ -2896,6 +2897,67 @@ static Switchable prepare_ptrace(RecordTask* t,
         tracee->try_wait();
         tracee->kill_if_alive();
         syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_INTERRUPT: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid, false);
+      if (tracee) {
+        if (tracee->is_running()) {
+          // Running in a blocked syscall. Forward the PTRACE_INTERRUPT.
+          // Regular syscall exit handling will take over from here.
+          bool alive = tracee->ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+          syscall_state.emulate_result(alive ? 0 : -ESRCH);
+        } else if (tracee->status().is_syscall()) {
+          tracee->emulate_ptrace_stop(tracee->status(), SYSCALL_EXIT_STOP);
+        } else if (tracee->emulated_stop_pending == NOT_STOPPED) {
+          // The tracee is stopped from our perspective, but not stopped from
+          // the perspective of the ptracer. Emulate a stop now.
+          tracee->apply_group_stop(SIGSTOP);
+        }
+        // Otherwise, there's nothing to do.
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GET_SYSCALL_INFO: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        remote_ptr<uint8_t> remote_addr(t->regs().arg4());
+        bool ok = true;
+        typename Arch::ptrace_syscall_info info;
+        memset(&info, 0, sizeof(info));
+        info.op =
+          tracee->emulated_stop_type == SYSCALL_ENTRY_STOP ? PTRACE_SYSCALL_INFO_ENTRY :
+          tracee->emulated_stop_type == SYSCALL_EXIT_STOP  ? PTRACE_SYSCALL_INFO_EXIT :
+          tracee->emulated_stop_type == SECCOMP_STOP       ? PTRACE_SYSCALL_INFO_SECCOMP :
+                                                             PTRACE_SYSCALL_INFO_NONE;
+        info.arch = to_audit_arch(tracee->arch());
+        info.instruction_pointer = tracee->ip().register_value();
+        info.stack_pointer = tracee->regs().sp().as_int();
+        size_t max_size = 0;
+        if (info.op == PTRACE_SYSCALL_INFO_ENTRY) {
+          info.entry.nr = tracee->regs().original_syscallno();
+          for (int i = 0; i < 6; ++i) {
+            info.entry.args[i] = tracee->regs().arg(i+1);
+          }
+          max_size = ((char*)&info.entry.args[6] - (char*)&info);
+        } else if (info.op == PTRACE_SYSCALL_INFO_EXIT) {
+          info.exit.rval = tracee->regs().syscall_result_signed();
+          info.exit.is_error = tracee->regs().syscall_result_signed() < 0;
+          max_size = ((char*)&info.exit.is_error - (char*)&info) + 1;
+        } else if (info.op == PTRACE_SYSCALL_INFO_SECCOMP) {
+          ASSERT(tracee, false) << "Unimplemented: PTRACE_SYSCALL_INFO_SECCOMP";
+        }
+        size_t user_size = t->regs().arg3();
+        size_t to_write = min(user_size, max_size);
+        t->write_mem(remote_addr, (uint8_t*)&info, to_write, &ok);
+        if (!ok) {
+          syscall_state.emulate_result(-EFAULT);
+          break;
+        }
+        t->record_local(remote_addr, (uint8_t*)&info, to_write);
+        syscall_state.emulate_result(max_size);
       }
       break;
     }
@@ -5300,6 +5362,8 @@ static string try_make_process_file_name(RecordTask* t,
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
+    // Otherwise we would have done this during PTRACE_EVENT_EXEC
+    t->session().scheduler().did_exit_execve(t);
     return;
   }
 
@@ -6159,17 +6223,7 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::execve:
     case Arch::execveat:
-      t->session().scheduler().did_exit_execve(t);
       process_execve(t, syscall_state);
-      if (t->emulated_ptracer) {
-        if (t->emulated_ptrace_options & PTRACE_O_TRACEEXEC) {
-          t->emulate_ptrace_stop(
-              WaitStatus::for_ptrace_event(PTRACE_EVENT_EXEC));
-        } else if (!t->emulated_ptrace_seized) {
-          // Inject legacy SIGTRAP-after-exec
-          t->tgkill(SIGTRAP);
-        }
-      }
       break;
 
     case Arch::brk: {

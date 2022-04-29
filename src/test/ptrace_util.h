@@ -39,6 +39,16 @@
 #error unknown architecture
 #endif
 
+#if defined(__i386__)
+#define SP esp
+#elif defined(__x86_64__)
+#define SP rsp
+#elif defined(__aarch64__)
+#define SP sp
+#else
+#error unknown architecture
+#endif
+
 #if defined(__i386__) || defined(__x86_64__)
 #define SYSCALL_SIZE 2
 #elif defined(__aarch64__)
