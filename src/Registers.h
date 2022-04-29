@@ -418,6 +418,11 @@ public:
     DEBUG_ASSERT(arch() == aarch64);
     return u.arm64regs.x[7];
   }
+
+  uintptr_t xlr() const {
+    DEBUG_ASSERT(arch() == aarch64);
+    return u.arm64regs.x[30];
+  }
   // End of aarch64 specific accessors
 
   /**
