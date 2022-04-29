@@ -372,7 +372,7 @@ void RecordTask::post_exec() {
 
 template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto params = t->read_mem(
-      remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
+      remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().orig_arg1()));
 
   t->syscallbuf_code_layout.syscallbuf_syscall_hook =
       params.syscallbuf_syscall_hook.rptr().as_int();
@@ -447,7 +447,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   AutoRemoteSyscalls remote(this);
 
   // Arguments to the rrcall.
-  remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().arg1();
+  remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().orig_arg1();
   auto args = read_mem(child_args);
 
   args.cloned_file_data_fd = -1;

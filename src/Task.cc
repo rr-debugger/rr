@@ -3086,7 +3086,7 @@ bool Task::clone_syscall_is_complete(pid_t* new_pid,
 
 template <typename Arch> static void do_preload_init_arch(Task* t) {
   auto params = t->read_mem(
-      remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
+      remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().orig_arg1()));
 
   for (Task* tt : t->vm()->task_set()) {
     tt->preload_globals = params.globals.rptr();
