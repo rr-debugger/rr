@@ -104,6 +104,7 @@ WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 .symver __vdso_getcpu,__vdso_getcpu@LINUX_2.6
 
 #elif defined(__aarch64__)
+.fill PRELOAD_LIBRARY_PAGE_SIZE, 1, 0
 // XXXkhuey there should probably be something here
 #else
 
