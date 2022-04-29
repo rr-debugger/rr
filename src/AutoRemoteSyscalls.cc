@@ -620,6 +620,7 @@ int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
       return t->read_mem(mem.get().cast<int64_t>());
     }
     case x86_64:
+    case aarch64:
       return infallible_syscall(syscall_number_for_lseek(arch()), fd, offset,
                                 whence);
     default:
