@@ -1523,7 +1523,14 @@ bool RecordTask::is_in_syscallbuf() {
                           p < syscallbuf_code_layout.get_pc_thunks_end)) {
     // Look at the caller to see if we're in the syscallbuf or not.
     bool ok = true;
-    uint64_t addr = read_ptr(this, regs().sp(), &ok);
+    uint64_t addr;
+    if (arch() == aarch64) {
+      addr = regs().xlr();
+    }
+    else {
+      ASSERT(this, is_x86ish(arch())) << "Unknown architecture";
+      addr = read_ptr(this, regs().sp(), &ok);
+    }
     if (ok) {
       p = addr;
     }
