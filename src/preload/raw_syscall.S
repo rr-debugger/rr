@@ -143,8 +143,14 @@ _raw_syscall:
         .type _raw_syscall, @function
 _raw_syscall:
         .cfi_startproc
-        // The two stack arguments are already on the stack
-        // right above the stack pointer just as what we need them
+        // The two stack arguments needs to be at sp + 8 and sp + 16
+        // but they are currently at sp and sp + 8.
+        // Since sp needs to be 16 bytes aligned we need to load and push them again.
+        str x30, [sp, -32]!
+        .cfi_def_cfa_offset 32
+        .cfi_offset x30, -32
+        ldp x8, x30, [sp, 32]
+        stp x8, x30, [sp, 8]
         mov x8,x0
         mov x0,x1
         mov x1,x2
@@ -152,7 +158,11 @@ _raw_syscall:
         mov x3,x4
         mov x4,x5
         mov x5,x6
-        br  x7
+        blr x7
+        ldr x30, [sp], 32
+        .cfi_def_cfa_offset 0
+        .cfi_restore x30
+        ret
         .cfi_endproc
         .size _raw_syscall, . - _raw_syscall
 #else
