@@ -5,7 +5,7 @@
 int main(void) {
   int i;
   struct timespec ts;
-  for (i = 0; i < 10000; ++i) {
+  for (i = 0; i < 160000; ++i) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
   }
 
