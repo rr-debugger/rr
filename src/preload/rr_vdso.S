@@ -1,5 +1,10 @@
+#ifdef __aarch64__
+#define STARTPROC_GLOBAL(name) .globl #name; .type #name, @function; \
+ #name:; .cfi_startproc
+#else
 #define STARTPROC_GLOBAL(name) .global #name; .type #name, @function; \
  #name:; .cfi_startproc
+#endif
 #define CFI_ENDPROC .cfi_endproc
 
 // Older libs don't use the __vdso symbols, but try to look for the syscall
@@ -104,8 +109,25 @@ WEAK_ALIAS(gettimeofday,__vdso_gettimeofday)
 .symver __vdso_getcpu,__vdso_getcpu@LINUX_2.6
 
 #elif defined(__aarch64__)
-.fill PRELOAD_LIBRARY_PAGE_SIZE, 1, 0
-// XXXkhuey there should probably be something here
+
+#define SYSCALL(which)          \
+        mov     x8, which;      \
+        svc     0;              \
+        ret
+
+STARTPROC_GLOBAL(__kernel_clock_getres)
+SYSCALL(114)
+CFI_ENDPROC
+STARTPROC_GLOBAL(__kernel_rt_sigreturn)
+SYSCALL(139)
+CFI_ENDPROC
+STARTPROC_GLOBAL(__kernel_gettimeofday)
+SYSCALL(169)
+CFI_ENDPROC
+STARTPROC_GLOBAL(__kernel_clock_gettime)
+SYSCALL(113)
+CFI_ENDPROC
+
 #else
 
 #error "VDSO Hooks not defined for this platform"
