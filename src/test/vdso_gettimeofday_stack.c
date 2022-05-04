@@ -5,7 +5,7 @@
 int main(void) {
   int i;
   struct timeval tv;
-  for (i = 0; i < 10000; ++i) {
+  for (i = 0; i < 160000; ++i) {
     gettimeofday(&tv, NULL);
   }
 
