@@ -59,6 +59,10 @@ static void make_stack_executable(void) {
   test_assert(ret == 0 || errno == EACCES);
 }
 
+double xmm_arg(double d) {
+  return d * 2;
+}
+
 int main(void) {
   var = -42;
 
@@ -80,4 +84,5 @@ int main(void) {
   alloc_and_print();
   make_unhandled_syscall();
   print_time();
+  xmm_arg(0);
 }

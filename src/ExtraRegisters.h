@@ -106,6 +106,12 @@ public:
   size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
 
   /**
+   * Like |Registers::write_register()|, except attempts to write
+   * the value of an "extra register" (floating point / vector).
+   */
+  bool write_register(GdbRegister regno, const void* value, size_t value_size);
+
+  /**
    * Get a user_fpregs_struct for a particular Arch from these ExtraRegisters.
    */
   std::vector<uint8_t> get_user_fpregs_struct(SupportedArch arch) const;

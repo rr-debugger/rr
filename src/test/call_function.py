@@ -18,6 +18,9 @@ def do_tests():
     send_gdb('call print_time()')
     expect_gdb(r'now is \d+(\.\d+(e\+\d\d)?)? sec')
 
+    send_gdb('call xmm_arg(3.14159)')
+    expect_gdb('6.28317')
+
 send_gdb('b breakpoint')
 expect_gdb('Breakpoint 1')
 send_gdb('c')

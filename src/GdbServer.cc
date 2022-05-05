@@ -170,6 +170,27 @@ static size_t get_reg(const Registers& regs, const ExtraRegisters& extra_regs,
   return num_bytes;
 }
 
+static bool set_reg(Task* target, const GdbRegisterValue& reg) {
+  if (!reg.defined) {
+    return false;
+  }
+
+  Registers regs = target->regs();
+  if (regs.write_register(reg.name, reg.value, reg.size)) {
+    target->set_regs(regs);
+    return true;
+  }
+
+  ExtraRegisters extra_regs = target->extra_regs();
+  if (extra_regs.write_register(reg.name, reg.value, reg.size)) {
+    target->set_extra_regs(extra_regs);
+    return true;
+  }
+
+  LOG(warn) << "Unhandled register name " << reg.name;
+  return false;
+}
+
 /**
  * Return the register |which|, which may not have a defined value.
  */
@@ -636,10 +657,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
         dbg->reply_set_reg(false);
         return;
       }
-      if (req.reg().defined) {
-        Registers regs = target->regs();
-        regs.write_register(req.reg().name, req.reg().value, req.reg().size);
-        target->set_regs(regs);
+      if (!set_reg(target, req.reg())) {
+        LOG(warn) << "Attempt to set register " << req.reg().name << " failed";
       }
       dbg->reply_set_reg(true /*currently infallible*/);
       return;

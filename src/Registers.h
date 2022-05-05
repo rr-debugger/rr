@@ -496,7 +496,7 @@ public:
    * Update the register named |reg_name| to |value| with
    * |value_size| number of bytes.
    */
-  void write_register(GdbRegister reg_name, const void* value,
+  bool write_register(GdbRegister reg_name, const void* value,
                       size_t value_size);
 
   /**
@@ -563,7 +563,7 @@ private:
                                            bool* defined) const;
 
   template <typename Arch>
-  void write_register_arch(GdbRegister regno, const void* value,
+  bool write_register_arch(GdbRegister regno, const void* value,
                            size_t value_size);
 
   template <typename Arch>
