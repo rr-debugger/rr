@@ -3934,6 +3934,12 @@ void Task::move_to_signal_stop()
    * don't want it delivered to the task for real.
    */
   auto old_ip = ip();
+  if (arch() == aarch64 && session().is_recording() && status().is_syscall() &&
+      static_cast<RecordTask*>(this)->at_may_restart_syscall()) {
+    // On aarch64, single step of an aborted syscall
+    // will cause us to move to before the syscall instruction
+    old_ip = old_ip.decrement_by_syscall_insn_length(arch());
+  }
   do {
     resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
     ASSERT(this, old_ip == ip())
