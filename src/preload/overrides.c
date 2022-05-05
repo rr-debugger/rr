@@ -189,6 +189,39 @@ void spurious_desched_syscall(struct syscall_info* info) {
   impose_spurious_desched = 0;
 }
 
+/**
+ * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
+ * a helper thread ptrace-attaches to them. If we let sched_yield() enter the
+ * syscallbuf, the helper thread sees that the regular thread SP register
+ * is pointing to the syscallbuf alt-stack, outside the stack region it
+ * expects, which causes it to freak out.
+ * So, override sched_yield() to perform the syscall in a way that can't
+ * be syscall-buffered.
+ */
+int sched_yield(void) {
+#ifdef __i386__
+  // We have no syscall hook for `syscall` followed by `inc %ecx`
+  int trash;
+  asm volatile ("int $0x80; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
+#elif defined(__x86_64__)
+  // We have no syscall hook for `syscall` followed by `inc %ecx`
+  int trash;
+  asm volatile ("syscall; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
+#elif defined(__aarch64__)
+  register long x8 __asm__("x8") = SYS_sched_yield;
+  // We explicitly blacklisted syscall that follows `mov x8, 0xdc`
+  // to avoid patching clone. Abuse that to prevent this from being patched.
+  __asm__ __volatile__("b 1f\n\t"
+                       "mov x8, 0xdc\n"
+                       "1:\n\t"
+                       "svc 0\n"
+                       :: "r"(x8) : "x0", "x30"); // x30 = lr
+#else
+#error "Unknown architecture"
+#endif
+  return 0;
+}
+
 #ifndef __aarch64__
 
 /**
@@ -203,28 +236,6 @@ uid_t geteuid(void) {
 #else
   return syscall(SYS_geteuid);
 #endif
-}
-
-/**
- * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
- * a helper thread ptrace-attaches to them. If we let sched_yield() enter the
- * syscallbuf, the helper thread sees that the regular thread SP register
- * is pointing to the syscallbuf alt-stack, outside the stack region it
- * expects, which causes it to freak out.
- * So, override sched_yield() to perform the syscall in a way that can't
- * be syscall-buffered. (We have no syscall hook for `syscall` followed by
- * `inc %ecx`).
- */
-int sched_yield(void) {
-  int trash;
-#ifdef __i386__
-  asm volatile ("int $0x80; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
-#elif defined(__x86_64__)
-  asm volatile ("syscall; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
-#else
-#error "Unknown architecture"
-#endif
-  return 0;
 }
 
 /**
