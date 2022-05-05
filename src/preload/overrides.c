@@ -176,10 +176,13 @@ void spurious_desched_syscall(struct syscall_info* info) {
   impose_spurious_desched = 0;
 }
 
+#ifndef __aarch64__
+
 /**
  * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
  * which sometimes can't be hooked. So override it here with something that
  * can be hooked.
+ * This is not an issue on aarch64 since we only need to patch a single instruction.
  */
 uid_t geteuid(void) {
 #ifdef __i386__
@@ -188,8 +191,6 @@ uid_t geteuid(void) {
   return syscall(SYS_geteuid);
 #endif
 }
-
-#ifndef __aarch64__
 
 /**
  * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
