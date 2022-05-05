@@ -582,6 +582,12 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
 
   Registers r = t->regs();
   remote_code_ptr ip = r.ip();
+  // We should not get here for untraced syscalls or anything else from the rr page.
+  // These should be normally prevented by our seccomp filter
+  // and in the case of syscalls interrupted by signals,
+  // the check for the syscall restart should prevent us from reaching here.
+  DEBUG_ASSERT(ip.to_data_ptr<void>() < AddressSpace::rr_page_start() ||
+               ip.to_data_ptr<void>() >= AddressSpace::rr_page_end());
   if (tried_to_patch_syscall_addresses.count(ip)) {
     return false;
   }
