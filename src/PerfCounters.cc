@@ -32,7 +32,10 @@ namespace rr {
 #define PERF_COUNT_RR 0x72727272L
 
 static bool attributes_initialized;
-static int cpu_uarch;
+// pmu_bug_flags is an architecture dependent flags to determine
+// what bugs need to be checked.
+// Current, this is simply the uarch on x86 and unused on aarch64.
+static int pmu_bug_flags;
 // At some point we might support multiple kinds of ticks for the same CPU arch.
 // At that point this will need to become more complicated.
 static struct perf_event_attr ticks_attr;
@@ -308,12 +311,12 @@ static void check_working_counters() {
   }
 }
 
-static void check_for_bugs(CpuMicroarch uarch) {
+static void check_for_bugs() {
   DEBUG_ASSERT(!running_under_rr());
 
   check_for_ioc_period_bug();
   check_working_counters();
-  check_for_arch_bugs(uarch);
+  check_for_arch_bugs(pmu_bug_flags);
 }
 
 static CpuMicroarch get_cpu_microarch() {
@@ -348,7 +351,7 @@ static void init_attributes() {
     }
   }
   DEBUG_ASSERT(pmu);
-  cpu_uarch = uarch;
+  pmu_bug_flags = (int)uarch;
 
   if (!(pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
     FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
@@ -385,7 +388,7 @@ static void check_pmu() {
     return;
   }
 
-  check_for_bugs((CpuMicroarch)cpu_uarch);
+  check_for_bugs();
   /*
    * For maintainability, and since it doesn't impact performance when not
    * needed, we always activate this. If it ever turns out to be a problem,
