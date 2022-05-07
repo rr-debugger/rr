@@ -1632,7 +1632,12 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
               r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
               break;
           }
-          r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+          // On aarch64, the kernel modifies the registers before the signal stop.
+          // so we should not decrement the pc again or we'll rerun the instruction
+          // before the syscall.
+          // [1] https://github.com/torvalds/linux/blob/caffb99b6929f41a69edbb5aef3a359bf45f3315/arch/arm64/kernel/signal.c#L855-L862
+          if (t->arch() != aarch64)
+            r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
           // Now that we've mucked with the registers, we can't switch tasks. That
           // could allow more signals to be generated, breaking our assumption
           // that we are the last signal.
