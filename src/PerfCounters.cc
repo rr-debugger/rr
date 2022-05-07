@@ -306,11 +306,7 @@ static void check_working_counters() {
 }
 
 static void check_for_bugs(CpuMicroarch uarch) {
-  if (running_under_rr()) {
-    // Under rr we emulate idealized performance counters, so we can assume
-    // none of the bugs apply.
-    return;
-  }
+  DEBUG_ASSERT(!running_under_rr());
 
   check_for_ioc_period_bug();
   check_working_counters();
@@ -371,6 +367,8 @@ static void init_attributes() {
     init_perf_event_attr(&llsc_fail_attr, PERF_TYPE_RAW,
                          pmu->llsc_cntr_event);
 
+    // Under rr we emulate idealized performance counters, so we can assume
+    // none of the bugs apply.
     check_for_bugs(uarch);
     /*
      * For maintainability, and since it doesn't impact performance when not
@@ -383,7 +381,7 @@ static void init_attributes() {
      * coalesce them and tries to schedule the new one on a general purpose PMC.
      * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
      */
-    activate_useless_counter = has_ioc_period_bug && !running_under_rr();
+    activate_useless_counter = has_ioc_period_bug;
   }
 }
 
