@@ -39,17 +39,17 @@ static void arch_check_restricted_counter() {
   }
 }
 
-static bool always_recreate_counters() {
+static bool always_recreate_counters(__attribute__((unused)) const perf_event_attrs &perf_attr) {
   return false;
 }
 
-static void check_for_arch_bugs(__attribute__((unused)) int bug_flags) {}
+static void check_for_arch_bugs(__attribute__((unused)) perf_event_attrs &perf_attr) {}
 
 template <>
 void PerfCounters::reset_arch_extras<ARM64Arch>() {
   // LL/SC can't be recorded reliably. Start a counter to detect
   // any usage, such that we can give an intelligent error message.
-  struct perf_event_attr attr = rr::llsc_fail_attr;
+  struct perf_event_attr attr = perf_attrs[pmu_index].llsc_fail;
   attr.sample_period = 0;
   fd_strex_counter = start_counter(tid, fd_ticks_interrupt, &attr);
 }

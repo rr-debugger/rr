@@ -118,9 +118,9 @@ static CpuMicroarch compute_cpu_microarch() {
   return UnknownCpu; // not reached
 }
 
-static void check_for_kvm_in_txcp_bug() {
+static void check_for_kvm_in_txcp_bug(const perf_event_attrs &perf_attr) {
   int64_t count = 0;
-  struct perf_event_attr attr = rr::ticks_attr;
+  struct perf_event_attr attr = perf_attr.ticks;
   attr.config |= IN_TXCP;
   attr.sample_period = 0;
   bool disabled_txcp;
@@ -139,9 +139,9 @@ static void check_for_kvm_in_txcp_bug() {
              << " count=" << count;
 }
 
-static void check_for_xen_pmi_bug() {
+static void check_for_xen_pmi_bug(const perf_event_attrs &perf_attr) {
   int32_t count = -1;
-  struct perf_event_attr attr = rr::ticks_attr;
+  struct perf_event_attr attr = perf_attr.ticks;
   attr.sample_period = NUM_BRANCHES - 1;
   ScopedFd fd = start_counter(0, -1, &attr);
   if (fd.is_open()) {
@@ -346,11 +346,12 @@ static void check_for_freeze_on_smi() {
   }
 }
 
-static void check_for_arch_bugs(int bug_flags) {
-  CpuMicroarch uarch = (CpuMicroarch)bug_flags;
+static void check_for_arch_bugs(perf_event_attrs &perf_attr) {
+  DEBUG_ASSERT(rr::perf_attrs.size() == 1);
+  CpuMicroarch uarch = (CpuMicroarch)perf_attr.bug_flags;
   if (uarch >= FirstIntel && uarch <= LastIntel) {
-    check_for_kvm_in_txcp_bug();
-    check_for_xen_pmi_bug();
+    check_for_kvm_in_txcp_bug(perf_attr);
+    check_for_xen_pmi_bug(perf_attr);
   }
   if (uarch >= IntelCometlake && uarch <= LastIntel) {
     check_for_freeze_on_smi();
@@ -360,11 +361,11 @@ static void check_for_arch_bugs(int bug_flags) {
   }
 }
 
-static bool always_recreate_counters() {
+static bool always_recreate_counters(const perf_event_attrs &perf_attr) {
   // When we have the KVM IN_TXCP bug, reenabling the TXCP counter after
   // disabling it does not work.
-  DEBUG_ASSERT(pmu_checked);
-  return has_ioc_period_bug || has_kvm_in_txcp_bug;
+  DEBUG_ASSERT(perf_attr.checked);
+  return perf_attr.has_ioc_period_bug || has_kvm_in_txcp_bug;
 }
 
 static void arch_check_restricted_counter() {
@@ -381,8 +382,9 @@ static void arch_check_restricted_counter() {
 
 template <typename Arch>
 void PerfCounters::reset_arch_extras() {
+  DEBUG_ASSERT(rr::perf_attrs.size() == 1);
   if (supports_txcp) {
-    struct perf_event_attr attr = rr::ticks_attr;
+    struct perf_event_attr attr = rr::perf_attrs[0].ticks;
     if (has_kvm_in_txcp_bug) {
       // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
       // used,
