@@ -346,7 +346,8 @@ static void check_for_freeze_on_smi() {
   }
 }
 
-static void check_for_arch_bugs(CpuMicroarch uarch) {
+static void check_for_arch_bugs(int bug_flags) {
+  CpuMicroarch uarch = (CpuMicroarch)bug_flags;
   if (uarch >= FirstIntel && uarch <= LastIntel) {
     check_for_kvm_in_txcp_bug();
     check_for_xen_pmi_bug();
