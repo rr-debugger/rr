@@ -37,7 +37,6 @@ static bool attributes_initialized;
 static struct perf_event_attr ticks_attr;
 static struct perf_event_attr minus_ticks_attr;
 static struct perf_event_attr cycles_attr;
-static struct perf_event_attr hw_interrupts_attr;
 static struct perf_event_attr llsc_fail_attr;
 static uint32_t pmu_flags;
 static uint32_t skid_size;
@@ -108,7 +107,6 @@ struct PmuConfig {
   const char* name;
   unsigned rcb_cntr_event;
   unsigned minus_ticks_cntr_event;
-  unsigned hw_intr_cntr_event;
   unsigned llsc_cntr_event;
   uint32_t skid_size;
   uint32_t flags;
@@ -126,31 +124,31 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
-  { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelRocketlake, "Intel Rocketlake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelTigerlake, "Intel Tigerlake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0x50011d, 0, 100, PMU_TICKS_RCB },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0x50011d, 0, 100, PMU_TICKS_RCB },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, 0, 100, 0 },
-  { IntelMerom, "Intel Merom", 0, 0, 0, 0, 100, 0 },
-  { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
+  { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelRocketlake, "Intel Rocketlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelTigerlake, "Intel Tigerlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
+  { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
+  { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
   // Both counters are available on Zen, Zen+ and Zen2.
-  { AMDZen, "AMD Zen", 0x5100d1, 0, 0x51002c, 0, 10000, PMU_TICKS_RCB },
+  { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB },
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
   // 0x6F == STREX_SPEC - Speculatively executed strex instructions
-  { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES }
+  { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES }
 };
 
 #define RR_SKID_MAX 10000
@@ -370,13 +368,8 @@ static void init_attributes() {
     }
     init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
                          PERF_COUNT_HW_CPU_CYCLES);
-    init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
-                         pmu->hw_intr_cntr_event);
     init_perf_event_attr(&llsc_fail_attr, PERF_TYPE_RAW,
                          pmu->llsc_cntr_event);
-    // libpfm encodes the event with this bit set, so we'll do the
-    // same thing.  Unclear if necessary.
-    hw_interrupts_attr.exclude_hv = 1;
 
     check_for_bugs(uarch);
     /*
