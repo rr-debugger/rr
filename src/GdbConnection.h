@@ -9,6 +9,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "GdbRegister.h"
@@ -604,6 +605,8 @@ public:
   bool hwbreak_supported() { return hwbreak_supported_; }
   bool swbreak_supported() { return swbreak_supported_; }
 
+  bool is_pass_signal(int sig);
+
 private:
   /**
    * read() incoming data exactly one time, successfully.  May block.
@@ -688,6 +691,10 @@ private:
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;
+  // contains signals (gdb not native) which should be passed directly to the
+  // debuggee without gdb being informed, speeding up
+  // reverse execution
+  std::unordered_set<int> pass_signals;
   ScopedFd sock_fd;
   std::vector<uint8_t> inbuf;  /* buffered input from gdb */
   size_t packetend;            /* index of '#' character */
