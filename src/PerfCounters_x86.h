@@ -361,6 +361,14 @@ static void check_for_arch_bugs(perf_event_attrs &perf_attr) {
   }
 }
 
+static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
+{
+  if (pmu_uarchs.size() != 1) {
+    CLEAN_FATAL() << "rr only support a single PMU on x86, "
+                  << pmu_uarchs.size() << " specified.";
+  }
+}
+
 static bool always_recreate_counters(const perf_event_attrs &perf_attr) {
   // When we have the KVM IN_TXCP bug, reenabling the TXCP counter after
   // disabling it does not work.
