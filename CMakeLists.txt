@@ -67,7 +67,7 @@ endif()
 configure_file(src/preload/rr_page.ld.in src/preload/rr_page.ld @ONLY)
 
 include(CheckCCompilerFlag)
-CHECK_C_COMPILER_FLAG("-fmacro-prefix-map=$(srctree)/=" SUPPORTS_MACRO_PREFIX_MAP)
+CHECK_C_COMPILER_FLAG("-fmacro-prefix-map=foo=bar" SUPPORTS_MACRO_PREFIX_MAP)
 if (SUPPORTS_MACRO_PREFIX_MAP)
   set(FLAGS_COMMON "${FLAGS_COMMON} -fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
 endif()
