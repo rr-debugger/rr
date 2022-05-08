@@ -178,22 +178,17 @@ inline static int atomic_puts(const char* str) {
 #define printf(...) USE_atomic_printf_INSTEAD
 #define puts(...) USE_atomic_puts_INSTEAD
 
-inline static int check_cond(int cond) {
+inline static int atomic_assert(int cond, const char *str,
+				const char *file, const int line) {
   if (!cond) {
-    atomic_printf("FAILED: errno=%d (%s)\n", errno, strerror(errno));
-  }
-  return cond;
-}
-
-inline static int atomic_assert(int cond, const char *str) {
-  if (!check_cond(cond)) {
-    atomic_printf("FAILED: !(%s)\n", str);
+    atomic_printf("FAILED at %s:%d: !(%s) errno:%d (%s)\n", file, line, str,
+		  errno, strerror(errno));
     raise(SIGABRT);
   }
   return 1;
 }
 
-#define test_assert(cond) atomic_assert(cond, #cond)
+#define test_assert(cond) atomic_assert(cond, #cond, __FILE__, __LINE__)
 
 /**
  * Return the calling task's id.
