@@ -1989,7 +1989,10 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
     return -1;
   }
 
-  // Find out which CPUs we're allowed to run on at all
+  // Find out which CPUs we're allowed to run on at all.
+  // sched_getaffinity intersects the task's `cpu_mask`
+  // (/proc/.../status Cpus_allowed_list) with `cpu_active_mask`
+  // which is almost the same as /sys/devices/system/cpu/online
   cpu_set_t affinity_mask;
   int ret = sched_getaffinity(0, sizeof(affinity_mask), &affinity_mask);
   if (ret < 0) {

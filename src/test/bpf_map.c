@@ -24,10 +24,17 @@ int main(void) {
   attr.value_size = sizeof(value);
   attr.max_entries = 10;
   map_fd = bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
-  if (map_fd < 0 && errno == EPERM) {
-    atomic_puts("Skipping test because it requires CAP_SYS_ADMIN");
-    atomic_puts("EXIT-SUCCESS");
-    return 0;
+  if (map_fd < 0) {
+    if (errno == ENOSYS) {
+      atomic_puts("bpf syscall not supported");
+      atomic_puts("EXIT-SUCCESS");
+      return 0;
+    }
+    if (errno == EPERM) {
+      atomic_puts("Skipping test because it requires CAP_SYS_ADMIN");
+      atomic_puts("EXIT-SUCCESS");
+      return 0;
+    }
   }
   test_assert(map_fd >= 0);
 
