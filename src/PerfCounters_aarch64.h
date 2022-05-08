@@ -45,6 +45,10 @@ static bool always_recreate_counters(__attribute__((unused)) const perf_event_at
 
 static void check_for_arch_bugs(__attribute__((unused)) perf_event_attrs &perf_attr) {}
 
+static void post_init_pmu_uarchs(std::vector<PmuConfig> &)
+{
+}
+
 template <>
 void PerfCounters::reset_arch_extras<ARM64Arch>() {
   // LL/SC can't be recorded reliably. Start a counter to detect

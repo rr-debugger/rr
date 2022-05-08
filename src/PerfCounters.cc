@@ -362,47 +362,75 @@ static CpuMicroarch get_cpu_microarch() {
   return compute_cpu_microarch();
 }
 
+// Similar to rr::perf_attrs, if this contains more than one element,
+// it's indexed by the CPU index.
+static std::vector<PmuConfig> get_pmu_microarchs() {
+  std::vector<PmuConfig> pmu_uarchs;
+  CpuMicroarch uarch = get_cpu_microarch();
+  // TODO: multiple PMU
+  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+    if (uarch == pmu_configs[i].uarch) {
+      pmu_uarchs.push_back(pmu_configs[i]);
+      break;
+    }
+  }
+  DEBUG_ASSERT(!pmu_uarchs.empty());
+  // Note that the `uarch` field after processed by `post_init_pmu_uarchs`
+  // is used to store the bug_flags and may not be the actual uarch.
+  post_init_pmu_uarchs(pmu_uarchs);
+  return pmu_uarchs;
+}
+
 static void init_attributes() {
   if (attributes_initialized) {
     return;
   }
   attributes_initialized = true;
 
-  CpuMicroarch uarch = get_cpu_microarch();
-  const PmuConfig* pmu = nullptr;
-  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-    if (uarch == pmu_configs[i].uarch) {
-      pmu = &pmu_configs[i];
-      break;
+  auto pmu_uarchs = get_pmu_microarchs();
+  pmu_semantics_flags = PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES;
+  for (auto &pmu_uarch : pmu_uarchs) {
+    pmu_semantics_flags = pmu_semantics_flags & pmu_uarch.flags;
+  }
+  if (!(pmu_semantics_flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
+    if (pmu_uarchs.size() == 1) {
+      FATAL() << "Microarchitecture `" << pmu_uarchs[0].name
+              << "' currently unsupported.";
+    } else {
+      std::string uarch_list;
+      for (auto &pmu_uarch : pmu_uarchs) {
+        uarch_list += "\n  ";
+        uarch_list += pmu_uarch.name;
+      }
+      FATAL() << "Microarchitecture combination currently unsupported:"
+              << uarch_list;
     }
   }
-  DEBUG_ASSERT(pmu);
-
-  if (!(pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
-    FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
-  }
-  // TODO: multiple PMU
-  perf_attrs.resize(1);
-  perf_attrs[0].bug_flags = (int)uarch;
 
   if (running_under_rr()) {
+    perf_attrs.resize(1);
     init_perf_event_attr(&perf_attrs[0].ticks, PERF_TYPE_HARDWARE, PERF_COUNT_RR);
     perf_attrs[0].skid_size = RR_SKID_MAX;
-    perf_attrs[0].pmu_flags = pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES);
-    pmu_semantics_flags = pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES);
+    perf_attrs[0].pmu_flags = pmu_semantics_flags;
   } else {
-    perf_attrs[0].skid_size = pmu->skid_size;
-    perf_attrs[0].pmu_flags = pmu->flags;
-    pmu_semantics_flags = pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES);
-    init_perf_event_attr(&perf_attrs[0].ticks, PERF_TYPE_RAW, pmu->rcb_cntr_event);
-    if (pmu->minus_ticks_cntr_event != 0) {
-      init_perf_event_attr(&perf_attrs[0].minus_ticks, PERF_TYPE_RAW,
-                           pmu->minus_ticks_cntr_event);
+    auto npmus = pmu_uarchs.size();
+    perf_attrs.resize(npmus);
+    for (size_t i = 0; i < npmus; i++) {
+      auto &perf_attr = perf_attrs[i];
+      auto &pmu_uarch = pmu_uarchs[i];
+      perf_attr.skid_size = pmu_uarch.skid_size;
+      perf_attr.pmu_flags = pmu_uarch.flags;
+      perf_attr.bug_flags = (int)pmu_uarch.uarch;
+      init_perf_event_attr(&perf_attr.ticks, PERF_TYPE_RAW, pmu_uarch.rcb_cntr_event);
+      if (pmu_uarch.minus_ticks_cntr_event != 0) {
+        init_perf_event_attr(&perf_attr.minus_ticks, PERF_TYPE_RAW,
+                             pmu_uarch.minus_ticks_cntr_event);
+      }
+      init_perf_event_attr(&perf_attr.cycles, PERF_TYPE_HARDWARE,
+                           PERF_COUNT_HW_CPU_CYCLES);
+      init_perf_event_attr(&perf_attr.llsc_fail, PERF_TYPE_RAW,
+                           pmu_uarch.llsc_cntr_event);
     }
-    init_perf_event_attr(&perf_attrs[0].cycles, PERF_TYPE_HARDWARE,
-                         PERF_COUNT_HW_CPU_CYCLES);
-    init_perf_event_attr(&perf_attrs[0].llsc_fail, PERF_TYPE_RAW,
-                         pmu->llsc_cntr_event);
   }
 }
 
