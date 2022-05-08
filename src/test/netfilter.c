@@ -16,16 +16,30 @@ int main(void) {
    * iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -j MASQUERADE
    */
 
-  int sock_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+  int sock_fd;
   struct ipt_getinfo info;
   memset(&info, 0, sizeof(info));
   strcpy(info.name, "nat");
   uint32_t getinfo_size = sizeof(info);
+
+  sock_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+  test_assert(sock_fd >= 0);
+
+  errno = 0;
   int ret = getsockopt(sock_fd, SOL_IP, IPT_SO_GET_INFO, &info, &getinfo_size);
   if (ret < 0) {
-    test_assert(errno == ENOPROTOOPT);
-    atomic_puts("IPT_SO_GET_INFO not available");
-    atomic_puts("EXIT-SUCCESS");
+    switch (errno) {
+    case ENOPROTOOPT:
+      atomic_puts("IPT_SO_GET_INFO not available");
+      atomic_puts("EXIT-SUCCESS");
+      break;
+    case ENOENT:
+      atomic_puts("'nat' table missing");
+      atomic_puts("EXIT-SUCCESS");
+      break;
+    default:
+      test_assert(errno == 0);
+    }
     return 0;
   }
   test_assert(getinfo_size == sizeof(info));
