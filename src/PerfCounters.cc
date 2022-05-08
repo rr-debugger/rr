@@ -124,6 +124,9 @@ struct PmuConfig {
   unsigned llsc_cntr_event;
   uint32_t skid_size;
   uint32_t flags;
+  unsigned cycle_event = PERF_COUNT_HW_CPU_CYCLES;
+  int cycle_type = PERF_TYPE_HARDWARE;
+  int event_type = PERF_TYPE_RAW;
 };
 
 // XXX please only edit this if you really know what you're doing.
@@ -195,9 +198,9 @@ static int get_pmu_index(int cpu_binding)
 }
 
 static void init_perf_event_attr(struct perf_event_attr* attr,
-                                 perf_type_id type, unsigned config) {
+                                 unsigned type, unsigned config) {
   memset(attr, 0, sizeof(*attr));
-  attr->type = type;
+  attr->type = perf_type_id(type);
   attr->size = sizeof(*attr);
   attr->config = config;
   // rr requires that its events count userspace tracee code
@@ -429,14 +432,15 @@ static void init_attributes() {
       perf_attr.skid_size = pmu_uarch.skid_size;
       perf_attr.pmu_flags = pmu_uarch.flags;
       perf_attr.bug_flags = (int)pmu_uarch.uarch;
-      init_perf_event_attr(&perf_attr.ticks, PERF_TYPE_RAW, pmu_uarch.rcb_cntr_event);
+      init_perf_event_attr(&perf_attr.ticks, pmu_uarch.event_type,
+                           pmu_uarch.rcb_cntr_event);
       if (pmu_uarch.minus_ticks_cntr_event != 0) {
-        init_perf_event_attr(&perf_attr.minus_ticks, PERF_TYPE_RAW,
+        init_perf_event_attr(&perf_attr.minus_ticks, pmu_uarch.event_type,
                              pmu_uarch.minus_ticks_cntr_event);
       }
-      init_perf_event_attr(&perf_attr.cycles, PERF_TYPE_HARDWARE,
-                           PERF_COUNT_HW_CPU_CYCLES);
-      init_perf_event_attr(&perf_attr.llsc_fail, PERF_TYPE_RAW,
+      init_perf_event_attr(&perf_attr.cycles, pmu_uarch.cycle_type,
+                           pmu_uarch.cycle_event);
+      init_perf_event_attr(&perf_attr.llsc_fail, pmu_uarch.event_type,
                            pmu_uarch.llsc_cntr_event);
     }
   }
