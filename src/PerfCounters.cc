@@ -2,6 +2,7 @@
 
 #include "PerfCounters.h"
 
+#include <dirent.h>
 #include <err.h>
 #include <fcntl.h>
 #include <linux/perf_event.h>
@@ -15,6 +16,9 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <fstream>
+#include <limits>
+#include <regex>
 #include <string>
 
 #include "Flags.h"
