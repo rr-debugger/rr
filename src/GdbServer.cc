@@ -19,9 +19,11 @@
 
 #include "BreakpointCondition.h"
 #include "ElfReader.h"
+#include "Event.h"
 #include "GdbCommandHandler.h"
 #include "GdbExpression.h"
 #include "ReplaySession.h"
+#include "ReplayTask.h"
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
 #include "Task.h"
@@ -1370,10 +1372,18 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     // if tids get reused.
     RunCommand command = compute_run_command_for_reverse_exec(
         timeline.current_session(), debuggee_tguid, req, allowed_tasks);
-    auto stop_filter = [&](Task* t) -> bool {
+    auto stop_filter = [&](ReplayTask* t) -> bool {
       if (t->thread_group()->tguid() != debuggee_tguid) {
         return false;
       }
+
+      // don't stop for a signal that has been specified by QPassSignal
+      Event const& stop_event = t->current_trace_frame().event();
+      if (stop_event.is_signal_event() && dbg->is_pass_signal(stop_event.Signal().siginfo.si_signo)) {
+        LOG(debug) << "Filtering out event for signal " << stop_event.Signal().siginfo;
+        return false;
+      }
+
       // If gdb's requested actions don't allow the task to run, we still
       // let it run (we can't do anything else, since we're replaying), but
       // we won't report stops in that task.

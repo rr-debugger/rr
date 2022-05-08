@@ -676,7 +676,8 @@ bool GdbConnection::query(char* payload) {
                  ";hwbreak+"
                  ";swbreak+"
                  ";ConditionalBreakpoints+"
-                 ";vContSupported+";
+                 ";vContSupported+"
+                 ";QPassSignals+";
     if (features().reverse_execution) {
       supported << ";ReverseContinue+"
                    ";ReverseStep+";
@@ -770,6 +771,29 @@ bool GdbConnection::set_var(char* payload) {
   if (!strcmp(name, "StartNoAckMode")) {
     write_packet("OK");
     no_ack = true;
+    return false;
+  }
+
+  if (!strncmp(name, "PassSignals", sizeof("PassSignals"))) {
+    pass_signals.clear();
+    while (*args != '\0') {
+      char *next = nullptr;
+      int sig = std::strtol(args, &next, 16);
+      parser_assert(next != nullptr);
+
+      LOG(debug) << "registered " << sig << " by QPassSignal";
+      pass_signals.insert(sig);
+
+      args = next;
+      if (*args == '\0') {
+        break;
+      }
+
+      parser_assert(*args == ';');
+      args++;
+    }
+
+    write_packet("OK");
     return false;
   }
 
@@ -1483,6 +1507,14 @@ void GdbConnection::notify_stop(GdbThreadId thread, int sig,
                                 const char *reason) {
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
+  // don't pass this signal to gdb if it is specified not to
+  if (pass_signals.find(to_gdb_signum(sig)) != pass_signals.end()) {
+    LOG(debug) << "discarding stop notification for signal " << sig 
+                << " on thread " << thread << " as specified by QPassSignal";
+
+    return;
+  }
+
   if (tgid != thread.pid) {
     LOG(debug) << "ignoring stop of " << thread
                << " because we're debugging tgid " << tgid;
@@ -1912,5 +1944,7 @@ void GdbConnection::send_file_error_reply(int system_errno) {
 }
 
 bool GdbConnection::is_connection_alive() { return connection_alive_; }
+
+bool GdbConnection::is_pass_signal(int sig) { return pass_signals.find(to_gdb_signum(sig)) != pass_signals.end(); }
 
 } // namespace rr

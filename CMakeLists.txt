@@ -1294,6 +1294,7 @@ set(TESTS_WITH_PROGRAM
   x86/fxregs
   getcwd
   gdb_bogus_breakpoint
+  gdb_qpasssignals
   goto_event
   hello
   hooks
