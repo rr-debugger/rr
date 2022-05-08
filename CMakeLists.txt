@@ -66,6 +66,12 @@ else()
 endif()
 configure_file(src/preload/rr_page.ld.in src/preload/rr_page.ld @ONLY)
 
+include(CheckCCompilerFlag)
+CHECK_C_COMPILER_FLAG("-fmacro-prefix-map=$(srctree)/=" SUPPORTS_MACRO_PREFIX_MAP)
+if (SUPPORTS_MACRO_PREFIX_MAP)
+  set(FLAGS_COMMON "${FLAGS_COMMON} -fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
+endif()
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
