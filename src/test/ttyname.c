@@ -11,6 +11,7 @@ int main(void) {
     return 0;
   }
   int fd = open(tty, O_RDWR);
+  test_assert(fd >= 0);
   test_assert(13 == write(fd, "EXIT-SUCCESS\n", 13));
   return 0;
 }
