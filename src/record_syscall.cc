@@ -3810,7 +3810,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         }
 
         default:
-          syscall_state.expect_errno = EINVAL;
+          syscall_state.expect_errno = ENOSYS;
           break;
       }
       return PREVENT_SWITCH;

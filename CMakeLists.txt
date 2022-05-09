@@ -885,6 +885,7 @@ set(BASIC_TESTS
   fork_many
   futex_exit_race
   futex_exit_race_sigsegv
+  futex_invalid_op
   futex_pi
   futex_priorities
   futex_requeue
