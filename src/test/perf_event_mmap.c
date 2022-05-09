@@ -2,8 +2,6 @@
 
 #include "util.h"
 
-static int counter_fd;
-
 static int sys_perf_event_open(struct perf_event_attr* attr, pid_t pid, int cpu,
                                int group_fd, unsigned long flags) {
   return syscall(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
@@ -13,6 +11,7 @@ int main(void) {
   struct perf_event_attr attr;
   void* p;
   size_t page_size = sysconf(_SC_PAGESIZE);
+  int counter_fd;
 
   memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
@@ -25,7 +24,8 @@ int main(void) {
   test_assert(0 <= counter_fd);
 
   p = mmap(NULL, 3*page_size, PROT_READ | PROT_WRITE, MAP_SHARED, counter_fd, 0);
-  test_assert(p != MAP_FAILED);
+  test_assert(p == MAP_FAILED);
+  test_assert(errno == ENODEV);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

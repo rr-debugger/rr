@@ -1,8 +1,0 @@
-source `dirname $0`/util.sh
-
-record perf_event_mmap$bitness
-if [[ $? != 0 ]]; then
-    passed
-else
-    failed "perf_event_mmap should have caused rr to fail"
-fi

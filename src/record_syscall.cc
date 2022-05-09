@@ -73,6 +73,7 @@
 #include "BpfMapMonitor.h"
 #include "DiversionSession.h"
 #include "ElfReader.h"
+#include "FileMonitor.h"
 #include "Flags.h"
 #include "MmappedFileMonitor.h"
 #include "NonvirtualPerfCounterMonitor.h"
@@ -3155,6 +3156,22 @@ static void prepare_exit(RecordTask* t) {
 
 static void prepare_mmap_register_params(RecordTask* t) {
   Registers r = t->regs();
+
+  FileMonitor* monitor = t->fd_table()->get_monitor(r.arg5_signed());
+  if (monitor) {
+    switch (monitor->type()) {
+      case FileMonitor::VirtualPerfCounter:
+      case FileMonitor::NonvirtualPerfCounter:
+        LOG(info) << "Faking failure of mmap for perf event counter";
+        // Force mmap to fail by setting fd to our tracee socket
+        r.set_arg5(t->session().tracee_fd_number());
+        t->set_regs(r);
+        return;
+      default:
+        break;
+    }
+  }
+
   intptr_t mask_flag = MAP_FIXED;
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
@@ -4941,7 +4958,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case Arch::StructArguments: {
           auto args =
               t->read_mem(remote_ptr<typename Arch::mmap_args>(regs.arg1()));
-          // XXX fix this
+          // XXX fix these unsupported features?
+          // only the most ancient code should be using old-style mmap on 32bit,
+          // modern glibc uses mmap2.
+          FileMonitor* monitor = t->fd_table()->get_monitor(args.fd);
+          if (monitor) {
+            FileMonitor::Type monitor_type = monitor->type();
+            ASSERT(t, monitor_type != FileMonitor::VirtualPerfCounter &&
+              monitor_type != FileMonitor::NonvirtualPerfCounter);
+          }
           ASSERT(t, !(args.flags & MAP_GROWSDOWN));
           break;
         }
@@ -6292,6 +6317,7 @@ static void rec_process_syscall_arch(RecordTask* t,
                        ((off_t)r.arg6_signed()));
           r.set_arg2(syscall_state.syscall_entry_registers.arg2_signed());
           r.set_arg3(syscall_state.syscall_entry_registers.arg3_signed());
+          r.set_arg5(syscall_state.syscall_entry_registers.arg5_signed());
           t->set_regs(r);
           break;
         }
@@ -6307,6 +6333,7 @@ static void rec_process_syscall_arch(RecordTask* t,
                    (off_t)r.arg6_signed() * 4096);
       r.set_arg2(syscall_state.syscall_entry_registers.arg2_signed());
       r.set_arg3(syscall_state.syscall_entry_registers.arg3_signed());
+      r.set_arg5(syscall_state.syscall_entry_registers.arg5_signed());
       t->set_regs(r);
       break;
     }

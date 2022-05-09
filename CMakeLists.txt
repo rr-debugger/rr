@@ -1003,6 +1003,7 @@ set(BASIC_TESTS
   packet_mmap_disable
   pause
   perf_event
+  perf_event_mmap
   personality
   pid_ns_kill_child
   pid_ns_kill_child_threads
@@ -1327,7 +1328,6 @@ set(TESTS_WITH_PROGRAM
   overflow_branch_counter
   patch_page_end
   x86/patch_40_80_f6_81
-  perf_event_mmap
   priority
   ptrace_remote_unmap
   read_big_struct
