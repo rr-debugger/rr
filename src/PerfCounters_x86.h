@@ -320,7 +320,10 @@ static void check_for_freeze_on_smi() {
   }
 
   char freeze_on_smi = 0;
-  read(fd, &freeze_on_smi, 1);
+  ssize_t ret = read(fd, &freeze_on_smi, 1);
+  if (ret != 1) {
+    FATAL() << "Can't read freeze_on_smi";
+  }
   if (freeze_on_smi == 0) {
     LOG(warn) << "Failed to read freeze_on_smi";
   } else if (freeze_on_smi == '1') {

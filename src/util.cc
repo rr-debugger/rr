@@ -2358,7 +2358,7 @@ void SAFE_FATAL(int err, const char *msg)
     {.iov_base = (char*)msg, .iov_len=strlen(msg)},
     {.iov_base = nl, .iov_len=sizeof(nl)}
   };
-  (void)::writev(STDERR_FILENO, out, sizeof(out)/sizeof(struct iovec));
+  __attribute__((unused)) ssize_t ret = ::writev(STDERR_FILENO, out, sizeof(out)/sizeof(struct iovec));
   abort();
 }
 

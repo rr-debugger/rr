@@ -143,10 +143,10 @@ static void dump_popen_cmdline(const char* cmdline, FILE* out) {
       close(fds[0]);
       dup2(fds[1], 1);
       close(fds[1]);
-      int res = execl("/bin/sh", "/bin/sh", "-c", cmdline, NULL);
+      int ret = execl("/bin/sh", "/bin/sh", "-c", cmdline, NULL);
       const char *msg = "(execution failed)\n";
-      write(fds[1], msg, strlen(msg));
-      exit(res);
+      __attribute__((unused)) ssize_t ret2 = write(fds[1], msg, strlen(msg));
+      exit(ret);
   }
   close(fds[1]);
   fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL) | O_NONBLOCK);
@@ -215,10 +215,11 @@ static void dump_emergency_debugger(char* gdb_cmd, FILE* out) {
     fprintf(out, "Can't find file name in cmd %s\n", gdb_cmd);
     return;
   }
-  sprintf(cmdline, "%s -ex 'set confirm off' -ex 'set height 0' "
-                   "-ex 'info registers' -ex "
-                   "'thread apply all bt' -ex q %s </dev/null 2>&1",
-          gdb_cmd, file_name);
+  snprintf(cmdline, sizeof(cmdline),
+           "%s -ex 'set confirm off' -ex 'set height 0' "
+           "-ex 'info registers' -ex "
+           "'thread apply all bt' -ex q %s </dev/null 2>&1",
+           gdb_cmd, file_name);
   dump_popen_cmdline(cmdline, out);
 }
 
