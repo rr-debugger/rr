@@ -5780,7 +5780,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
         } else {
           ASSERT(rt, false)
               << "Expected monitor type Mmapped | ODirect for fd " << f.fd << ", got monitor type "
-              << type;
+              << file_monitor_type_name(type);
         }
       } else {
         rt->fd_table()->add_monitor(rt, f.fd, new MmappedFileMonitor(rt, f.fd));

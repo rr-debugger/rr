@@ -89,4 +89,28 @@ int64_t FileMonitor::LazyOffset::retrieve(bool needed_for_replay) {
   }
   return offset;
 }
+
+#define CASE(v) case FileMonitor::v: return #v
+std::string file_monitor_type_name(FileMonitor::Type t) {
+  switch (t) {
+    CASE(Base);
+    CASE(MagicSaveData);
+    CASE(Mmapped);
+    CASE(Preserve);
+    CASE(ProcFd);
+    CASE(ProcMem);
+    CASE(Stdio);
+    CASE(VirtualPerfCounter);
+    CASE(NonvirtualPerfCounter);
+    CASE(SysCpu);
+    CASE(ProcStat);
+    CASE(RRPage);
+    CASE(ODirect);
+    CASE(BpfMap);
+    default:
+      FATAL() << "Unknown type " << (int)t;
+      return "";
+  }
+}
+
 }

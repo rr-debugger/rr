@@ -130,6 +130,8 @@ public:
   }
 };
 
+std::string file_monitor_type_name(FileMonitor::Type t);
+
 } // namespace rr
 
 #endif /* RR_FILE_MONITOR_H_ */
