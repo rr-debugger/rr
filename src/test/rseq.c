@@ -108,7 +108,9 @@ static int main_child(void) {
   child = fork();
   if (!child) {
     char* exec_argv[] = { passed_argv[0], passed_argv[0], NULL };
+    struct timeval tv;
     while (!*stop_flag) {
+      gettimeofday(&tv, NULL);
       do_section();
     }
 
