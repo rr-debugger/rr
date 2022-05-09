@@ -1477,7 +1477,7 @@ bool RecordTask::is_syscall_restart() {
 
   {
     const Registers& old_regs = ev().Syscall().regs;
-    if (!(old_regs.arg1() == regs().arg1() &&
+    if (!(old_regs.orig_arg1() == regs().arg1() &&
           old_regs.arg2() == regs().arg2() &&
           old_regs.arg3() == regs().arg3() &&
           old_regs.arg4() == regs().arg4() &&
