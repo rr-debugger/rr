@@ -528,6 +528,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       }
       LOG(warn) << "Unable to find file descriptor for close";
       dbg->reply_close(EBADF);
+      return;
     }
     default:
       /* fall through to next switch stmt */
