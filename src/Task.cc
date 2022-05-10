@@ -46,7 +46,6 @@
 #include "ScopedFd.h"
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
-#include "ThreadDb.h"
 #include "cpp_supplement.h"
 #include "fast_forward.h"
 #include "kernel_abi.h"

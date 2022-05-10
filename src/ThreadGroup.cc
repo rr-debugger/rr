@@ -5,7 +5,6 @@
 #include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
-#include "ThreadDb.h"
 #include "log.h"
 
 namespace rr {

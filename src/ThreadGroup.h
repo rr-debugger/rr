@@ -17,7 +17,6 @@
 namespace rr {
 
 class Session;
-class ThreadDb;
 
 /**
  * Tracks a group of tasks with an associated ID, set from the
