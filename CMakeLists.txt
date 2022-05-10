@@ -1076,7 +1076,6 @@ set(BASIC_TESTS
   rename
   rlimit
   robust_futex
-  rseq_syscallbuf
   rusage
   samask
   save_data_fd
@@ -1345,6 +1344,7 @@ set(TESTS_WITH_PROGRAM
   rr_ps
   rr_ps_ns
   rseq
+  rseq_syscallbuf
   search
   seccomp_blocks_rr
   seccomp_open
