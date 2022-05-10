@@ -31,8 +31,8 @@ static void handle_usr1(__attribute__((unused)) int sig) {
 }
 
 static void *do_thread(void* futex_addr) {
-  atomic_printf("Thread tid is %d\n", gettid());
-  pid_t thread_tid = gettid();
+  atomic_printf("Thread tid is %d\n", sys_gettid());
+  pid_t thread_tid = sys_gettid();
   int ret = write(pid_pipe[1], &thread_tid, sizeof(pid_t));
   test_assert(ret == sizeof(pid_t));
   futex(futex_addr, FUTEX_WAIT, 0, NULL, NULL, 0);
