@@ -67,6 +67,21 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 #endif
 
 struct KernelConstants {
+  // These are the same across all architectures. The kernel defines them for
+  // all architectures in the uapi headers, but the libc's headers may not.
+  // Further, the libc headers may conflict with the kernel headers, so for
+  // simplicitly, we just define everything here:
+  static const int PTRACE_TRACEME = 0;
+  static const int PTRACE_PEEKTEXT = 1;
+  static const int PTRACE_PEEKDATA = 2;
+  static const int PTRACE_PEEKUSR = 3;
+  static const int PTRACE_POKETEXT = 4;
+  static const int PTRACE_POKEDATA = 5;
+  static const int PTRACE_POKEUSR = 6;
+  static const int PTRACE_CONT = 7;
+  static const int PTRACE_KILL = 8;
+  static const int PTRACE_SINGLESTEP = 9;
+
   static const ::size_t SIGINFO_MAX_SIZE = 128;
 
   // These types are the same size everywhere.
@@ -364,21 +379,6 @@ struct BaseArch : public wordsize,
   typedef uint32_t __u32;
   typedef uint64_t __u64;
   typedef __u64 aligned_u64 __attribute((aligned(8)));
-
-  // These are the same across all architectures. The kernel defines them for
-  // all architectures in the uapi headers, but the libc's headers may not.
-  // Further, the libc headers may conflict with the kernel headers, so for
-  // simplicitly, we just define everything here:
-  static const int PTRACE_TRACEME = 0;
-  static const int PTRACE_PEEKTEXT = 1;
-  static const int PTRACE_PEEKDATA = 2;
-  static const int PTRACE_PEEKUSR = 3;
-  static const int PTRACE_POKETEXT = 4;
-  static const int PTRACE_POKEDATA = 5;
-  static const int PTRACE_POKEUSR = 6;
-  static const int PTRACE_CONT = 7;
-  static const int PTRACE_KILL = 8;
-  static const int PTRACE_SINGLESTEP = 9;
 
   // If they are defined in the header, undef them now.
   // In rr, we always refer to them as these constants.
