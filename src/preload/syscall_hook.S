@@ -208,7 +208,7 @@ name:                           \
         .cfi_escape 0x10, /* DW_CFA_expression */               \
                     0x08, /* %eip */                            \
                     0x05, /* 5 byte expression follows */       \
-                    0x03, /* DW_OP_addr */                      \
+                    0x0c, /* DW_OP_const4u */                   \
                     /* Individually place bytes */              \
                     stub_scratch_1 & 0xFF,                      \
                     (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
@@ -434,7 +434,7 @@ name:                              \
         .cfi_escape 0x10, /* DW_CFA_expression */               \
                     0x10, /* %rip */                            \
                     0x09, /* 9 byte expression follows */       \
-                    0x03, /* DW_OP_addr */                      \
+                    0x0e, /* DW_OP_const8u */                   \
                     /* Individually place bytes */              \
                     stub_scratch_1 & 0xFF,                      \
                     (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
