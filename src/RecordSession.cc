@@ -1328,7 +1328,7 @@ void RecordSession::check_initial_task_syscalls(RecordTask* t,
 RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
   unsigned long msg = 0;
   int ret =
-      ptrace(__ptrace_request(PTRACE_GETEVENTMSG), rec_tid, nullptr, &msg);
+      ptrace(_ptrace_request(PTRACE_GETEVENTMSG), rec_tid, nullptr, &msg);
   if (ret < 0) {
     FATAL() << "Can't get old tid for execve (leader=" << rec_tid << ")";
   }

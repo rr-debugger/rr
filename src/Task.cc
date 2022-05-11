@@ -2598,7 +2598,7 @@ long Task::stored_record_size(
 }
 
 long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
-  return ptrace(__ptrace_request(request), tid, addr, data);
+  return ptrace(_ptrace_request(request), tid, addr, data);
 }
 
 bool Task::open_mem_fd() {
@@ -3353,11 +3353,11 @@ long Task::ptrace_seize(pid_t tid, Session& session) {
   }
 
   long ret =
-      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
+      ptrace((_ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.
-    ret = ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
+    ret = ptrace((_ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
   }
   return ret;
 }

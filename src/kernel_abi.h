@@ -75,12 +75,60 @@ struct KernelConstants {
   static const int PTRACE_PEEKTEXT = 1;
   static const int PTRACE_PEEKDATA = 2;
   static const int PTRACE_PEEKUSR = 3;
+  // PEEKUSER is a libc alias.
+  static const int PTRACE_PEEKUSER = PTRACE_PEEKUSR;
   static const int PTRACE_POKETEXT = 4;
   static const int PTRACE_POKEDATA = 5;
   static const int PTRACE_POKEUSR = 6;
+  // POKEUSER is a libc alias.
+  static const int PTRACE_POKEUSER = PTRACE_POKEUSR;
   static const int PTRACE_CONT = 7;
   static const int PTRACE_KILL = 8;
   static const int PTRACE_SINGLESTEP = 9;
+  // PTRACE_GETREGS actually does vary but it's 12 on every arch we care about.
+  static const int PTRACE_GETREGS = 12;
+  static const int PTRACE_GETFPREGS = 14;
+  static const int PTRACE_SETFPREGS = 15;
+  static const int PTRACE_ATTACH = 16;
+  static const int PTRACE_DETACH = 17;
+  static const int PTRACE_SYSCALL = 24;
+  static const int PTRACE_SETOPTIONS = 0x4200;
+  static const int PTRACE_GETEVENTMSG = 0x4201;
+  static const int PTRACE_GETSIGINFO = 0x4202;
+  static const int PTRACE_SETSIGINFO = 0x4203;
+  static const int PTRACE_GETREGSET = 0x4204;
+  static const int PTRACE_SETREGSET = 0x4205;
+  static const int PTRACE_SEIZE = 0x4206;
+  static const int PTRACE_INTERRUPT = 0x4207;
+  static const int PTRACE_LISTEN = 0x4208;
+  static const int PTRACE_GETSIGMASK = 0x420a;
+  static const int PTRACE_SETSIGMASK = 0x420b;
+  static const int PTRACE_GET_SYSCALL_INFO = 0x420e;
+
+  static const int PTRACE_EVENT_NONE = 0;
+  static const int PTRACE_EVENT_FORK = 1;
+  static const int PTRACE_EVENT_VFORK = 2;
+  static const int PTRACE_EVENT_CLONE = 3;
+  static const int PTRACE_EVENT_EXEC = 4;
+  static const int PTRACE_EVENT_VFORK_DONE = 5;
+  static const int PTRACE_EVENT_EXIT = 6;
+  static const int PTRACE_EVENT_SECCOMP = 7; // ubuntu 12.10 and future kernels
+  static const int PTRACE_EVENT_SECCOMP_OBSOLETE = 8; // ubuntu 12.04
+  static const int PTRACE_EVENT_STOP = 128;
+
+  static const int PTRACE_O_TRACESYSGOOD = 1;
+  static const int PTRACE_O_TRACEFORK = 1 << PTRACE_EVENT_FORK;
+  static const int PTRACE_O_TRACEVFORK = 1 << PTRACE_EVENT_VFORK;
+  static const int PTRACE_O_TRACECLONE = 1 << PTRACE_EVENT_CLONE;
+  static const int PTRACE_O_TRACEEXEC = 1 << PTRACE_EVENT_EXEC;
+  static const int PTRACE_O_TRACEEXIT = 1 << PTRACE_EVENT_EXIT;
+  static const int PTRACE_O_TRACESECCOMP = 1 << PTRACE_EVENT_SECCOMP;
+  static const int PTRACE_O_EXITKILL = 1 << 20;
+
+  static const int PTRACE_SYSCALL_INFO_NONE = 0;
+  static const int PTRACE_SYSCALL_INFO_ENTRY = 1;
+  static const int PTRACE_SYSCALL_INFO_EXIT = 2;
+  static const int PTRACE_SYSCALL_INFO_SECCOMP = 3;
 
   static const ::size_t SIGINFO_MAX_SIZE = 128;
 

@@ -5,7 +5,6 @@
 #include <errno.h>
 #include <linux/shm.h>
 #include <signal.h>
-#include <sys/ptrace.h>
 #include <syscall.h>
 
 #include "kernel_abi.h"
@@ -68,7 +67,7 @@ string ptrace_event_name(int event) {
 
 #define PTRACE_ARCH_CASE(_id)                                                  \
   case Arch::_id:                                                              \
-    return #_id;
+    return #_id
 
 template <typename Arch>
 string ptrace_req_name(int request) {
@@ -89,20 +88,21 @@ string ptrace_req_name(int request) {
     PTRACE_ARCH_CASE(PTRACE_SETFPREGS);
     PTRACE_ARCH_CASE(PTRACE_GETFPXREGS);
     PTRACE_ARCH_CASE(PTRACE_SETFPXREGS);
-    CASE(PTRACE_ATTACH);
-    CASE(PTRACE_DETACH);
-    CASE(PTRACE_SYSCALL);
-    CASE(PTRACE_SETOPTIONS);
-    CASE(PTRACE_GETEVENTMSG);
-    CASE(PTRACE_GETSIGINFO);
-    CASE(PTRACE_SETSIGINFO);
-    CASE(PTRACE_GETREGSET);
-    CASE(PTRACE_SETREGSET);
-    CASE(PTRACE_SEIZE);
-    CASE(PTRACE_INTERRUPT);
-    CASE(PTRACE_LISTEN);
-    CASE(PTRACE_GETSIGMASK);
-    CASE(PTRACE_SETSIGMASK);
+    PTRACE_ARCH_CASE(PTRACE_ATTACH);
+    PTRACE_ARCH_CASE(PTRACE_DETACH);
+    PTRACE_ARCH_CASE(PTRACE_SYSCALL);
+    PTRACE_ARCH_CASE(PTRACE_SETOPTIONS);
+    PTRACE_ARCH_CASE(PTRACE_GETEVENTMSG);
+    PTRACE_ARCH_CASE(PTRACE_GETSIGINFO);
+    PTRACE_ARCH_CASE(PTRACE_SETSIGINFO);
+    PTRACE_ARCH_CASE(PTRACE_GETREGSET);
+    PTRACE_ARCH_CASE(PTRACE_SETREGSET);
+    PTRACE_ARCH_CASE(PTRACE_SEIZE);
+    PTRACE_ARCH_CASE(PTRACE_INTERRUPT);
+    PTRACE_ARCH_CASE(PTRACE_LISTEN);
+    PTRACE_ARCH_CASE(PTRACE_GETSIGMASK);
+    PTRACE_ARCH_CASE(PTRACE_SETSIGMASK);
+    PTRACE_ARCH_CASE(PTRACE_GET_SYSCALL_INFO);
     // These aren't part of the official ptrace-request enum.
     PTRACE_ARCH_CASE(PTRACE_SYSEMU);
     PTRACE_ARCH_CASE(PTRACE_SYSEMU_SINGLESTEP);
