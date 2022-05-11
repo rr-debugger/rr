@@ -627,12 +627,12 @@ struct BaseArch : public wordsize,
     tcflag_t c_cflag;
     tcflag_t c_lflag;
     cc_t c_line;
-    cc_t c_cc[32];
-    char _padding[3];
-    speed_t c_ispeed;
-    speed_t c_ospeed;
+    cc_t c_cc[19];
   };
-  RR_VERIFY_TYPE(termios);
+  /* We don't verify termios because the kernel and glibc don't agree on its
+   * layout and ensuring that we only have the kernel termios visible here is
+   * a pain.
+   */
 
   struct termio {
     unsigned_short c_iflag;
