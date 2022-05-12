@@ -6,6 +6,7 @@
 #include <sched.h>
 
 #include <deque>
+#include <random>
 #include <set>
 
 #include "Ticks.h"
@@ -182,6 +183,7 @@ private:
   // Tasks sorted by priority.
   typedef std::set<std::pair<int, RecordTask*>> TaskPrioritySet;
   typedef std::deque<RecordTask*> TaskQueue;
+  typedef std::default_random_engine Random;
 
   /**
    * Pull a task from the round-robin queue if available. Otherwise,
@@ -213,6 +215,8 @@ private:
   bool is_task_runnable(RecordTask* t, bool* by_waitpid);
   void validate_scheduled_task();
   void regenerate_affinity_mask();
+
+  Random random;
 
   RecordSession& session;
 

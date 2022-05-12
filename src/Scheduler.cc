@@ -98,6 +98,8 @@ Scheduler::Scheduler(RecordSession& session)
       enable_poll(false),
       last_reschedule_in_high_priority_only_interval(false),
       unlimited_ticks_mode(false) {
+  std::random_device rd;
+  random.seed(rd());
   regenerate_affinity_mask();
 }
 
@@ -144,7 +146,7 @@ void Scheduler::regenerate_affinity_mask() {
       other_cpus.push_back(i);
     }
   }
-  random_shuffle(other_cpus.begin(), other_cpus.end());
+  shuffle(other_cpus.begin(), other_cpus.end(), random);
   CPU_ZERO(&pretend_affinity_mask_);
   CPU_SET(cpu, &pretend_affinity_mask_);
   for (int i = 0; i < pretend_num_cores_ - 1; ++i) {
@@ -336,7 +338,7 @@ RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, bool* by_waitpid,
       for (auto it = same_priority_start; it != same_priority_end; ++it) {
         tasks.push_back(it->second);
       }
-      random_shuffle(tasks.begin(), tasks.end());
+      shuffle(tasks.begin(), tasks.end(), random);
       for (RecordTask* next : tasks) {
         if (is_task_runnable(next, by_waitpid)) {
           return next;
