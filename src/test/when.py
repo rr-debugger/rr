@@ -46,23 +46,20 @@ if tid2 != tid:
 # Ensure 'when' terminates a diversion
 send_gdb('call strlen("abcd")')
 send_gdb('when')
-expect_gdb(re.compile(r'Current event: (\d+)'))
-t3 = eval(last_match().group(1));
-if t3 != t2:
+expect_gdb(re.compile(r'(Current event: (\d+)|cannot run in a replay diversion)'))
+if last_match().group(2) and int(last_match().group(2)) != t2:
     failed('ERROR ... diversion changed event')
 
 send_gdb('call strlen("abcd")')
 send_gdb('when-ticks')
-expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks3 = eval(last_match().group(1));
-if ticks3 != ticks2:
+expect_gdb(re.compile(r'(Current tick: (\d+)|cannot run in a replay diversion)'))
+if last_match().group(2) and int(last_match().group(2)) != ticks2:
     failed('ERROR ... diversion changed ticks')
 
 send_gdb('call strlen("abcd")')
 send_gdb('when-tid')
-expect_gdb(re.compile(r'Current tid: (\d+)'))
-tid3 = eval(last_match().group(1));
-if tid3 != tid2:
+expect_gdb(re.compile(r'(Current tid: (\d+)|cannot run in a replay diversion)'))
+if last_match().group(2) and int(last_match().group(2)) != tid2:
     failed('ERROR ... diversion changed tid')
 
 ok()
