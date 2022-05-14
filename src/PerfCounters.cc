@@ -415,7 +415,7 @@ TicksSemantics PerfCounters::default_ticks_semantics() {
 }
 
 uint32_t PerfCounters::skid_size() {
-  init_attributes();
+  DEBUG_ASSERT(attributes_initialized);
   return rr::skid_size;
 }
 
