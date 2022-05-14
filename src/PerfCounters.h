@@ -42,7 +42,7 @@ public:
   /**
    * Create performance counters monitoring the given task.
    */
-  PerfCounters(pid_t tid, TicksSemantics ticks_semantics);
+  PerfCounters(pid_t tid, int cpu_binding, TicksSemantics ticks_semantics);
   ~PerfCounters() { stop(); }
 
   void set_tid(pid_t tid);
@@ -126,6 +126,7 @@ private:
   // Only valid while 'counting' is true
   Ticks counting_period;
   pid_t tid;
+  int pmu_index;
   // We use separate fds for counting ticks and for generating interrupts. The
   // former ignores ticks in aborted transactions, and does not support
   // sample_period; the latter does not ignore ticks in aborted transactions,

@@ -376,7 +376,7 @@ static void init_attributes() {
   }
 }
 
-static void check_pmu() {
+static void check_pmu(int pmu_index) {
   if (pmu_checked) {
     return;
   }
@@ -437,8 +437,9 @@ uint32_t PerfCounters::skid_size() {
   return rr::skid_size;
 }
 
-PerfCounters::PerfCounters(pid_t tid, TicksSemantics ticks_semantics)
-    : tid(tid), ticks_semantics_(ticks_semantics), started(false), counting(false) {
+PerfCounters::PerfCounters(pid_t tid, int cpu_binding,
+                           TicksSemantics ticks_semantics)
+    : tid(tid), pmu_index(cpu_binding), ticks_semantics_(ticks_semantics), started(false), counting(false) {
   if (!supports_ticks_semantics(ticks_semantics)) {
     FATAL() << "Ticks semantics " << ticks_semantics << " not supported";
   }
@@ -453,7 +454,7 @@ static void make_counter_async(ScopedFd& fd, int signal) {
 
 void PerfCounters::reset(Ticks ticks_period) {
   DEBUG_ASSERT(ticks_period >= 0);
-  check_pmu();
+  check_pmu(pmu_index);
 
   if (ticks_period == 0 && !always_recreate_counters()) {
     // We can't switch a counter between sampling and non-sampling via
