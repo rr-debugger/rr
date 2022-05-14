@@ -32,6 +32,7 @@ namespace rr {
 #define PERF_COUNT_RR 0x72727272L
 
 static bool attributes_initialized;
+static int cpu_uarch;
 // At some point we might support multiple kinds of ticks for the same CPU arch.
 // At that point this will need to become more complicated.
 static struct perf_event_attr ticks_attr;
@@ -40,6 +41,8 @@ static struct perf_event_attr cycles_attr;
 static struct perf_event_attr llsc_fail_attr;
 static uint32_t pmu_flags;
 static uint32_t skid_size;
+
+static bool pmu_checked;
 static bool has_ioc_period_bug;
 static bool only_one_counter;
 static bool activate_useless_counter;
@@ -345,6 +348,7 @@ static void init_attributes() {
     }
   }
   DEBUG_ASSERT(pmu);
+  cpu_uarch = uarch;
 
   if (!(pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
     FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
@@ -366,23 +370,34 @@ static void init_attributes() {
                          PERF_COUNT_HW_CPU_CYCLES);
     init_perf_event_attr(&llsc_fail_attr, PERF_TYPE_RAW,
                          pmu->llsc_cntr_event);
-
-    // Under rr we emulate idealized performance counters, so we can assume
-    // none of the bugs apply.
-    check_for_bugs(uarch);
-    /*
-     * For maintainability, and since it doesn't impact performance when not
-     * needed, we always activate this. If it ever turns out to be a problem,
-     * this can be set to pmu->flags & PMU_BENEFITS_FROM_USELESS_COUNTER,
-     * instead.
-     *
-     * We also disable this counter when running under rr. Even though it's the
-     * same event for the same task as the outer rr, the linux kernel does not
-     * coalesce them and tries to schedule the new one on a general purpose PMC.
-     * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
-     */
-    activate_useless_counter = has_ioc_period_bug;
   }
+}
+
+static void check_pmu() {
+  if (pmu_checked) {
+    return;
+  }
+  pmu_checked = true;
+
+  // Under rr we emulate idealized performance counters, so we can assume
+  // none of the bugs apply.
+  if (running_under_rr()) {
+    return;
+  }
+
+  check_for_bugs((CpuMicroarch)cpu_uarch);
+  /*
+   * For maintainability, and since it doesn't impact performance when not
+   * needed, we always activate this. If it ever turns out to be a problem,
+   * this can be set to pmu->flags & PMU_BENEFITS_FROM_USELESS_COUNTER,
+   * instead.
+   *
+   * We also disable this counter when running under rr. Even though it's the
+   * same event for the same task as the outer rr, the linux kernel does not
+   * coalesce them and tries to schedule the new one on a general purpose PMC.
+   * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
+   */
+  activate_useless_counter = has_ioc_period_bug;
 }
 
 bool PerfCounters::is_rr_ticks_attr(const perf_event_attr& attr) {
@@ -435,6 +450,7 @@ static void make_counter_async(ScopedFd& fd, int signal) {
 
 void PerfCounters::reset(Ticks ticks_period) {
   DEBUG_ASSERT(ticks_period >= 0);
+  check_pmu();
 
   if (ticks_period == 0 && !always_recreate_counters()) {
     // We can't switch a counter between sampling and non-sampling via

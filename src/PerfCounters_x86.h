@@ -362,6 +362,7 @@ static void check_for_arch_bugs(CpuMicroarch uarch) {
 static bool always_recreate_counters() {
   // When we have the KVM IN_TXCP bug, reenabling the TXCP counter after
   // disabling it does not work.
+  DEBUG_ASSERT(pmu_checked);
   return has_ioc_period_bug || has_kvm_in_txcp_bug;
 }
 
