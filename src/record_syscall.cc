@@ -2417,46 +2417,6 @@ static void prepare_ptrace_legacy(RecordTask* t,
   pid_t pid = (pid_t)t->regs().arg2_signed();
   int command = (int)t->regs().arg1_signed();
   switch (command) {
-    case PTRACE_PEEKTEXT:
-    case PTRACE_PEEKDATA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        // The actual syscall returns the data via the 'data' out-parameter.
-        // The behavior of returning the data as the system call result is
-        // provided by the glibc wrapper.
-        auto datap =
-            syscall_state.reg_parameter<typename Arch::unsigned_word>(4);
-        remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
-        bool ok = true;
-        auto v = tracee->read_mem(addr, &ok);
-        if (ok) {
-          t->write_mem(datap, v);
-          syscall_state.emulate_result(0);
-        } else {
-          syscall_state.emulate_result(-EIO);
-        }
-      }
-      break;
-    }
-    case PTRACE_POKETEXT:
-    case PTRACE_POKEDATA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
-        typename Arch::unsigned_word data = t->regs().arg4();
-        bool ok = true;
-        tracee->write_mem(addr, data, &ok);
-        if (ok) {
-          // Since we're recording data that might not be for |t|, we have to
-          // handle this specially during replay.
-          tracee->record_local(addr, &data);
-          syscall_state.emulate_result(0);
-        } else {
-          syscall_state.emulate_result(-EIO);
-        }
-      }
-      break;
-    }
     case Arch::PTRACE_PEEKUSR: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
@@ -3038,10 +2998,46 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
-    case Arch::PTRACE_PEEKTEXT:
-    case Arch::PTRACE_PEEKDATA:
-    case Arch::PTRACE_POKETEXT:
-    case Arch::PTRACE_POKEDATA:
+    case PTRACE_PEEKTEXT:
+    case PTRACE_PEEKDATA: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual syscall returns the data via the 'data' out-parameter.
+        // The behavior of returning the data as the system call result is
+        // provided by the glibc wrapper.
+        auto datap =
+            syscall_state.reg_parameter<typename Arch::unsigned_word>(4);
+        remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
+        bool ok = true;
+        auto v = tracee->read_mem(addr, &ok);
+        if (ok) {
+          t->write_mem(datap, v);
+          syscall_state.emulate_result(0);
+        } else {
+          syscall_state.emulate_result(-EIO);
+        }
+      }
+      break;
+    }
+    case PTRACE_POKETEXT:
+    case PTRACE_POKEDATA: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
+        typename Arch::unsigned_word data = t->regs().arg4();
+        bool ok = true;
+        tracee->write_mem(addr, data, &ok);
+        if (ok) {
+          // Since we're recording data that might not be for |t|, we have to
+          // handle this specially during replay.
+          tracee->record_local(addr, &data);
+          syscall_state.emulate_result(0);
+        } else {
+          syscall_state.emulate_result(-EIO);
+        }
+      }
+      break;
+    }
     case Arch::PTRACE_PEEKUSR:
     case Arch::PTRACE_POKEUSR:
     case Arch::PTRACE_GETREGS:
