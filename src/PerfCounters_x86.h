@@ -118,6 +118,10 @@ static CpuMicroarch compute_cpu_microarch() {
   return UnknownCpu; // not reached
 }
 
+static std::vector<CpuMicroarch> compute_cpu_microarchs() {
+  return { compute_cpu_microarch() };
+}
+
 static void check_for_kvm_in_txcp_bug(const perf_event_attrs &perf_attr) {
   int64_t count = 0;
   struct perf_event_attr attr = perf_attr.ticks;
