@@ -84,8 +84,14 @@ public:
   int get_ignore_sig() const { return ignore_sig; }
   void set_continue_through_sig(int sig) { continue_through_sig = sig; }
   int get_continue_through_sig() const { return continue_through_sig; }
-  void set_asan_active(bool active) { asan_active_ = active; }
-  bool asan_active() const { return asan_active_; }
+  // Returns ranges to exclude from chaos mode memory allocation.
+  // Used to exclude ranges used by sanitizers.
+  const std::vector<MemoryRange> excluded_ranges() const {
+    return excluded_ranges_;
+  }
+  MemoryRange fixed_global_exclusion_range() const {
+    return fixed_global_exclusion_range_;
+  }
   bool use_audit() const { return use_audit_; }
   bool unmap_vdso() { return unmap_vdso_; }
   uint64_t rr_signal_mask() const;
@@ -255,12 +261,13 @@ private:
    * When true, try to increase the probability of finding bugs.
    */
   bool enable_chaos_;
-  bool asan_active_;
   /**
    * When true, wait for all tracees to exit before finishing recording.
    */
   bool wait_for_all_;
 
+  std::vector<MemoryRange> excluded_ranges_;
+  MemoryRange fixed_global_exclusion_range_;
   /**
    * Keeps track of detached tasks.
    */

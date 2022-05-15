@@ -33,6 +33,7 @@ namespace rr {
 
 class AutoRemoteSyscalls;
 class MonitoredSharedMemory;
+class RecordSession;
 class RecordTask;
 class Session;
 class Task;
@@ -843,7 +844,7 @@ public:
    */
   void fd_tables_changed();
 
-  static MemoryRange get_global_exclusion_range();
+  static MemoryRange get_global_exclusion_range(const RecordSession* session);
 
 private:
   struct Breakpoint;

@@ -2147,20 +2147,25 @@ static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   return MemoryRange(start, km.end());
 }
 
-static bool overlaps_asan_usage(const MemoryRange& r) {
-  MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
-                          remote_ptr<void>((uintptr_t)0x10007fff8000LL));
-  MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
-                                      remote_ptr<void>((uintptr_t)0x640000000000LL));
-  return r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved);
+static bool overlaps_excluded_range(const RecordSession& session, MemoryRange range) {
+  for (const auto& r : session.excluded_ranges()) {
+    if (r.intersects(range)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Choose a 4TB range to exclude from random mappings. This makes room for
 // advanced trace analysis tools that require a large address range in tracees
 // that is never mapped.
-static MemoryRange choose_global_exclusion_range() {
+static MemoryRange choose_global_exclusion_range(const RecordSession* session) {
   if (sizeof(uintptr_t) < 8) {
     return MemoryRange(nullptr, 0);
+  }
+  if (session && session->fixed_global_exclusion_range().size()) {
+    // For TSAN we have a hardcoded range stored in the session.
+    return session->fixed_global_exclusion_range();
   }
 
   const uint64_t range_size = uint64_t(4)*1024*1024*1024*1024;
@@ -2171,20 +2176,20 @@ static MemoryRange choose_global_exclusion_range() {
     r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
     remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
     MemoryRange ret(addr, (uintptr_t)range_size);
-    if (!overlaps_asan_usage(ret)) {
+    if (!session || !overlaps_excluded_range(*session, ret)) {
       return ret;
     }
   }
 }
 
-MemoryRange AddressSpace::get_global_exclusion_range() {
-  static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+MemoryRange AddressSpace::get_global_exclusion_range(const RecordSession* session) {
+  static MemoryRange global_exclusion_range = choose_global_exclusion_range(session);
   return global_exclusion_range;
 }
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len, remote_ptr<void> hint) {
-  MemoryRange global_exclusion_range = get_global_exclusion_range();
+  MemoryRange global_exclusion_range = get_global_exclusion_range(&t->session());
   // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
   // don't hand it out again.
   static MemoryRange rrpage_so_range = MemoryRange(RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE, RR_PAGE_ADDR + PRELOAD_LIBRARY_PAGE_SIZE);
@@ -2258,9 +2263,10 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     if (r.intersects(global_exclusion_range)) {
       continue;
     }
-    if (t->session().asan_active() && sizeof(size_t) == 8) {
-      LOG(debug) << "Checking ASAN shadow";
-      if (overlaps_asan_usage(r)) {
+    if (!t->session().excluded_ranges().empty()) {
+      ASSERT(t, word_size(t->arch()) >= 8)
+        << "Chaos mode with ASAN/TSAN not supported in 32-bit processes";
+      if (overlaps_excluded_range(t->session(), r)) {
         continue;
       }
     }

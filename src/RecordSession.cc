@@ -2082,11 +2082,40 @@ void strip_outer_ld_preload(vector<string>& env) {
   }
 }
 
+static const MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
+                                     remote_ptr<void>((uintptr_t)0x10007fff8000LL));
+static const MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
+                                                 remote_ptr<void>((uintptr_t)0x640000000000LL));
+
+// See https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/tsan/rtl/tsan_platform_posix.cpp
+static const MemoryRange tsan_shadow(remote_ptr<void>((uintptr_t)0x008000000000LL),
+                                     remote_ptr<void>((uintptr_t)0x550000000000LL));
+// The memory area 0x7b0000000000-0x7c0000000000 is reserved for TSAN's
+// custom heap allocator --- applications end up using it, but *we* can't use
+// it.
+static const MemoryRange tsan_exclude(remote_ptr<void>((uintptr_t)0x568000000000LL),
+                                      remote_ptr<void>((uintptr_t)0x7e8000000000LL));
+// It's only 1TB because tsan can't fit more
+static const MemoryRange tsan_fixed_global_exclusion_range(remote_ptr<void>((uintptr_t)0x7e8000000000LL),
+                                                           remote_ptr<void>((uintptr_t)0x7f8000000000LL));
+
 struct ExeInfo {
-  ExeInfo() : has_asan_symbols(false) {}
+  ExeInfo() {}
   // Empty if anything fails
-  string libasan_path;
-  bool has_asan_symbols;
+  string sanitizer_path;
+  vector<MemoryRange> sanitizer_exclude_memory_ranges;
+  // If non-empty, use this as the global exclusion range.
+  MemoryRange fixed_global_exclusion_range;
+
+  void setup_asan_memory_ranges() {
+    sanitizer_exclude_memory_ranges.push_back(asan_shadow);
+    sanitizer_exclude_memory_ranges.push_back(asan_allocator_reserved);
+  }
+  void setup_tsan_memory_ranges() {
+    sanitizer_exclude_memory_ranges.push_back(tsan_shadow);
+    sanitizer_exclude_memory_ranges.push_back(tsan_exclude);
+    fixed_global_exclusion_range = tsan_fixed_global_exclusion_range;
+  }
 };
 
 static ExeInfo read_exe_info(const string& exe_file) {
@@ -2102,7 +2131,11 @@ static ExeInfo read_exe_info(const string& exe_file) {
     if (entry.tag == DT_NEEDED && entry.val < dynamic.strtab.size()) {
       const char* name = &dynamic.strtab[entry.val];
       if (!strncmp(name, "libasan", 7)) {
-        ret.libasan_path = string(name);
+        ret.sanitizer_path = string(name);
+        ret.setup_asan_memory_ranges();
+      } else if (!strncmp(name, "libtsan", 7)) {
+        ret.sanitizer_path = string(name);
+        ret.setup_tsan_memory_ranges();
       }
     }
   }
@@ -2110,7 +2143,9 @@ static ExeInfo read_exe_info(const string& exe_file) {
   auto syms = reader.read_symbols(".dynsym", ".dynstr");
   for (size_t i = 0; i < syms.size(); ++i) {
     if (syms.is_name(i, "__asan_init")) {
-      ret.has_asan_symbols = true;
+      ret.setup_asan_memory_ranges();
+    } else if (syms.is_name(i, "__tsan_init")) {
+      ret.setup_tsan_memory_ranges();
     }
   }
 
@@ -2214,6 +2249,9 @@ static string lookup_by_path(const string& name) {
     CLEAN_FATAL() << "Provided tracee '" << argv[0] << "' is a directory, not an executable";
   }
   ExeInfo exe_info = read_exe_info(full_path);
+  if (force_asan_active && exe_info.sanitizer_exclude_memory_ranges.empty()) {
+    exe_info.setup_asan_memory_ranges();
+  }
 
   // Strip any LD_PRELOAD that an outer rr may have inserted
   strip_outer_ld_preload(env);
@@ -2222,11 +2260,11 @@ static string lookup_by_path(const string& name) {
   string syscall_buffer_lib_path = find_helper_library(SYSCALLBUF_LIB_FILENAME);
   if (!syscall_buffer_lib_path.empty()) {
     string ld_preload = "";
-    if (!exe_info.libasan_path.empty()) {
-      LOG(debug) << "Prepending " << exe_info.libasan_path << " to LD_PRELOAD";
+    if (!exe_info.sanitizer_path.empty()) {
+      LOG(debug) << "Prepending " << exe_info.sanitizer_path << " to LD_PRELOAD";
       // Put an LD_PRELOAD entry for it before our preload library, because
       // it checks that it's loaded first
-      ld_preload += exe_info.libasan_path + ":";
+      ld_preload += exe_info.sanitizer_path + ":";
     }
     ld_preload += syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
     inject_ld_helper_library(env, "LD_PRELOAD", ld_preload);
@@ -2269,9 +2307,8 @@ static string lookup_by_path(const string& name) {
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
                         output_trace_dir, trace_id, use_audit, unmap_vdso));
-  session->set_asan_active(force_asan_active ||
-                           !exe_info.libasan_path.empty() ||
-                           exe_info.has_asan_symbols);
+  session->excluded_ranges_ = std::move(exe_info.sanitizer_exclude_memory_ranges);
+  session->fixed_global_exclusion_range_ = std::move(exe_info.fixed_global_exclusion_range);
   return session;
 }
 
@@ -2299,7 +2336,6 @@ RecordSession::RecordSession(const std::string& exe_path,
       use_file_cloning_(true),
       use_read_cloning_(true),
       enable_chaos_(false),
-      asan_active_(false),
       wait_for_all_(false),
       use_audit_(use_audit),
       unmap_vdso_(unmap_vdso) {
