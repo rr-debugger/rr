@@ -108,10 +108,11 @@ public:
   bool addr_to_offset(uintptr_t addr, uintptr_t& offset);
   SectionOffsets find_section_file_offsets(const char* name);
   DwarfSpan dwarf_section(const char* name, bool known_to_be_compressed = false);
+  SupportedArch arch() const { return arch_; }
 private:
   ElfReaderImplBase& impl();
   std::unique_ptr<ElfReaderImplBase> impl_;
-  SupportedArch arch;
+  SupportedArch arch_;
 protected:
   uint8_t* map;
   size_t size;

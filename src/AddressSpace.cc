@@ -2156,11 +2156,20 @@ static bool overlaps_excluded_range(const RecordSession& session, MemoryRange ra
   return false;
 }
 
+static bool is_all_memory_excluded(const RecordSession& session) {
+  for (const auto& r : session.excluded_ranges()) {
+    if (r == MemoryRange::all()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Choose a 4TB range to exclude from random mappings. This makes room for
 // advanced trace analysis tools that require a large address range in tracees
 // that is never mapped.
 static MemoryRange choose_global_exclusion_range(const RecordSession* session) {
-  if (sizeof(uintptr_t) < 8) {
+  if (session && is_all_memory_excluded(*session)) {
     return MemoryRange(nullptr, 0);
   }
   if (session && session->fixed_global_exclusion_range().size()) {
@@ -2189,6 +2198,10 @@ MemoryRange AddressSpace::get_global_exclusion_range(const RecordSession* sessio
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len, remote_ptr<void> hint) {
+  if (is_all_memory_excluded(t->session())) {
+    return nullptr;
+  }
+
   MemoryRange global_exclusion_range = get_global_exclusion_range(&t->session());
   // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
   // don't hand it out again.

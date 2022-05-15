@@ -58,6 +58,10 @@ public:
   remote_ptr<void> end() const { return end_; }
   size_t size() const { return end_ - start_; }
 
+  static MemoryRange all() {
+    return MemoryRange(remote_ptr<void>(), remote_ptr<void>(UINTPTR_MAX));
+  }
+
   // XXX DO NOT USE
   void update_start(remote_ptr<void> s) const {
     const_cast<MemoryRange*>(this)->start_ = s;

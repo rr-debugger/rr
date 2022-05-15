@@ -455,13 +455,13 @@ bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   return false;
 }
 
-ElfReader::ElfReader(SupportedArch arch) : arch(arch), map(nullptr), size(0) {}
+ElfReader::ElfReader(SupportedArch arch) : arch_(arch), map(nullptr), size(0) {}
 
 ElfReader::~ElfReader() {}
 
 ElfReaderImplBase& ElfReader::impl() {
   if (!impl_) {
-    impl_ = elf_reader_impl(*this, arch);
+    impl_ = elf_reader_impl(*this, arch_);
   }
   return *impl_;
 }

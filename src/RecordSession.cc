@@ -2100,7 +2100,8 @@ static const MemoryRange tsan_fixed_global_exclusion_range(remote_ptr<void>((uin
                                                            remote_ptr<void>((uintptr_t)0x7f8000000000LL));
 
 struct ExeInfo {
-  ExeInfo() {}
+  ExeInfo() : arch(NativeArch::arch()) {}
+  SupportedArch arch;
   // Empty if anything fails
   string sanitizer_path;
   vector<MemoryRange> sanitizer_exclude_memory_ranges;
@@ -2108,13 +2109,31 @@ struct ExeInfo {
   MemoryRange fixed_global_exclusion_range;
 
   void setup_asan_memory_ranges() {
+    if (!check_sanitizer_arch()) {
+      return;
+    }
     sanitizer_exclude_memory_ranges.push_back(asan_shadow);
     sanitizer_exclude_memory_ranges.push_back(asan_allocator_reserved);
   }
   void setup_tsan_memory_ranges() {
+    if (!check_sanitizer_arch()) {
+      return;
+    }
     sanitizer_exclude_memory_ranges.push_back(tsan_shadow);
     sanitizer_exclude_memory_ranges.push_back(tsan_exclude);
     fixed_global_exclusion_range = tsan_fixed_global_exclusion_range;
+  }
+private:
+  bool check_sanitizer_arch() {
+    switch (arch) {
+      case x86_64:
+        return true;
+      default:
+        // We have no idea what's going on. Disable mmap randomization if
+        // chaos mode is active.
+        sanitizer_exclude_memory_ranges.push_back(MemoryRange::all());
+        return false;
+    }
   }
 };
 
@@ -2125,6 +2144,7 @@ static ExeInfo read_exe_info(const string& exe_file) {
     return ret;
   }
   ElfFileReader reader(fd);
+  ret.arch = reader.arch();
 
   DynamicSection dynamic = reader.read_dynamic();
   for (auto& entry : dynamic.entries) {
