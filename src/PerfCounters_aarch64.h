@@ -28,6 +28,10 @@ static CpuMicroarch compute_cpu_microarch() {
   return UnknownCpu; // not reached
 }
 
+static std::vector<CpuMicroarch> compute_cpu_microarchs() {
+  return { compute_cpu_microarch() };
+}
+
 static void arch_check_restricted_counter() {
   if (!Flags::get().suppress_environment_warnings) {
     fprintf(stderr,

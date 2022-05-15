@@ -345,7 +345,7 @@ static void check_for_bugs(perf_event_attrs &perf_attr) {
   check_for_arch_bugs(perf_attr);
 }
 
-static CpuMicroarch get_cpu_microarch() {
+static std::vector<CpuMicroarch> get_cpu_microarchs() {
   string forced_uarch = lowercase(Flags::get().forced_uarch);
   if (!forced_uarch.empty()) {
     for (size_t i = 0; i < array_length(pmu_configs); ++i) {
@@ -353,26 +353,30 @@ static CpuMicroarch get_cpu_microarch() {
       string name = lowercase(pmu.name);
       if (name.npos != name.find(forced_uarch)) {
         LOG(info) << "Using forced uarch " << pmu.name;
-        return pmu.uarch;
+        return { pmu.uarch };
       }
     }
     CLEAN_FATAL() << "Forced uarch " << Flags::get().forced_uarch
                   << " isn't known.";
   }
-  return compute_cpu_microarch();
+  return compute_cpu_microarchs();
 }
 
 // Similar to rr::perf_attrs, if this contains more than one element,
 // it's indexed by the CPU index.
 static std::vector<PmuConfig> get_pmu_microarchs() {
   std::vector<PmuConfig> pmu_uarchs;
-  CpuMicroarch uarch = get_cpu_microarch();
-  // TODO: multiple PMU
-  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-    if (uarch == pmu_configs[i].uarch) {
-      pmu_uarchs.push_back(pmu_configs[i]);
-      break;
+  auto uarchs = get_cpu_microarchs();
+  for (auto uarch : uarchs) {
+    bool found = false;
+    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+      if (uarch == pmu_configs[i].uarch) {
+        found = true;
+        pmu_uarchs.push_back(pmu_configs[i]);
+        break;
+      }
     }
+    DEBUG_ASSERT(found);
   }
   DEBUG_ASSERT(!pmu_uarchs.empty());
   // Note that the `uarch` field after processed by `post_init_pmu_uarchs`
