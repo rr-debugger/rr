@@ -240,8 +240,79 @@ static bool always_recreate_counters(__attribute__((unused)) const perf_event_at
 
 static void check_for_arch_bugs(__attribute__((unused)) perf_event_attrs &perf_attr) {}
 
-static void post_init_pmu_uarchs(std::vector<PmuConfig> &)
+static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
 {
+  std::map<std::string,int> pmu_types;
+  size_t npmus = pmu_uarchs.size();
+  int pmu_type_failed = 0;
+  auto fallback_pmu = [] (PmuConfig &pmu_uarch) {
+    pmu_uarch.pmu_name = nullptr;
+    if (pmu_uarch.cycle_type != PERF_TYPE_HARDWARE) {
+      pmu_uarch.cycle_type = PERF_TYPE_HARDWARE;
+      pmu_uarch.cycle_event = PERF_COUNT_HW_CPU_CYCLES;
+    }
+    if (pmu_uarch.event_type != PERF_TYPE_RAW) {
+      pmu_uarch.event_type = PERF_TYPE_RAW;
+    }
+  };
+  auto set_pmu_type = [] (PmuConfig &pmu_uarch, int type) {
+    if (pmu_uarch.cycle_type != PERF_TYPE_HARDWARE) {
+      pmu_uarch.cycle_type = type;
+    }
+    if (pmu_uarch.event_type != PERF_TYPE_RAW) {
+      pmu_uarch.event_type = type;
+    }
+  };
+  for (size_t i = 0; i < npmus; i++) {
+    auto &pmu_uarch = pmu_uarchs[i];
+    if (!pmu_uarch.pmu_name) {
+      CLEAN_FATAL() << "Unknown PMU name for core " << i;
+      continue;
+    }
+    std::string pmu_name(pmu_uarch.pmu_name);
+    auto &pmu_type = pmu_types[pmu_name];
+    if (pmu_type == -1) {
+      fallback_pmu(pmu_uarch);
+      continue;
+    }
+    if (pmu_type) {
+      set_pmu_type(pmu_uarch, pmu_type);
+      continue;
+    }
+    auto filename = "/sys/bus/event_source/devices/" + pmu_name + "/type";
+    std::ifstream file(filename);
+    int val = 0;
+    bool failed = false;
+    if (!file) {
+      failed = true;
+      LOG(warn) << "Cannot open " << filename;
+    }
+    else {
+      file >> val;
+      if (!file) {
+        failed = true;
+        LOG(warn) << "Cannot read " << filename;
+      }
+    }
+    if (failed) {
+      // Record the failure and fallback to the kernel raw and hardware events instead
+      pmu_type_failed++;
+      fallback_pmu(pmu_uarch);
+      pmu_type = -1;
+    }
+    else {
+      set_pmu_type(pmu_uarch, val);
+      pmu_type = val;
+    }
+  }
+  if (pmu_types.size() == 1) {
+    // Single PMU type
+    pmu_uarchs.resize(1);
+  } else if (pmu_type_failed) {
+    // If reading PMU type failed, we only allow a single PMU type to be sure
+    // that we get what we want from the kernel events.
+    CLEAN_FATAL() << "Unable to read PMU event types";
+  }
 }
 
 template <>
