@@ -47,6 +47,7 @@ struct perf_event_attrs {
   perf_event_attr minus_ticks{};
   perf_event_attr cycles{};
   perf_event_attr llsc_fail{};
+  const char *pmu_name = nullptr;
   uint32_t pmu_flags = 0;
   uint32_t skid_size = 0;
   bool checked = false;
@@ -124,6 +125,7 @@ struct PmuConfig {
   unsigned llsc_cntr_event;
   uint32_t skid_size;
   uint32_t flags;
+  const char* pmu_name = nullptr; // ARM only
   unsigned cycle_event = PERF_COUNT_HW_CPU_CYCLES;
   int cycle_type = PERF_TYPE_HARDWARE;
   int event_type = PERF_TYPE_RAW;
@@ -165,7 +167,9 @@ static const PmuConfig pmu_configs[] = {
   { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB },
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
   // 0x6F == STREX_SPEC - Speculatively executed strex instructions
-  { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES }
+  // 0x11 == CPU_CYCLES - Cycle
+  { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3_0", 0x11, -1, -1 }
 };
 
 #define RR_SKID_MAX 10000
@@ -319,16 +323,22 @@ static void check_working_counters(perf_event_attrs &perf_attr) {
   if (events < NUM_BRANCHES) {
     char config[100];
     sprintf(config, "%llx", (long long)perf_attr.ticks.config);
-
+    std::string perf_cmdline = "perf stat -e ";
+    if (perf_attr.pmu_name) {
+      perf_cmdline = perf_cmdline + perf_attr.pmu_name + "/r" + config + "/ true";
+    }
+    else {
+      perf_cmdline = perf_cmdline + "r" + config + " true";
+    }
     FATAL()
         << "\nGot " << events << " branch events, expected at least "
         << NUM_BRANCHES
         << ".\n"
            "\nThe hardware performance counter seems to not be working. Check\n"
            "that hardware performance counters are working by running\n"
-           "  perf stat -e r"
-        << config
-        << " true\n"
+           "  "
+        << perf_cmdline
+        << "\n"
            "and checking that it reports a nonzero number of events.\n"
            "If performance counters seem to be working with 'perf', file an\n"
            "rr issue, otherwise check your hardware/OS/VM configuration. Also\n"
@@ -429,6 +439,7 @@ static void init_attributes() {
     for (size_t i = 0; i < npmus; i++) {
       auto &perf_attr = perf_attrs[i];
       auto &pmu_uarch = pmu_uarchs[i];
+      perf_attr.pmu_name = pmu_uarch.pmu_name;
       perf_attr.skid_size = pmu_uarch.skid_size;
       perf_attr.pmu_flags = pmu_uarch.flags;
       perf_attr.bug_flags = (int)pmu_uarch.uarch;
