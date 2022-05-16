@@ -3207,6 +3207,26 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
   /* TODO tracees can probably undo some of the setup below
    * ... */
 
+  struct NativeArch::cap_header header = {.version =
+                                              _LINUX_CAPABILITY_VERSION_3,
+                                          .pid = 0 };
+  struct NativeArch::cap_data caps[2];
+  if (syscall(NativeArch::capget, &header, &caps) != 0) {
+    spawned_child_fatal_error(err_fd, "Failed to read capabilities");
+  }
+  uint32_t perfmon_mask = 1 << (CAP_PERFMON - 32);
+  if (caps[1].permitted & perfmon_mask) {
+    // Try to pass CAP_PERFMON into our tracees.
+    caps[1].inheritable |= perfmon_mask;
+    // Ignore any failures here. Capabilities are super complex and I'm not
+    // sure this can be trusted to succeed.
+    if (syscall(NativeArch::capset, &header, &caps) == 0) {
+      // Install CAP_PERFMON as an ambient capabilities.
+      // This prctl was only added in 4.3. Ignore failures.
+      prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_PERFMON, 0, 0);
+    }
+  }
+
   /* CLOEXEC so that the original fd here will be closed by the exec that's
    * about to happen.
    */
