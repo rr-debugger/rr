@@ -2640,6 +2640,11 @@ bool Task::open_mem_fd() {
     AutoRestoreMem remote_path(remote, mem, sizeof(mem));
     int remote_mem_fd = remote.syscall(syscall_number_for_openat(arch()),
                         remote_mem_dir_fd, remote_path.get(), O_RDWR);
+    if (remote_mem_fd < 0) {
+      LOG(info) << "Can't retrieve mem fd for " << tid
+        << "; couldn't open /proc/...mem; errno=" << errno_name(-remote_mem_fd);
+      return false;
+    }
     fd = remote.retrieve_fd(remote_mem_fd);
     remote.infallible_close_syscall_if_alive(remote_mem_fd);
     remote.infallible_close_syscall_if_alive(remote_mem_dir_fd);
