@@ -22,9 +22,11 @@ static struct rseq_cs rs_cs;
 
 static const uint32_t RSEQ_SIG = 0x12345678;
 
-extern char start_ip;
-extern char end_ip;
-extern char abort_ip;
+// Use hidden symbols to make sure we refer to the assembly symbol
+// rather than through GOT
+__attribute__((visibility("hidden"))) extern char start_ip;
+__attribute__((visibility("hidden"))) extern char end_ip;
+__attribute__((visibility("hidden"))) extern char abort_ip;
 
 static uint64_t aborts;
 static uint64_t jump_aborts;
@@ -49,6 +51,22 @@ static void do_section(void) {
     "movb $1,%1\n\t"
     "1:\n\t"
     : : "m"(dummy), "m"(did_abort));
+#elif defined(__aarch64__)
+  int dummy2;
+  __asm__ __volatile__ (
+    "start_ip:\n\t"
+    "mov %1, 1234\n\t"
+    "str %1, %2\n\t"
+    "str %1, %2\n\t"
+    "str %1, %2\n\t"
+    "str %1, %2\n\t"
+    "b 1f\n\t"
+    "end_ip:\n\t"
+    ".int 0x12345678\n\t"
+    "abort_ip:\n\t"
+    "mov %0, 1\n\t"
+    "1:\n\t"
+    : "+r"(did_abort), "=&r"(dummy2) : "m"(dummy));
 #endif
   if (did_abort) {
     ++jump_aborts;
@@ -82,11 +100,9 @@ static int main_child(void) {
   test_assert(rs_ptr->cpu_id_start < 10000000);
   test_assert(rs_ptr->cpu_id < 10000000);
 
-#if defined(__x86_64__) || defined(__i386__)
   rs_cs.start_ip = (uint64_t)(uintptr_t)&start_ip;
   rs_cs.post_commit_offset = (uint64_t)(uintptr_t)&end_ip - rs_cs.start_ip;
   rs_cs.abort_ip = (uint64_t)(uintptr_t)&abort_ip;
-#endif
 
   child = fork();
   if (!child) {
