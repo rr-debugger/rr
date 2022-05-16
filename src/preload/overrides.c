@@ -44,8 +44,6 @@ static void fix_mutex_kind(pthread_mutex_t* mutex) {
   mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
 }
 
-extern int __pthread_mutex_init(pthread_mutex_t* mutex,
-                                const pthread_mutexattr_t* attr);
 #ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
 /*
  * We need to able to call directly to __pthread_mutex_lock and
@@ -55,6 +53,8 @@ extern int __pthread_mutex_init(pthread_mutex_t* mutex,
  * to use a pthreads-based implementation). So before our pointers are set
  * up, call these.
  */
+extern int __pthread_mutex_init(pthread_mutex_t* mutex,
+                                const pthread_mutexattr_t* attr);
 extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
 extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
 #endif
@@ -64,25 +64,28 @@ int pthread_mutex_init(pthread_mutex_t* mutex,
   int ret;
   pthread_mutexattr_t realattr;
 
-  if (!attr) {
-    return __pthread_mutex_init(mutex, NULL);
+  if (attr) {
+    /* We wish to enforce the use of plain (no PI) mutex to avoid
+     * needing to handle PI futex() operations.
+     * We also wish to ensure that pthread_mutexattr_getprotocol()
+     * still returns the requested protocol.
+     * So we copy the attribute and force PTHREAD_PRIO_NONE.
+     */
+    memcpy(&realattr, attr, sizeof(realattr));
+    ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
+    if (ret) {
+      return ret;
+    }
+    attr = &realattr;
   }
-
-  /* We wish to enforce the use of plain (no PI) mutex to avoid
-   * needing to handle PI futex() operations.
-   * We also wish to ensure that pthread_mutexattr_getprotocol()
-   * still returns the requested protocol.
-   * So we copy the attribute and force PTHREAD_PRIO_NONE.
-   */
-  memcpy(&realattr, attr, sizeof(realattr));
-  ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
-  if (ret) {
-    return ret;
+  if (!real_pthread_mutex_init) {
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+    return __pthread_mutex_init(mutex, attr);
+#else
+    real_pthread_mutex_init = dlsym(RTLD_NEXT, "pthread_mutex_init");
+#endif
   }
-  if (real_pthread_mutex_init) {
-    return real_pthread_mutex_init(mutex, &realattr);
-  }
-  return __pthread_mutex_init(mutex, &realattr);
+  return real_pthread_mutex_init(mutex, attr);
 }
 
 /* Prevent use of lock elision; Haswell's TSX/RTM features used by
