@@ -232,6 +232,37 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
 
 bool ExtraRegisters::write_register(GdbRegister regno, const void* value,
                                     size_t value_size) {
+  if (format_ == NT_FPR) {
+    if (arch() != aarch64) {
+      return false;
+    }
+
+    RegData reg_data;
+    if (DREG_V0 <= regno && regno <= DREG_V31) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, vregs[0]) +
+        ((regno - DREG_V0) * 16), 16);
+    } else if (regno == DREG_FPSR) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpsr),
+                         sizeof(uint32_t));
+    } else if (regno == DREG_FPCR) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpcr),
+                         sizeof(uint32_t));
+    } else {
+      return false;
+    }
+
+    DEBUG_ASSERT(reg_data.size > 0);
+    if ((size_t)reg_data.size != value_size) {
+      LOG(warn) << "Register " << regno << "has mismatched sizes ("
+                << reg_data.size << " vs " << value_size << ")";
+      return false;
+    }
+
+    DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
+    memcpy(data_.data() + reg_data.offset, value, value_size);
+    return true;
+  }
+
   if (format_ != XSAVE) {
     return false;
   }
