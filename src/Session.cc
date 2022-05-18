@@ -249,7 +249,7 @@ ScopedFd Session::create_spawn_task_error_pipe() {
   if (0 != pipe2(fds, O_CLOEXEC)) {
     FATAL();
   }
-  spawned_task_error_fd_ = fds[0];
+  spawned_task_error_fd_ = ScopedFd(fds[0]);
   return ScopedFd(fds[1]);
 }
 

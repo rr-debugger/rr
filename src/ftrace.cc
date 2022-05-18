@@ -29,7 +29,7 @@ static bool tracing = false;
 
 static void open_socket() {
   string s = string(getenv("HOME")) + "/.local/share/rr/ftrace";
-  control_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  control_fd = ScopedFd(socket(AF_UNIX, SOCK_STREAM, 0));
   if (control_fd < 0) {
     FATAL() << "Cannot create socket";
   }

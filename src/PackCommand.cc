@@ -249,7 +249,7 @@ static string copy_into_trace(const string& file_name, const string& trace_dir,
     new_name_buf[sizeof(new_name_buf) - 1] = 0;
     new_name = trace_dir + "/" + new_name_buf;
     ++*name_index;
-    out_fd = open(new_name.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0700);
+    out_fd = ScopedFd(new_name.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0700);
     if (!out_fd.is_open()) {
       if (errno == EEXIST) {
         continue;
