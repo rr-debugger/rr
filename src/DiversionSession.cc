@@ -12,7 +12,8 @@ using namespace std;
 
 namespace rr {
 
-DiversionSession::DiversionSession() : emu_fs(EmuFs::create()) {}
+DiversionSession::DiversionSession(int cpu_binding) :
+  emu_fs(EmuFs::create()), cpu_binding_(cpu_binding) {}
 
 DiversionSession::~DiversionSession() {
   // We won't permanently leak any OS resources by not ensuring
