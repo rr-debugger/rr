@@ -91,6 +91,8 @@ struct KernelConstants {
   static const int PTRACE_SETFPREGS = 15;
   static const int PTRACE_ATTACH = 16;
   static const int PTRACE_DETACH = 17;
+  static const int PTRACE_GETFPXREGS = 18;
+  static const int PTRACE_SETFPXREGS = 19;
   static const int PTRACE_SYSCALL = 24;
   static const int PTRACE_SETOPTIONS = 0x4200;
   static const int PTRACE_GETEVENTMSG = 0x4201;
