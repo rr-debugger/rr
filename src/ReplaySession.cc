@@ -398,7 +398,7 @@ static bool compute_ticks_request(
   *ticks_request = RESUME_UNLIMITED_TICKS;
   if (constraints.ticks_target > 0) {
     Ticks ticks_period =
-        constraints.ticks_target - PerfCounters::skid_size() - t->tick_count();
+        constraints.ticks_target - t->hpc.skid_size() - t->tick_count();
     if (ticks_period <= 0) {
       // Behave as if we actually executed something. Callers assume we did.
       t->clear_wait_status();
@@ -863,10 +863,11 @@ Completion ReplaySession::emulate_async_signal(
   LOG(debug) << "advancing " << ticks_left << " ticks to reach " << ticks << "/"
              << ip;
 
+  auto skid_size = t->hpc.skid_size();
   /* XXX should we only do this if (ticks > 10000)? */
-  while (ticks_left - PerfCounters::skid_size() > PerfCounters::skid_size()) {
+  while (ticks_left - skid_size > skid_size) {
     LOG(debug) << "  programming interrupt for "
-               << (ticks_left - PerfCounters::skid_size()) << " ticks";
+               << (ticks_left - skid_size) << " ticks";
 
     // Avoid overflow. If ticks_left > MAX_TICKS_REQUEST, execution will stop
     // early but we'll treat that just like a stray TIME_SLICE_SIGNAL and
@@ -877,7 +878,7 @@ Completion ReplaySession::emulate_async_signal(
     }
     continue_or_step(t, constraints,
                      (TicksRequest)(min<Ticks>(MAX_TICKS_REQUEST, ticks_left) -
-                                    PerfCounters::skid_size()));
+                                    skid_size));
     guard_unexpected_signal(t);
     if (in_syscallbuf_syscall_hook) {
       t->vm()->remove_breakpoint(in_syscallbuf_syscall_hook, BKPT_INTERNAL);
@@ -1501,7 +1502,7 @@ void ReplaySession::check_approaching_ticks_target(
     BreakStatus& break_status) {
   if (constraints.ticks_target > 0) {
     Ticks ticks_left = constraints.ticks_target - t->tick_count();
-    if (ticks_left <= PerfCounters::skid_size()) {
+    if (ticks_left <= t->hpc.skid_size()) {
       break_status.approaching_ticks_target = true;
     }
   }
