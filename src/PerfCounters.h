@@ -113,14 +113,14 @@ public:
    * When an interrupt is requested, at most this many ticks may elapse before
    * the interrupt is delivered.
    */
-  static uint32_t skid_size();
+  uint32_t skid_size();
 
   /**
    * Use a separate skid_size for recording since we seem to see more skid
    * in practice during recording, in particular during the
    * async_signal_syscalls tests
    */
-  static uint32_t recording_skid_size() { return skid_size() * 5; }
+  uint32_t recording_skid_size() { return skid_size() * 5; }
 
 private:
   // Only valid while 'counting' is true
