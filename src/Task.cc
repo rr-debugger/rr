@@ -1051,7 +1051,7 @@ const ExtraRegisters* Task::extra_regs_fallible() {
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data_.resize(sizeof(user_fpxregs_struct));
-      if (fallible_ptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data())) {
+      if (fallible_ptrace(X86Arch::PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data())) {
         return nullptr;
       }
 #elif defined(__x86_64__)
@@ -1528,7 +1528,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
 #if defined(__i386__)
         ASSERT(this,
                extra_registers.data_.size() == sizeof(user_fpxregs_struct));
-        ptrace_if_alive(PTRACE_SETFPXREGS, nullptr,
+        ptrace_if_alive(X86Arch::PTRACE_SETFPXREGS, nullptr,
                         extra_registers.data_.data());
 #elif defined(__x86_64__)
         ASSERT(this,
