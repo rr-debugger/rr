@@ -1813,7 +1813,7 @@ TempFile create_temporary_file(const char* pattern) {
   snprintf(buf, sizeof(buf) - 1, "%s/%s", tmp_dir(), pattern);
   buf[sizeof(buf) - 1] = 0;
   TempFile result;
-  result.fd = mkstemp(buf);
+  result.fd = ScopedFd(mkstemp(buf));
   result.name = buf;
   return result;
 }
@@ -1838,7 +1838,7 @@ static ScopedFd create_tmpfs_file(const string &real_name) {
   name = name.substr(0, 255);
 
   ScopedFd fd =
-      open(name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
+      ScopedFd(name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(name.c_str());

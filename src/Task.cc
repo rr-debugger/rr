@@ -3179,7 +3179,7 @@ static void spawned_child_fatal_error(const ScopedFd& err_fd,
   _exit(1);
 }
 
-static void disable_tsc(int err_fd) {
+static void disable_tsc(const ScopedFd& err_fd) {
   /* Trap to the rr process if a 'rdtsc' instruction is issued.
    * That allows rr to record the tsc and replay it
    * deterministically. */
@@ -3188,12 +3188,12 @@ static void disable_tsc(int err_fd) {
   }
 }
 
-template <typename Arch> void set_up_process_arch(int err_fd);
-template <> void set_up_process_arch<X86Arch>(int err_fd) { disable_tsc(err_fd); }
-template <> void set_up_process_arch<X64Arch>(int err_fd) { disable_tsc(err_fd); }
-template <> void set_up_process_arch<ARM64Arch>(int) {}
+template <typename Arch> void set_up_process_arch(const ScopedFd&);
+template <> void set_up_process_arch<X86Arch>(const ScopedFd& err_fd) { disable_tsc(err_fd); }
+template <> void set_up_process_arch<X64Arch>(const ScopedFd& err_fd) { disable_tsc(err_fd); }
+template <> void set_up_process_arch<ARM64Arch>(const ScopedFd&) {}
 
-void set_up_process_arch(SupportedArch arch, int err_fd) {
+void set_up_process_arch(SupportedArch arch, const ScopedFd& err_fd) {
   RR_ARCH_FUNCTION(set_up_process_arch, arch, err_fd);
 }
 
@@ -3306,7 +3306,7 @@ static SeccompFilter<struct sock_filter> create_seccomp_filter() {
  * things go wrong because we have no ptracer and the seccomp filter demands
  * one.
  */
-static void set_up_seccomp_filter(const struct sock_fprog& prog, int err_fd) {
+static void set_up_seccomp_filter(const struct sock_fprog& prog, const ScopedFd& err_fd) {
   /* Note: the filter is installed only for record. This call
    * will be emulated (not passed to the kernel) in the replay. */
   if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {

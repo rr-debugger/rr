@@ -221,7 +221,7 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
     }
     FATAL() << "Failed to initialize counter";
   }
-  return fd;
+  return ScopedFd(fd);
 }
 
 static void check_for_ioc_period_bug() {
