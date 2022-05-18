@@ -320,7 +320,7 @@ public:
 
   virtual TraceStream* trace_stream() override { return &trace_in; }
 
-  virtual int cpu_binding(TraceStream& trace) const override;
+  virtual int cpu_binding() const override;
 
   bool has_trace_quirk(TraceReader::TraceQuirks quirk) { return trace_in.quirks() & quirk; }
 

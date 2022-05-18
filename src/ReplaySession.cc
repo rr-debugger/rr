@@ -316,7 +316,7 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   vector<string> argv;
   vector<string> env;
 
-  session->do_bind_cpu(session->trace_in);
+  session->do_bind_cpu();
   ScopedFd error_fd = session->create_spawn_task_error_pipe();
   ReplayTask* t = static_cast<ReplayTask*>(
       Task::spawn(*session, error_fd, &session->tracee_socket_fd(),
@@ -329,11 +329,11 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   return session;
 }
 
-int ReplaySession::cpu_binding(TraceStream& trace) const {
+int ReplaySession::cpu_binding() const {
   if (flags_.cpu_unbound) {
     return -1;
   }
-  return Session::cpu_binding(trace);
+  return Session::cpu_binding();
 }
 
 void ReplaySession::advance_to_next_trace_frame() {
