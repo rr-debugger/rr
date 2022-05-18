@@ -478,6 +478,17 @@ enum {
 #define PR_SET_VMA_ANON_NAME 0
 #endif
 
+// Technically not "kernel" constants, exactly, since these are defined
+// in libc, but required for compat with older libcs like the rest of
+// this file.
+#ifndef SHF_COMPRESSED
+#define SHF_COMPRESSED (1 << 11)
+#endif
+
+#ifndef ELFCOMPRESS_ZLIB
+#define ELFCOMPRESS_ZLIB 1
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.
