@@ -2369,7 +2369,7 @@ RecordSession::RecordSession(const std::string& exe_path,
   }
 
   trace_out.set_bound_cpu(choose_cpu(bind_cpu, cpu_lock));
-  do_bind_cpu(trace_out);
+  do_bind_cpu();
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, &tracee_socket_fd(),

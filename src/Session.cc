@@ -713,8 +713,8 @@ bool Session::has_cpuid_faulting() {
   return !Flags::get().disable_cpuid_faulting && cpuid_faulting_works();
 }
 
-int Session::cpu_binding(TraceStream& trace) const {
-  return trace.bound_to_cpu();
+int Session::cpu_binding() const {
+  return const_cast<Session*>(this)->trace_stream()->bound_to_cpu();
 }
 
 // Returns true if we succeeded, false if we failed because the
@@ -734,8 +734,8 @@ static bool set_cpu_affinity(int cpu) {
   return true;
 }
 
-void Session::do_bind_cpu(TraceStream &trace) {
-  int cpu_index = this->cpu_binding(trace);
+void Session::do_bind_cpu() {
+  int cpu_index = this->cpu_binding();
   if (cpu_index >= 0) {
     // Set CPU affinity now, after we've created any helper threads
     // (so they aren't affected), but before we create any
@@ -750,10 +750,10 @@ void Session::do_bind_cpu(TraceStream &trace) {
                   << " even after we re-selected it";
         }
         LOG(warn) << "Bound to CPU " << cpu_index
-                  << "instead of selected " << trace.bound_to_cpu()
+                  << "instead of selected " << trace_stream()->bound_to_cpu()
                   << "because the latter is not available;\n"
                   << "Hoping tracee doesn't use LSL instruction!";
-        trace.set_bound_cpu(cpu_index);
+        trace_stream()->set_bound_cpu(cpu_index);
       } else {
         FATAL() << "Can't bind to requested CPU " << cpu_index
                 << ", and CPUID faulting not available";

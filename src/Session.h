@@ -365,7 +365,7 @@ public:
   virtual TraceStream* trace_stream() { return nullptr; }
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
-  virtual int cpu_binding(TraceStream& trace) const;
+  virtual int cpu_binding() const;
 
   int syscall_number_for_rrcall_init_preload() const {
     return SYS_rrcall_init_preload - RR_CALL_BASE + rrcall_base_;
@@ -394,7 +394,7 @@ public:
 
   /* Bind the current process to the a CPU as specified in the session options
      or trace */
-  void do_bind_cpu(TraceStream &trace);
+  void do_bind_cpu();
 
   const ThreadGroupMap& thread_group_map() const { return thread_group_map_; }
 
