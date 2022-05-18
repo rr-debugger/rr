@@ -287,7 +287,7 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   LOG(debug) << "Deepforking ReplaySession " << this
              << " to DiversionSession...";
 
-  DiversionSession::shr_ptr session(new DiversionSession());
+  DiversionSession::shr_ptr session(new DiversionSession(cpu_binding()));
   session->ticks_semantics_ = ticks_semantics_;
   session->tracee_socket = tracee_socket;
   session->tracee_socket_fd_number = tracee_socket_fd_number;

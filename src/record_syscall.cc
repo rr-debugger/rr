@@ -3474,7 +3474,7 @@ static void record_ranges(RecordTask* t,
 
 static pid_t do_detach_teleport(RecordTask *t)
 {
-  DiversionSession session;
+  DiversionSession session(t->session().cpu_binding());
   // Use the old task's exe path to make sure that /proc/<pid>/exe looks right
   // for the teleported task.
   std::string exe_path(t->proc_exe_path());
