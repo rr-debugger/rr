@@ -1415,11 +1415,8 @@ static long sys_creat(const struct syscall_info* call) {
    *
    *   creat() is equivalent to open() with flags equal to
    *   O_CREAT|O_WRONLY|O_TRUNC. */
-  struct syscall_info open_call;
-  open_call.no = SYS_open;
-  open_call.args[0] = (long)pathname;
-  open_call.args[1] = O_CREAT | O_TRUNC | O_WRONLY;
-  open_call.args[2] = mode;
+  struct syscall_info open_call =
+    { SYS_open, { (long)pathname, O_CREAT | O_TRUNC | O_WRONLY, mode } };
   return sys_open(&open_call);
 }
 #endif
