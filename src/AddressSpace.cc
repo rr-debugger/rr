@@ -1623,6 +1623,7 @@ extern "C" {
 extern char rr_syscall_addr __attribute__ ((visibility ("hidden")));
 }
 static void __attribute__((noinline, used)) fake_syscall() {
+  __asm__ __volatile__(".global rr_syscall_addr\n\t");
 #ifdef __i386__
   __asm__ __volatile__("rr_syscall_addr: int $0x80\n\t"
                        "nop\n\t"
