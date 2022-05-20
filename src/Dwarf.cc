@@ -284,6 +284,7 @@ static size_t form_size(DWForm form, size_t address_size, size_t dwarf_size, Dwa
     case DW_FORM_sec_offset: return dwarf_size;
     case DW_FORM_flag_present: return 0;
     case DW_FORM_implicit_const: return 0;
+    case DW_FORM_rnglistx: return dwarf_size;
     case DW_FORM_strp_sup: return dwarf_size;
     case DW_FORM_GNU_strp_alt: return dwarf_size;
     default:

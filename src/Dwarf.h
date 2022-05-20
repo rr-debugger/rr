@@ -56,6 +56,7 @@ enum DWForm {
   DW_FORM_data16 = 0x1e,
   DW_FORM_line_strp = 0x1f,
   DW_FORM_implicit_const = 0x21,
+  DW_FORM_rnglistx = 0x23,
   DW_FORM_strx1 = 0x25,
   DW_FORM_strx2 = 0x26,
   DW_FORM_strx3 = 0x27,
