@@ -674,7 +674,9 @@ void ReplaySession::check_pending_sig(ReplayTask* t) {
 }
 
 static bool do_replay_assist(Task* t) {
-  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
+  auto orig_ip = t->ip();
+  auto exit_ip = orig_ip.advance_past_executed_bkpt(t->arch());
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), exit_ip);
   if (!type || type->enabled != AddressSpace::REPLAY_ASSIST) {
     return false;
   }
@@ -684,6 +686,11 @@ static bool do_replay_assist(Task* t) {
   Registers regs = t->regs();
   regs.set_syscall_result(next_rec.ret);
   t->on_syscall_exit(next_rec.syscallno, t->arch(), regs);
+  if (orig_ip != exit_ip) {
+    auto r = t->regs();
+    r.set_ip(exit_ip);
+    t->set_regs(r);
+  }
   return true;
 }
 
@@ -737,7 +744,7 @@ Completion ReplaySession::continue_or_step(ReplayTask* t,
       }
     } else if (t->stop_sig() == SIGTRAP) {
       // Detect replay assist but handle it later in flush_syscallbuf
-      auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
+      auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip().advance_past_executed_bkpt(t->arch()));
       if (type && type->enabled == AddressSpace::REPLAY_ASSIST) {
         return INCOMPLETE;
       }
@@ -887,7 +894,7 @@ Completion ReplaySession::emulate_async_signal(
     ticks_left = ticks - t->tick_count();
 
     if (SIGTRAP == t->stop_sig()) {
-      if (in_syscallbuf_syscall_hook.increment_by_bkpt_insn_length(t->arch()) == t->ip()) {
+      if (t->ip().undo_executed_bkpt(t->arch()) == in_syscallbuf_syscall_hook) {
         t->move_ip_before_breakpoint();
         // Advance no further.
         return COMPLETE;
