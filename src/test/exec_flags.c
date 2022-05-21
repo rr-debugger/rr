@@ -28,8 +28,10 @@ static void my_exec(const char* filename, const char** argv,
   register long x0 __asm__("x0") = (long)filename;
   register long x1 __asm__("x1") = (long)argv;
   register long x2 __asm__("x2") = (long)envp;
-  // TODO: Prevent this from patching once we have syscallbuf support
-  __asm__ __volatile__("svc #0"
+  __asm__ __volatile__("b 1f\n\t"
+                       "mov x8, 0xdc\n"
+                       "1:\n\t"
+                       "svc #0"
                        : "+r"(x0)
                        : "r"(x8), "r"(x1), "r"(x2));
 #else
