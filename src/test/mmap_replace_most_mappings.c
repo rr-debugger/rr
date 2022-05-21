@@ -83,6 +83,9 @@ __asm__("my_syscall:\n\t"
         "mov x3,x4\n\t"
         "mov x4,x5\n\t"
         "mov x5,x6\n\t"
+        "b 1f\n\t"
+        "mov x8, 0xdc\n"
+        "1:\n\t"
         "svc #0\n\t"
         "ret\n\t");
 #else

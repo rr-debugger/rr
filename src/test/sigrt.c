@@ -44,7 +44,10 @@ static void __attribute__((noinline)) my_raise(int sig) {
   register long x0 __asm__("x0") = (long)tid;
   register long x1 __asm__("x1") = (long)tid;
   register long x2 __asm__("x2") = (long)sig;
-  __asm__ volatile("svc #0\n\t"
+  __asm__ volatile("b 1f\n\t"
+                   "mov x8, 0xdc\n"
+                   "1:\n\t"
+                   "svc #0\n\t"
                    : "+r"(x0)
                    : "r"(x1), "r"(x2), "r"(x8));
 #else

@@ -12,6 +12,9 @@ __asm__ ("my_syscall: mov 4(%esp),%eax\n\t"
          "ret");
 #elif defined(__aarch64__)
 __asm__ ("my_syscall: mov x8, x0\n\t"
+         "b 1f\n\t"
+         "mov x8, 0xdc\n"
+         "1:\n\t"
          "syscall_instruction: svc #0\n\t"
          "ret");
 #else

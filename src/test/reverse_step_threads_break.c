@@ -30,7 +30,10 @@ static size_t my_read(int fd, void* buf, size_t size) {
   register void *x1 __asm__ ("x1") = buf;
   register uint64_t x2 __asm__ ("x2") = size;
   register uint64_t x8 __asm__ ("x8") = SYS_read;
-  __asm__("svc #0\n\t"
+  __asm__("b 1f\n\t"
+          "mov x8, 0xdc\n"
+          "1:\n\t"
+          "svc #0\n\t"
           : "+r"(x0)
           : "r"(x1), "r"(x2), "r"(x8)
           : "memory");
