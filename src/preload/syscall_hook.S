@@ -11,6 +11,37 @@
         .hidden _syscallbuf_final_exit_instruction
         .type _syscallbuf_final_exit_instruction, @function
 
+#define DW_OP_CONST4U(val)                      \
+        0x0c, /* DW_OP_const4u */               \
+        /* Individually place bytes */          \
+        (val) & 0xFF,                           \
+        ((val) & (0xFF <<  0x8)) >>  0x8,       \
+        ((val) & (0xFF << 0x10)) >> 0x10,       \
+        ((val) & (0xFF << 0x18)) >> 0x18
+
+#define DW_OP_CONST8U(val)                      \
+        0x0e, /* DW_OP_const8u */               \
+        /* Individually place bytes */          \
+        (val) & 0xFF,                           \
+        ((val) & (0xFF <<  0x8)) >>  0x8,       \
+        ((val) & (0xFF << 0x10)) >> 0x10,       \
+        ((val) & (0xFF << 0x18)) >> 0x18,       \
+        ((val) & (0xFF << 0x20)) >> 0x20,       \
+        ((val) & (0xFF << 0x28)) >> 0x28,       \
+        ((val) & (0xFF << 0x30)) >> 0x30,       \
+        ((val) & (0xFF << 0x38)) >> 0x38
+
+#define REG_AT_ADDR32(reg, addr)                                \
+        .cfi_escape 0x10, /* DW_CFA_expression */               \
+                    reg,                                        \
+                    0x05, /* 5 byte expression follows */       \
+                    DW_OP_CONST4U(addr)
+#define REG_AT_ADDR64(reg, addr)                                \
+        .cfi_escape 0x10, /* DW_CFA_expression */               \
+                    reg,                                        \
+                    0x09, /* 9 byte expression follows */       \
+                    DW_OP_CONST8U(addr)
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -216,15 +247,7 @@ name:                           \
         .cfi_adjust_cfa_offset -4;                              \
         pop %esp;                                               \
         .cfi_same_value %esp;                                   \
-        .cfi_escape 0x10, /* DW_CFA_expression */               \
-                    0x08, /* %eip */                            \
-                    0x05, /* 5 byte expression follows */       \
-                    0x0c, /* DW_OP_const4u */                   \
-                    /* Individually place bytes */              \
-                    stub_scratch_1 & 0xFF,                      \
-                    (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
-                    (stub_scratch_1 & (0xFF << 0x10)) >> 0x10,  \
-                    (stub_scratch_1 & (0xFF << 0x18)) >> 0x18;  \
+        REG_AT_ADDR32(0x08 /* %eip */, stub_scratch_1);         \
         jmp _syscallbuf_final_exit_instruction;                 \
        .cfi_endproc;                                            \
        .size name, .-name
@@ -455,19 +478,7 @@ name:                              \
 #define SYSCALLHOOK_END(name)                                   \
         pop (stub_scratch_1);                                   \
         CFA_AT_RSP_OFFSET(0)                                    \
-        .cfi_escape 0x10, /* DW_CFA_expression */               \
-                    0x10, /* %rip */                            \
-                    0x09, /* 9 byte expression follows */       \
-                    0x0e, /* DW_OP_const8u */                   \
-                    /* Individually place bytes */              \
-                    stub_scratch_1 & 0xFF,                      \
-                    (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
-                    (stub_scratch_1 & (0xFF << 0x10)) >> 0x10,  \
-                    (stub_scratch_1 & (0xFF << 0x18)) >> 0x18,  \
-                    (stub_scratch_1 & (0xFF << 0x20)) >> 0x20,  \
-                    (stub_scratch_1 & (0xFF << 0x28)) >> 0x28,  \
-                    (stub_scratch_1 & (0xFF << 0x30)) >> 0x30,  \
-                    (stub_scratch_1 & (0xFF << 0x38)) >> 0x38;  \
+        REG_AT_ADDR32(0x10 /* %rip */, stub_scratch_1);         \
         pop %rsp;                                               \
         .cfi_def_cfa %rsp, 0;                                   \
         jmp _syscallbuf_final_exit_instruction;                 \
