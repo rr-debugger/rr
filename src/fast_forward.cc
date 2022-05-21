@@ -316,7 +316,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
     result.did_fast_forward = true;
     // We should have reached the breakpoint
     ASSERT(t, t->stop_sig() == SIGTRAP);
-    ASSERT(t, t->ip() == limit_ip.increment_by_bkpt_insn_length(t->arch()));
+    ASSERT(t, t->ip().undo_executed_bkpt(t->arch()) == limit_ip);
     uintptr_t iterations_performed = iterations - t->regs().cx();
     tmp = t->regs();
     // Undo our change to CX value
