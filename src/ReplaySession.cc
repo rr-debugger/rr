@@ -739,6 +739,7 @@ Completion ReplaySession::continue_or_step(ReplayTask* t,
       // Detect replay assist but handle it later in flush_syscallbuf
       auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
       if (type && type->enabled == AddressSpace::REPLAY_ASSIST) {
+        t->apply_syscall_entry_regs();
         return INCOMPLETE;
       }
     } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
