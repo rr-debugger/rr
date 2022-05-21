@@ -42,6 +42,19 @@
                     0x09, /* 9 byte expression follows */       \
                     DW_OP_CONST8U(addr)
 
+// 10 bytes LEB128 is enough to encode 64bit integer and we shouldn't
+// really need anything longer than that.
+#define COUNT_LEB128(lebs...)                                   \
+        _COUNT_LEB128(lebs, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define _COUNT_LEB128(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
+
+#define REG_AT_REG_OFFSET(reg, base, lebs...)                                   \
+        .cfi_escape 0x10, /* DW_CFA_expression */                               \
+                    reg,                                                        \
+                    (COUNT_LEB128(lebs) + 1), /* 1 byte + LEB128 bytes */       \
+                    (0x70 + base), /* DW_OP_breg0 + base */                     \
+                    lebs
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -455,11 +468,7 @@ _syscallbuf_final_exit_instruction:
             0x02, /* 2 bytes follow */\
             0x77, offset; /* DW_OP_breg7, offset */
 
-#define RIP_IS_DEREF_RSP(offset) \
-.cfi_escape 0x10, /* DW_CFA_expression */\
-            0x10, /* %rip */\
-            0x02, /* 2 bytes follow */\
-            0x77, offset; /* DW_OP_breg7, 0 */
+#define RIP_IS_DEREF_RSP(offset) REG_AT_REG_OFFSET(0x10 /* %rip */, 7, offset)
 
 /**
  * On syscallhook entry, the stack has been switched to the end of per-task
