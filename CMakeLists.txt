@@ -1846,8 +1846,3 @@ set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
 set(CPACK_RPM_SPEC_INSTALL_POST "/bin/true")
 
 include (CPack)
-
-##--------------------------------------------------
-## Misc
-
-add_custom_target(setup-travis COMMAND src/script/setup_travis.sh)
