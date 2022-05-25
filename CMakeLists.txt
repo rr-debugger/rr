@@ -304,6 +304,13 @@ else()
   message(AUTHOR_WARNING "execinfo.h not present. Automatic backtraces for failures in rr are disabled.")
 endif()
 
+find_path(PROC_SERVICE_H NAMES "proc_service.h")
+if(PROC_SERVICE_H)
+  add_definitions(-DPROC_SERVICE_H=1)
+else()
+  message(AUTHOR_WARNING "proc_service.h not present. Support for libthread_db.so is disabled.")
+endif()
+
 include(CheckSymbolExists)
 list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 check_symbol_exists(LAV_CURRENT "link.h" RTLD_AUDIT)
@@ -550,7 +557,6 @@ set(RR_SOURCES
   src/SysCpuMonitor.cc
   src/Task.cc
   src/ThreadGroup.cc
-  src/ThreadDb.cc
   src/TraceFrame.cc
   src/TraceInfoCommand.cc
   src/TraceStream.cc
@@ -560,6 +566,10 @@ set(RR_SOURCES
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
   ${BLAKE_ARCH_DIR}/blake2b.c
 )
+
+if(PROC_SERVICE_H)
+  set(RR_SOURCES ${RR_SOURCES} src/ThreadDb.cc)
+endif()
 
 if (x86ish)
   set(RR_SOURCES ${RR_SOURCES} src/test/x86/cpuid_loop.S)
