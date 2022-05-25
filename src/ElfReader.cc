@@ -3,6 +3,7 @@
 #include "ElfReader.h"
 
 #include <elf.h>
+#include <endian.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <zlib.h>
