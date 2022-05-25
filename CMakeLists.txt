@@ -304,6 +304,14 @@ else()
   message(AUTHOR_WARNING "execinfo.h not present. Automatic backtraces for failures in rr are disabled.")
 endif()
 
+include(CheckSymbolExists)
+list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+check_symbol_exists(LAV_CURRENT "link.h" RTLD_AUDIT)
+if(NOT RTLD_AUDIT)
+  message(AUTHOR_WARNING "Couldn't find rtld-audit support. librraudit skipped.")
+endif()
+list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+
 set(Python_ADDITIONAL_VERSIONS 3 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
 find_package(PythonInterp 3 REQUIRED)
 
@@ -405,25 +413,27 @@ endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles ${LINKER_FLAGS}")
 set_target_properties(rrpreload PROPERTIES INSTALL_RPATH "\$ORIGIN")
 
-set(AUDIT_FILES
-  rtld-audit.c
-  stap-note-iter.c
-  ../preload/raw_syscall.S
-)
-set(AUDIT_SOURCE_FILES
-  ${AUDIT_FILES}
-  rtld-audit.h
-  stap-note-iter.h
-  ../preload/preload_interface.h
-  ../preload/rrcalls.h
-)
-add_library(rraudit)
-foreach(file ${AUDIT_FILES})
-  target_sources(rraudit PUBLIC "${CMAKE_SOURCE_DIR}/src/audit/${file}")
-  set_source_files_properties("${CMAKE_SOURCE_DIR}/src/audit/${file}"
-                              PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
-endforeach(file)
-set_target_properties(rraudit PROPERTIES LINK_FLAGS "-nostartfiles -ldl ${LINKER_FLAGS}")
+if(RTLD_AUDIT)
+  set(AUDIT_FILES
+    rtld-audit.c
+    stap-note-iter.c
+    ../preload/raw_syscall.S
+  )
+  set(AUDIT_SOURCE_FILES
+    ${AUDIT_FILES}
+    rtld-audit.h
+    stap-note-iter.h
+    ../preload/preload_interface.h
+    ../preload/rrcalls.h
+  )
+  add_library(rraudit)
+  foreach(file ${AUDIT_FILES})
+    target_sources(rraudit PUBLIC "${CMAKE_SOURCE_DIR}/src/audit/${file}")
+    set_source_files_properties("${CMAKE_SOURCE_DIR}/src/audit/${file}"
+                                PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
+  endforeach(file)
+  set_target_properties(rraudit PROPERTIES LINK_FLAGS "-nostartfiles -ldl ${LINKER_FLAGS}")
+endif()
 
 # Ensure that CMake knows about our generated files.
 #
@@ -690,8 +700,10 @@ install(PROGRAMS scripts/signal-rr-recording.sh
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
-set(RR_INSTALL_LIBS rrpage rraudit rr_exec_stub)
-set(RR_INSTALL_LIBS rrpreload ${RR_INSTALL_LIBS})
+set(RR_INSTALL_LIBS rrpreload rrpage rr_exec_stub)
+if(RTLD_AUDIT)
+  set(RR_INSTALL_LIBS ${RR_INSTALL_LIBS} rraudit)
+endif()
 install(TARGETS ${RR_BIN} ${RR_INSTALL_LIBS}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
@@ -703,6 +715,7 @@ install(TARGETS ${RR_BIN} ${RR_INSTALL_LIBS}
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_32BIT AND rr_64BIT)
+  set(RR_INSTALL_LIBS_32 rrpreload_32 rrpage_32 rr_exec_stub_32)
   add_library(rrpage_32)
 
   foreach(file ${RR_PAGE_SOURCE_FILES})
@@ -746,24 +759,28 @@ if(rr_32BIT AND rr_64BIT)
     ${CMAKE_DL_LIBS}
   )
 
-  add_library(rraudit_32)
+  if(RTLD_AUDIT)
+    add_library(rraudit_32)
 
-  foreach(file ${AUDIT_SOURCE_FILES})
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/audit/${file}"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}"
-                   COPYONLY)
-  endforeach(file)
+    foreach(file ${AUDIT_SOURCE_FILES})
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/audit/${file}"
+                     "${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}"
+                     COPYONLY)
+    endforeach(file)
 
-  foreach(file ${AUDIT_FILES})
-    target_sources(rraudit_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}")
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}"
-                                PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
-  endforeach(file)
+    foreach(file ${AUDIT_FILES})
+      target_sources(rraudit_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}")
+      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}"
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
+    endforeach(file)
 
-  set_target_properties(rraudit_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles ${LINKER_FLAGS}")
-  target_link_libraries(rraudit_32
-    ${CMAKE_DL_LIBS}
-  )
+    set_target_properties(rraudit_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles ${LINKER_FLAGS}")
+    target_link_libraries(rraudit_32
+      ${CMAKE_DL_LIBS}
+    )
+
+    set(RR_INSTALL_LIBS_32 ${RR_INSTALL_LIBS_32} rraudit_32)
+  endif()
 
   foreach(file exec_stub.c)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/${file}"
@@ -778,7 +795,7 @@ if(rr_32BIT AND rr_64BIT)
   set_target_properties(rr_exec_stub_32
                         PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32 ${LINKER_FLAGS}")
 
-  install(TARGETS rrpreload_32 rrpage_32 rraudit_32 rr_exec_stub_32
+  install(TARGETS ${RR_INSTALL_LIBS_32}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
