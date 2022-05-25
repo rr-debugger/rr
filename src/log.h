@@ -173,6 +173,9 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
 #ifndef __has_builtin
 #define __has_builtin(x) 0
 #endif
+#ifndef __GNUC_PREREQ
+#define __GNUC_PREREQ(maj, min) 0
+#endif
 #if __has_builtin(__builtin_expect) || __GNUC_PREREQ(4, 0)
 #define RR_UNLIKELY(EXPR) __builtin_expect((bool)(EXPR), false)
 #else
