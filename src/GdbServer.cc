@@ -747,6 +747,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_rr_cmd(
           GdbCommandHandler::process_command(*this, target, req.text()));
       return;
+#ifdef PROC_SERVICE_H
     case DREQ_QSYMBOL: {
       // When gdb sends "qSymbol::", it means that gdb is ready to
       // respond to symbol requests.  This can be sent multiple times
@@ -800,6 +801,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_tls_addr(ok, address);
       return;
     }
+#endif
     default:
       FATAL() << "Unknown debugger request " << req.type;
   }

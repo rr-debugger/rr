@@ -12,7 +12,9 @@
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
+#ifdef PROC_SERVICE_H
 #include "ThreadDb.h"
+#endif
 #include "TraceFrame.h"
 
 namespace rr {
@@ -220,7 +222,9 @@ private:
   // support switching gdb between debuggee processes.
   ThreadGroupUid debuggee_tguid;
   // ThreadDb for debuggee ThreadGroup
+#ifdef PROC_SERVICE_H
   std::unique_ptr<ThreadDb> thread_db;
+#endif
   // The TaskUid of the last continued task.
   TaskUid last_continue_tuid;
   // The TaskUid of the last queried task.
