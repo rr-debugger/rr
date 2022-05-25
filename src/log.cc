@@ -3,6 +3,7 @@
 #include "log.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <deque>
 #include <fstream>
