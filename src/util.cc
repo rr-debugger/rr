@@ -5,7 +5,9 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <elf.h>
+#ifdef EXECINFO_H
 #include <execinfo.h>
+#endif
 #include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -1734,9 +1736,14 @@ void notifying_abort() {
 void dump_rr_stack() {
   static const char msg[] = "=== Start rr backtrace:\n";
   write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+#if EXECINFO_H
   void* buffer[1024];
   int count = backtrace(buffer, 1024);
   backtrace_symbols_fd(buffer, count, STDERR_FILENO);
+#else
+  static const char msg_fallback[] = "<rr backtraces not available on this system>\n";
+  write_all(STDERR_FILENO, msg_fallback, sizeof(msg_fallback) - 1);
+#endif
   static const char msg2[] = "=== End rr backtrace\n";
   write_all(STDERR_FILENO, msg2, sizeof(msg2) - 1);
 }

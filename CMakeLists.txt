@@ -297,6 +297,13 @@ if(NOT SECCOMP)
   message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
 endif()
 
+find_path(EXECINFO_H NAMES "execinfo.h")
+if(EXECINFO_H)
+  add_definitions(-DEXECINFO_H=1)
+else()
+  message(AUTHOR_WARNING "execinfo.h not present. Automatic backtraces for failures in rr are disabled.")
+endif()
+
 set(Python_ADDITIONAL_VERSIONS 3 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
 find_package(PythonInterp 3 REQUIRED)
 
