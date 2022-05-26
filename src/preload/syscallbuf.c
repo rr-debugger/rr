@@ -1798,6 +1798,9 @@ static long sys_fcntl(const struct syscall_info* call)
     case F_SETOWN_EX:
       return sys_fcntl64_own_ex(call);
 
+#ifndef F_SETLK64
+#define F_SETLK64 13
+#endif
     case F_SETLK64:
 #if !defined(SYS_fcntl64)
     /* Also uses 64-bit flock format */
@@ -1805,6 +1808,9 @@ static long sys_fcntl(const struct syscall_info* call)
 #endif
       return sys_fcntl64_setlk64(call);
 
+#ifndef F_SETLKW64
+#define F_SETLKW64 14
+#endif
     case F_SETLKW64:
 #if !defined(SYS_fcntl64)
     /* Also uses 64-bit flock format */
