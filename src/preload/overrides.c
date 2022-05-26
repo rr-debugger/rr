@@ -26,6 +26,8 @@
 #endif
 #endif
 
+#ifndef __BIONIC__
+
 static int (*real_pthread_mutex_init)(void* mutex, const void* attr);
 static int (*real_pthread_mutex_lock)(void* mutex);
 static int (*real_pthread_mutex_trylock)(void* mutex);
@@ -126,6 +128,8 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
   }
   return real_pthread_mutex_trylock(mutex);
 }
+
+#endif
 
 typedef void* Dlopen(const char* filename, int flags);
 
