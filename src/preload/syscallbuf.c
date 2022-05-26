@@ -47,6 +47,7 @@
 
 #include <dlfcn.h>
 #include <limits.h>
+#include <unistd.h>
 #include <asm/errno.h>
 #include <asm/ioctls.h>
 #include <asm/poll.h>
@@ -78,7 +79,6 @@
 #include <stdio.h>
 #include <syscall.h>
 #include <sysexits.h>
-#include <unistd.h>
 
 #include "preload_interface.h"
 #include "rr/rr.h"
