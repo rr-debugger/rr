@@ -290,6 +290,8 @@ set_source_files_properties(${BROTLI_FILES}
                             PROPERTIES COMPILE_FLAGS ${BROTLI_COMPILE_FLAGS})
 # ==== brotli ====
 
+find_library(LIBRT rt)
+
 find_path(SECCOMP NAMES "linux/seccomp.h")
 if(NOT SECCOMP)
   message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
@@ -586,9 +588,12 @@ if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
   set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto")
 endif()
 
+if(LIBRT)
+  target_link_libraries(rr ${LIBRT})
+endif()
+
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
-  -lrt
   ${ZLIB_LDFLAGS}
   brotli
 )
@@ -1562,7 +1567,10 @@ if(BUILD_TESTS)
     set_source_files_properties(src/test/${test}.c
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(${testname} Generated)
-    target_link_libraries(${testname} -lrt -ldl)
+    if(LIBRT)
+      target_link_libraries(${testname} ${LIBRT})
+    endif()
+    target_link_libraries(${testname} -ldl)
     # Part of the installable testsuite (test programs).
     if(INSTALL_TESTSUITE)
       install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${testname}
@@ -1575,7 +1583,7 @@ if(BUILD_TESTS)
   # add_executable(usb src/test/usb.c)
   # post_build_executable(usb)
   # add_dependencies(usb Generated)
-  # target_link_libraries(usb -lrt -L/usr/local/lib -luvc -lusb-1.0)
+  # target_link_libraries(usb ${LIBRT} -L/usr/local/lib -luvc -lusb-1.0)
 
   foreach(test ${BASIC_CPP_TESTS})
     add_executable(${test} src/test/${test}.cc)
@@ -1583,7 +1591,9 @@ if(BUILD_TESTS)
     set_source_files_properties(src/test/${test}.cc
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(${test} Generated)
-    target_link_libraries(${test} -lrt)
+    if(LIBRT)
+      target_link_libraries(${test} ${LIBRT})
+    endif()
     # Part of the installable testsuite (test programs).
     if(INSTALL_TESTSUITE)
       install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${test}
@@ -1597,7 +1607,10 @@ if(BUILD_TESTS)
   add_dependencies(test_lib Generated)
   set_source_files_properties(src/test/test_lib.c
                               PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
-  target_link_libraries(constructor -lrt test_lib)
+  if(LIBRT)
+    target_link_libraries(constructor ${LIBRT})
+  endif()
+  target_link_libraries(constructor test_lib)
 
   # cpuid test needs to link with cpuid_loop.S
   if (x86ish)
@@ -1606,7 +1619,9 @@ if(BUILD_TESTS)
     set_source_files_properties(src/test/x86/cpuid.c
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(cpuid Generated)
-    target_link_libraries(cpuid -lrt)
+    if(LIBRT)
+      target_link_libraries(cpuid ${LIBRT})
+    endif()
   endif()
 
   # Check if we're running on KNL. If so, we allot more time to tests, due to
@@ -1712,7 +1727,10 @@ if(BUILD_TESTS)
       post_build_executable(${testname}_32)
       add_dependencies(${testname}_32 Generated)
       set_target_properties(${testname}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS} ${LINKER_FLAGS}")
-      target_link_libraries(${testname}_32 -lrt -ldl)
+      if(LIBRT)
+        target_link_libraries(${testname}_32 ${LIBRT})
+      endif()
+      target_link_libraries(${testname}_32 -ldl)
       # Part of the installable testsuite (test programs).
       if (INSTALL_TESTSUITE)
         install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${testname}_32
@@ -1726,14 +1744,19 @@ if(BUILD_TESTS)
     add_dependencies(test_lib_32 Generated)
     set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS "-m32 ${LINKER_FLAGS}")
 
-    target_link_libraries(constructor_32 -lrt test_lib_32)
+    if(LIBRT)
+      target_link_libraries(constructor_32 ${LIBRT})
+    endif()
+    target_link_libraries(constructor_32 test_lib_32)
 
     # cpuid test needs to link with cpuid_loop.S
     add_executable(cpuid_32 32/x86/cpuid.c 32/x86/cpuid_loop.S)
     post_build_executable(cpuid_32)
     add_dependencies(cpuid_32 Generated)
     set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS "-m32 ${LINKER_FLAGS}")
-    target_link_libraries(cpuid_32 -lrt)
+    if(LIBRT)
+      target_link_libraries(cpuid_32 ${LIBRT})
+    endif()
 
     if(INSTALL_TESTSUITE)
       install(TARGETS test_lib_32
@@ -1777,7 +1800,9 @@ if(BUILD_TESTS)
   foreach(test ${CHAOS_TESTS})
     add_executable(${test} src/chaos-test/${test}.c)
     post_build_executable(${test})
-    target_link_libraries(${test} -lrt)
+    if(LIBRT)
+      target_link_libraries(${test} ${LIBRT})
+    endif()
   endforeach(test)
 
   add_executable(test-monitor src/test-monitor/test-monitor.cc)
