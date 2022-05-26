@@ -172,25 +172,29 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${rr_MBITNESS_OPTION}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${rr_MBITNESS_OPTION}")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${rr_MBITNESS_OPTION}")
 
-find_package(PkgConfig REQUIRED)
+# If SKIP_PKGCONFIG is set then ${PKG}_CFLAGS and ${PKG}_LDFLAGS must be
+# provided as well.
+if(NOT SKIP_PKGCONFIG)
+  find_package(PkgConfig REQUIRED)
 
-# If we're cross-compiling a 32-bit rr build on a 64-bit host we need
-# to ensure we're looking for the right libraries.
-# This has been tested on Ubuntu and Fedora.
-if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT rr_64BIT)
-  set(LIBDIR32_CANDIDATES
-    /usr/lib/i386-linux-gnu/pkgconfig/
-    /usr/lib/pkgconfig/
-  )
-  foreach(libdir ${LIBDIR32_CANDIDATES})
-    if(IS_DIRECTORY ${libdir})
-      set(ENV{PKG_CONFIG_LIBDIR} ${libdir})
-      break()
-     endif()
-   endforeach(libdir)
-   if(NOT DEFINED ENV{PKG_CONFIG_LIBDIR})
-     message(FATAL_ERROR "Couldn't find a suitable 32-bit pkgconfig lib dir. You probably need to install a 32-bit pkgconfig package (pkgconfig.i686 for Fedora or pkg-config:i386 for Ubuntu")
-   endif()
+  # If we're cross-compiling a 32-bit rr build on a 64-bit host we need
+  # to ensure we're looking for the right libraries.
+  # This has been tested on Ubuntu and Fedora.
+  if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT rr_64BIT)
+    set(LIBDIR32_CANDIDATES
+      /usr/lib/i386-linux-gnu/pkgconfig/
+      /usr/lib/pkgconfig/
+    )
+    foreach(libdir ${LIBDIR32_CANDIDATES})
+      if(IS_DIRECTORY ${libdir})
+        set(ENV{PKG_CONFIG_LIBDIR} ${libdir})
+        break()
+      endif()
+    endforeach(libdir)
+    if(NOT DEFINED ENV{PKG_CONFIG_LIBDIR})
+      message(FATAL_ERROR "Couldn't find a suitable 32-bit pkgconfig lib dir. You probably need to install a 32-bit pkgconfig package (pkgconfig.i686 for Fedora or pkg-config:i386 for Ubuntu")
+    endif()
+  endif()
 endif()
 
 find_program(CAPNP capnp)
@@ -206,7 +210,9 @@ set(REQUIRED_LIBS
 
 foreach(required_lib ${REQUIRED_LIBS})
   string(TOUPPER ${required_lib} PKG)
-  pkg_check_modules(${PKG} REQUIRED ${required_lib})
+  if(NOT SKIP_PKGCONFIG)
+    pkg_check_modules(${PKG} REQUIRED ${required_lib})
+  endif()
   if(staticlibs)
     string(REPLACE ";" " " ${PKG}_STATIC_CFLAGS "${${PKG}_STATIC_CFLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_STATIC_CFLAGS}")
