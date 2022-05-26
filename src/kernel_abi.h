@@ -2463,7 +2463,7 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     ptr<ucontext> uc_link;
     stack_t		  uc_stack;
     sigset_t	  uc_sigmask;
-    uint8_t __unused[1024 / 8 - sizeof(sigset_t)];
+    uint8_t __unused1[1024 / 8 - sizeof(sigset_t)];
     struct sigcontext uc_mcontext;
   };
 
