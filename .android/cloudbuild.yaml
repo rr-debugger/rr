@@ -1,0 +1,9 @@
+steps:
+  - name: "gcr.io/rr-android-testing/android:31-ndk-r23b"
+    script: ".android/build.sh"
+    timeout: 3600s
+timeout: 3600s
+artifacts:
+  objects:
+    location: 'gs://rr-android-testing_artifacts/rr'
+    paths: ["obj/dist/rr-5.5.0-Android-x86_64.tar.gz"]

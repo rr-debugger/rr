@@ -747,6 +747,11 @@ install(TARGETS ${RR_BIN} ${RR_INSTALL_LIBS}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
 
+if(EXTRA_EXTERNAL_SOLIBS)
+  install(PROGRAMS ${EXTRA_EXTERNAL_SOLIBS}
+    DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
+
 # Build 32-bit librrpreload and librraudit on 64-bit builds.
 # We copy the source files into '32' subdirectories in the output
 # directory, so we can set different compile options on them.
