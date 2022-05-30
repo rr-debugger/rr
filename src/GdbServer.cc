@@ -1856,10 +1856,6 @@ static string to_string(const vector<string>& args) {
   return ss.str();
 }
 
-static bool needs_target(const string& option) {
-  return !strncmp(option.c_str(), "continue", option.size());
-}
-
 /**
  * Exec gdb using the params that were written to
  * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
@@ -1891,17 +1887,12 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
   push_default_gdb_options(args, serve_files);
   args.push_back("-x");
   args.push_back(gdb_command_file);
-  bool did_set_remote = false;
+  push_target_remote_cmd(args, string(params.host), params.port);
+  // Push all user-supplied gdb parameters after we've connected
+  // gdb to the rr target, so "continue", "start" commands etc
+  // all work as intended.
   for (size_t i = 0; i < gdb_options.size(); ++i) {
-    if (!did_set_remote && gdb_options[i] == "-ex" &&
-        i + 1 < gdb_options.size() && needs_target(gdb_options[i + 1])) {
-      push_target_remote_cmd(args, string(params.host), params.port);
-      did_set_remote = true;
-    }
     args.push_back(gdb_options[i]);
-  }
-  if (!did_set_remote) {
-    push_target_remote_cmd(args, string(params.host), params.port);
   }
   args.push_back(params.exe_image);
 
