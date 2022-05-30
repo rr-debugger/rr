@@ -16,10 +16,6 @@ public:
   NonvirtualPerfCounterMonitor() {}
 
   virtual Type type() override { return NonvirtualPerfCounter; }
-
-  virtual enum syscallbuf_fd_classes get_syscallbuf_class() override {
-    return FD_CLASS_UNTRACED;
-  }
 };
 
 } // namespace rr
