@@ -465,6 +465,14 @@ enum {
 #define RR_RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT 2
 #define RR_RSEQ_CPU_ID_UNINITIALIZED -1
 
+// New in the 5.17 kernel
+#ifndef PR_SET_VMA
+#define PR_SET_VMA 0x53564d41
+#endif
+#ifndef PR_SET_VMA_ANON_NAME
+#define PR_SET_VMA_ANON_NAME 0
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.

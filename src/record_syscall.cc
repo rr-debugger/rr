@@ -4588,7 +4588,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
         }
 
-        case PR_SET_MM:{
+        case PR_SET_MM: {
           switch ((unsigned long)regs.arg2()) {
             case PR_SET_MM_MAP_SIZE:
               syscall_state.reg_parameter(3, sizeof(unsigned int));
@@ -4598,8 +4598,23 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
               syscall_state.expect_errno = EINVAL;
               break;
           }
+          break;
         }
-        break;
+
+        case PR_SET_VMA: {
+          switch (regs.arg2()) {
+            case PR_SET_VMA_ANON_NAME:
+              // PR_SET_VMA_ANON_NAME is used to communicate additional details
+              // about the VMA to the kernel. VMAs with different anonymous
+              // names are not merged by the kernel. None of this affects rr,
+              // and this prctl has no outparams.
+              break;
+            default:
+              syscall_state.expect_errno = EINVAL;
+              break;
+          }
+          break;
+        }
 
         default:
           syscall_state.expect_errno = EINVAL;
