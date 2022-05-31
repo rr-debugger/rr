@@ -475,5 +475,11 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #ifndef PR_SPEC_FORCE_DISABLE
 #define PR_SPEC_FORCE_DISABLE 8
 #endif
+#ifndef PR_SET_VMA
+#define PR_SET_VMA 0x53564d41
+#endif
+#ifndef PR_SET_VMA_ANON_NAME
+#define PR_SET_VMA_ANON_NAME 0
+#endif
 
 #endif /* RRUTIL_H */
