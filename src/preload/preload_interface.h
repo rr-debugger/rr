@@ -394,6 +394,8 @@ enum syscallbuf_fd_classes {
 /**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
+ * When evolving this struct, add new fields at the end and don't
+ * depend on them during replay.
  */
 TEMPLATE_ARCH
 struct rrcall_init_preload_params {

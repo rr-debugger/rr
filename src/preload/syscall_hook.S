@@ -312,9 +312,18 @@ _syscall_hook_trampoline:
         movdqa %xmm6,0x60(%rsp)
         movdqa %xmm7,0x70(%rsp)
 
+        /* Save registers that aren't callee-saves preserved by syscall_hook,
+           and that we aren't already restoring from the syscall args */
+        push %rcx
+        push %r11
+        /* stack is 16-byte aligned again for entry to C */
+
         /* Call our hook. */
         mov %rbx,%rdi
         callq syscall_hook
+
+        pop %r11
+        pop %rcx
 
         /* Restore XMM registers */
         movdqa (%rsp),%xmm0
@@ -330,8 +339,7 @@ _syscall_hook_trampoline:
         .cfi_def_cfa_register %rsp
 
         /* On entrance, we pushed the %rax, the syscall number. But we don't
-           want to |pop %rax|, as that will overwrite our return value. Pop
-           into %r11 instead. */
+           want to |pop %rax|, as that will overwrite our return value. Skip over it. */
         pop %r11
         .cfi_adjust_cfa_offset -8
 
@@ -571,6 +579,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_49_89_ca)
 	mov %rcx, %r10
 	call __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_49_89_ca)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_c1)
+        callq __morestack
+        mov %rax, %rcx
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_c1)
 
 #endif /* __x86_64__ */
 

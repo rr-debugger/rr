@@ -13,6 +13,10 @@
 #include <string>
 #include <vector>
 
+#if defined(__i386__) || defined(__x86_64__)
+#include <x86intrin.h>
+#endif
+
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 #include "remote_ptr.h"
@@ -568,6 +572,15 @@ bool coredumping_signal_takes_down_entire_vm();
 
 /* Parse tid from the proc file system path /proc/<pid>/<property> or /proc/<pid>/task/<tid>/<property> */
 int parse_tid_from_proc_path(const std::string& pathname, const std::string& property);
+
+inline unsigned long long rdtsc(void) {
+#if defined(__i386__) || defined(__x86_64__)
+  return __rdtsc();
+#else
+  FATAL() << "Reached x86-only code path on non-x86 architecture";
+  return 0;
+#endif
+}
 
 } // namespace rr
 

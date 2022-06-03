@@ -108,12 +108,15 @@ struct DeschedEvent {
 };
 
 struct PatchSyscallEvent {
-  PatchSyscallEvent() : patch_after_syscall(false) {}
+  PatchSyscallEvent() : patch_trapping_instruction(false),
+    patch_after_syscall(false), patch_vsyscall(false) {}
+  // If true, this patch is for a trapping instruction, not a real syscall
+  bool patch_trapping_instruction;
   // If true, this patch event comes after a syscall (whereas usually they
   // come before). We assume the trace has put us in the correct place
   // and don't try to execute any code to reach this event.
   bool patch_after_syscall;
-  // It true, this patch is for the caller of a vsyscall entry point
+  // If true, this patch is for the caller of a vsyscall entry point
   bool patch_vsyscall;
 };
 
@@ -387,6 +390,7 @@ struct Event {
     auto ev = Event(EV_PATCH_SYSCALL);
     ev.PatchSyscall().patch_after_syscall = false;
     ev.PatchSyscall().patch_vsyscall = false;
+    ev.PatchSyscall().patch_trapping_instruction = false;
     return ev;
   }
   static Event sched() {

@@ -334,5 +334,6 @@ struct Frame {
     }
     patchAfterSyscall @26: Void;
     patchVsyscall @27: Void;
+    patchTrappingInstruction @31: Void;
   }
 }

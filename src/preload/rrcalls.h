@@ -95,3 +95,9 @@
  * behavior is unaffected. Used for testing Scheduler-sensitive scenarios.
  */
 #define SYS_rrcall_freeze_tid (RR_CALL_BASE + 11)
+/**
+ * Requests a simulated (buffered) RDTSC.
+ * The RDTSC value is returned as a 64-bit value stored in the
+ * memory location given by the first argument. RAX returns 0.
+ */
+#define SYS_rrcall_rdtsc (RR_CALL_BASE + 12)
