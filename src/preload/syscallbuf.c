@@ -55,7 +55,6 @@
 #include <asm/siginfo.h>
 #include <asm/stat.h>
 #include <asm/statfs.h>
-#include <sys/mman.h>
 #include <linux/eventpoll.h>
 #include <linux/futex.h>
 #include <linux/fcntl.h>
@@ -79,6 +78,9 @@
 #include <stdio.h>
 #include <syscall.h>
 #include <sysexits.h>
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <unistd.h>
 
 #include "preload_interface.h"
 #include "rr/rr.h"
@@ -624,7 +626,7 @@ unsigned long getauxval(unsigned long type) __attribute__((weak));
 #define AT_SYSINFO_EHDR 33
 #endif
 
-extern RR_HIDDEN long syscall_hook(const struct syscall_info* call);
+extern RR_HIDDEN long syscall_hook(struct syscall_info* call);
 
 /**
  * Initialize process-global buffering state, if enabled.
@@ -669,6 +671,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_c3_nop(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_40_80_f6_81(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_49_89_ca(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c1(void);
 
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
@@ -706,6 +709,11 @@ static void __attribute__((constructor)) init_process(void) {
       3,
       { 0x48, 0x89, 0xc3 },
       (uintptr_t)_syscall_hook_trampoline_48_89_c3 },
+    /* Some RDTSC instructions are followed by 'mov %rax,%rcx'. */
+    { 0,
+      3,
+      { 0x48, 0x89, 0xc1 },
+      (uintptr_t)_syscall_hook_trampoline_48_89_c1 },
     /* __lll_unlock_wake has 'syscall' followed by
      * pop %rdx; pop %rsi; ret */
     { PATCH_IS_MULTIPLE_INSTRUCTIONS,
@@ -1249,6 +1257,29 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
 #error Unknown architecture
 #endif
 }
+
+#if defined(__i386__) || defined(__x86_64__)
+/**
+ * Perform an RDTSC, writing the output to 'buf', but only if we're in recording mode.
+ * Otherwise 'buf' is unchanged.
+ */
+static void rdtsc_recording_only(uint32_t buf[2]) {
+  unsigned char tmp_in_replay = globals.in_replay;
+  __asm__ __volatile__("test %%eax,%%eax\n\t"
+                       "jne 1f\n\t"
+                       "rdtsc\n\t"
+                       "mov %%eax,(%1)\n\t"
+                       "mov %%edx,4(%1)\n\t"
+                       "1:\n\t"
+                       "xor %%eax,%%eax\n\t"
+                       "xor %%edx,%%edx\n\t"
+                       : "+a"(tmp_in_replay)
+                       : "S"(buf)
+                       : "cc", "memory", "rdx");
+}
+#else
+#error Unknown architecture
+#endif
 
 /**
  * During recording, we copy *real to *buf.
@@ -3296,7 +3327,37 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   return ret;
 }
 
-static long syscall_hook_internal(const struct syscall_info* call) {
+static long sys_rrcall_rdtsc(struct syscall_info* call) {
+#if defined(__i386__) || defined(__x86_64__)
+  const int syscallno = SYS_rrcall_rdtsc;
+  uint32_t tsc[2];
+  void* ptr = prep_syscall();
+  void* buf = ptr;
+  ptr += 8;
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    privileged_traced_syscall1(SYS_rrcall_rdtsc, tsc);
+    // Overwrite RDX (syscall arg 3) with our TSC value.
+    call->args[2] = tsc[1];
+    return tsc[0];
+  }
+
+  // Do an RDTSC without context-switching to rr. This is still a lot slower
+  // than a plain RDTSC. Maybe we coud do something better with RDPMC...
+  privileged_unrecorded_syscall5(SYS_prctl, PR_SET_TSC, PR_TSC_ENABLE, 0, 0, 0);
+  rdtsc_recording_only(buf);
+  privileged_unrecorded_syscall5(SYS_prctl, PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0);
+
+  local_memcpy(tsc, buf, sizeof(tsc));
+  // Overwrite RDX (syscall arg 3) with our TSC value.
+  call->args[2] = tsc[1];
+  return commit_raw_syscall(syscallno, ptr, tsc[0]);
+#else
+  fatal("RDTSC not supported in this architecture");
+  return 0;
+#endif
+}
+
+static long syscall_hook_internal(struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
   case SYS_##syscallname:                                                      \
@@ -3307,6 +3368,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #define CASE_GENERIC_NONBLOCKING_FD(syscallname)                               \
   case SYS_##syscallname:                                                      \
     return sys_generic_nonblocking_fd(call)
+    CASE(rrcall_rdtsc);
 #if defined(SYS_access)
     CASE_GENERIC_NONBLOCKING(access);
 #endif
@@ -3474,7 +3536,7 @@ static void do_delay(void) {
 /* Explicitly declare this as hidden so we can call it from
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
-RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
+RR_HIDDEN long syscall_hook(struct syscall_info* call) {
   // Initialize thread-local state if this is the first syscall for this
   // thread.
   init_thread();

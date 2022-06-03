@@ -1755,6 +1755,9 @@ rrcall_notify_stap_semaphore_added = IrregularEmulatedSyscall(x86=1006, x64=1006
 rrcall_notify_stap_semaphore_removed = IrregularEmulatedSyscall(x86=1007, x64=1007, generic=1007)
 rrcall_check_presence = IrregularEmulatedSyscall(x86=1008, x64=1008, generic=1008)
 rrcall_detach_teleport = IrregularEmulatedSyscall(x86=1009, x64=1009, generic=1009)
+rrcall_arm_time_slice = IrregularEmulatedSyscall(x86=1010, x64=1010, generic=1010)
+rrcall_freeze_tid = IrregularEmulatedSyscall(x86=1011, x64=1011, generic=1011)
+rrcall_rdtsc = IrregularEmulatedSyscall(x86=1012, x64=1012, generic=1012)
 
 # These syscalls also appear under `socketcall` on x86.
 socket = EmulatedSyscall(x86=359, x64=41, generic=198)

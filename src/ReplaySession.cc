@@ -509,7 +509,7 @@ Completion ReplaySession::cont_syscall_boundary(
       break;
   }
   if (t->stop_sig()) {
-      ASSERT(t, false) << "Replay got unrecorded signal " << t->get_siginfo();
+    ASSERT(t, false) << "Replay got unrecorded signal " << t->get_siginfo();
   }
 
   if (t->seccomp_bpf_enabled &&
@@ -1411,7 +1411,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   return COMPLETE;
 }
 
-Completion ReplaySession::patch_vsyscall(ReplayTask* t, const StepConstraints& constraints)
+Completion ReplaySession::patch_ip(ReplayTask* t, const StepConstraints& constraints)
 {
   TicksRequest ticks_request;
   if (!compute_ticks_request(t, constraints, &ticks_request)) {
@@ -1444,24 +1444,14 @@ Completion ReplaySession::patch_vsyscall(ReplayTask* t, const StepConstraints& c
     return INCOMPLETE;
   }
 
-  t->apply_all_data_records_from_trace();
+  apply_patch_data(t);
   Registers r = t->regs();
   r.set_ip(vsyscall_entry);
   t->set_regs(r);
   return COMPLETE;
 }
 
-Completion ReplaySession::patch_next_syscall(
-    ReplayTask* t, const StepConstraints& constraints, bool before_syscall) {
-  if (before_syscall) {
-    if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-      return INCOMPLETE;
-    }
-
-    t->canonicalize_regs(t->arch());
-    t->exit_syscall_and_prepare_restart();
-  }
-
+void ReplaySession::apply_patch_data(ReplayTask* t) {
   // All patching effects have been recorded to the trace.
   // First, replay any memory mapping done by Monkeypatcher. There should be
   // at most one but we might as well be general.
@@ -1485,6 +1475,19 @@ Completion ReplaySession::patch_next_syscall(
 
   // Now replay all data records.
   t->apply_all_data_records_from_trace();
+}
+
+Completion ReplaySession::patch_next_syscall(
+    ReplayTask* t, const StepConstraints& constraints, bool before_syscall) {
+  if (before_syscall) {
+    if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
+      return INCOMPLETE;
+    }
+
+    t->canonicalize_regs(t->arch());
+    t->exit_syscall_and_prepare_restart();
+  }
+  apply_patch_data(t);
   return COMPLETE;
 }
 
@@ -1576,8 +1579,8 @@ Completion ReplaySession::try_one_trace_step(
       return emulate_signal_delivery(t, current_step.target.signo);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, constraints);
-    case TSTEP_PATCH_VSYSCALL:
-      return patch_vsyscall(t, constraints);
+    case TSTEP_PATCH_IP:
+      return patch_ip(t, constraints);
     case TSTEP_PATCH_SYSCALL:
       return patch_next_syscall(t, constraints, true);
     case TSTEP_PATCH_AFTER_SYSCALL:
@@ -1725,8 +1728,9 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_PATCH_SYSCALL:
-      if (ev.PatchSyscall().patch_vsyscall) {
-        current_step.action = TSTEP_PATCH_VSYSCALL;
+      if (ev.PatchSyscall().patch_trapping_instruction ||
+          ev.PatchSyscall().patch_vsyscall) {
+        current_step.action = TSTEP_PATCH_IP;
       } else if (ev.PatchSyscall().patch_after_syscall) {
         current_step.action = TSTEP_PATCH_AFTER_SYSCALL;
       } else {

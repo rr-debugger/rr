@@ -1376,6 +1376,7 @@ set(TESTS_WITH_PROGRAM
   x86/patch_40_80_f6_81
   priority
   ptrace_remote_unmap
+  x86/rdtsc_loop
   read_big_struct
   remove_latest_trace
   restart_abnormal_exit

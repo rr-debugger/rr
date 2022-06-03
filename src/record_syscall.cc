@@ -5006,6 +5006,18 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.emulate_result(0);
       return PREVENT_SWITCH;
 
+    // This normally won't be executed but it can be if an RDTSC traps to
+    // the syscallbuf as a fake rrcall_rdtsc, but we then can't buffer it
+    // because the buffer is full or disabled.
+    case SYS_rrcall_rdtsc: {
+      syscall_state.emulate_result(0);
+      uint64_t tsc = rdtsc();
+      remote_ptr<uint64_t> addr(t->regs().arg1());
+      t->write_mem(addr, tsc);
+      t->record_local(addr, &tsc);
+      return PREVENT_SWITCH;
+    }
+
     case SYS_rrcall_init_buffers:
       // This is purely for testing purposes. See signal_during_preload_init.
       if (send_signal_during_init_buffers()) {
