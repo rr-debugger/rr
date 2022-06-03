@@ -52,7 +52,9 @@
 #include <linux/videodev2.h>
 #include <linux/vt.h>
 #include <linux/wireless.h>
+#ifdef MQUEUE_H
 #include <mqueue.h>
+#endif
 #include <poll.h>
 #include <pthread.h>
 #include <pty.h>

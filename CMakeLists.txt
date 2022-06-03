@@ -317,6 +317,12 @@ else()
   message(AUTHOR_WARNING "proc_service.h not present. Support for libthread_db.so is disabled.")
 endif()
 
+# Test only includes
+find_path(MQUEUE_H NAMES "mqueue.h")
+if(MQUEUE_H)
+  add_definitions(-DMQUEUE_H=1)
+endif()
+
 include(CheckSymbolExists)
 list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 check_symbol_exists(LAV_CURRENT "link.h" RTLD_AUDIT)
@@ -1020,7 +1026,6 @@ set(BASIC_TESTS
   mprotect_heterogenous
   mprotect_none
   mprotect_stack
-  mq
   mremap
   mremap_after_coalesce
   mremap_grow
@@ -1259,6 +1264,10 @@ set(BASIC_TESTS
   xattr
   zero_length_read
 )
+
+if(MQUEUE_H)
+  set(BASIC_TESTS ${BASIC_TESTS} mq)
+endif()
 
 set(BASIC_CPP_TESTS
   std_random
