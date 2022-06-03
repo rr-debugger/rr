@@ -1219,17 +1219,11 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(__sysctl_args);
 
+  // libc reserves some space in the user facing structures for future
+  // extensibility, so we are careful to use the kernel definition here.
   typedef struct {
     unsigned_long __val[64 / (8 * sizeof(unsigned_long))];
   } kernel_sigset_t;
-
-  // libc reserves some space in the user facing structures for future
-  // extensibility.
-  typedef struct {
-    unsigned_long __val[1024 / (8 * sizeof(unsigned_long))];
-  } __sigset_t;
-  typedef __sigset_t sigset_t;
-  RR_VERIFY_TYPE(sigset_t);
 
   typedef struct {
     ptr<const kernel_sigset_t> ss;
@@ -2462,8 +2456,8 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     unsigned long	uc_flags;
     ptr<ucontext> uc_link;
     stack_t		  uc_stack;
-    sigset_t	  uc_sigmask;
-    uint8_t __unused1[1024 / 8 - sizeof(sigset_t)];
+    kernel_sigset_t	  uc_sigmask;
+    uint8_t __unused1[1024 / 8 - sizeof(kernel_sigset_t)];
     struct sigcontext uc_mcontext;
   };
 
