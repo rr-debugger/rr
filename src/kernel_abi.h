@@ -2067,8 +2067,11 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     uint64_t magic;
     char u_comm[32];
     uint64_t u_debugreg[8];
+    uint64_t error_code;
+    uint64_t fault_address;
   };
-  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86_64, ::user, user);
+  // Can't verify this one because glibc leaves out the last two members and the
+  // kernel header isn't available to userspace.
 
   struct stat {
     dev_t st_dev;
