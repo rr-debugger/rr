@@ -30,6 +30,7 @@
         .set syscallbuf_stub_alt_stack, preload_thread_locals
         .set stub_scratch_1, preload_thread_locals + 8
         .set alt_stack_nesting_level, preload_thread_locals + 12
+        .set saved_flags, preload_thread_locals + 16
 
         .p2align 4
 _syscallbuf_code_start:
@@ -77,8 +78,14 @@ _switch_stack_vsyscall:
 
         /* Pop previous EIP */
         lea 4(%esp),%esp
-        /* Restore previous ESP */
-        subl $4,(%esp)
+
+        /* Restore previous ESP ... without modifying flags */
+        mov %eax,(stub_scratch_1)
+        mov (%esp),%eax
+        lea -4(%eax),%eax
+        mov %eax,(%esp)
+        mov (stub_scratch_1),%eax
+
         pop %esp
         ret
         .cfi_endproc
@@ -152,13 +159,17 @@ _syscall_hook_trampoline:
         movdqa 0x70(%esp),%xmm6
         movdqa 0x80(%esp),%xmm7
 
+        pushw (saved_flags)
+        popfw
+        /* From here on, non-application flag changes are not allowed */
+
         /* Restore ESP */
         mov %ebp, %esp
         .cfi_def_cfa_register %esp
 
         /* $eax is now the syscall return value.  Erase |info.no| from the
          * stack so that we can restore the other registers we saved. */
-        addl $4,%esp
+        lea 4(%esp),%esp
         .cfi_adjust_cfa_offset -4
 
         /* Contract of __kernel_vsyscall() and real syscalls is that even
@@ -261,6 +272,7 @@ _get_pc_thunks_end:
 
         .set stub_scratch_1, preload_thread_locals + 16
         .set alt_stack_nesting_level, preload_thread_locals + 24
+        .set saved_flags, preload_thread_locals + 28
 
         .p2align 4
 _syscallbuf_code_start:
@@ -334,6 +346,10 @@ _syscall_hook_trampoline:
         movdqa 0x50(%rsp),%xmm5
         movdqa 0x60(%rsp),%xmm6
         movdqa 0x70(%rsp),%xmm7
+
+        pushw (saved_flags)
+        popfw
+        /* From here on, non-application flag changes are not allowed */
 
         mov %rbx,%rsp
         .cfi_def_cfa_register %rsp

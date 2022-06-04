@@ -87,6 +87,9 @@ templates = {
     'X86SyscallStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
         RawBytes(0x89, 0x25, 0x08, 0x10, 0x00, 0x70), # movl %esp,(stub_scratch_1)
+        RawBytes(0xBC, 0x12, 0x10, 0x00, 0x70),                   # mov $saved_flags+2,%esp
+        RawBytes(0x66, 0x9c),                                     # pushfw
+        RawBytes(0x8b, 0x25, 0x08, 0x10, 0x00, 0x70),             # movq (stub_scratch_1),%esp
         RawBytes(0xFF, 0x05, 0x0c, 0x10, 0x00, 0x70), # incl (alt_stack_nesting_level)
         RawBytes(0x83, 0x3c, 0x25, 0x0c, 0x10, 0x00, 0x70, 0x01), # cmpl 1,(alt_stack_nesting_level)
         RawBytes(0x75, 0x06),                                     # jne dont_switch
@@ -101,6 +104,9 @@ templates = {
     'X86TrapInstructionStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
         RawBytes(0x89, 0x25, 0x08, 0x10, 0x00, 0x70), # movl %esp,(stub_scratch_1)
+        RawBytes(0xBC, 0x12, 0x10, 0x00, 0x70),                   # mov $saved_flags+2,%esp
+        RawBytes(0x66, 0x9c),                                     # pushfw
+        RawBytes(0x8b, 0x25, 0x08, 0x10, 0x00, 0x70),             # movq (stub_scratch_1),%esp
         RawBytes(0xFF, 0x05, 0x0c, 0x10, 0x00, 0x70), # incl (alt_stack_nesting_level)
         RawBytes(0x83, 0x3c, 0x25, 0x0c, 0x10, 0x00, 0x70, 0x01), # cmpl 1,(alt_stack_nesting_level)
         RawBytes(0x75, 0x06),                                     # jne dont_switch
@@ -129,6 +135,9 @@ templates = {
     'X64SyscallStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
         RawBytes(0x48, 0x89, 0x24, 0x25, 0x10, 0x10, 0x00, 0x70), # movq %rsp,(stub_scratch_1)
+        RawBytes(0xBC, 0x1e, 0x10, 0x00, 0x70),                   # mov $saved_flags+2,%esp
+        RawBytes(0x66, 0x9c),                                     # pushfw
+        RawBytes(0x48, 0x8b, 0x24, 0x25, 0x10, 0x10, 0x00, 0x70), # movq (stub_scratch_1),%rsp
         RawBytes(0xFF, 0x04, 0x25, 0x18, 0x10, 0x00, 0x70),       # incl (alt_stack_nesting_level)
         RawBytes(0x83, 0x3c, 0x25, 0x18, 0x10, 0x00, 0x70, 0x01), # cmpl 1,(alt_stack_nesting_level)
         RawBytes(0x75, 0x0a),                                     # jne dont_switch
@@ -149,6 +158,9 @@ templates = {
     'X64TrapInstructionStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
         RawBytes(0x48, 0x89, 0x24, 0x25, 0x10, 0x10, 0x00, 0x70), # movq %rsp,(stub_scratch_1)
+        RawBytes(0xBC, 0x1e, 0x10, 0x00, 0x70),                   # mov $saved_flags+2,%esp
+        RawBytes(0x66, 0x9c),                                     # pushfw
+        RawBytes(0x48, 0x8b, 0x24, 0x25, 0x10, 0x10, 0x00, 0x70), # movq (stub_scratch_1),%rsp
         RawBytes(0xFF, 0x04, 0x25, 0x18, 0x10, 0x00, 0x70),       # incl (alt_stack_nesting_level)
         RawBytes(0x83, 0x3c, 0x25, 0x18, 0x10, 0x00, 0x70, 0x01), # cmpl 1,(alt_stack_nesting_level)
         RawBytes(0x75, 0x0a),                                     # jne dont_switch

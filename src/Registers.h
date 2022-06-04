@@ -360,7 +360,6 @@ public:
   bool set_cx(uintptr_t value) { return RR_SET_REG_X86(ecx, rcx, value); }
 
   uintptr_t ax() const { return RR_GET_REG_X86(eax, rax); }
-  bool set_ax(uintptr_t value) { return RR_SET_REG_X86(eax, rax, value); }
 
   uintptr_t dx() const { return RR_GET_REG_X86(edx, rdx); }
   bool set_dx(uintptr_t value) { return RR_SET_REG_X86(edx, rdx, value); }

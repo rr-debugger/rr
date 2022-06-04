@@ -1108,6 +1108,7 @@ set(BASIC_TESTS
   # pivot_root ... disabled because it fails when run as root and does nothing otherwise
   quotactl
   x86/rdtsc
+  x86/rdtsc_flags
   read_nothing
   readdir
   read_large
