@@ -2041,7 +2041,11 @@ static bool is_ld_mapping(string map_name) {
 }
 
 static bool is_likely_interp(string fsname) {
+#ifdef __aarch64__
+  return fsname == "/lib/ld-linux-aarch64.so.1";
+#else
   return fsname == "/lib64/ld-linux-x86-64.so.2" || fsname == "/lib/ld-linux.so.2";
+#endif
 }
 
 static remote_ptr<void> base_addr_from_rendezvous(Task* t, string fname)
