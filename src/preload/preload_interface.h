@@ -307,11 +307,9 @@ struct preload_thread_locals {
   /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
    * rr depends on.
    */
-  int alt_stack_nesting_level;
-  /**
-   * We could use this later.
-   */
-  int unused_padding;
+  int32_t alt_stack_nesting_level;
+  /* Syscall hook saved flags (bottom 16 bits only) */
+  int32_t saved_flags;
   /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
    * rr depends on. It contains the parameters to the patched syscall, or
    * zero if we're not processing a buffered syscall. Do not depend on this

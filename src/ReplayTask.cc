@@ -149,6 +149,8 @@ void ReplayTask::set_return_value_from_trace() {
   // (to -1 in that case).
   r.set_original_syscallno(current_trace_frame().regs().original_syscallno());
   if (r.original_syscallno() == session().syscall_number_for_rrcall_rdtsc()) {
+    ASSERT(this, is_x86ish(arch()));
+    // EAX has been set via set_syscall_result above
     r.set_dx(current_trace_frame().regs().dx());
   }
   set_regs(r);
