@@ -1021,6 +1021,7 @@ ReplayResult ReplayTimeline::reverse_continue(
         avoidable_stop_ip = result.break_status.task()->ip();
         avoidable_stop_ticks = result.break_status.task()->tick_count();
       }
+      before_watchpoint = false;
 
       evaluate_conditions(result);
       if (result.break_status.any_break() &&
