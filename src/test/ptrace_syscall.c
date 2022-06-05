@@ -16,7 +16,9 @@ extern char syscall_addr __attribute__ ((visibility ("hidden")));
 int main(void) {
   pid_t child;
   int status;
+#ifdef PTRACE_GET_SYSCALL_INFO
   int ret = 0;
+#endif
   struct user_regs_struct regs;
   uid_t uid = geteuid();
 
