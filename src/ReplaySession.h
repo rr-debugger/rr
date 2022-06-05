@@ -258,9 +258,8 @@ public:
 
   struct StepConstraints {
     explicit StepConstraints(RunCommand command)
-        : command(command), stop_at_time(0), ticks_target(0) {}
+        : command(command), ticks_target(0) {}
     RunCommand command;
-    FrameTime stop_at_time;
     Ticks ticks_target;
     // When the RunCommand is RUN_SINGLESTEP_FAST_FORWARD, stop if the next
     // singlestep would enter one of the register states in this list.
@@ -275,16 +274,11 @@ public:
   };
   /**
    * Take a single replay step.
-   * Ensure we stop at event stop_at_time. If this is not specified,
-   * optimizations may cause a replay_step to pass straight through
-   * stop_at_time.
    * Outside of replay_step, no internal breakpoints will be set for any
    * task in this session.
-   * Stop when the current event reaches stop_at_time (i.e. this event has
-   * is the next event to be replayed).
    * If ticks_target is nonzero, stop before the current task's ticks
-   * reaches ticks_target (but not too far before, unless we hit a breakpoint
-   * or stop_at_time). Only useful for RUN_CONTINUE.
+   * reaches ticks_target (but not too far before, unless we hit a breakpoint).
+   * Only useful for RUN_CONTINUE.
    * Always stops on a switch to a new task.
    */
   ReplayResult replay_step(const StepConstraints& constraints);

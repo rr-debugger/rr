@@ -426,7 +426,6 @@ void ReplayTimeline::seek_to_ticks(FrameTime time, Ticks ticks) {
 
   while (current->trace_reader().time() < time) {
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-    constraints.stop_at_time = time;
     ReplayResult result = current->replay_step(constraints);
     if (result.status != REPLAY_CONTINUE) {
       FATAL() << "Trace finished before target was reached";
@@ -465,7 +464,6 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     // we should.
     ReplaySession::StepConstraints constraints =
         strategy.setup_step_constraints();
-    constraints.stop_at_time = mark.ptr->proto.key.trace_time;
     result = current->replay_step(constraints);
     update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
                                              before);
@@ -554,7 +552,6 @@ void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
   while (!pmark.equal_states(*current)) {
     if (current->trace_reader().time() < pmark.key.trace_time) {
       ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-      constraints.stop_at_time = pmark.key.trace_time;
       current->replay_step(constraints);
     } else {
       ReplayTask* t = current->current_task();
@@ -830,7 +827,6 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
   FrameTime mid = (now + end.ptr->proto.key.trace_time) / 2;
   if (now < mid && mid < end.ptr->proto.key.trace_time) {
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-    constraints.stop_at_time = mid;
     while (current->trace_reader().time() < mid) {
       current->replay_step(constraints);
     }
@@ -842,7 +838,6 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
   if (current->trace_reader().time() < end.ptr->proto.key.trace_time &&
       end.ptr->ticks_at_event_start < end.ptr->proto.key.ticks) {
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-    constraints.stop_at_time = end.ptr->proto.key.trace_time;
     while (current->trace_reader().time() < end.ptr->proto.key.trace_time) {
       current->replay_step(constraints);
     }
@@ -1432,8 +1427,7 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
   }
 }
 
-ReplayResult ReplayTimeline::replay_step_forward(RunCommand command,
-                                                 FrameTime stop_at_time) {
+ReplayResult ReplayTimeline::replay_step_forward(RunCommand command) {
   DEBUG_ASSERT(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;
@@ -1441,7 +1435,6 @@ ReplayResult ReplayTimeline::replay_step_forward(RunCommand command,
   ProtoMark before = proto_mark();
   current->set_visible_execution(true);
   ReplaySession::StepConstraints constraints(command);
-  constraints.stop_at_time = stop_at_time;
   result = current->replay_step(constraints);
   current->set_visible_execution(false);
   if (command == RUN_CONTINUE) {

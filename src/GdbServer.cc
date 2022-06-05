@@ -1363,7 +1363,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       RunCommand command = compute_run_command_from_actions(
           timeline.current_session().current_task(), req, &signal_to_deliver);
       // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
-      result = timeline.replay_step_forward(command, target.event);
+      result = timeline.replay_step_forward(command);
     }
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(last_resume_request);
@@ -1633,7 +1633,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
     timeline.seek_to_before_event(target.event);
     ReplayResult result;
     do {
-      result = timeline.replay_step_forward(RUN_CONTINUE, target.event);
+      result = timeline.replay_step_forward(RUN_CONTINUE);
       // We should never reach the end of the trace without hitting the stop
       // condition below.
       DEBUG_ASSERT(result.status != REPLAY_EXITED);
@@ -1773,7 +1773,7 @@ static void print_debugger_launch_command(Task* t, const string& host,
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
   ReplayResult result;
   do {
-    result = timeline.replay_step_forward(RUN_CONTINUE, target.event);
+    result = timeline.replay_step_forward(RUN_CONTINUE);
     if (result.status == REPLAY_EXITED) {
       LOG(info) << "Debugger was not launched before end of trace";
       return;
