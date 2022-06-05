@@ -1548,6 +1548,8 @@ set(TESTS_WITHOUT_PROGRAM
   subprocess_exit_ends_session
   switch_processes
   syscallbuf_timeslice_250
+  tick0
+  tick0_less
   trace_version
   term_trace_cpu
   trace_events
@@ -1617,6 +1619,18 @@ if(BUILD_TESTS)
               DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
     endif(INSTALL_TESTSUITE)
   endforeach(test)
+
+  add_executable(tick0 src/test/tick0.c)
+  post_build_executable(tick0)
+  set_target_properties(tick0
+    PROPERTIES LINK_FLAGS "-static -nostdlib -nodefaultlibs"
+    COMPILE_FLAGS "-static -nostdlib -nodefaultlibs -O3 -g2 -DHAS_TICK0=1")
+
+  add_executable(tick0_less src/test/tick0.c)
+  post_build_executable(tick0_less)
+  set_target_properties(tick0_less
+    PROPERTIES LINK_FLAGS "-static -nostdlib -nodefaultlibs"
+    COMPILE_FLAGS "-static -nostdlib -nodefaultlibs -O3 -g2")
 
   # Test disabled because it requires libuvc to be built and installed, and a
   # working USB camera
@@ -1732,7 +1746,7 @@ if(BUILD_TESTS)
                     COPYONLY)
     endforeach(header)
 
-    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib)
+    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib tick0)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                      COPYONLY)
@@ -1777,6 +1791,18 @@ if(BUILD_TESTS)
                 DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
       endif (INSTALL_TESTSUITE)
     endforeach(test)
+
+    add_executable(tick0_32 "${CMAKE_CURRENT_BINARY_DIR}/32/tick0.c")
+    post_build_executable(tick0_32)
+    set_target_properties(tick0_32
+      PROPERTIES LINK_FLAGS "-m32 -static -nostdlib -nodefaultlibs"
+      COMPILE_FLAGS "-m32 -static -nostdlib -nodefaultlibs -O3 -g2 -DHAS_TICK0=1")
+
+    add_executable(tick0_less_32 "${CMAKE_CURRENT_BINARY_DIR}/32/tick0.c")
+    post_build_executable(tick0_less_32)
+    set_target_properties(tick0_less_32
+      PROPERTIES LINK_FLAGS "-m32 -static -nostdlib -nodefaultlibs"
+      COMPILE_FLAGS "-m32 -static -nostdlib -nodefaultlibs -O3 -g2")
 
     add_library(test_lib_32
       "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"

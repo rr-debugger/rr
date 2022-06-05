@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record tick0$bitness
+debug tick0

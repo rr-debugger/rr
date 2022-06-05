@@ -1599,12 +1599,12 @@ void GdbServer::restart_session(const GdbRequest& req) {
         return;
       }
       TraceFrame frame = tmp_reader.read_frame();
-      if (frame.tid() == task->tuid().tid() && frame.ticks() > target) {
+      if (frame.tid() == task->tuid().tid() && frame.ticks() >= target) {
         break;
       }
       last_time = frame.time();
     }
-    timeline.seek_to_ticks(last_time, target);
+    timeline.seek_to_ticks(last_time + 1, target);
   }
 
   interrupt_pending = true;
