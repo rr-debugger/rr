@@ -13,7 +13,7 @@ static void client(const struct sockaddr_un* addr) {
   test_assert(0 == connect(clientfd, (struct sockaddr*)addr, sizeof(*addr)));
 
   memset(&a, 0, sizeof(a));
-  test_assert(1 == recvfrom(clientfd, &c, 1, 0, &a, &len));
+  test_assert(1 == recvfrom(clientfd, &c, 1, 0, (struct sockaddr*)&a, &len));
   atomic_printf("recvfrom() -> %c from (%d,%s) len %d\n", c, a.sun_family,
                 a.sun_path, len);
   test_assert(c == '!');

@@ -9,7 +9,7 @@ int main(void) {
   test_assert(fd >= 0);
   addr.sun_family = AF_UNIX;
   strcpy(addr.sun_path, "/var/run/nscd/socket");
-  ret = connect(fd, &addr, sizeof(addr));
+  ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
   test_assert(ret < 0 && errno == EACCES);
   atomic_puts("EXIT-SUCCESS");
   return 0;

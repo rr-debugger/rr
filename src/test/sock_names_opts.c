@@ -12,7 +12,7 @@ static void client(const struct sockaddr_un* addr) {
   test_assert(clientfd >= 0);
   test_assert(0 == connect(clientfd, (struct sockaddr*)addr, sizeof(*addr)));
 
-  test_assert(0 == getpeername(clientfd, &got_peer_addr, &got_peer_addr_len));
+  test_assert(0 == getpeername(clientfd, (struct sockaddr*)&got_peer_addr, &got_peer_addr_len));
   test_assert(got_peer_addr_len > 0 &&
               got_peer_addr_len <= sizeof(got_peer_addr));
   test_assert(0 == memcmp(&got_peer_addr, addr, got_peer_addr_len));
@@ -44,7 +44,7 @@ int main(void) {
   test_assert(0 <= (listenfd = socket(AF_UNIX, SOCK_STREAM, 0)));
   test_assert(0 == bind(listenfd, (struct sockaddr*)&addr, sizeof(addr)));
 
-  test_assert(0 == getsockname(listenfd, &got_name, &got_name_len));
+  test_assert(0 == getsockname(listenfd, (struct sockaddr*)&got_name, &got_name_len));
   test_assert(got_name_len > 0 && got_name_len <= sizeof(got_name));
   test_assert(0 == memcmp(&addr, &got_name, got_name_len));
 
@@ -54,7 +54,7 @@ int main(void) {
     test_assert("Not reached" && 0);
   }
 
-  test_assert(0 <= (servefd = accept(listenfd, &peer_addr, &peer_addr_len)));
+  test_assert(0 <= (servefd = accept(listenfd, (struct sockaddr*)&peer_addr, &peer_addr_len)));
 
   test_assert(0 == getsockopt(servefd, SOL_SOCKET, SO_PASSCRED, &got_opt,
                               &got_opt_len));

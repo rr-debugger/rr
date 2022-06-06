@@ -80,7 +80,7 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     socklen_t addrlen = sizeof(addr);
 
     atomic_puts("r: recvfrom(&sock)'ing socket ...");
-    test_assert(1 == recvfrom(sock, &c, sizeof(c), 0, &addr, &addrlen));
+    test_assert(1 == recvfrom(sock, &c, sizeof(c), 0, (struct sockaddr*)&addr, &addrlen));
     atomic_printf("r:   ... recvfrom'd '%c' from sock len:%d\n", c, addrlen);
     test_assert(c == token);
     /* socketpair() AF_LOCAL sockets don't identify
