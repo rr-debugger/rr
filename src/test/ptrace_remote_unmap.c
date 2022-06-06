@@ -5,7 +5,7 @@
 
 #define RR_PAGE_ADDR 0x70000000
 
-long checked_ptrace(enum __ptrace_request request, pid_t pid, void* addr,
+long checked_ptrace(int request, pid_t pid, void* addr,
                     void* data) {
   long ret = ptrace(request, pid, addr, data);
   test_assert(ret != -1);
