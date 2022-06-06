@@ -22,7 +22,7 @@ int main(void) {
   int status;
 
   fd = open(FILENAME, O_CREAT | O_EXCL | O_RDWR, 0600);
-  fd2 = open(FILENAME, O_EXCL | O_RDWR, 0600);
+  fd2 = open(FILENAME, O_EXCL | O_RDWR);
   test_assert(fd >= 0 && fd2 >= 0);
 
   unlink(FILENAME);

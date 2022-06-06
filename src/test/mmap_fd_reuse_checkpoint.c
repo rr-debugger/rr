@@ -28,7 +28,7 @@ int main(void) {
   pthread_create(&thread, NULL, le_thread, wpage);
   pthread_join(thread, NULL);
 
-  fd = open(kFileName, O_EXCL | O_RDWR, 0600);
+  fd = open(kFileName, O_EXCL | O_RDWR);
   assert(fd == old && "test expects fd reuse");
 
   munmap(wpage, 0);

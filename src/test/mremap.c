@@ -16,7 +16,7 @@ static void check_mapping(int* rpage, int* wpage, ssize_t nr_ints) {
 
 static void overwrite_file(const char* path, ssize_t num_bytes) {
   const int magic = 0x5a5a5a5a;
-  int fd = open(path, O_TRUNC | O_RDWR, 0600);
+  int fd = open(path, O_TRUNC | O_RDWR);
   test_assert(fd >= 0);
   size_t i;
   for (i = 0; i < num_bytes / sizeof(magic); ++i) {

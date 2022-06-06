@@ -19,7 +19,7 @@ int main(void) {
 
   fcntl(fd, F_NOTIFY, DN_CREATE);
 
-  file_fd = openat(fd, "foo", O_RDWR | O_CREAT);
+  file_fd = openat(fd, "foo", O_RDWR | O_CREAT, 0600);
   test_assert(file_fd >= 0);
   test_assert(saw_sigio);
 

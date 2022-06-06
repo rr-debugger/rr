@@ -7,7 +7,7 @@
 static const int magic = 0x5a5a5a5a;
 
 static void overwrite_file(const char* path, size_t num_bytes) {
-  int fd = open(path, O_TRUNC | O_RDWR, 0600);
+  int fd = open(path, O_TRUNC | O_RDWR);
   size_t i;
 
   test_assert(fd >= 0);

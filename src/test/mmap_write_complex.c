@@ -6,9 +6,9 @@ int main(void) {
   int fd = open("output", O_RDWR | O_CREAT, 0777);
   int fd2 = dup(fd);
   /* create a new file description */
-  int fd3 = open("output", O_RDWR, 0777);
+  int fd3 = open("output", O_RDWR);
   int fd4;
-  int fd5 = open("output", O_RDONLY, 0777);
+  int fd5 = open("output", O_RDONLY);
   int ret;
   char* p = (char*)mmap(NULL, 10, PROT_READ | PROT_WRITE,
                         MAP_SHARED, fd, 0);
@@ -27,7 +27,7 @@ int main(void) {
   test_assert(p[0] == 'z');  
 
   /* Check that an open after the mmap works */
-  fd4 = open("output", O_RDWR, 0777);
+  fd4 = open("output", O_RDWR);
   ret = write(fd4, "a", 1);
   test_assert(ret == 1);
   test_assert(p[0] == 'a');  

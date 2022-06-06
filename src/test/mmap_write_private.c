@@ -15,7 +15,7 @@ int main(void) {
   /* Opening a MAP_PRIVATE-mapped file writable is potentially
      problematic, but it should at least be OK if we don't write to
      it. */
-  fd2 = open("output", O_RDWR, 0777);
+  fd2 = open("output", O_RDWR);
   test_assert(fd2 >= 0);
 
   p2 = (char*)mmap(NULL, 10, PROT_READ, MAP_SHARED, fd, 0);
@@ -23,7 +23,7 @@ int main(void) {
 
   /* Test what happens if the file is mapped private AND shared and
      we write to it */
-  fd3 = open("output", O_RDWR, 0777);
+  fd3 = open("output", O_RDWR);
   test_assert(fd3 >= 0);
 
   ret = write(fd3, "x", 1);
