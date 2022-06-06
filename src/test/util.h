@@ -71,7 +71,9 @@
 #include <sys/auxv.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#ifdef FANOTIFY_H
 #include <sys/fanotify.h>
+#endif
 #include <sys/file.h>
 #include <sys/fsuid.h>
 #include <sys/inotify.h>

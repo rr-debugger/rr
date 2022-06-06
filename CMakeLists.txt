@@ -323,6 +323,11 @@ if(MQUEUE_H)
   add_definitions(-DMQUEUE_H=1)
 endif()
 
+find_path(FANOTIFY_H NAMES "sys/fanotify.h")
+if(FANOTIFY_H)
+  add_definitions(-DFANOTIFY_H=1)
+endif()
+
 include(CheckSymbolExists)
 list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 check_symbol_exists(LAV_CURRENT "link.h" RTLD_AUDIT)
@@ -914,7 +919,6 @@ set(BASIC_TESTS
   execveat
   exit_with_syscallbuf_signal
   fadvise
-  fanotify
   fatal_init_signal
   fatal_sigsegv_thread
   x86/fault_in_code_page
@@ -1267,6 +1271,10 @@ set(BASIC_TESTS
 
 if(MQUEUE_H)
   set(BASIC_TESTS ${BASIC_TESTS} mq)
+endif()
+
+if(FANOTIFY_H)
+  set(BASIC_TESTS ${BASIC_TESTS} fanotify)
 endif()
 
 set(BASIC_CPP_TESTS
