@@ -170,6 +170,11 @@ static int generic_wireless_request_by_name_internal(int sockfd,
     test_assert(EOPNOTSUPP == err || EPERM == err); \
   }
 
+static inline unsigned int our_ethtool_cmd_speed(const struct ethtool_cmd *ep)
+{
+  return (ep->speed_hi << 16) | ep->speed;
+}
+
 static void ethtool(int sockfd, struct ifreq* req) {
   struct ethtool_cmd* et_set;
   struct ethtool_drvinfo* et_drvinfo;
@@ -213,7 +218,7 @@ static void ethtool(int sockfd, struct ifreq* req) {
   }
   atomic_printf("speed:%#x duplex:%#x port:%#x physaddr:%#x, maxtxpkt:%u "
                 "maxrxpkt:%u ...\n",
-                ethtool_cmd_speed(et_set), et_set->duplex, et_set->port,
+                our_ethtool_cmd_speed(et_set), et_set->duplex, et_set->port,
                 et_set->phy_address, et_set->maxtxpkt, et_set->maxrxpkt);
 
   ALLOCATE_GUARD(et_drvinfo, 'c');
