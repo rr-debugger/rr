@@ -6,6 +6,18 @@
 
 #define NUM_ITERATIONS 10
 
+static int our_ualarm(useconds_t value, useconds_t interval)
+{
+  struct itimerval timer;
+
+  timer.it_value.tv_sec = 0;
+  timer.it_value.tv_usec = value;
+  timer.it_interval.tv_sec = 0;
+  timer.it_interval.tv_usec = interval;
+
+  return setitimer(ITIMER_REAL, &timer, NULL);
+}
+
 static void handle_sig(__attribute__((unused)) int sig) {
   sigset_t after_sigset;
   int ret = sigprocmask(SIG_BLOCK, NULL, &after_sigset);
@@ -42,7 +54,7 @@ int main(void) {
 
     atomic_printf("iteration %d\n", i);
     if (i % 2 == 0) {
-      ualarm(100000, 0);
+      our_ualarm(100000, 0);
     } else if (fork() == 0) {
       usleep(100000);
       return 0;
