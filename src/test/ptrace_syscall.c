@@ -21,11 +21,10 @@ int main(void) {
   uid_t uid = geteuid();
 
   if (0 == (child = fork())) {
-    uid_t ret;
     kill(getpid(), SIGSTOP);
     /* the ptracer changes this to a gettid, and then fakes the result */
     ret = my_geteuid();
-    test_assert(ret == uid + 1);
+    test_assert(ret == (int)uid + 1);
     return 77;
   }
 
