@@ -611,9 +611,16 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
     if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
       bool reached_target = syscall_bp_vm && SIGTRAP == t->stop_sig() &&
                             t->ip().undo_executed_bkpt(t->arch()) ==
-                                syscall_instruction &&
-                            t->vm()->get_breakpoint_type_at_addr(
-                                syscall_instruction) == BKPT_INTERNAL;
+                                syscall_instruction;
+      if (reached_target) {
+        // Check if we've hit a user break/watchpoint
+        if (t->vm()->get_breakpoint_type_at_addr(syscall_instruction) != BKPT_INTERNAL) {
+          reached_target = false;
+        }
+        else if (t->vm()->is_exec_watchpoint(syscall_instruction)) {
+          reached_target = false;
+        }
+      }
       if (reached_target) {
         emulate_syscall_entry(t, current_trace_frame(), syscall_instruction);
         clear_syscall_bp();

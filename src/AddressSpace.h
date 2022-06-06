@@ -374,6 +374,11 @@ public:
   BreakpointType get_breakpoint_type_at_addr(remote_code_ptr addr);
 
   /**
+   * Check if the user has placed a hardware EXEC watchpoint at addr.
+   */
+  bool is_exec_watchpoint(remote_code_ptr addr);
+
+  /**
    * Returns true when the breakpoint at |addr| is in private
    * non-writeable memory. When this returns true, the breakpoint can't be
    * overwritten by the tracee without an intervening mprotect or mmap
