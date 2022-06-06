@@ -1142,8 +1142,7 @@ ReplayResult ReplayTimeline::reverse_continue(
       seek_to_mark(dest);
       unapply_breakpoints_and_watchpoints();
       current->replay_step(RUN_SINGLESTEP);
-    }
-    else {
+    } else {
       LOG(debug)
         << "Performing final reverse-singlestep to pass over watch/signal";
       auto stop_filter = [&](ReplayTask* t) { return t->tuid() == final_tuid; };
