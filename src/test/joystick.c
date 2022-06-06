@@ -1,6 +1,8 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
+// On bionic, scsi/sg.h's BUSY conflicts with a definition in linux/joystick.h
+#undef BUSY
 #include <linux/joystick.h>
 
 int main(void) {

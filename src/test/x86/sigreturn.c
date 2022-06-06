@@ -93,6 +93,8 @@ static void init(void) {
   INIT(7)
 }
 
+// On bionic, scsi/sg.h defines GOOD
+#undef GOOD
 #define GOOD 0x12345678
 #define BAD 0xFEDCBA98
 
