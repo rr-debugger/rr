@@ -4,7 +4,7 @@
 
 int main(void) {
   int ret;
-  ret = ioperm(0, 1024, 1);
+  ret = syscall(SYS_ioperm, 0, 1024, 1);
   atomic_printf("ioperm returned %d\n", ret);
   atomic_puts("EXIT-SUCCESS");
   return 0;

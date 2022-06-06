@@ -116,7 +116,6 @@
 // X86 specific headers
 #if defined(__i386__) || defined(__x86_64__)
 #include <asm/prctl.h>
-#include <sys/io.h>
 #include <x86intrin.h>
 #endif
 

@@ -4,7 +4,7 @@
 
 int main(void) {
   int ret;
-  ret = iopl(3);
+  ret = syscall(SYS_iopl, 3);
   atomic_printf("iopl returned %d\n", ret);
   atomic_puts("EXIT-SUCCESS");
   return 0;
