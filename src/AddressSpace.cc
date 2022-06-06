@@ -658,6 +658,16 @@ BreakpointType AddressSpace::get_breakpoint_type_at_addr(remote_code_ptr addr) {
   return it == breakpoints.end() ? BKPT_NONE : it->second.type();
 }
 
+bool AddressSpace::is_exec_watchpoint(remote_code_ptr addr) {
+  for (auto& kv : watchpoints) {
+    if (kv.first.contains(addr.to_data_ptr<void>()) &&
+        (kv.second.watched_bits() & EXEC_BIT)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool AddressSpace::is_breakpoint_in_private_read_only_memory(
     remote_code_ptr addr) {
   for (const auto& m : maps_containing_or_after(addr.to_data_ptr<void>())) {
