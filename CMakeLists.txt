@@ -338,6 +338,9 @@ if(NOT RTLD_AUDIT)
 endif()
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 
+# Test only symbols
+check_symbol_exists(pthread_mutexattr_setrobust "pthread.h" HAVE_ROBUST_MUTEX)
+
 set(Python_ADDITIONAL_VERSIONS 3 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0)
 find_package(PythonInterp 3 REQUIRED)
 
@@ -1132,7 +1135,6 @@ set(BASIC_TESTS
   redzone_integrity
   rename
   rlimit
-  robust_futex
   rusage
   samask
   save_data_fd
@@ -1277,6 +1279,10 @@ endif()
 
 if(FANOTIFY_H)
   set(BASIC_TESTS ${BASIC_TESTS} fanotify)
+endif()
+
+if(HAVE_ROBUST_MUTEX)
+  set(BASIC_TESTS ${BASIC_TESTS} robust_futex)
 endif()
 
 set(BASIC_CPP_TESTS
