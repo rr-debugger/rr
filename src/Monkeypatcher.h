@@ -63,6 +63,9 @@ public:
    * be replayed.
    */
   bool try_patch_syscall(RecordTask* t, bool entering_syscall = true);
+  bool try_patch_syscall_x86ish(RecordTask* t, bool entering_syscall,
+                                SupportedArch arch);
+  bool try_patch_syscall_aarch64(RecordTask* t, bool entering_syscall);
 
   /**
    * Try to patch the trapping instruction that |t| just trapped on. If this
