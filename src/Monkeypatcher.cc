@@ -329,11 +329,11 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
 
   remote_ptr<uint8_t> extended_jump_start;
   if (fake_syscall_number) {
-    extended_jump_start = allocate_extended_jump<ExtendedJumpPatch>(
-          t, patcher.extended_jump_pages, jump_patch_end);
-  } else {
     extended_jump_start = allocate_extended_jump<FakeSyscallExtendedJumpPatch>(
         t, patcher.extended_jump_pages, jump_patch_end);
+  } else {
+    extended_jump_start = allocate_extended_jump<ExtendedJumpPatch>(
+          t, patcher.extended_jump_pages, jump_patch_end);
   }
   if (extended_jump_start.is_null()) {
     return false;
