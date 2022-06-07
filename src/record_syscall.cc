@@ -1754,6 +1754,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       return PREVENT_SWITCH;
 
     case BLKSSZGET:
+    case BLKALIGNOFF:
     case KDGKBMODE:
     case RNDGETENTCNT:
     case TIOCINQ:
@@ -1761,6 +1762,28 @@ static Switchable prepare_ioctl(RecordTask* t,
     case TIOCGETD:
     case VT_OPENQRY:
       syscall_state.reg_parameter<int>(3);
+      return PREVENT_SWITCH;
+
+    case BLKROGET:
+    case BLKIOMIN:
+    case BLKIOOPT:
+    case BLKPBSZGET:
+    case BLKDISCARDZEROES:
+      syscall_state.reg_parameter<unsigned int>(3);
+      return PREVENT_SWITCH;
+
+    case BLKGETSIZE:
+      syscall_state.reg_parameter<typename Arch::unsigned_long>(3);
+      return PREVENT_SWITCH;
+
+    case BLKRAGET:
+    case BLKFRAGET:
+      syscall_state.reg_parameter<typename Arch::signed_long>(3);
+      return PREVENT_SWITCH;
+
+    case BLKSECTGET:
+    case BLKROTATIONAL:
+      syscall_state.reg_parameter<typename Arch::unsigned_short>(3);
       return PREVENT_SWITCH;
 
     case TIOCGWINSZ:
@@ -2005,7 +2028,8 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
     case IOCTL_MASK_SIZE(HIDIOCGRAWINFO):
     case IOCTL_MASK_SIZE(HIDIOCGRAWNAME(0)):
-    case IOCTL_MASK_SIZE(BLKGETSIZE64):
+    case IOCTL_MASK_SIZE(BLKBSZGET):
+    case IOCTL_MASK_SIZE(BLKGETDISKSEQ):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
@@ -2019,6 +2043,11 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(USBDEVFS_SETINTERFACE):
     case IOCTL_MASK_SIZE(USBDEVFS_SUBMITURB):
       // Doesn't actually seem to write to userspace
+      return PREVENT_SWITCH;
+
+    case IOCTL_MASK_SIZE(BLKGETSIZE64):
+      // The ioctl definition says "size_t" but it's actually a uint64!
+      syscall_state.reg_parameter<uint64_t>(3);
       return PREVENT_SWITCH;
 
     case IOCTL_MASK_SIZE(TUNGETIFF):
