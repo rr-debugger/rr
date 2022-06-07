@@ -212,7 +212,7 @@ void substitute_extended_jump<X64TrapInstructionStubExtendedJump>(
  * there must jump to to_start.
  */
 template <typename ExtendedJumpPatch>
-static remote_ptr<uint8_t> allocate_extended_jump(
+static remote_ptr<uint8_t> allocate_extended_jump_x86ish(
     RecordTask* t, vector<Monkeypatcher::ExtendedJumpPage>& pages,
     remote_ptr<uint8_t> from_end) {
   Monkeypatcher::ExtendedJumpPage* page = nullptr;
@@ -329,10 +329,10 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
 
   remote_ptr<uint8_t> extended_jump_start;
   if (fake_syscall_number) {
-    extended_jump_start = allocate_extended_jump<FakeSyscallExtendedJumpPatch>(
+    extended_jump_start = allocate_extended_jump_x86ish<FakeSyscallExtendedJumpPatch>(
         t, patcher.extended_jump_pages, jump_patch_end);
   } else {
-    extended_jump_start = allocate_extended_jump<ExtendedJumpPatch>(
+    extended_jump_start = allocate_extended_jump_x86ish<ExtendedJumpPatch>(
           t, patcher.extended_jump_pages, jump_patch_end);
   }
   if (extended_jump_start.is_null()) {
@@ -364,7 +364,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   intptr_t jump_offset = extended_jump_start - jump_patch_end;
   int32_t jump_offset32 = (int32_t)jump_offset;
   ASSERT(t, jump_offset32 == jump_offset)
-      << "allocate_extended_jump didn't work";
+      << "allocate_extended_jump_x86ish didn't work";
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
@@ -737,6 +737,51 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
 // The `entering_syscall` flag tells us whether or not we're at syscall entry.
 // If we are, and we find a pattern that can only be patched at exit, we'll
 // set a flag on the RecordTask telling it to try again after syscall exit.
+bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscall,
+                                             SupportedArch arch) {
+  Registers r = t->regs();
+  remote_code_ptr ip = r.ip();
+
+  ASSERT(t, is_x86ish(arch)) << "Unsupported architecture";
+
+  size_t instruction_length = rr::syscall_instruction_length(arch);
+  const syscall_patch_hook* hook_ptr = find_syscall_hook(t, ip - instruction_length,
+      true, entering_syscall, instruction_length);
+  bool success = false;
+  intptr_t syscallno = r.original_syscallno();
+  if (hook_ptr) {
+    // Get out of executing the current syscall before we patch it.
+    if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
+      return false;
+    }
+
+    LOG(debug) << "Patching syscall at " << ip << " syscall "
+               << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
+
+    success = patch_syscall_with_hook(*this, t, *hook_ptr, instruction_length, 0);
+    if (!success && entering_syscall) {
+      // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
+      t->enter_syscall();
+    }
+  }
+
+  if (!success) {
+    if (!t->retry_syscall_patching) {
+      LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
+                 << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
+      tried_to_patch_syscall_addresses.insert(ip);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_syscall) {
+  FATAL() << "Unimplemented";
+  return false;
+}
+
 bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
@@ -786,37 +831,10 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
     return false;
   }
 
-  size_t instruction_length = rr::syscall_instruction_length(arch);
-  const syscall_patch_hook* hook_ptr = find_syscall_hook(t, ip - instruction_length,
-      true, entering_syscall, instruction_length);
-  bool success = false;
-  intptr_t syscallno = r.original_syscallno();
-  if (hook_ptr) {
-    // Get out of executing the current syscall before we patch it.
-    if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
-      return false;
-    }
-
-    LOG(debug) << "Patching syscall at " << ip << " syscall "
-               << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
-
-    success = patch_syscall_with_hook(*this, t, *hook_ptr, instruction_length, 0);
-    if (!success && entering_syscall) {
-      // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
-      t->enter_syscall();
-    }
+  if (arch == aarch64) {
+    return try_patch_syscall_aarch64(t, entering_syscall);
   }
-
-  if (!success) {
-    if (!t->retry_syscall_patching) {
-      LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
-                 << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
-      tried_to_patch_syscall_addresses.insert(ip);
-    }
-    return false;
-  }
-
-  return true;
+  return try_patch_syscall_x86ish(t, entering_syscall, arch);
 }
 
 bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruction_length) {
@@ -1055,7 +1073,7 @@ static void patch_dl_runtime_resolve(Monkeypatcher& patcher,
   auto call_patch_end = call_patch_start + sizeof(call_patch);
 
   remote_ptr<uint8_t> extended_call_start =
-      allocate_extended_jump<X64DLRuntimeResolvePrelude>(
+      allocate_extended_jump_x86ish<X64DLRuntimeResolvePrelude>(
           t, patcher.extended_jump_pages, call_patch_end);
   if (extended_call_start.is_null()) {
     return;
@@ -1067,7 +1085,7 @@ static void patch_dl_runtime_resolve(Monkeypatcher& patcher,
   intptr_t call_offset = extended_call_start - call_patch_end;
   int32_t call_offset32 = (int32_t)call_offset;
   ASSERT(t, call_offset32 == call_offset)
-      << "allocate_extended_jump didn't work";
+      << "allocate_extended_jump_x86ish didn't work";
   X64CallMonkeypatch::substitute(call_patch, call_offset32);
   write_and_record_bytes(t, call_patch_start, call_patch);
 
