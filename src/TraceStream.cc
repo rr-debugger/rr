@@ -1282,8 +1282,7 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
       return output_trace_dir;
     }
     if (EEXIST == errno) {
-      // directory already exists
-      FATAL() << "Directory `" << output_trace_dir << "' already exists.";
+      CLEAN_FATAL() << "Directory `" << output_trace_dir << "' already exists.";
     } else {
       FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
     }
