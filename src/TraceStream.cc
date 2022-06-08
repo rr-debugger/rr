@@ -1282,7 +1282,9 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
       return output_trace_dir;
     }
     if (EEXIST == errno) {
-      CLEAN_FATAL() << "Directory `" << output_trace_dir << "' already exists.";
+      CLEAN_FATAL() << "Trace directory `" << output_trace_dir << "' already exists.";
+    } else if (EACCES == errno) {
+      CLEAN_FATAL() << "Permission denied to create trace directory `" << output_trace_dir << "'";
     } else {
       FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
     }
