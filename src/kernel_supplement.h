@@ -465,6 +465,11 @@ enum {
 #define RR_RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT 2
 #define RR_RSEQ_CPU_ID_UNINITIALIZED -1
 
+// New in the 5.15 kernel
+#ifndef BLKGETDISKSEQ
+#define BLKGETDISKSEQ _IOR(0x12,128,__u64)
+#endif
+
 // New in the 5.17 kernel
 #ifndef PR_SET_VMA
 #define PR_SET_VMA 0x53564d41

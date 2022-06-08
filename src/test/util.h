@@ -485,4 +485,8 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #define PR_SET_VMA_ANON_NAME 0
 #endif
 
+#ifndef BLKGETDISKSEQ
+#define BLKGETDISKSEQ _IOR(0x12,128,__u64)
+#endif
+
 #endif /* RRUTIL_H */
