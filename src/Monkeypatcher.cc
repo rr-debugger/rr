@@ -622,7 +622,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                                                            size_t instruction_length) {
   static const intptr_t MAXIMUM_LOOKBACK = 6;
   uint8_t bytes[256 + MAXIMUM_LOOKBACK];
-  size_t bytes_count = t->read_bytes_fallible(
+  ssize_t bytes_count = t->read_bytes_fallible(
       ip.to_data_ptr<uint8_t>() + instruction_length - MAXIMUM_LOOKBACK, sizeof(bytes), bytes);
   if (bytes_count < MAXIMUM_LOOKBACK) {
     LOG(debug) << "Declining to patch syscall at " << ip << " for lack of lookback";
@@ -641,7 +641,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       matches_hook = true;
     } else if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
                allow_deferred_patching &&
-               bytes_count >=
+               (size_t)bytes_count >=
                    hook.patch_region_length + instruction_length &&
                memcmp(bytes + MAXIMUM_LOOKBACK - instruction_length - hook.patch_region_length,
                       hook.patch_region_bytes,
@@ -714,7 +714,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       LOG(debug) << "Trying to patch bytes "
                  << bytes_to_string(
                       following_bytes,
-                      min(bytes_count,
+                      min<size_t>(bytes_count,
                           sizeof(syscall_patch_hook::patch_region_bytes)));
 
       return &hook;
@@ -724,7 +724,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
   LOG(debug) << "Failed to find a syscall hook for bytes "
              << bytes_to_string(
                     following_bytes,
-                    min(bytes_count,
+                    min<size_t>(bytes_count,
                         sizeof(syscall_patch_hook::patch_region_bytes)));
 
   return nullptr;
