@@ -777,7 +777,7 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscal
   return true;
 }
 
-bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_syscall) {
+bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask*, bool) {
   FATAL() << "Unimplemented";
   return false;
 }
