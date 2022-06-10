@@ -620,17 +620,42 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                                                            bool allow_deferred_patching,
                                                            bool entering_syscall,
                                                            size_t instruction_length) {
-  static const intptr_t MAXIMUM_LOOKBACK = 6;
-  uint8_t bytes[256 + MAXIMUM_LOOKBACK];
-  ssize_t bytes_count = t->read_bytes_fallible(
-      ip.to_data_ptr<uint8_t>() + instruction_length - MAXIMUM_LOOKBACK, sizeof(bytes), bytes);
-  if (bytes_count < MAXIMUM_LOOKBACK) {
-    LOG(debug) << "Declining to patch syscall at " << ip << " for lack of lookback";
-    tried_to_patch_syscall_addresses.insert(ip + instruction_length);
-    return nullptr;
+  /* we need to inspect this many bytes before the start of the instruction,
+     to find every short jump that might land after it. Conservative. */
+  static const intptr_t LOOK_BACK = 0x80;
+  /* we need to inspect this many bytes after the start of the instruction,
+     to find every short jump that might land after it into the patch area.
+     Conservative. */
+  static const intptr_t LOOK_FORWARD = 15 + 15 + 0x80;
+  uint8_t bytes[LOOK_BACK + LOOK_FORWARD];
+  memset(bytes, 0, sizeof(bytes));
+
+  // Split reading the code into separate reads for each page, so that if we can't read
+  // from one page, we still get the data from the other page.
+  ASSERT(t, sizeof(bytes) < page_size());
+  remote_ptr<uint8_t> code_start = ip.to_data_ptr<uint8_t>() - LOOK_BACK;
+  size_t buf_valid_start_offset = 0;
+  size_t buf_valid_end_offset = sizeof(bytes);
+  ssize_t first_page_bytes = min<size_t>(ceil_page_size(code_start) - code_start, sizeof(bytes));
+  if (t->read_bytes_fallible(code_start, first_page_bytes, bytes) < first_page_bytes) {
+    buf_valid_start_offset = first_page_bytes;
   }
-  size_t following_bytes_count = bytes_count - MAXIMUM_LOOKBACK;
-  uint8_t* following_bytes = &bytes[MAXIMUM_LOOKBACK];
+  if (first_page_bytes < (ssize_t)sizeof(bytes)) {
+    if (t->read_bytes_fallible(code_start + first_page_bytes, sizeof(bytes) - first_page_bytes,
+                               bytes + first_page_bytes) < (ssize_t)sizeof(bytes) - first_page_bytes) {
+      buf_valid_end_offset = first_page_bytes;
+    }
+  }
+
+  if (buf_valid_start_offset > LOOK_BACK ||
+      buf_valid_end_offset < LOOK_BACK + instruction_length) {
+    ASSERT(t, false)
+      << "Can't read memory containing patchable instruction, why are we trying this?";
+  }
+
+  uint8_t* following_bytes = &bytes[LOOK_BACK + instruction_length];
+  size_t following_bytes_count = buf_valid_end_offset - (LOOK_BACK + instruction_length);
+  size_t preceding_bytes_count = LOOK_BACK - buf_valid_start_offset;
 
   for (const auto& hook : syscall_hooks) {
     bool matches_hook = false;
@@ -641,9 +666,8 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       matches_hook = true;
     } else if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
                allow_deferred_patching &&
-               (size_t)bytes_count >=
-                   hook.patch_region_length + instruction_length &&
-               memcmp(bytes + MAXIMUM_LOOKBACK - instruction_length - hook.patch_region_length,
+               hook.patch_region_length <= preceding_bytes_count &&
+               memcmp(bytes + LOOK_BACK - hook.patch_region_length,
                       hook.patch_region_bytes,
                       hook.patch_region_length) == 0) {
       if (entering_syscall) {
@@ -667,31 +691,21 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
     // after the syscall. False positives are OK.
     // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
     bool found_potential_interfering_branch = false;
-    size_t max_bytes, warn_offset;
-    uint8_t* search_bytes;
-    if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
-      max_bytes = bytes_count;
-      search_bytes = bytes;
-      warn_offset = MAXIMUM_LOOKBACK;
-    } else {
-      max_bytes = following_bytes_count;
-      search_bytes = following_bytes;
-      warn_offset = 0;
-    }
-
-    for (size_t i = 0; i + 2 <= max_bytes; ++i) {
-      uint8_t b = search_bytes[i];
+    for (size_t i = buf_valid_start_offset; i + 2 <= buf_valid_end_offset; ++i) {
+      uint8_t b = bytes[i];
       // Check for short conditional or unconditional jump
       if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
-        int offset = i + 2 + (int8_t)search_bytes[i + 1];
+        int offset_from_instruction_end = (int)i + 2 + (int8_t)bytes[i + 1] -
+            (LOOK_BACK + instruction_length);
         if ((hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS)
-                ? (offset >= 0 && offset < hook.patch_region_length)
-                : offset == 0) {
+                ? (offset_from_instruction_end >= 0 && offset_from_instruction_end < hook.patch_region_length)
+                : offset_from_instruction_end == 0) {
           LOG(debug) << "Found potential interfering branch at "
-                      << ip.to_data_ptr<uint8_t>() + instruction_length + i - warn_offset;
+                      << ip.to_data_ptr<uint8_t>() - LOOK_BACK + i;
           // We can't patch this because it would jump straight back into
           // the middle of our patch code.
           found_potential_interfering_branch = true;
+          break;
         }
       }
     }
@@ -714,7 +728,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       LOG(debug) << "Trying to patch bytes "
                  << bytes_to_string(
                       following_bytes,
-                      min<size_t>(bytes_count,
+                      min<size_t>(following_bytes_count,
                           sizeof(syscall_patch_hook::patch_region_bytes)));
 
       return &hook;
@@ -724,7 +738,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
   LOG(debug) << "Failed to find a syscall hook for bytes "
              << bytes_to_string(
                     following_bytes,
-                    min<size_t>(bytes_count,
+                    min<size_t>(following_bytes_count,
                         sizeof(syscall_patch_hook::patch_region_bytes)));
 
   return nullptr;

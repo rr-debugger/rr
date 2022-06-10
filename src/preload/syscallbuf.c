@@ -717,7 +717,10 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_3d_01_f0_ff_ff },
     /* Our vdso syscall patch has 'int 80' followed by onp; nop; nop */
-    { 0, 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
+      3,
+      { 0x90, 0x90, 0x90 },
+      (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
   extern char _get_pc_thunks_start;
   extern char _get_pc_thunks_end;
