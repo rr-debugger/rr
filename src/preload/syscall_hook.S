@@ -392,7 +392,7 @@ _syscall_hook_trampoline:
 
         /* On entrance, we pushed the %rax, the syscall number. But we don't
            want to |pop %rax|, as that will overwrite our return value. Skip over it. */
-        pop %r11
+        pop %rdi
         .cfi_adjust_cfa_offset -8
 
         /* We don't really *need* to restore these, since the kernel could have
