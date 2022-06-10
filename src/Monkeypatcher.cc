@@ -584,6 +584,11 @@ static bool safe_for_syscall_patching(remote_code_ptr start,
 
 bool Monkeypatcher::try_patch_vsyscall_caller(RecordTask* t, remote_code_ptr ret_addr)
 {
+  // Emit FLUSH_SYSCALLBUF if there's one pending.
+  // We want our mmap records to be associated with the next (PATCH_SYSCALL)
+  // event, not a FLUSH_SYSCALLBUF event.
+  t->maybe_flush_syscallbuf();
+
   uint8_t bytes[X64VSyscallEntry::size];
   remote_ptr<uint8_t> patch_start = ret_addr.to_data_ptr<uint8_t>() - sizeof(bytes);
   size_t bytes_count = t->read_bytes_fallible(patch_start, sizeof(bytes), bytes);
@@ -845,6 +850,11 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
     return false;
   }
 
+  // Emit FLUSH_SYSCALLBUF if there's one pending.
+  // We want our mmap records to be associated with the next (PATCH_SYSCALL)
+  // event, not a FLUSH_SYSCALLBUF event.
+  t->maybe_flush_syscallbuf();
+
   if (arch == aarch64) {
     return try_patch_syscall_aarch64(t, entering_syscall);
   }
@@ -868,6 +878,11 @@ bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruc
   if (tried_to_patch_syscall_addresses.count(ip + instruction_length)) {
     return false;
   }
+
+  // Emit FLUSH_SYSCALLBUF if there's one pending.
+  // We want our mmap records to be associated with the next (PATCH_SYSCALL)
+  // event, not a FLUSH_SYSCALLBUF event.
+  t->maybe_flush_syscallbuf();
 
   const syscall_patch_hook* hook_ptr = find_syscall_hook(t, ip, false, false, instruction_length);
   bool success = false;

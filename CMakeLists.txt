@@ -1442,6 +1442,7 @@ set(TESTS_WITH_PROGRAM
   x86/string_instructions_watch
   x86/syscallbuf_branch_check
   syscallbuf_fd_disabling
+  x86/syscallbuf_rdtsc_page
   syscallbuf_signal_blocking_read
   sysconf_onln
   target_fork

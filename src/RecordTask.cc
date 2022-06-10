@@ -1874,7 +1874,6 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   }
 
   if (!ev.has_ticks_slop() && reset == ALLOW_RESET_SYSCALLBUF) {
-    ASSERT(this, flush == FLUSH_SYSCALLBUF);
     // After we've output an event, it's safe to reset the syscallbuf (if not
     // explicitly delayed) since we will have exited the syscallbuf code that
     // consumed the syscallbuf data.

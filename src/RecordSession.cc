@@ -1097,9 +1097,13 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
       ASSERT(t, !t->emulated_stop_pending);
 
+      // Flush syscallbuf now so that anything recorded by
+      // rec_prepare_syscall is associated with the syscall event
+      t->maybe_flush_syscallbuf();
+
       last_task_switchable = t->ev().Syscall().switchable =
           rec_prepare_syscall(t);
-      t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
+      t->record_event(t->ev(), RecordTask::DONT_FLUSH_SYSCALLBUF,
                       RecordTask::ALLOW_RESET_SYSCALLBUF,
                       &t->ev().Syscall().regs);
 
@@ -1875,9 +1879,6 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
 
   // We just entered a syscall.
   if (!maybe_restart_syscall(t)) {
-    // Emit FLUSH_SYSCALLBUF if necessary before we do any patching work
-    t->maybe_flush_syscallbuf();
-
     if (syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN &&
         t->seccomp_bpf_enabled) {
       // We received a PTRACE_SYSCALL notification before the seccomp
