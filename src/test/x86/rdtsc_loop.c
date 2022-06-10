@@ -6,7 +6,7 @@ int main(void) {
 #ifdef __x86_64__
   int i;
 
-  uint64_t prev_tsc;
+  uint64_t prev_tsc = 0;
   for (i = 0; i < 5000000; ++i) {
     uint32_t out;
     uint32_t out_hi;
