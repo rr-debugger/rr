@@ -193,16 +193,19 @@ static int get_pmu_index(int cpu_binding)
 {
   if (cpu_binding < 0) {
     if (perf_attrs.size() > 1) {
-      FATAL() << "\nMultiple PMU types detected. Unbinding CPU is not supported.";
+      CLEAN_FATAL() << "\nMultiple PMU types detected. Unbinding CPU is not supported.";
     }
     return 0;
+  }
+  if (!PerfCounters::support_cpu(cpu_binding)) {
+    CLEAN_FATAL() << "\nPMU on cpu " << cpu_binding << " is not supported.";
   }
   if (perf_attrs.size() == 1) {
     // Single PMU type.
     return 0;
   }
   if ((size_t)cpu_binding > perf_attrs.size()) {
-    FATAL() << "\nUnable to find PMU type for CPU " << cpu_binding;
+    CLEAN_FATAL() << "\nUnable to find PMU type for CPU " << cpu_binding;
   }
   return cpu_binding;
 }
@@ -390,16 +393,23 @@ static std::vector<CpuMicroarch> get_cpu_microarchs() {
 static std::vector<PmuConfig> get_pmu_microarchs() {
   std::vector<PmuConfig> pmu_uarchs;
   auto uarchs = get_cpu_microarchs();
+  bool found_working_pmu = false;
   for (auto uarch : uarchs) {
     bool found = false;
     for (size_t i = 0; i < array_length(pmu_configs); ++i) {
       if (uarch == pmu_configs[i].uarch) {
         found = true;
+        if (pmu_configs[i].flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES)) {
+          found_working_pmu |= true;
+        }
         pmu_uarchs.push_back(pmu_configs[i]);
         break;
       }
     }
     DEBUG_ASSERT(found);
+  }
+  if (!found_working_pmu) {
+    CLEAN_FATAL() << "No supported microarchitectures found.";
   }
   DEBUG_ASSERT(!pmu_uarchs.empty());
   // Note that the `uarch` field after processed by `post_init_pmu_uarchs`
@@ -417,6 +427,9 @@ static void init_attributes() {
   auto pmu_uarchs = get_pmu_microarchs();
   pmu_semantics_flags = PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES;
   for (auto &pmu_uarch : pmu_uarchs) {
+    if (!(pmu_uarch.flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
+      continue;
+    }
     pmu_semantics_flags = pmu_semantics_flags & pmu_uarch.flags;
   }
   if (!(pmu_semantics_flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
@@ -445,6 +458,10 @@ static void init_attributes() {
     for (size_t i = 0; i < npmus; i++) {
       auto &perf_attr = perf_attrs[i];
       auto &pmu_uarch = pmu_uarchs[i];
+      if (!(pmu_uarch.flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
+        perf_attr.pmu_flags = 0; // Mark as unsupported
+        continue;
+      }
       perf_attr.pmu_name = pmu_uarch.pmu_name;
       perf_attr.skid_size = pmu_uarch.skid_size;
       perf_attr.pmu_flags = pmu_uarch.flags;
@@ -461,6 +478,24 @@ static void init_attributes() {
                            pmu_uarch.llsc_cntr_event);
     }
   }
+}
+
+bool PerfCounters::support_cpu(int cpu)
+{
+  // We could probably make cpu=-1 mean whether all CPUs are supported
+  // if there's a need for it...
+  DEBUG_ASSERT(cpu >= 0);
+  init_attributes();
+
+  auto nattrs = (int)perf_attrs.size();
+  if (nattrs == 1) {
+    cpu = 0;
+  }
+  if (cpu >= nattrs) {
+    return false;
+  }
+  auto &perf_attr = perf_attrs[cpu];
+  return perf_attr.pmu_flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES);
 }
 
 static void check_pmu(int pmu_index) {

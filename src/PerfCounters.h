@@ -84,6 +84,11 @@ public:
   static Ticks ticks_for_direct_call(Task*);
 
   /**
+   * Whether PMU on core i is supported.
+   */
+  static bool support_cpu(int cpu);
+
+  /**
    * Read the current value of the ticks counter.
    * `t` is used for debugging purposes.
    */
