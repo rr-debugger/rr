@@ -101,7 +101,8 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   Registers r = t->regs();
   if (trapped_instruction == TrappedInstruction::RDTSC ||
       trapped_instruction == TrappedInstruction::RDTSCP) {
-    if (t->vm()->monkeypatcher().try_patch_trapping_instruction(t,
+    if (trapped_instruction == TrappedInstruction::RDTSC &&
+        t->vm()->monkeypatcher().try_patch_trapping_instruction(t,
          trapped_instruction_len(trapped_instruction))) {
       Event ev = Event::patch_syscall();
       ev.PatchSyscall().patch_trapping_instruction = true;
