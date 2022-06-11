@@ -319,9 +319,27 @@ static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
     }
   }
   if (pmu_types.size() == 1 && !has_unknown) {
-    // Single PMU type
-    pmu_uarchs.resize(1);
-  } else if (pmu_type_failed) {
+    bool single_type = true;
+    auto &pmu_uarch0 = pmu_uarchs[0];
+    // Apparently the same PMU type doesn't actually mean the same PMU events...
+    for (auto &pmu_uarch: pmu_uarchs) {
+      if (&pmu_uarch == &pmu_uarch0) {
+        // Skip first
+        continue;
+      }
+      if (pmu_uarch.rcb_cntr_event != pmu_uarch0.rcb_cntr_event ||
+          pmu_uarch.minus_ticks_cntr_event != pmu_uarch0.minus_ticks_cntr_event ||
+          pmu_uarch.llsc_cntr_event != pmu_uarch0.llsc_cntr_event) {
+        single_type = false;
+        break;
+      }
+    }
+    if (single_type) {
+      // Single PMU type
+      pmu_uarchs.resize(1);
+    }
+  }
+  if (pmu_uarchs.size() != 0 && pmu_type_failed) {
     // If reading PMU type failed, we only allow a single PMU type to be sure
     // that we get what we want from the kernel events.
     CLEAN_FATAL() << "Unable to read PMU event types";
