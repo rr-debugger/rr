@@ -740,6 +740,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_49_89_ca(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c1(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_c1_e2_20(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_4c_89_f7(void);
 
 #define MOV_RDX_VARIANTS \
   MOV_RDX_TO_REG(48, c2) \
@@ -892,6 +893,11 @@ static void __attribute__((constructor)) init_process(void) {
       4,
       { 0x48, 0xc1, 0xe2, 0x20 },
       (uintptr_t)_syscall_hook_trampoline_48_c1_e2_20 },
+    /* Some application has 'mov %r14,%rdi' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      3,
+      { 0x4c, 0x89, 0xf7 },
+      (uintptr_t)_syscall_hook_trampoline_4c_89_f7 },
   };
 #elif defined(__aarch64__)
   struct syscall_patch_hook syscall_patch_hooks[] = {};

@@ -652,6 +652,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_c1_e2_20)
         shl $32, %rdx
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_c1_e2_20)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_4c_89_f7)
+        mov %r14, %rdi
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_4c_89_f7)
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits
