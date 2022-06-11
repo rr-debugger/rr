@@ -740,6 +740,28 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_49_89_ca(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c1(void);
 
+#define MOV_RDX_VARIANTS \
+  MOV_RDX_TO_REG(48, c2) \
+  MOV_RDX_TO_REG(48, ca) \
+  MOV_RDX_TO_REG(48, d2) \
+  MOV_RDX_TO_REG(48, da) \
+  MOV_RDX_TO_REG(48, e2) \
+  MOV_RDX_TO_REG(48, ea) \
+  MOV_RDX_TO_REG(48, f2) \
+  MOV_RDX_TO_REG(48, fa) \
+  MOV_RDX_TO_REG(4c, c2) \
+  MOV_RDX_TO_REG(4c, ca) \
+  MOV_RDX_TO_REG(4c, d2) \
+  MOV_RDX_TO_REG(4c, da) \
+  MOV_RDX_TO_REG(4c, e2) \
+  MOV_RDX_TO_REG(4c, ea) \
+  MOV_RDX_TO_REG(4c, f2) \
+  MOV_RDX_TO_REG(4c, fa)
+
+#define MOV_RDX_TO_REG(rex, op) \
+  extern RR_HIDDEN void _syscall_hook_trampoline_##rex##_89_##op(void);
+  MOV_RDX_VARIANTS
+
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
      * by
@@ -852,8 +874,17 @@ static void __attribute__((constructor)) init_process(void) {
     {
       PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       3,
-      { 0x49, 0x89, 0xca, },
+      { 0x49, 0x89, 0xca },
       (uintptr_t)_syscall_hook_trampoline_49_89_ca },
+    /* Some applications have RDTSC followed by 'mov %rdx,any-reg */
+#undef MOV_RDX_TO_REG
+#define MOV_RDX_TO_REG(rex, op) \
+    {                         \
+      0,                      \
+      3,                      \
+      { 0x##rex, 0x89, 0x##op }, \
+      (uintptr_t)_syscall_hook_trampoline_##rex##_89_##op },
+    MOV_RDX_VARIANTS
   };
 #elif defined(__aarch64__)
   struct syscall_patch_hook syscall_patch_hooks[] = {};

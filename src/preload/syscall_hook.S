@@ -621,6 +621,32 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_c1)
         mov %rax, %rcx
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_c1)
 
+#define MOV_RDX_VARIANTS \
+  MOV_RDX_TO_REG(48, c2) \
+  MOV_RDX_TO_REG(48, ca) \
+  MOV_RDX_TO_REG(48, d2) \
+  MOV_RDX_TO_REG(48, da) \
+  MOV_RDX_TO_REG(48, e2) \
+  MOV_RDX_TO_REG(48, ea) \
+  MOV_RDX_TO_REG(48, f2) \
+  MOV_RDX_TO_REG(48, fa) \
+  MOV_RDX_TO_REG(4c, c2) \
+  MOV_RDX_TO_REG(4c, ca) \
+  MOV_RDX_TO_REG(4c, d2) \
+  MOV_RDX_TO_REG(4c, da) \
+  MOV_RDX_TO_REG(4c, e2) \
+  MOV_RDX_TO_REG(4c, ea) \
+  MOV_RDX_TO_REG(4c, f2) \
+  MOV_RDX_TO_REG(4c, fa)
+
+#define MOV_RDX_TO_REG(rex, op) \
+SYSCALLHOOK_START(_syscall_hook_trampoline_##rex##_89_##op); \
+        callq __morestack;                                   \
+        .byte 0x##rex, 0x89, 0x##op;                         \
+SYSCALLHOOK_END(_syscall_hook_trampoline_##rex##_89_##op);
+
+  MOV_RDX_VARIANTS
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits
