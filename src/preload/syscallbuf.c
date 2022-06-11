@@ -3080,7 +3080,7 @@ static long sys_setsockopt(const struct syscall_info* call) {
   int level = call->args[1];
   int optname = call->args[2];
   void* optval = (void*)call->args[3];
-  socklen_t* optlen = (socklen_t*)call->args[4];
+  socklen_t optlen = (socklen_t)call->args[4];
 
   if (level == SOL_PACKET &&
       (optname == PACKET_RX_RING || optname == PACKET_TX_RING)) {
@@ -3103,6 +3103,44 @@ static long sys_setsockopt(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall5(syscallno, sockfd, level, optname, optval, optlen);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
+#ifdef SYS_getsockopt
+static long sys_getsockopt(const struct syscall_info* call) {
+  const int syscallno = SYS_getsockopt;
+  int sockfd = call->args[0];
+  int level = call->args[1];
+  int optname = call->args[2];
+  void* optval = (void*)call->args[3];
+  socklen_t* optlen = (socklen_t*)call->args[4];
+  socklen_t* optlen2;
+  void* optval2;
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+
+  optlen2 = ptr;
+  ptr += sizeof(*optlen2);
+  optval2 = ptr;
+  ptr += *optlen;
+
+  assert(syscallno == call->no);
+
+  memcpy_input_parameter(optlen2, optlen, sizeof(*optlen2));
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall5(syscallno, sockfd, level, optname, optval2, optlen2);
+
+  if (ret >= 0) {
+    local_memcpy(optval, optval2, *optlen);
+    local_memcpy(optlen, optlen2, sizeof(*optlen));
+  }
 
   return commit_raw_syscall(syscallno, ptr, ret);
 }
@@ -3654,6 +3692,9 @@ case SYS_epoll_pwait:
 #endif
 #if defined(SYS_setsockopt)
     CASE(setsockopt);
+#endif
+#if defined(SYS_getsockopt)
+    CASE(getsockopt);
 #endif
     CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
