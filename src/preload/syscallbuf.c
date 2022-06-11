@@ -3129,7 +3129,9 @@ static long sys_getsockopt(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  memcpy_input_parameter(optlen2, optlen, sizeof(*optlen2));
+  if (optlen2) {
+    memcpy_input_parameter(optlen2, optlen, sizeof(*optlen2));
+  }
 
   if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
@@ -3154,19 +3156,23 @@ static long sys_getsockname(const struct syscall_info* call) {
   struct sockaddr* addr = (struct sockaddr*)call->args[1];
   socklen_t* addrlen = (socklen_t*)call->args[2];
   socklen_t* addrlen2;
-  struct sockaddr* addr2;
+  struct sockaddr* addr2 = NULL;
 
   void* ptr = prep_syscall_for_fd(sockfd);
   long ret;
 
   addrlen2 = ptr;
   ptr += sizeof(*addrlen2);
-  addr2 = ptr;
-  ptr += *addrlen;
+  if (addr) {
+    addr2 = ptr;
+    ptr += *addrlen;
+  }
 
   assert(syscallno == call->no);
 
-  memcpy_input_parameter(addrlen2, addrlen, sizeof(*addrlen2));
+  if (addrlen2) {
+    memcpy_input_parameter(addrlen2, addrlen, sizeof(*addrlen2));
+  }
 
   if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
@@ -3175,8 +3181,10 @@ static long sys_getsockname(const struct syscall_info* call) {
   ret = untraced_syscall3(syscallno, sockfd, addr2, addrlen2);
 
   if (ret >= 0) {
-    socklen_t addr_len = *addrlen < *addrlen2 ? *addrlen : *addrlen2;
-    local_memcpy(addr, addr2, addr_len);
+    if (addr) {
+      socklen_t addr_len = *addrlen < *addrlen2 ? *addrlen : *addrlen2;
+      local_memcpy(addr, addr2, addr_len);
+    }
     local_memcpy(addrlen, addrlen2, sizeof(*addrlen));
   }
 
