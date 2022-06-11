@@ -271,8 +271,13 @@ static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
       pmu_uarch.event_type = type;
     }
   };
+  bool has_unknown = false;
   for (size_t i = 0; i < npmus; i++) {
     auto &pmu_uarch = pmu_uarchs[i];
+    if (!(pmu_uarch.flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
+      has_unknown = true;
+      continue;
+    }
     if (!pmu_uarch.pmu_name) {
       CLEAN_FATAL() << "Unknown PMU name for core " << i;
       continue;
@@ -313,7 +318,7 @@ static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
       pmu_type = val;
     }
   }
-  if (pmu_types.size() == 1) {
+  if (pmu_types.size() == 1 && !has_unknown) {
     // Single PMU type
     pmu_uarchs.resize(1);
   } else if (pmu_type_failed) {

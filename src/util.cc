@@ -2007,7 +2007,7 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
   }
   std::vector<int> cpus;
   for (int i = 0; i < CPU_SETSIZE; ++i) {
-    if (CPU_ISSET(i, &affinity_mask)) {
+    if (CPU_ISSET(i, &affinity_mask) && PerfCounters::support_cpu(i)) {
       cpus.push_back(i);
     }
   }
