@@ -739,6 +739,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_40_80_f6_81(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_49_89_ca(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c1(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_c1_e2_20(void);
 
 #define MOV_RDX_VARIANTS \
   MOV_RDX_TO_REG(48, c2) \
@@ -876,7 +877,7 @@ static void __attribute__((constructor)) init_process(void) {
       3,
       { 0x49, 0x89, 0xca },
       (uintptr_t)_syscall_hook_trampoline_49_89_ca },
-    /* Some applications have RDTSC followed by 'mov %rdx,any-reg */
+    /* Some applications have RDTSC followed by 'mov %rdx,any-reg' */
 #undef MOV_RDX_TO_REG
 #define MOV_RDX_TO_REG(rex, op) \
     {                         \
@@ -885,6 +886,12 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x##rex, 0x89, 0x##op }, \
       (uintptr_t)_syscall_hook_trampoline_##rex##_89_##op },
     MOV_RDX_VARIANTS
+    /* Some application has RDTSC followed by 'shl $32,%rdx' */
+    {
+      0,
+      4,
+      { 0x48, 0xc1, 0xe2, 0x20 },
+      (uintptr_t)_syscall_hook_trampoline_48_c1_e2_20 },
   };
 #elif defined(__aarch64__)
   struct syscall_patch_hook syscall_patch_hooks[] = {};

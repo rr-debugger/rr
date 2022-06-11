@@ -647,6 +647,11 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_##rex##_89_##op);
 
   MOV_RDX_VARIANTS
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_c1_e2_20)
+        callq __morestack
+        shl $32, %rdx
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_c1_e2_20)
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits

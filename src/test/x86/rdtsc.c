@@ -7,6 +7,14 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
+static uint64_t my_rdtsc(void) {
+  uint32_t low;
+  uint32_t high;
+  /* Make sure this doesn't get buffered */
+  asm ("rdtsc; xchg %%edx,%%edx" : "=a"(low), "=d"(high));
+  return ((uint64_t)high << 32) + low;
+}
+
 int main(void) {
   int i;
   unsigned int u;
@@ -18,7 +26,7 @@ int main(void) {
     breakpoint();
     /* NO SYSCALLS BETWEEN HERE AND RDTSC: next event for
      * replay must be rdtsc */
-    tsc = rdtsc();
+    tsc = my_rdtsc();
     test_assert(last_tsc < tsc);
     atomic_printf("%" PRIu64 ",", tsc);
     last_tsc = tsc;
