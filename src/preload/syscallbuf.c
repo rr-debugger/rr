@@ -3138,8 +3138,46 @@ static long sys_getsockopt(const struct syscall_info* call) {
   ret = untraced_syscall5(syscallno, sockfd, level, optname, optval2, optlen2);
 
   if (ret >= 0) {
-    local_memcpy(optval, optval2, *optlen);
+    socklen_t val_len = *optlen < *optlen2 ? *optlen : *optlen2;
+    local_memcpy(optval, optval2, val_len);
     local_memcpy(optlen, optlen2, sizeof(*optlen));
+  }
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
+#ifdef SYS_getsockname
+static long sys_getsockname(const struct syscall_info* call) {
+  const int syscallno = SYS_getsockname;
+  int sockfd = call->args[0];
+  struct sockaddr* addr = (struct sockaddr*)call->args[1];
+  socklen_t* addrlen = (socklen_t*)call->args[2];
+  socklen_t* addrlen2;
+  struct sockaddr* addr2;
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+
+  addrlen2 = ptr;
+  ptr += sizeof(*addrlen2);
+  addr2 = ptr;
+  ptr += *addrlen;
+
+  assert(syscallno == call->no);
+
+  memcpy_input_parameter(addrlen2, addrlen, sizeof(*addrlen2));
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(syscallno, sockfd, addr2, addrlen2);
+
+  if (ret >= 0) {
+    socklen_t addr_len = *addrlen < *addrlen2 ? *addrlen : *addrlen2;
+    local_memcpy(addr, addr2, addr_len);
+    local_memcpy(addrlen, addrlen2, sizeof(*addrlen));
   }
 
   return commit_raw_syscall(syscallno, ptr, ret);
@@ -3695,6 +3733,9 @@ case SYS_epoll_pwait:
 #endif
 #if defined(SYS_getsockopt)
     CASE(getsockopt);
+#endif
+#if defined(SYS_getsockname)
+    CASE(getsockname);
 #endif
     CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
