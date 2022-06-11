@@ -92,6 +92,13 @@ enum CpuMicroarch {
   LastAMD = AMDZen,
   FirstARM,
   ARMNeoverseN1 = FirstARM,
+  ARMNeoverseE1,
+  ARMCortexA55,
+  ARMCortexA75,
+  ARMCortexA76,
+  ARMCortexA77,
+  ARMCortexA78,
+  ARMCortexX1,
   AppleM1Icestorm,
   AppleM1Firestorm,
   LastARM = AppleM1Firestorm,
@@ -167,11 +174,34 @@ static const PmuConfig pmu_configs[] = {
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
   // Both counters are available on Zen, Zen+ and Zen2.
   { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB },
+  // Performance cores from ARM from cortex-a76 on (including neoverse-n1)
+  // have the following counters that are reliable enough for us.
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
   // 0x6F == STREX_SPEC - Speculatively executed strex instructions
   // 0x11 == CPU_CYCLES - Cycle
   { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3_0", 0x11, -1, -1 },
+  { ARMCortexA76, "ARM Cortex A76", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexA77, "ARM Cortex A77", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexA78, "ARM Cortex A78", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexX1, "ARM Cortex X1", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  // cortex-a55, cortex-a75 and neoverse-e1 counts uarch ISB
+  // as retired branches so the BR_RETIRED counter is not reliable.
+  // There are some counters that are somewhat more reliable than
+  // the total branch count (0x21) including
+  // 0x0D (BR_IMMED_RETIRED) 0x0E (BR_RETURN_RETIRED)
+  // 0xCD (BR_INDIRECT_ADDR_PRED) 0x76 (PC_WRITE_SPEC)
+  // 0x78 (BR_IMMED_SPEC), 0xC9 (BR_COND_PRED)
+  // 0xCD (BR_INDIRECT_ADDR_PRED)
+  // but according to tests on the LITTLE core on a snapdragon 865
+  // none of them (including the sums) seems to be useful/reliable enough.
+  { ARMNeoverseE1, "ARM Neoverse E1", 0, 0, 0, 0, 0 },
+  { ARMCortexA55, "ARM Cortex A55", 0, 0, 0, 0, 0 },
+  { ARMCortexA75, "ARM Cortex A75", 0, 0, 0, 0, 0 },
   { AppleM1Icestorm, "Apple M1 Icestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "apple_icestorm_pmu", 0x8c, -1, -1 },
   { AppleM1Firestorm, "Apple M1 Firestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,

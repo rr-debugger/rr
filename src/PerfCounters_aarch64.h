@@ -35,8 +35,34 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
   switch (cpuid.implementer) {
   case 0x41: // ARM
     switch (cpuid.part) {
+    case 0xd05:
+      return ARMCortexA55;
+    case 0xd0a:
+      return ARMCortexA75;
+    case 0xd0b:
+      return ARMCortexA76;
     case 0xd0c:
       return ARMNeoverseN1;
+    case 0xd0d:
+      return ARMCortexA77;
+    case 0xd41:
+      return ARMCortexA78;
+    case 0xd44:
+      return ARMCortexX1;
+    case 0xd4a:
+      return ARMNeoverseE1;
+    }
+    break;
+  case 0x51: // Qualcomm
+    switch (cpuid.part) {
+    case 0x802:
+      return ARMCortexA75;
+    case 0x803:
+      return ARMCortexA55;
+    case 0x804:
+      return ARMCortexA76;
+    case 0x805:
+      return ARMCortexA55;
     }
     break;
   case 0x61: // Apple
