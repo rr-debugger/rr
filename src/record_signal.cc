@@ -293,6 +293,24 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     return true;
   }
 
+  if (t->is_at_syscallstub_exit_breakpoint()) {
+    LOG(debug) << "Reached syscallstub exit instruction, singlestepping to "
+                  "enable signal dispatch";
+    ASSERT(t, t->arch() == aarch64 && t->syscallstub_exit_breakpoint);
+    auto retaddr_addr = t->syscallstub_exit_breakpoint.to_data_ptr<uint8_t>() + 3 * 4;
+    uint64_t retaddr;
+    t->read_bytes_helper(retaddr_addr, sizeof(retaddr), &retaddr);
+    Registers r = t->regs();
+    r.set_ip(retaddr);
+    t->set_regs(r);
+    t->count_direct_jump();
+    t->syscallstub_exit_breakpoint = nullptr;
+    restore_sighandler_if_not_default(t, SIGTRAP);
+    // Now we're back in application code so any pending stashed signals
+    // will be handled.
+    return true;
+  }
+
   if (!t->is_at_syscallbuf_syscall_entry_breakpoint()) {
     return false;
   }

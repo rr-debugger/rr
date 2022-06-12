@@ -465,6 +465,24 @@ bool Monkeypatcher::is_jump_stub_instruction(remote_code_ptr ip, bool include_sa
   return begin <= pp && pp < end;
 }
 
+remote_code_ptr Monkeypatcher::get_jump_stub_exit_breakpoint(remote_code_ptr ip,
+                                                             RecordTask *t) {
+  if (t->arch() != aarch64) {
+    return nullptr;
+  }
+  remote_ptr<uint8_t> pp = ip.to_data_ptr<uint8_t>();
+  auto it = syscallbuf_stubs.upper_bound(pp);
+  if (it == syscallbuf_stubs.begin()) {
+    return nullptr;
+  }
+  --it;
+  auto bp = it->first + it->second.size - it->second.safe_suffix;
+  if (pp == bp || pp == bp - 4) {
+    return remote_code_ptr(bp.as_int());
+  }
+  return nullptr;
+}
+
 /**
  * Some functions make system calls while storing local variables in memory
  * below the stack pointer. We need to decrement the stack pointer by
@@ -623,8 +641,12 @@ bool patch_syscall_with_hook_arch<ARM64Arch>(Monkeypatcher& patcher,
      * We've returned from syscallbuf and continue execution
      * won't hit syscallbuf breakpoint
      * (this also include the 8 bytes that stores the return address)
+     * Note that the 4th last instruction also belongs to the syscallbuf return path
+     * However, since it is still using the scratch memory,
+     * it doesn't belong to the safe area.
+     * The caller needs to have special handling for that instruction.
      */
-    4 * 4 + 8
+    3 * 4 + 8
   };
 
   intptr_t jump_offset = extended_jump_start - svc_ip;
