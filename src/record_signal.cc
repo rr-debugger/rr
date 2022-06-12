@@ -546,6 +546,11 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
     return true;
   }
 
+  // Note that this will never fire on aarch64 in a signal stop
+  // since the ip has been moved to the syscall entry.
+  // We will catch it in the traced_syscall_entry case below.
+  // We will miss the exit for rrcall_notify_syscall_hook_exit
+  // but that should not be a big problem.
   if (t->is_in_traced_syscall()) {
     LOG(debug) << "Safe to deliver signal at " << t->ip()
                << " because in traced syscall";
@@ -567,6 +572,8 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
     return true;
   }
 
+  // On aarch64, the untraced syscall here include both entry and exit
+  // if we are at a signal stop.
   if (t->is_in_untraced_syscall() && t->desched_rec()) {
     // Untraced syscalls always use the architecture of the process
     LOG(debug) << "Safe to deliver signal at " << t->ip()
