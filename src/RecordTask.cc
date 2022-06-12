@@ -191,6 +191,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       break_at_syscallbuf_traced_syscalls(false),
       break_at_syscallbuf_untraced_syscalls(false),
       break_at_syscallbuf_final_instruction(false),
+      syscallstub_exit_breakpoint(),
       next_pmc_interrupt_is_for_user(false),
       did_record_robust_futex_changes(false),
       waiting_for_reap(false),
@@ -591,6 +592,14 @@ bool RecordTask::is_at_syscallbuf_final_instruction_breakpoint() {
   return i == syscallbuf_code_layout.syscallbuf_final_exit_instruction;
 }
 
+bool RecordTask::is_at_syscallstub_exit_breakpoint() {
+  if (!break_at_syscallbuf_final_instruction || !syscallstub_exit_breakpoint) {
+    return false;
+  }
+  auto i = ip().undo_executed_bkpt(arch());
+  return i == syscallstub_exit_breakpoint;
+}
+
 void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
                                        TicksRequest ticks_request, int sig) {
   // We may execute user code, which could lead to an RDTSC or grow-map
@@ -653,6 +662,11 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       vm()->add_breakpoint(
           syscallbuf_code_layout.syscallbuf_final_exit_instruction,
           BKPT_INTERNAL);
+      auto stub_bp = as->monkeypatcher().get_jump_stub_exit_breakpoint(ip(), this);
+      if (stub_bp) {
+        syscallstub_exit_breakpoint = stub_bp;
+        vm()->add_breakpoint(stub_bp, BKPT_INTERNAL);
+      }
     }
   }
 }
@@ -683,6 +697,9 @@ void RecordTask::did_wait() {
     vm()->remove_breakpoint(
         syscallbuf_code_layout.syscallbuf_final_exit_instruction,
         BKPT_INTERNAL);
+  }
+  if (syscallstub_exit_breakpoint) {
+    vm()->remove_breakpoint(syscallstub_exit_breakpoint, BKPT_INTERNAL);
   }
 
   if (stashed_signals_blocking_more_signals) {
@@ -1375,6 +1392,7 @@ void RecordTask::stash_sig() {
       break_at_syscallbuf_final_instruction =
           break_at_syscallbuf_traced_syscalls =
               break_at_syscallbuf_untraced_syscalls = true;
+  syscallstub_exit_breakpoint = nullptr;
 }
 
 void RecordTask::stash_synthetic_sig(const siginfo_t& si,
@@ -1406,6 +1424,7 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
       break_at_syscallbuf_final_instruction =
           break_at_syscallbuf_traced_syscalls =
               break_at_syscallbuf_untraced_syscalls = true;
+  syscallstub_exit_breakpoint = nullptr;
 }
 
 bool RecordTask::has_stashed_sig(int sig) const {
@@ -1440,6 +1459,7 @@ void RecordTask::stashed_signal_processed() {
   break_at_syscallbuf_final_instruction = break_at_syscallbuf_traced_syscalls =
       break_at_syscallbuf_untraced_syscalls =
           stashed_signals_blocking_more_signals = has_stashed_sig();
+  syscallstub_exit_breakpoint = nullptr;
 }
 
 const RecordTask::StashedSignal* RecordTask::peek_stashed_sig_to_deliver()

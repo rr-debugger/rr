@@ -84,6 +84,7 @@ public:
   std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
   bool is_at_syscallbuf_final_instruction_breakpoint();
+  bool is_at_syscallstub_exit_breakpoint();
 
   /**
    * Initialize tracee buffers in this, i.e., implement
@@ -784,6 +785,7 @@ public:
   bool break_at_syscallbuf_traced_syscalls;
   bool break_at_syscallbuf_untraced_syscalls;
   bool break_at_syscallbuf_final_instruction;
+  remote_code_ptr syscallstub_exit_breakpoint;
 
   // The pmc is programmed to interrupt at a value requested by the tracee, not
   // by rr.
