@@ -142,6 +142,11 @@ struct rr_flock64 {
     __ARCH_FLOCK64_PAD
 };
 
+// The alignment of this struct is incorrect, but as long as it's not
+// used inside other structures, defining it this way makes the code below
+// easier.
+typedef uint64_t kernel_sigset_t;
+
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
 /* Nonzero after process-global state has been initialized. */
@@ -2402,7 +2407,7 @@ static long sys_openat(const struct syscall_info* call) {
   return check_file_open_ok(call, ret, state);
 }
 
-#if defined(SYS_poll)
+#if defined(SYS_poll) || defined(SYS_ppoll)
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
  * Make it visiblity-"protected" so that our local definition binds to it
@@ -2411,7 +2416,9 @@ static long sys_openat(const struct syscall_info* call) {
  */
 __attribute__((visibility("protected"))) void __before_poll_syscall_breakpoint(
     void) {}
+#endif
 
+#if defined(SYS_poll)
 static long sys_poll(const struct syscall_info* call) {
   const int syscallno = SYS_poll;
   struct pollfd* fds = (struct pollfd*)call->args[0];
@@ -2458,6 +2465,64 @@ static long sys_poll(const struct syscall_info* call) {
   commit_raw_syscall(syscallno, ptr, ret);
 
   if (ret != 0 || timeout == 0) {
+    return ret;
+  }
+  /* The syscall didn't return anything, and we should have blocked.
+     Just perform a raw syscall now since we're almost certain to block. */
+  return traced_raw_syscall(call);
+}
+#endif
+
+#if defined(SYS_ppoll)
+static long sys_ppoll(const struct syscall_info* call) {
+  const int syscallno = SYS_ppoll;
+  struct pollfd* fds = (struct pollfd*)call->args[0];
+  unsigned int nfds = call->args[1];
+  const struct timespec *tmo_p = (struct timespec*)call->args[2];
+  const kernel_sigset_t *sigmask = (const kernel_sigset_t*)call->args[3];
+  size_t sigmask_size = call->args[4];
+
+  void* ptr = prep_syscall();
+  struct pollfd* fds2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (fds && nfds > 0) {
+    fds2 = ptr;
+    ptr += nfds * sizeof(*fds2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  if (fds2) {
+    memcpy_input_parameter(fds2, fds, nfds * sizeof(*fds2));
+  }
+
+  __before_poll_syscall_breakpoint();
+
+  /* Try a no-timeout version of the syscall first. If this doesn't return
+     anything, and we should have blocked, we'll try again with a traced syscall
+     which will be the one that blocks. This usually avoids the
+     need to trigger desched logic, which adds overhead, especially the
+     rrcall_notify_syscall_hook_exit that gets triggered. */
+  const struct timespec tmo0 = {0, 0};
+  ret = untraced_syscall5(syscallno, fds2, nfds, &tmo0, sigmask, sigmask_size);
+
+  if (fds2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    /* NB: even when poll returns 0 indicating no pending
+     * fds, it still sets each .revent outparam to 0.
+     * (Reasonably.)  So we always need to copy on return
+     * value >= 0.
+     * It's important that we not copy when there's an error.
+     * The syscallbuf commit might have been aborted, which means
+     * during replay fds2 might be non-recorded data, so we'd be
+     * incorrectly trashing 'fds'. */
+    local_memcpy(fds, fds2, nfds * sizeof(*fds));
+  }
+  commit_raw_syscall(syscallno, ptr, ret);
+
+  if (ret != 0 || (tmo_p && tmo_p->tv_sec == 0 && tmo_p->tv_nsec == 0)) {
     return ret;
   }
   /* The syscall didn't return anything, and we should have blocked.
@@ -3515,11 +3580,6 @@ static long sys_getrusage(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-// The alignment of this struct is incorrect, but as long as it's not
-// used inside other structures, defining it this way makes the code below
-// easier.
-typedef uint64_t kernel_sigset_t;
-
 static long sys_rt_sigprocmask(const struct syscall_info* call) {
   const int syscallno = SYS_rt_sigprocmask;
   long ret;
@@ -3707,6 +3767,9 @@ case SYS_epoll_pwait:
     CASE(openat);
 #if defined(SYS_poll)
     CASE(poll);
+#endif
+#if defined(SYS_ppoll)
+    CASE(ppoll);
 #endif
 #if !defined(__i386__)
     CASE(pread64);
