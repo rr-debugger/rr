@@ -342,7 +342,14 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    auto t = AddressSpace::rr_page_syscall_from_exit_point(arch(), ip());
+    const AddressSpace::SyscallType *t;
+    if (arch() == aarch64 && stop_sig() > 0) {
+      // On aarch64 we can't distinguish untraced syscall entry and exit
+      // when a signal happened
+      t = AddressSpace::rr_page_syscall_from_entry_point(arch(), ip());
+    } else {
+      t = AddressSpace::rr_page_syscall_from_exit_point(arch(), ip());
+    }
     return t && t->traced == AddressSpace::UNTRACED;
   }
 
