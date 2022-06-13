@@ -746,24 +746,27 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c1(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_c1_e2_20(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_4c_89_f7(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_4c_89_ff(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_b8_ca_00_00_00(void);
 
 #define MOV_RDX_VARIANTS \
-  MOV_RDX_TO_REG(48, c2) \
-  MOV_RDX_TO_REG(48, ca) \
+  MOV_RDX_TO_REG(48, d0) \
+  MOV_RDX_TO_REG(48, d1) \
   MOV_RDX_TO_REG(48, d2) \
-  MOV_RDX_TO_REG(48, da) \
-  MOV_RDX_TO_REG(48, e2) \
-  MOV_RDX_TO_REG(48, ea) \
-  MOV_RDX_TO_REG(48, f2) \
-  MOV_RDX_TO_REG(48, fa) \
-  MOV_RDX_TO_REG(4c, c2) \
-  MOV_RDX_TO_REG(4c, ca) \
-  MOV_RDX_TO_REG(4c, d2) \
-  MOV_RDX_TO_REG(4c, da) \
-  MOV_RDX_TO_REG(4c, e2) \
-  MOV_RDX_TO_REG(4c, ea) \
-  MOV_RDX_TO_REG(4c, f2) \
-  MOV_RDX_TO_REG(4c, fa)
+  MOV_RDX_TO_REG(48, d3) \
+  MOV_RDX_TO_REG(48, d4) \
+  MOV_RDX_TO_REG(48, d5) \
+  MOV_RDX_TO_REG(48, d6) \
+  MOV_RDX_TO_REG(48, d7) \
+  MOV_RDX_TO_REG(49, d0) \
+  MOV_RDX_TO_REG(49, d1) \
+  MOV_RDX_TO_REG(49, d2) \
+  MOV_RDX_TO_REG(49, d3) \
+  MOV_RDX_TO_REG(49, d4) \
+  MOV_RDX_TO_REG(49, d5) \
+  MOV_RDX_TO_REG(49, d6) \
+  MOV_RDX_TO_REG(49, d7)
 
 #define MOV_RDX_TO_REG(rex, op) \
   extern RR_HIDDEN void _syscall_hook_trampoline_##rex##_89_##op(void);

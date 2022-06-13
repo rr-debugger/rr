@@ -622,22 +622,22 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_c1)
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_c1)
 
 #define MOV_RDX_VARIANTS \
-  MOV_RDX_TO_REG(48, c2) \
-  MOV_RDX_TO_REG(48, ca) \
+  MOV_RDX_TO_REG(48, d0) \
+  MOV_RDX_TO_REG(48, d1) \
   MOV_RDX_TO_REG(48, d2) \
-  MOV_RDX_TO_REG(48, da) \
-  MOV_RDX_TO_REG(48, e2) \
-  MOV_RDX_TO_REG(48, ea) \
-  MOV_RDX_TO_REG(48, f2) \
-  MOV_RDX_TO_REG(48, fa) \
-  MOV_RDX_TO_REG(4c, c2) \
-  MOV_RDX_TO_REG(4c, ca) \
-  MOV_RDX_TO_REG(4c, d2) \
-  MOV_RDX_TO_REG(4c, da) \
-  MOV_RDX_TO_REG(4c, e2) \
-  MOV_RDX_TO_REG(4c, ea) \
-  MOV_RDX_TO_REG(4c, f2) \
-  MOV_RDX_TO_REG(4c, fa)
+  MOV_RDX_TO_REG(48, d3) \
+  MOV_RDX_TO_REG(48, d4) \
+  MOV_RDX_TO_REG(48, d5) \
+  MOV_RDX_TO_REG(48, d6) \
+  MOV_RDX_TO_REG(48, d7) \
+  MOV_RDX_TO_REG(49, d0) \
+  MOV_RDX_TO_REG(49, d1) \
+  MOV_RDX_TO_REG(49, d2) \
+  MOV_RDX_TO_REG(49, d3) \
+  MOV_RDX_TO_REG(49, d4) \
+  MOV_RDX_TO_REG(49, d5) \
+  MOV_RDX_TO_REG(49, d6) \
+  MOV_RDX_TO_REG(49, d7)
 
 #define MOV_RDX_TO_REG(rex, op) \
 SYSCALLHOOK_START(_syscall_hook_trampoline_##rex##_89_##op); \
