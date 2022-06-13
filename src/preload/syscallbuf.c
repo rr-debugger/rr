@@ -906,6 +906,21 @@ static void __attribute__((constructor)) init_process(void) {
       3,
       { 0x4c, 0x89, 0xf7 },
       (uintptr_t)_syscall_hook_trampoline_4c_89_f7 },
+    /* Some application has 'mov %r15,%rdi' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      3,
+      { 0x4c, 0x89, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_4c_89_ff },
+    /* Some application has 'mov $0xffffffff,%r9' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      7,
+      { 0x49, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff },
+    /* Some application has 'mov $0xca,%eax' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      5,
+      { 0xb8, 0xca, 0x00, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_b8_ca_00_00_00 },
   };
 #elif defined(__aarch64__)
   struct syscall_patch_hook syscall_patch_hooks[] = {};

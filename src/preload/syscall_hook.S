@@ -657,6 +657,21 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_4c_89_f7)
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_4c_89_f7)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_4c_89_ff)
+        mov %r15, %rdi
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_4c_89_ff)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff)
+        mov $0xffffffffffffffff,%r9
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_b8_ca_00_00_00)
+        mov $0xca,%eax
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_b8_ca_00_00_00)
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits
