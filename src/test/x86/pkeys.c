@@ -36,7 +36,7 @@ static void wrpkru(unsigned int pkru) {
 static char* p;
 
 static void unset_pkey(__attribute__((unused)) int sig) {
-  pkey_mprotect(p, 4096, PROT_READ | PROT_WRITE, 0);
+  syscall(SYS_pkey_mprotect, p, 4096, PROT_READ | PROT_WRITE, 0);
 }
 
 int main(void) {
@@ -51,7 +51,7 @@ int main(void) {
 
   unsigned int initial_pkru = rdpkru();
   test_assert(initial_pkru == 0x55555554);
-  int pkey = pkey_alloc(0, 0);
+  int pkey = syscall(SYS_pkey_alloc, 0, 0);
   int ret;
   if (pkey < 0 && errno == ENOSYS) {
     atomic_puts("pkeys not supported in kernel, skipping");
@@ -70,7 +70,7 @@ int main(void) {
 
   p = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   test_assert(p != MAP_FAILED);
-  ret = pkey_mprotect(p, 4096, PROT_READ | PROT_WRITE, pkey);
+  ret = syscall(SYS_pkey_mprotect, p, 4096, PROT_READ | PROT_WRITE, pkey);
   test_assert(ret == 0);
   p[0] = 1;
 
@@ -78,7 +78,7 @@ int main(void) {
   signal(SIGSEGV, unset_pkey);
   p[0] = 2;
 
-  ret = pkey_free(pkey);
+  ret = syscall(SYS_pkey_free, pkey);
   test_assert(ret == 0);
 
   atomic_puts("EXIT-SUCCESS");
