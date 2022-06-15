@@ -686,6 +686,7 @@ bool GdbConnection::query(char* payload) {
     return false;
   }
   if (!strcmp(name, "Symbol")) {
+#ifdef PROC_SERVICE_H
     LOG(debug) << "gdb is ready for symbol lookups";
     const char* colon = strchr(args, ':');
     parser_assert(colon != nullptr);
@@ -700,6 +701,11 @@ bool GdbConnection::query(char* payload) {
     ++args;
     req.sym().name = decode_ascii_encoded_hex_str(args);
     return true;
+#else
+    LOG(debug) << "gdb is ready for symbol lookups, but we don't support them";
+    write_packet("");
+    return false;
+#endif
   }
   if (strstr(name, "ThreadExtraInfo") == name) {
     // ThreadExtraInfo is a special snowflake that
