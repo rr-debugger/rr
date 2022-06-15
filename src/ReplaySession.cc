@@ -524,6 +524,8 @@ Completion ReplaySession::cont_syscall_boundary(
     t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, ticks_request);
   }
 
+  t->apply_syscall_entry_regs();
+
   auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
   if (type && type->traced == AddressSpace::UNTRACED &&
       type->enabled == AddressSpace::REPLAY_ONLY) {
@@ -533,7 +535,6 @@ Completion ReplaySession::cont_syscall_boundary(
     return INCOMPLETE;
   }
 
-  t->apply_syscall_entry_regs();
   return COMPLETE;
 }
 
@@ -746,6 +747,7 @@ Completion ReplaySession::continue_or_step(ReplayTask* t,
         // would make it harder to track down bugs. There is a performance hit
         // to stopping for each mprotect, but replaying recordings of replays
         // is not fast anyway.)
+        t->apply_syscall_entry_regs();
         perform_interrupted_syscall(t);
         return INCOMPLETE;
       }
