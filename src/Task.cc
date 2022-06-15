@@ -2223,6 +2223,9 @@ static void setup_preload_thread_locals_from_clone_arch(Task* t, Task* origin) {
     auto origin_locals = reinterpret_cast<const preload_thread_locals<Arch>*>(
         origin->fetch_preload_thread_locals());
     locals->alt_stack_nesting_level = origin_locals->alt_stack_nesting_level;
+    // vfork() will restore the flags on the way out since its on the same
+    // stack.
+    locals->saved_flags = origin_locals->saved_flags;
     // clone() syscalls set the child stack pointer, so the child is no
     // longer in the syscallbuf code even if the parent was.
   }
