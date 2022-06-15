@@ -3208,6 +3208,10 @@ static long sys_getsockopt(const struct syscall_info* call) {
   socklen_t* optlen2;
   void* optval2;
 
+  if (!optlen || !optval) {
+    return traced_raw_syscall(call);
+  }
+
   void* ptr = prep_syscall_for_fd(sockfd);
   long ret;
 
@@ -3218,9 +3222,10 @@ static long sys_getsockopt(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (optlen2) {
-    memcpy_input_parameter(optlen2, optlen, sizeof(*optlen2));
-  }
+  memcpy_input_parameter(optlen2, optlen, sizeof(*optlen2));
+  // Some variance of getsockopt does use the initial content of *optval
+  // (e.g. SOL_IP + IPT_SO_GET_INFO) so we need to copy it.
+  memcpy_input_parameter(optval2, optval, *optlen);
 
   if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
