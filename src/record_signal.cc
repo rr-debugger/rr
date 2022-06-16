@@ -411,6 +411,47 @@ static void handle_desched_event(RecordTask* t) {
    * That may be a kernel bug, but we handle it by just
    * continuing until we we continue past the arm-desched
    * syscall *and* stop seeing signals. */
+
+  const auto untraced_record_only_entry =
+    uintptr_t(RR_PAGE_SYSCALL_UNTRACED_RECORDING_ONLY);
+  auto syscall_entry_ip = t->ip().decrement_by_syscall_insn_length(t->arch());
+  if (syscall_entry_ip == remote_code_ptr(untraced_record_only_entry) &&
+      t->regs().syscall_result_signed() == -EFAULT) {
+    intptr_t syscallno;
+    if (t->arch() == aarch64) {
+      // Untraced syscall, we may not have set original_syscallno for this on aarch64.
+      syscallno = t->regs().syscallno();
+    } else {
+      // On x86, syscall no is overwriten by return value.
+      ASSERT(t, is_x86ish(t->arch()));
+      syscallno = t->regs().original_syscallno();
+    }
+    if (syscallno == syscall_number_for_getsockopt(t->arch())) {
+      // We've observed interrupted getsockopt syscalls returning `EFAULT`
+      // rather than the normal ERESTART*.
+      // This is a kernel bug caused by CONFIG_BPFILTER_UMH.
+      // Try to reduce the effect caused by rr generated signals
+      // by manually restarting the syscall
+      // (since the previous syscall returned EFAULT
+      //  we would in the worst case just get another EFAULT).
+      // Note that setting syscall result to ERESTART* wouldn't work on aarch64
+      // if the arg1 has been overwritten by AutoRemoteSyscalls.
+      auto r = t->regs();
+      r.set_ip(syscall_entry_ip);
+      if (t->arch() == aarch64) {
+        // On AArch64, we need to restore arg1 from the stack argument from syscallbuf.
+        auto orig_arg1_ptr = r.sp() + sizeof(long);
+        auto orig_arg1 = t->read_mem(orig_arg1_ptr.cast<long>());
+        r.set_arg1(orig_arg1);
+      } else {
+        ASSERT(t, is_x86ish(t->arch()));
+        // On x86, we need to restore syscall number
+        r.set_syscallno(syscallno);
+      }
+      t->set_regs(r);
+    }
+  }
+
   while (true) {
     // Prevent further desched notifications from firing
     // while we're advancing the tracee.  We're going to
