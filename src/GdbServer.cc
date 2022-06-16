@@ -1688,7 +1688,7 @@ struct DebuggerParams {
   short port;
 };
 
-static void push_default_gdb_options(vector<string>& vec, bool serve_files = false) {
+static void push_default_gdb_options(vector<string>& vec, bool serve_files) {
   // The gdb protocol uses the "vRun" packet to reload
   // remote targets.  The packet is specified to be like
   // "vCont", in which gdb waits infinitely long for a
@@ -1758,10 +1758,11 @@ static unique_ptr<GdbConnection> await_connection(
 
 static void print_debugger_launch_command(Task* t, const string& host,
                                           unsigned short port,
+                                          bool serve_files,
                                           const char* debugger_name,
                                           FILE* out) {
   vector<string> options;
-  push_default_gdb_options(options);
+  push_default_gdb_options(options, serve_files);
   push_target_remote_cmd(options, host, port);
   fprintf(out, "%s ", debugger_name);
   for (auto& opt : options) {
@@ -1802,7 +1803,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
     fputs("Launch gdb with\n  ", stderr);
-    print_debugger_launch_command(t, flags.dbg_host, port,
+    print_debugger_launch_command(t, flags.dbg_host, port, flags.serve_files,
                                   flags.debugger_name.c_str(), stderr);
   }
 
@@ -1948,13 +1949,15 @@ void GdbServer::emergency_debug(Task* t) {
     // connect the emergency debugger so let that happen.
     FILE* gdb_cmd = fopen("gdb_cmd", "w");
     if (gdb_cmd) {
-      print_debugger_launch_command(t, localhost_addr, port, "gdb", gdb_cmd);
+      print_debugger_launch_command(t, localhost_addr, port, false, "gdb",
+                                    gdb_cmd);
       fclose(gdb_cmd);
     }
     kill(pid, SIGURG);
   } else {
     fputs("Launch gdb with\n  ", stderr);
-    print_debugger_launch_command(t, localhost_addr, port, "gdb", stderr);
+    print_debugger_launch_command(t, localhost_addr, port, false, "gdb",
+                                  stderr);
   }
   unique_ptr<GdbConnection> dbg = await_connection(t, listen_fd, features);
 

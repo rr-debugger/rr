@@ -470,6 +470,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       conn_flags.keep_listening = flags.keep_listening;
+      conn_flags.serve_files = flags.serve_files;
       GdbServer(session, target).serve_replay(conn_flags);
     }
 
@@ -496,6 +497,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
+      conn_flags.serve_files = flags.serve_files;
       if (target.event == -1 && target.pid == 0) {
         // If `replay -e` is specified without a pid, go to the exit
         // of the first process (rather than the first exit of a process).

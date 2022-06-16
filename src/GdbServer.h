@@ -48,6 +48,7 @@ public:
     int dbg_port;
     std::string dbg_host;
     bool keep_listening;
+    bool serve_files;
     // If non-null, then when the gdbserver is set up, we write its connection
     // parameters through this pipe. GdbServer::launch_gdb is passed the
     // other end of this pipe to exec gdb with the parameters.
@@ -60,6 +61,7 @@ public:
         : dbg_port(-1),
           dbg_host(localhost_addr),
           keep_listening(false),
+          serve_files(false),
           debugger_params_write_pipe(nullptr) {}
   };
 
