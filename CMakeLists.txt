@@ -634,7 +634,12 @@ endif()
 
 # Add -flto option to linking step if release
 if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
-  set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto")
+  CHECK_C_COMPILER_FLAG("-flto=auto" SUPPORTS_LTO_AUTO)
+  if(SUPPORTS_LTO_AUTO)
+    set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto=auto")
+  else()
+    set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto")
+  endif()
 endif()
 
 if(LIBRT)
