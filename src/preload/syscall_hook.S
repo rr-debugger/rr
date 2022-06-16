@@ -203,7 +203,7 @@ _syscall_hook_trampoline:
         movdqa 0x70(%esp),%xmm6
         movdqa 0x80(%esp),%xmm7
 
-        lea saved_flags, %esp
+        mov $saved_flags, %esp
         popfw
         /* From here on, non-application flag changes are not allowed */
 
@@ -383,7 +383,7 @@ _syscall_hook_trampoline:
         movdqa 0x60(%rsp),%xmm6
         movdqa 0x70(%rsp),%xmm7
 
-        lea saved_flags, %rsp
+        mov $saved_flags, %rsp
         popfw
         /* From here on, non-application flag changes are not allowed */
 
