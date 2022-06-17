@@ -359,6 +359,12 @@ public:
    */
   const std::string& exe_image() const { return exe; }
 
+  const std::string& interp_name() const { return interp_name_; }
+  void set_interp_name(std::string name) { interp_name_ = name; }
+
+  remote_ptr<void> interp_base() const { return interp_base_; }
+  void set_interp_base(remote_ptr<void> base) { interp_base_ = base; }
+
   /**
    * Assuming the last retired instruction has raised a SIGTRAP
    * and might be a breakpoint trap instruction, return the type
@@ -1080,6 +1086,10 @@ private:
   /* Path of the real executable image this address space was
    * exec()'d with. */
   std::string exe;
+  /* Path of the intepreter, if any, of exe. */
+  std::string interp_name_;
+  /* Base address of the interpeter (might be null!) */
+  remote_ptr<void> interp_base_;
   /* Pid of first task for this address space */
   pid_t leader_tid_;
   /* Serial number of first task for this address space */

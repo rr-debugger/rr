@@ -196,6 +196,9 @@ struct TaskEvent {
       # Never null (in traces that support the field)
       # Added after 5.0.0
       exeBase @8 :RemotePtr;
+      interpBase @10 :RemotePtr;
+      # Not a Path since it is only meaningful during recording
+      interpName @11 :CString;
     }
     # Most frame 'exit' events generate one of these, but these are not
     # generated if rr ends abnormally so the tasks did not in fact exit during

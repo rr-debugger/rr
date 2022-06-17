@@ -24,6 +24,7 @@ public:
   virtual Debuglink read_debuglink() = 0;
   virtual Debugaltlink read_debugaltlink() = 0;
   virtual string read_buildid() = 0;
+  virtual string read_interp() = 0;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
   virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) = 0;
@@ -44,15 +45,19 @@ public:
   virtual Debuglink read_debuglink() override;
   virtual Debugaltlink read_debugaltlink() override;
   virtual string read_buildid() override;
+  virtual string read_interp() override;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
   virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
+  const typename Arch::ElfPhdr* find_programheader(uint32_t pt);
 
   const typename Arch::ElfEhdr* elfheader;
+  const typename Arch::ElfPhdr* programheader;
   const typename Arch::ElfShdr* sections;
+  size_t programheader_size;
   size_t sections_size;
   vector<char> section_names;
 };
@@ -75,10 +80,19 @@ ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
       elfheader->e_ident[EI_DATA] != Arch::elfendian ||
       elfheader->e_machine != Arch::elfmachine ||
       elfheader->e_shentsize != sizeof(typename Arch::ElfShdr) ||
+      elfheader->e_phentsize != sizeof(typename Arch::ElfPhdr) ||
       elfheader->e_shstrndx >= elfheader->e_shnum) {
     LOG(debug) << "Invalid ELF file: invalid header";
     return;
   }
+
+  programheader =
+      r.read<typename Arch::ElfPhdr>(elfheader->e_phoff, elfheader->e_phnum);
+  if (!programheader || !elfheader->e_phnum) {
+    LOG(debug) << "Invalid ELF file: no program headers";
+    return;
+  }
+  programheader_size = elfheader->e_phnum;
 
   sections =
       r.read<typename Arch::ElfShdr>(elfheader->e_shoff, elfheader->e_shnum);
@@ -101,6 +115,23 @@ ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
   section_names[section_names.size() - 1] = 0;
 
   ok_ = true;
+}
+
+template <typename Arch>
+const typename Arch::ElfPhdr* ElfReaderImpl<Arch>::find_programheader(uint32_t pt) {
+  const typename Arch::ElfPhdr* ph = nullptr;
+
+  for (size_t i = 0; i < programheader_size; ++i) {
+    auto& p = programheader[i];
+    if (p.p_type == pt) {
+      ph = &p;
+    }
+  }
+
+  if (!ph) {
+    LOG(debug) << "Missing program header " << pt;
+  }
+  return ph;
 }
 
 template <typename Arch>
@@ -439,6 +470,28 @@ string ElfReaderImpl<Arch>::read_buildid() {
 }
 
 template <typename Arch>
+string ElfReaderImpl<Arch>::read_interp() {
+  string result;
+  if (!ok()) {
+    return result;
+  }
+
+  const typename Arch::ElfPhdr* ph = find_programheader(PT_INTERP);
+  if (!ph) {
+    return result;
+  }
+
+  const char* file_name = r.read<char>(ph->p_offset, ph->p_filesz);
+  if (!file_name) {
+    LOG(warn) << "Invalid ELF file: can't read PT_INTERP";
+    return result;
+  }
+
+  null_terminated(file_name, ph->p_filesz, result);
+  return result;
+}
+
+template <typename Arch>
 bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   for (size_t i = 0; i < sections_size; ++i) {
     const auto& section = sections[i];
@@ -492,6 +545,7 @@ DwarfSpan ElfReader::dwarf_section(const char* name, bool known_to_be_compressed
 }
 
 string ElfReader::read_buildid() { return impl().read_buildid(); }
+string ElfReader::read_interp() { return impl().read_interp(); }
 
 bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   return impl().addr_to_offset(addr, offset);

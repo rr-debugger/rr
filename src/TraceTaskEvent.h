@@ -88,6 +88,23 @@ public:
     DEBUG_ASSERT(type() == EXEC);
     exe_base_ = ptr;
   }
+  // May be zero at any time.
+  remote_ptr<void> interp_base() const {
+    DEBUG_ASSERT(type() == EXEC);
+    return interp_base_;
+  }
+  void set_interp_base(remote_ptr<void> ptr) {
+    DEBUG_ASSERT(type() == EXEC);
+    interp_base_ = ptr;
+  }
+  const std::string& interp_name() const {
+    DEBUG_ASSERT(type() == EXEC);
+    return interp_name_;
+  }
+  void set_interp_name(std::string name) {
+    DEBUG_ASSERT(type() == EXEC);
+    interp_name_ = name;
+  }
   WaitStatus exit_status() const {
     DEBUG_ASSERT(type() == EXIT);
     return exit_status_;
@@ -105,6 +122,8 @@ private:
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
   remote_ptr<void> exe_base_;         // EXEC only
+  remote_ptr<void> interp_base_;      // EXEC only
+  std::string interp_name_;           // EXEC only
   WaitStatus exit_status_;            // EXIT only
 };
 
