@@ -2097,6 +2097,10 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
   // XXX should we require file_scope_pid == 0 here?
   ScopedFd contents;
 
+  if (file_name.empty()) {
+    return -1;
+  }
+
   LOG(debug) << "Trying to open " << file_name;
 
   if (file_name.substr(0, 6) == "/proc/") {
@@ -2123,6 +2127,17 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
     } else {
       return -1;
     }
+  } else if (file_name == continue_task->vm()->interp_name()) {
+    remote_ptr<void> interp_base = continue_task->vm()->interp_base();
+    auto m = continue_task->vm()->mapping_of(interp_base);
+    LOG(debug) << "Found dynamic linker as memory mapping " << m.recorded_map;
+    int ret_fd = 0;
+    while (files.find(ret_fd) != files.end() ||
+           memory_files.find(ret_fd) != memory_files.end()) {
+      ++ret_fd;
+    }
+    memory_files.insert(make_pair(ret_fd, FileId(m.recorded_map)));
+    return ret_fd;
   } else {
     // See if we can find the file by serving one of our mappings
     std::string normalized_file_name = file_name;
@@ -2132,9 +2147,8 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
       // kernel when the process image gets loaded. We add a special case to
       // substitute the correct mapping, so gdb can find the dynamic linker
       // rendezvous structures.
-      // XXX: These don't tend to vary across systems, so hardcoding them here works
-      //      ok, but it'd be better, to just read INTERP from the main executable
-      //      and record which is the corresponding file.
+      // Use our old hack for ld from before we read PT_INTERP for backwards
+      // compat with older traces.
       if (m.recorded_map.fsname().compare(0,
             normalized_file_name.length(),
             normalized_file_name) == 0

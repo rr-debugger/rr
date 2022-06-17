@@ -742,6 +742,8 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
         cmd_line.set(i, str_to_data(event_cmd_line[i]));
       }
       exec.setExeBase(event.exe_base().as_int());
+      exec.setInterpBase(event.interp_base().as_int());
+      exec.setInterpName(str_to_data(event.interp_name()));;
       break;
     }
     case TraceTaskEvent::EXIT:
@@ -802,6 +804,8 @@ TraceTaskEvent TraceReader::read_task_event(FrameTime* time) {
         r.cmd_line_[i] = data_to_str(cmd_line[i]);
       }
       r.exe_base_ = exec.getExeBase();
+      r.interp_base_ = exec.getInterpBase();
+      r.interp_name_ = data_to_str(exec.getInterpName());
       break;
     }
     case trace::TaskEvent::Which::EXIT:

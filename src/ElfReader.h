@@ -101,6 +101,7 @@ public:
   Debuglink read_debuglink();
   Debugaltlink read_debugaltlink();
   std::string read_buildid();
+  std::string read_interp();
   // Returns true and sets file |offset| if ELF address |addr| is mapped from
   // a section in the ELF file.  Returns false if no section maps to
   // |addr|.  |addr| is an address indicated by the ELF file, not its

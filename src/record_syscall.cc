@@ -5423,17 +5423,21 @@ static uint64_t word_at(uint8_t* buf, size_t wsize) {
   return u.v;
 }
 
-static remote_ptr<void> get_exe_entry(Task* t) {
+static pair<remote_ptr<void>, remote_ptr<void>> get_exe_entry_interp_base(Task* t) {
+  remote_ptr<void> exe_entry;
+  remote_ptr<void> interp_base;
   vector<uint8_t> v = read_auxv(t);
   size_t i = 0;
   size_t wsize = word_size(t->arch());
   while ((i + 1)*wsize*2 <= v.size()) {
     if (word_at(v.data() + i*2*wsize, wsize) == AT_ENTRY) {
-      return word_at(v.data() + (i*2 + 1)*wsize, wsize);
+      exe_entry = word_at(v.data() + (i*2 + 1)*wsize, wsize);
+    } else if (word_at(v.data() + i*2*wsize, wsize) == AT_BASE) {
+      interp_base = word_at(v.data() + (i*2 + 1)*wsize, wsize);
     }
     ++i;
   }
-  return remote_ptr<void>();
+  return make_pair(exe_entry, interp_base);
 }
 
 /**
@@ -5469,6 +5473,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     return;
   }
 
+  string interp_name;
   {
     std::string exe_path = t->proc_exe_path();
     ScopedFd fd(exe_path.c_str(), O_RDONLY);
@@ -5481,6 +5486,9 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       FATAL() << "rr does not support the x32 ABI, but " << t->exe_path()
               << " is an x32 ABI program.";
     }
+
+    ElfFileReader reader(fd);
+    interp_name = reader.read_interp();
   }
 
   t->post_exec_syscall();
@@ -5513,8 +5521,11 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   // get the remote executable entry point
   // with the pointer, we find out which mapping is the executable
-  auto exe_entry = get_exe_entry(t);
+  auto auxv_pointers = get_exe_entry_interp_base(t);
+  auto exe_entry = auxv_pointers.first;
+  auto interp_base = auxv_pointers.second;
   ASSERT(t, !exe_entry.is_null()) << "AT_ENTRY not found";
+  // NB: A binary is not required to have an interpreter.
 
   // Write out stack mappings first since during replay we need to set up the
   // stack before any files get mapped.
@@ -5533,6 +5544,12 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     if (km.start() <= exe_entry && exe_entry < km.end()) {
       ASSERT(t, km.prot() & PROT_EXEC) << "Entry point not in executable code?";
       syscall_state.exec_saved_event->set_exe_base(km.start());
+    }
+    if (km.start() == interp_base) {
+      t->vm()->set_interp_base(interp_base);
+      syscall_state.exec_saved_event->set_interp_base(interp_base);
+      t->vm()->set_interp_name(interp_name);
+      syscall_state.exec_saved_event->set_interp_name(interp_name);
     }
   }
   ASSERT(t, !syscall_state.exec_saved_event->exe_base().is_null());

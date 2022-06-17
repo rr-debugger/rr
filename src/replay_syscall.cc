@@ -448,6 +448,8 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
                                ? kms[exe_km].fsname()
                                : datas[exe_km].file_name;
   t->post_exec_syscall(exe_name, kms[exe_km].fsname());
+  t->vm()->set_interp_base(tte.interp_base());
+  t->vm()->set_interp_name(tte.interp_name());
 
   t->fd_table()->close_after_exec(
       t, t->current_trace_frame().event().Syscall().exec_fds_to_close);
