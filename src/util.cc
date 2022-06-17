@@ -2242,8 +2242,8 @@ size_t word_size(SupportedArch arch) {
 string json_escape(const string& str, size_t pos) {
   string out;
   for (size_t i = pos; i < str.size(); ++i) {
-    char c = str[i];
-    if (c >= 0 && c < 32) {
+    unsigned char c = str[i];
+    if (c < 32) {
       char buf[8];
       sprintf(buf, "\\u%04x", c);
       out += buf;
