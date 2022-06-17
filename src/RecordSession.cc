@@ -171,7 +171,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
       // has been updated to reflect syscall entry. If we record a SCHED in
       // that state replay of the SCHED will fail. So detect that state and fix
       // it up.
-      if (looks_like_syscall_entry(t)) {
+      // If we got killed in an untraced syscall on AArch64,
+      // it is difficult/impossible to tell if the value of x0 has been overwritten
+      // with the syscall result/error number
+      // and it's even harder to recover the correct value of x0.
+      // Simply ignore these since we weren't going to record them anyway.
+      if (looks_like_syscall_entry(t) && !t->is_in_untraced_syscall()) {
         // Either we're in a syscall, or we're immediately after a syscall
         // and it exited.
         if (t->ticks_at_last_recorded_syscall_exit == t->tick_count() &&
