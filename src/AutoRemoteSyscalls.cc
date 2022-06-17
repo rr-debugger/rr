@@ -251,6 +251,27 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   auto regs = initial_regs;
   regs.set_ip(initial_ip);
   regs.set_sp(initial_sp);
+  if (t->arch() == aarch64 && regs.syscall_may_restart()) {
+    // On AArch64, the kernel restarts aborted syscalls using an internal `orig_x0`.
+    // This gets overwritten everytime we make a syscall so we need to restore it
+    // if we are at a syscall that may restart.
+    // The kernel `orig_x0` isn't accessible from ptrace AFAICT but fortunately
+    // it does **NOT** get reset on syscall exit so we can actually set it's value
+    // just by making a dummy syscall with the correct x0 value.
+    auto restart_res = regs.syscall_result();
+    regs.set_ip(t->vm()->traced_syscall_ip());
+    // This can be any side-effect-free syscall that doesn't care about arg1.
+    // The kernel sets its `orig_x0` no matter whether the syscall actually needs it.
+    regs.set_syscallno(rr::ARM64Arch::getpid);
+    regs.set_arg1(regs.orig_arg1());
+    t->set_regs(regs);
+    if (t->enter_syscall(true)) {
+      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    }
+    regs.set_ip(initial_ip);
+    regs.set_syscallno(regs.original_syscallno());
+    regs.set_syscall_result(restart_res);
+  }
   // If we were sitting at a seccomp trap, try to get back there by resuming
   // here. Since the original register contents caused a seccomp trap,
   // re-running the syscall with the same registers should put us right back
