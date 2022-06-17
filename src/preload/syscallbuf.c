@@ -324,7 +324,16 @@ static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
 /**
  * Make a raw traced syscall using the params in |call|.
  */
-static long traced_raw_syscall(const struct syscall_info* call) {
+static long traced_raw_syscall(struct syscall_info* call) {
+  if (call->no == SYS_rrcall_rdtsc) {
+    // Handle this specially because the rrcall writes to a memory out-param
+    // and we need to actually modify the outgoing AX/DX registers instead.
+    uint32_t tsc[2];
+    privileged_traced_syscall1(SYS_rrcall_rdtsc, tsc);
+    // Overwrite RDX (syscall arg 3) with our TSC value.
+    call->args[2] = tsc[1];
+    return tsc[0];
+  }
   /* FIXME: pass |call| to avoid pushing these on the stack
    * again. */
   return _raw_syscall(call->no, call->args[0], call->args[1], call->args[2],
@@ -1544,7 +1553,7 @@ static int force_traced_syscall_for_chaos_mode(void) {
  * Call this for syscalls that have no memory effects, don't block, and
  * aren't fd-related.
  */
-static long sys_generic_nonblocking(const struct syscall_info* call) {
+static long sys_generic_nonblocking(struct syscall_info* call) {
   void* ptr = prep_syscall();
   long ret;
 
@@ -1560,7 +1569,7 @@ static long sys_generic_nonblocking(const struct syscall_info* call) {
  * Call this for syscalls that have no memory effects, don't block, and
  * have an fd as their first parameter.
  */
-static long sys_generic_nonblocking_fd(const struct syscall_info* call) {
+static long sys_generic_nonblocking_fd(struct syscall_info* call) {
   int fd = call->args[0];
   void* ptr = prep_syscall_for_fd(fd);
   long ret;
@@ -1590,7 +1599,7 @@ static long privileged_sys_generic_nonblocking_fd(const struct syscall_info* cal
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
-static long sys_clock_gettime(const struct syscall_info* call) {
+static long sys_clock_gettime(struct syscall_info* call) {
   const int syscallno = SYS_clock_gettime;
   __kernel_clockid_t clk_id = (__kernel_clockid_t)call->args[0];
   struct timespec* tp = (struct timespec*)call->args[1];
@@ -1619,7 +1628,7 @@ static long sys_clock_gettime(const struct syscall_info* call) {
 
 #ifdef SYS_clock_gettime64
 
-static long sys_clock_gettime64(const struct syscall_info* call) {
+static long sys_clock_gettime64(struct syscall_info* call) {
   const int syscallno = SYS_clock_gettime64;
   __kernel_clockid_t clk_id = (__kernel_clockid_t)call->args[0];
   struct __kernel_timespec* tp = (struct __kernel_timespec*)call->args[1];
@@ -1648,8 +1657,8 @@ static long sys_clock_gettime64(const struct syscall_info* call) {
 #endif
 
 #if defined(SYS_creat)
-static long sys_open(const struct syscall_info* call);
-static long sys_creat(const struct syscall_info* call) {
+static long sys_open(struct syscall_info* call);
+static long sys_creat(struct syscall_info* call) {
   const char* pathname = (const char*)call->args[0];
   __kernel_mode_t mode = call->args[1];
   /* Thus sayeth the man page:
@@ -1662,7 +1671,7 @@ static long sys_creat(const struct syscall_info* call) {
 }
 #endif
 
-static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
+static int sys_fcntl64_no_outparams(struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
@@ -1682,7 +1691,7 @@ static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static int sys_fcntl64_own_ex(const struct syscall_info* call) {
+static int sys_fcntl64_own_ex(struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
@@ -1712,7 +1721,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static int sys_fcntl64_setlk64(const struct syscall_info* call) {
+static int sys_fcntl64_setlk64(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Releasing a lock could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -1746,7 +1755,7 @@ static int sys_fcntl64_setlk64(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static int sys_fcntl64_setlkw64(const struct syscall_info* call) {
+static int sys_fcntl64_setlkw64(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Releasing a lock could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -1771,10 +1780,10 @@ static int sys_fcntl64_setlkw64(const struct syscall_info* call) {
 
 #if defined(SYS_fcntl64)
 /* 32-bit system */
-static long sys_fcntl64(const struct syscall_info* call)
+static long sys_fcntl64(struct syscall_info* call)
 #else
 /* 64-bit system */
-static long sys_fcntl(const struct syscall_info* call)
+static long sys_fcntl(struct syscall_info* call)
 #endif
 {
   switch (call->args[1]) {
@@ -1833,7 +1842,7 @@ static long ret_buf_len(long ret, size_t len) {
   return ret < (long)len ? ret : (long)len;
 }
 
-static long sys_flistxattr(const struct syscall_info* call) {
+static long sys_flistxattr(struct syscall_info* call) {
   const int syscallno = SYS_flistxattr;
   int fd = (int)call->args[0];
   char* buf = (char*)call->args[1];
@@ -1858,7 +1867,7 @@ static long sys_flistxattr(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_safe_nonblocking_ioctl(const struct syscall_info* call) {
+static long sys_safe_nonblocking_ioctl(struct syscall_info* call) {
   const int syscallno = SYS_ioctl;
   int fd = call->args[0];
 
@@ -1872,7 +1881,7 @@ static long sys_safe_nonblocking_ioctl(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_ioctl_fionread(const struct syscall_info* call) {
+static long sys_ioctl_fionread(struct syscall_info* call) {
   const int syscallno = SYS_ioctl;
   int fd = call->args[0];
   int* value = (int*)call->args[2];
@@ -1895,7 +1904,7 @@ static long sys_ioctl_fionread(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_ioctl(const struct syscall_info* call) {
+static long sys_ioctl(struct syscall_info* call) {
   switch (call->args[1]) {
     case BTRFS_IOC_CLONE_RANGE:
     case FIOCLEX:
@@ -1908,7 +1917,7 @@ static long sys_ioctl(const struct syscall_info* call) {
   }
 }
 
-static long sys_futex(const struct syscall_info* call) {
+static long sys_futex(struct syscall_info* call) {
   enum {
     FUTEX_USES_UADDR2 = 1 << 0,
   };
@@ -1994,7 +2003,7 @@ static long sys_futex(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_getrandom(const struct syscall_info* call) {
+static long sys_getrandom(struct syscall_info* call) {
   void* buf = (void*)call->args[0];
   size_t buf_len = (size_t)call->args[1];
   unsigned int flags = (unsigned int)call->args[2];
@@ -2019,7 +2028,7 @@ static long sys_getrandom(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
-static long sys_generic_getdents(const struct syscall_info* call) {
+static long sys_generic_getdents(struct syscall_info* call) {
   int fd = (int)call->args[0];
   void* buf = (void*)call->args[1];
   unsigned int count = (unsigned int)call->args[2];
@@ -2042,16 +2051,16 @@ static long sys_generic_getdents(const struct syscall_info* call) {
 }
 
 #if defined(SYS_getdents)
-static long sys_getdents(const struct syscall_info* call) {
+static long sys_getdents(struct syscall_info* call) {
   return sys_generic_getdents(call);
 }
 #endif
 
-static long sys_getdents64(const struct syscall_info* call) {
+static long sys_getdents64(struct syscall_info* call) {
   return sys_generic_getdents(call);
 }
 
-static long sys_gettimeofday(const struct syscall_info* call) {
+static long sys_gettimeofday(struct syscall_info* call) {
   const int syscallno = SYS_gettimeofday;
   struct timeval* tp = (struct timeval*)call->args[0];
   struct timezone* tzp = (struct timezone*)call->args[1];
@@ -2093,7 +2102,7 @@ static long sys_gettimeofday(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_generic_getxattr(const struct syscall_info* call) {
+static long sys_generic_getxattr(struct syscall_info* call) {
   const char* path = (const char*)call->args[0];
   const char* name = (const char*)call->args[1];
   void* value = (void*)call->args[2];
@@ -2116,15 +2125,15 @@ static long sys_generic_getxattr(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
-static long sys_getxattr(const struct syscall_info* call) {
+static long sys_getxattr(struct syscall_info* call) {
   return sys_generic_getxattr(call);
 }
 
-static long sys_lgetxattr(const struct syscall_info* call) {
+static long sys_lgetxattr(struct syscall_info* call) {
   return sys_generic_getxattr(call);
 }
 
-static long sys_fgetxattr(const struct syscall_info* call) {
+static long sys_fgetxattr(struct syscall_info* call) {
   int fd = (int)call->args[0];
   const char* name = (const char*)call->args[1];
   void* value = (void*)call->args[2];
@@ -2147,7 +2156,7 @@ static long sys_fgetxattr(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
-static long sys_generic_listxattr(const struct syscall_info* call) {
+static long sys_generic_listxattr(struct syscall_info* call) {
   char* path = (char*)call->args[0];
   char* buf = (char*)call->args[1];
   size_t size = call->args[2];
@@ -2169,16 +2178,16 @@ static long sys_generic_listxattr(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
-static long sys_listxattr(const struct syscall_info* call) {
+static long sys_listxattr(struct syscall_info* call) {
   return sys_generic_listxattr(call);
 }
 
-static long sys_llistxattr(const struct syscall_info* call) {
+static long sys_llistxattr(struct syscall_info* call) {
   return sys_generic_listxattr(call);
 }
 
 #if defined(SYS__llseek)
-static long sys__llseek(const struct syscall_info* call) {
+static long sys__llseek(struct syscall_info* call) {
   const int syscallno = SYS__llseek;
   int fd = call->args[0];
   unsigned long offset_high = call->args[1];
@@ -2212,7 +2221,7 @@ static long sys__llseek(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_madvise(const struct syscall_info* call) {
+static long sys_madvise(struct syscall_info* call) {
   const int syscallno = SYS_madvise;
   void* addr = (void*)call->args[0];
   size_t length = call->args[1];
@@ -2260,7 +2269,7 @@ static long sys_madvise(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_mprotect(const struct syscall_info* call) {
+static long sys_mprotect(struct syscall_info* call) {
   const int syscallno = SYS_mprotect;
   void* addr = (void*)call->args[0];
   size_t length = call->args[1];
@@ -2317,14 +2326,14 @@ static int supported_open(const char* file_name, int flags) {
     (flags & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT);
 }
 
-static long sys_readlinkat(const struct syscall_info* call, int privileged);
+static long sys_readlinkat(struct syscall_info* call, int privileged);
 
 struct check_open_state {
   uint8_t did_abort;
   uint8_t did_fail_during_preparation;
 };
 
-static int check_file_open_ok(const struct syscall_info* call, int ret, struct check_open_state state) {
+static int check_file_open_ok(struct syscall_info* call, int ret, struct check_open_state state) {
   /* If we failed during preparation then a SIGSYS or similar prevented the syscall
      from doing anything, so there is nothing for us to do here and we shouldn't
      try to interpret the "syscall result". */
@@ -2369,7 +2378,7 @@ static struct check_open_state capture_check_open_state(void) {
 }
 
 #if defined(SYS_open)
-static long sys_open(const struct syscall_info* call) {
+static long sys_open(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Opening a FIFO could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -2400,7 +2409,7 @@ static long sys_open(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_openat(const struct syscall_info* call) {
+static long sys_openat(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Opening a FIFO could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -2443,7 +2452,7 @@ __attribute__((visibility("protected"))) void __before_poll_syscall_breakpoint(
 #endif
 
 #if defined(SYS_poll)
-static long sys_poll(const struct syscall_info* call) {
+static long sys_poll(struct syscall_info* call) {
   const int syscallno = SYS_poll;
   struct pollfd* fds = (struct pollfd*)call->args[0];
   unsigned int nfds = call->args[1];
@@ -2498,7 +2507,7 @@ static long sys_poll(const struct syscall_info* call) {
 #endif
 
 #if defined(SYS_ppoll)
-static long sys_ppoll(const struct syscall_info* call) {
+static long sys_ppoll(struct syscall_info* call) {
   const int syscallno = SYS_ppoll;
   struct pollfd* fds = (struct pollfd*)call->args[0];
   unsigned int nfds = call->args[1];
@@ -2555,7 +2564,7 @@ static long sys_ppoll(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_epoll_wait(const struct syscall_info* call) {
+static long sys_epoll_wait(struct syscall_info* call) {
   int epfd = call->args[0];
   struct epoll_event* events = (struct epoll_event*)call->args[1];
   int max_events = call->args[2];
@@ -2624,7 +2633,7 @@ static long sys_epoll_wait(const struct syscall_info* call) {
 
 #define CLONE_SIZE_THRESHOLD 0x10000
 
-static long sys_read(const struct syscall_info* call) {
+static long sys_read(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Reading from a pipe could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -2746,7 +2755,7 @@ static long sys_read(const struct syscall_info* call) {
  * handling that.
  */
 #if !defined(__i386__)
-static long sys_pread64(const struct syscall_info* call) {
+static long sys_pread64(struct syscall_info* call) {
   const int syscallno = SYS_pread64;
   int fd = call->args[0];
   void* buf = (void*)call->args[1];
@@ -2776,7 +2785,7 @@ static long sys_pread64(const struct syscall_info* call) {
 #endif
 
 #if defined(SYS_readlink)
-static long sys_readlink(const struct syscall_info* call) {
+static long sys_readlink(struct syscall_info* call) {
   const int syscallno = SYS_readlink;
   const char* path = (const char*)call->args[0];
   char* buf = (char*)call->args[1];
@@ -2802,7 +2811,7 @@ static long sys_readlink(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_readlinkat(const struct syscall_info* call, int privileged) {
+static long sys_readlinkat(struct syscall_info* call, int privileged) {
   const int syscallno = SYS_readlinkat;
   int dirfd = call->args[0];
   const char* path = (const char*)call->args[1];
@@ -2836,7 +2845,7 @@ static long sys_readlinkat(const struct syscall_info* call, int privileged) {
 }
 
 #if defined(SYS_socketcall)
-static long sys_socketcall_recv(const struct syscall_info* call) {
+static long sys_socketcall_recv(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Reading from a socket could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -2874,7 +2883,7 @@ static long sys_socketcall_recv(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_socketcall(const struct syscall_info* call) {
+static long sys_socketcall(struct syscall_info* call) {
   switch (call->args[0]) {
     case SYS_RECV:
       return sys_socketcall_recv(call);
@@ -2885,7 +2894,7 @@ static long sys_socketcall(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_recvfrom
-static long sys_recvfrom(const struct syscall_info* call) {
+static long sys_recvfrom(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Reading from a socket could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -2993,7 +3002,7 @@ static int msg_received_file_descriptors(struct msghdr* msg) {
   return 0;
 }
 
-static long sys_recvmsg(const struct syscall_info* call) {
+static long sys_recvmsg(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Reading from a socket could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -3105,7 +3114,7 @@ static long sys_recvmsg(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_sendmsg
-static long sys_sendmsg(const struct syscall_info* call) {
+static long sys_sendmsg(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Sending to a socket could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -3132,7 +3141,7 @@ static long sys_sendmsg(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_sendto
-static long sys_sendto(const struct syscall_info* call) {
+static long sys_sendto(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Sending to a socket could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -3163,7 +3172,7 @@ static long sys_sendto(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_setsockopt
-static long sys_setsockopt(const struct syscall_info* call) {
+static long sys_setsockopt(struct syscall_info* call) {
   const int syscallno = SYS_setsockopt;
   int sockfd = call->args[0];
   int level = call->args[1];
@@ -3198,7 +3207,7 @@ static long sys_setsockopt(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_getsockopt
-static long sys_getsockopt(const struct syscall_info* call) {
+static long sys_getsockopt(struct syscall_info* call) {
   const int syscallno = SYS_getsockopt;
   int sockfd = call->args[0];
   int level = call->args[1];
@@ -3244,7 +3253,7 @@ static long sys_getsockopt(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_getsockname
-static long sys_getsockname(const struct syscall_info* call) {
+static long sys_getsockname(struct syscall_info* call) {
   const int syscallno = SYS_getsockname;
   int sockfd = call->args[0];
   struct sockaddr* addr = (struct sockaddr*)call->args[1];
@@ -3288,7 +3297,7 @@ static long sys_getsockname(const struct syscall_info* call) {
 
 #ifdef SYS_socketpair
 typedef int two_ints[2];
-static long sys_socketpair(const struct syscall_info* call) {
+static long sys_socketpair(struct syscall_info* call) {
   const int syscallno = SYS_socketpair;
   int domain = call->args[0];
   int type = call->args[1];
@@ -3315,7 +3324,7 @@ static long sys_socketpair(const struct syscall_info* call) {
 #endif
 
 #if defined(SYS_time)
-static long sys_time(const struct syscall_info* call) {
+static long sys_time(struct syscall_info* call) {
   const int syscallno = SYS_time;
   __kernel_time_t* tp = (__kernel_time_t*)call->args[0];
 
@@ -3341,7 +3350,7 @@ typedef struct stat64 stat64_t;
 #else
 typedef struct stat stat64_t;
 #endif
-static long sys_xstat64(const struct syscall_info* call) {
+static long sys_xstat64(struct syscall_info* call) {
   const int syscallno = call->no;
   /* NB: this arg may be a string or an fd, but for the purposes
    * of this generic helper we don't care. */
@@ -3371,7 +3380,7 @@ static long sys_xstat64(const struct syscall_info* call) {
 
 #ifdef SYS_statx
 /* Like sys_xstat64, but with different arguments */
-static long sys_statx(const struct syscall_info* call) {
+static long sys_statx(struct syscall_info* call) {
   const int syscallno = call->no;
   struct statx* buf = (struct statx*)call->args[4];
 
@@ -3396,7 +3405,7 @@ static long sys_statx(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_quotactl(const struct syscall_info* call) {
+static long sys_quotactl(struct syscall_info* call) {
   const int syscallno = call->no;
   int cmd = call->args[0];
   const char* special = (const char*)call->args[1];
@@ -3425,7 +3434,7 @@ static long sys_quotactl(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_statfs(const struct syscall_info* call) {
+static long sys_statfs(struct syscall_info* call) {
   const int syscallno = call->no;
   /* NB: this arg may be a string or an fd, but for the purposes
    * of this generic helper we don't care. */
@@ -3453,7 +3462,7 @@ static long sys_statfs(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_write(const struct syscall_info* call) {
+static long sys_write(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Writing to a pipe or FIFO could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -3482,7 +3491,7 @@ static long sys_write(const struct syscall_info* call) {
  * handling that.
  */
 #if !defined(__i386__)
-static long sys_pwrite64(const struct syscall_info* call) {
+static long sys_pwrite64(struct syscall_info* call) {
   const int syscallno = SYS_pwrite64;
   int fd = call->args[0];
   const void* buf = (const void*)call->args[1];
@@ -3511,7 +3520,7 @@ static long sys_pwrite64(const struct syscall_info* call) {
 }
 #endif
 
-static long sys_writev(const struct syscall_info* call) {
+static long sys_writev(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Writing to a pipe or FIFO could unblock a higher priority task */
     return traced_raw_syscall(call);
@@ -3536,7 +3545,7 @@ static long sys_writev(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_ptrace(const struct syscall_info* call) {
+static long sys_ptrace(struct syscall_info* call) {
   int syscallno = SYS_ptrace;
   long request = call->args[0];
   pid_t pid = call->args[1];
@@ -3584,7 +3593,7 @@ static long sys_ptrace(const struct syscall_info* call) {
   return ret;
 }
 
-static long sys_getrusage(const struct syscall_info* call) {
+static long sys_getrusage(struct syscall_info* call) {
   const int syscallno = SYS_getrusage;
   int who = (int)call->args[0];
   struct rusage* buf = (struct rusage*)call->args[1];
@@ -3609,7 +3618,7 @@ static long sys_getrusage(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_rt_sigprocmask(const struct syscall_info* call) {
+static long sys_rt_sigprocmask(struct syscall_info* call) {
   const int syscallno = SYS_rt_sigprocmask;
   long ret;
   kernel_sigset_t modified_set;
@@ -3693,10 +3702,7 @@ static long sys_rrcall_rdtsc(struct syscall_info* call) {
   void* buf = ptr;
   ptr += 8;
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-    privileged_traced_syscall1(SYS_rrcall_rdtsc, tsc);
-    // Overwrite RDX (syscall arg 3) with our TSC value.
-    call->args[2] = tsc[1];
-    return tsc[0];
+    return traced_raw_syscall(call);
   }
 
   // Do an RDTSC without context-switching to rr. This is still a lot slower

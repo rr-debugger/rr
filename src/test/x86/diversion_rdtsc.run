@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record diversion_rdtsc$bitness
+debug x86/diversion_rdtsc

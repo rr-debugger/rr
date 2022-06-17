@@ -2,6 +2,8 @@
 
 #include "DiversionSession.h"
 
+#include <linux/prctl.h>
+
 #include "AutoRemoteSyscalls.h"
 #include "ReplaySession.h"
 #include "core.h"
@@ -13,7 +15,7 @@ using namespace std;
 namespace rr {
 
 DiversionSession::DiversionSession(int cpu_binding) :
-  emu_fs(EmuFs::create()), cpu_binding_(cpu_binding) {}
+  emu_fs(EmuFs::create()), fake_rdstc(uint64_t(1) << 60), cpu_binding_(cpu_binding) {}
 
 DiversionSession::~DiversionSession() {
   // We won't permanently leak any OS resources by not ensuring
@@ -48,6 +50,12 @@ static void execute_syscall(Task* t) {
   remote.regs().set_syscall_result(t->regs().syscall_result());
 }
 
+uint64_t DiversionSession::next_rdtsc_value() {
+  uint64_t rdtsc_value = fake_rdstc;
+  fake_rdstc += 1 << 20; // 1M cycles
+  return rdtsc_value;
+}
+
 template <typename Arch>
 static void process_syscall_arch(Task* t, int syscallno) {
   LOG(debug) << "Processing " << syscall_name(syscallno, Arch::arch());
@@ -57,6 +65,15 @@ static void process_syscall_arch(Task* t, int syscallno) {
     // However, because the rr preload library expects these
     // syscalls to succeed and aborts if they don't, we fudge a
     // "0" return value.
+    finish_emulated_syscall_with_ret(t, 0);
+    return;
+  }
+
+  if (syscallno == t->session().syscall_number_for_rrcall_rdtsc()) {
+    uint64_t rdtsc_value = static_cast<DiversionSession*>(&t->session())->next_rdtsc_value();
+    LOG(debug) << "Faking rrcall_rdtsc syscall with value " << rdtsc_value;
+    remote_ptr<uint64_t> out_param(t->regs().arg1());
+    t->write_mem(out_param, rdtsc_value);
     finish_emulated_syscall_with_ret(t, 0);
     return;
   }
@@ -95,6 +112,19 @@ static void process_syscall_arch(Task* t, int syscallno) {
       return;
     }
 
+    case Arch::prctl: {
+      Registers r = t->regs();
+      int op = r.arg1();
+      if (op == PR_SET_TSC) {
+        LOG(debug) << "Suppressing syscall "
+                   << syscall_name(syscallno, t->arch());
+        r.set_syscall_result(-ENOSYS);
+        t->set_regs(r);
+        return;
+      }
+      break;
+    }
+
     case Arch::gettid: {
       auto tid = t->own_namespace_tid();
       LOG(debug) << "Emulating gettid with " << tid;
@@ -115,7 +145,7 @@ static void process_syscall_arch(Task* t, int syscallno) {
   }
 
   LOG(debug) << "Executing syscall " << syscall_name(syscallno, t->arch());
-  return execute_syscall(t);
+  execute_syscall(t);
 }
 
 static void process_syscall(Task* t, int syscallno){
@@ -155,43 +185,63 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
 
   t->set_in_diversion(true);
 
-  switch (command) {
-    case RUN_CONTINUE:
-      LOG(debug) << "Continuing to next syscall";
-      t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
-                          signal_to_deliver);
-      break;
-    case RUN_SINGLESTEP:
-      LOG(debug) << "Stepping to next insn/syscall";
-      t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
-                          RESUME_UNLIMITED_TICKS, signal_to_deliver);
-      break;
-    default:
-      FATAL() << "Illegal run command " << command;
-  }
-
-  if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
-    handle_ptrace_exit_event(t);
-    result.status = DIVERSION_EXITED;
-    return result;
-  }
-
-  result.status = DIVERSION_CONTINUE;
-  if (t->stop_sig()) {
-    LOG(debug) << "Pending signal: " << t->get_siginfo();
-    result.break_status = diagnose_debugger_trap(t, command);
-    if (!result.break_status.breakpoint_hit && result.break_status.watchpoints_hit.empty() && !result.break_status.singlestep_complete && (t->stop_sig() == SIGTRAP)) {
-      result.break_status.signal = unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
-      result.break_status.signal->si_signo = t->stop_sig();
+  while (true) {
+    switch (command) {
+      case RUN_CONTINUE:
+        LOG(debug) << "Continuing to next syscall";
+        t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
+                            signal_to_deliver);
+        break;
+      case RUN_SINGLESTEP:
+        LOG(debug) << "Stepping to next insn/syscall";
+        t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
+                           RESUME_UNLIMITED_TICKS, signal_to_deliver);
+        break;
+      default:
+        FATAL() << "Illegal run command " << command;
     }
-    LOG(debug) << "Diversion break at ip=" << (void*)t->ip().register_value()
-               << "; break=" << result.break_status.breakpoint_hit
-               << ", watch=" << !result.break_status.watchpoints_hit.empty()
-               << ", singlestep=" << result.break_status.singlestep_complete;
-    ASSERT(t,
-           !result.break_status.singlestep_complete ||
-               command == RUN_SINGLESTEP);
-    return result;
+
+    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      handle_ptrace_exit_event(t);
+      result.status = DIVERSION_EXITED;
+      return result;
+    }
+
+    result.status = DIVERSION_CONTINUE;
+    if (t->stop_sig()) {
+      LOG(debug) << "Pending signal: " << t->get_siginfo();
+      result.break_status = diagnose_debugger_trap(t, command);
+      if (t->stop_sig() == SIGTRAP &&
+          !result.break_status.breakpoint_hit &&
+          result.break_status.watchpoints_hit.empty() &&
+          !result.break_status.singlestep_complete) {
+        result.break_status.signal = unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
+        result.break_status.signal->si_signo = t->stop_sig();
+      } else if (t->stop_sig() == SIGSEGV) {
+        auto trapped_instruction = trapped_instruction_at(t, t->ip());
+        if (trapped_instruction == TrappedInstruction::RDTSC) {
+          size_t len = trapped_instruction_len(trapped_instruction);
+          uint64_t rdtsc_value = next_rdtsc_value();
+          LOG(debug) << "Faking RDTSC instruction with value " << rdtsc_value;
+          Registers r = t->regs();
+          r.set_ip(r.ip() + len);
+          r.set_ax((uint32_t)rdtsc_value);
+          r.set_dx(rdtsc_value >> 32);
+          t->set_regs(r);
+          result.break_status = BreakStatus();
+          continue;
+        }
+      }
+      LOG(debug) << "Diversion break at ip=" << (void*)t->ip().register_value()
+                 << "; break=" << result.break_status.breakpoint_hit
+                 << ", watch=" << !result.break_status.watchpoints_hit.empty()
+                 << ", singlestep=" << result.break_status.singlestep_complete;
+      ASSERT(t,
+             !result.break_status.singlestep_complete ||
+                 command == RUN_SINGLESTEP);
+      return result;
+    }
+    break;
   }
 
   if (t->status().is_syscall()) {

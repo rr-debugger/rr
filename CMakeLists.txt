@@ -1350,6 +1350,7 @@ set(TESTS_WITH_PROGRAM
   daemon_read
   dconf_mock
   dev_tty
+  x86/diversion_rdtsc
   diversion_sigtrap
   diversion_syscall
   dlopen
