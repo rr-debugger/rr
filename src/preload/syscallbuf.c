@@ -3716,6 +3716,7 @@ static long sys_rrcall_rdtsc(struct syscall_info* call) {
   call->args[2] = tsc[1];
   return commit_raw_syscall(syscallno, ptr, tsc[0]);
 #else
+  (void)call;
   fatal("RDTSC not supported in this architecture");
   return 0;
 #endif
