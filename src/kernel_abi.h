@@ -241,8 +241,7 @@ struct WordSize32Defs {
     uint16_t e_shstrndx;
   } ElfEhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Ehdr, ElfEhdr);
-  typedef struct
-  {
+  typedef struct {
     uint32_t p_type;
     uint32_t p_offset;
     uint32_t p_vaddr;
@@ -338,8 +337,7 @@ struct WordSize64Defs {
     uint16_t e_shstrndx;
   } ElfEhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Ehdr, ElfEhdr);
-  typedef struct
-  {
+  typedef struct {
     uint32_t p_type;
     uint32_t p_flags;
     uint64_t p_offset;
