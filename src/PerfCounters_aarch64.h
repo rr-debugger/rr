@@ -365,7 +365,7 @@ static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
       pmu_uarchs.resize(1);
     }
   }
-  if (pmu_uarchs.size() != 0 && pmu_type_failed) {
+  if (pmu_uarchs.size() != 1 && pmu_type_failed) {
     // If reading PMU type failed, we only allow a single PMU type to be sure
     // that we get what we want from the kernel events.
     CLEAN_FATAL() << "Unable to read PMU event types";
