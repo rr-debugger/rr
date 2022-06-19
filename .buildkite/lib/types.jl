@@ -19,14 +19,14 @@ const platforms = Platforms(
         Platform(;
             arch            = "x86_64",
             rootfs_tag      = "v5.22",
-            rootfs_treehash = "0000000000000000000000000000000000000000",
+            rootfs_treehash = "1cd67e278881dcfeed695282256b26fad603e15d",
             allow_fail      = false,
             commit_status   = true,
         ),
         Platform(;
             arch            = "aarch64",
             rootfs_tag      = "v5.22",
-            rootfs_treehash = "0000000000000000000000000000000000000000",
+            rootfs_treehash = "7a63218e46996b36aa108b55746a3d94a3e312c1",
             allow_fail      = true,
             commit_status   = false,
         ),
