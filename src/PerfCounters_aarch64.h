@@ -68,8 +68,10 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
   case 0x61: // Apple
     switch (cpuid.part) {
     case 0x22:
+    case 0x24:
       return AppleM1Icestorm;
     case 0x23:
+    case 0x25:
       return AppleM1Firestorm;
     }
     break;
