@@ -355,15 +355,18 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       ASSERT(t, false) << "Unexpected status " << t->status();
     }
   } else {
+    bool exited = false;
     if (from_seccomp) {
       LOG(debug) << "Skipping enter_syscall - already at seccomp stop";
     } else {
-      t->enter_syscall();
+      exited = !t->enter_syscall(true);
       LOG(debug) << "Used enter_syscall; status=" << t->status();
     }
     // proceed to syscall exit
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-    LOG(debug) << "syscall exit status=" << t->status();
+    if (!exited) {
+      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      LOG(debug) << "syscall exit status=" << t->status();
+    }
   }
   while (true) {
     // If the syscall caused the task to exit, just stop now with that status.
@@ -386,7 +389,10 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     }
     if (ignore_signal(t)) {
       if (t->regs().syscall_may_restart()) {
-        t->enter_syscall();
+        if (!t->enter_syscall(true)) {
+          // We died, just let it be
+          break;
+        }
         LOG(debug) << "signal ignored; restarting syscall, status="
                    << t->status();
         t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);

@@ -815,7 +815,7 @@ void Task::move_ip_before_breakpoint() {
   set_regs(r);
 }
 
-void Task::enter_syscall() {
+bool Task::enter_syscall(bool allow_exit) {
   bool need_ptrace_syscall_event = !seccomp_bpf_enabled ||
                                    session().syscall_seccomp_ordering() ==
                                        Session::SECCOMP_BEFORE_PTRACE_SYSCALL;
@@ -827,6 +827,9 @@ void Task::enter_syscall() {
       ASSERT(this, need_seccomp_event);
       need_seccomp_event = false;
       continue;
+    }
+    if (allow_exit && ptrace_event() == PTRACE_EVENT_EXIT) {
+      return false;
     }
     ASSERT(this, !ptrace_event());
     if (session().is_recording() && wait_status.group_stop()) {
@@ -851,6 +854,7 @@ void Task::enter_syscall() {
   }
   apply_syscall_entry_regs();
   canonicalize_regs(arch());
+  return true;
 }
 
 bool Task::exit_syscall() {
