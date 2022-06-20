@@ -1224,6 +1224,10 @@ sig_set_t RecordTask::read_sigmask_from_process() {
   }
 
   auto results = read_proc_status_fields(tid, "SigBlk");
+  if (results.empty()) {
+    // Read failed, process probably died
+    return 0;
+  }
   ASSERT(this, results.size() == 1);
   return strtoull(results[0].c_str(), NULL, 16);
 }
@@ -1294,6 +1298,10 @@ void RecordTask::verify_signal_states() {
   }
 
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
+  if (results.empty()) {
+    // Read failed, process probably died
+    return;
+  }
   ASSERT(this, results.size() == 3);
   sig_set_t blocked = strtoull(results[0].c_str(), NULL, 16);
   sig_set_t ignored = strtoull(results[1].c_str(), NULL, 16);
