@@ -1130,6 +1130,11 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
       maybe_notify_stop(req, result.break_status);
+      if (timeline.is_running()) {
+        // gdb assumes that the process is gone and all its
+        // breakpoints have gone with it. It will set new breakpoints.
+        timeline.remove_breakpoints_and_watchpoints();
+      }
       req = GdbRequest(DREQ_NONE);
       break;
     }
