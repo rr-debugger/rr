@@ -404,8 +404,10 @@ public:
    * We're currently in user-space with registers set up to perform a system
    * call. Continue into the kernel and stop where we can modify the syscall
    * state.
+   * Return `true` if the syscall entry succeeded.
+   * Return `false` if the tracee exited unexpectedly.
    */
-  void enter_syscall();
+  bool enter_syscall(bool allow_exit=false);
 
   /**
    * We have observed entry to a syscall (either by PTRACE_EVENT_SECCOMP or
