@@ -8,5 +8,6 @@ check_record
 # Replay inner
 cd inner
 workdir=$PWD
+wait_for_complete
 replay
 check_replay_token EXIT-SUCCESS
