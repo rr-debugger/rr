@@ -117,6 +117,12 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define memcpy you_must_use_local_memcpy
 
+static long _traced_init_syscall(int syscallno, long a0, long a1, long a2,
+                                 long a3, long a4, long a5)
+{
+  return syscall(syscallno, a0, a1, a2, a3, a4, a5);
+}
+
 #ifdef syscall
 #undef syscall
 #endif
@@ -163,13 +169,6 @@ static struct preload_thread_locals* const thread_locals =
  */
 static struct syscallbuf_hdr* buffer_hdr(void) {
   return (struct syscallbuf_hdr*)thread_locals->buffer;
-}
-
-/**
- * This is for testing purposes only.
- */
-void* syscallbuf_ptr(void) {
-  return thread_locals->buffer;
 }
 
 /**
@@ -985,7 +984,11 @@ static void __attribute__((constructor)) init_process(void) {
   params.breakpoint_mode_sentinel = -1;
   params.syscallbuf_syscall_hook = (void*)syscall_hook;
 
-  int err = privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
+  // We must not make any call into the syscall buffer in the init function
+  // in case a signal is delivered to us during initialization.
+  // This means that we must not call `_raw_syscall`.
+  int err = _traced_init_syscall(SYS_rrcall_init_preload, (long)&params,
+                                 0, 0, 0, 0, 0);
   if (err != 0) {
     // Check if the rr tracer is present by looking for the thread local page
     // (mapped just after the rr page). If it is not present, we were

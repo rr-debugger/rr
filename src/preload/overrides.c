@@ -170,6 +170,16 @@ void delayed_syscall(struct syscall_info* info) {
 
 /**
  * This is for testing purposes only.
+ * Note that this must be defined outside of the syscallbuf code.
+ * Otherwise, the signal recording code may expect exit from this function
+ * to trigger the syscallbuf exit breakpoint.
+ */
+void* syscallbuf_ptr(void) {
+  return ((struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR)->buffer;
+}
+
+/**
+ * This is for testing purposes only.
  */
 void spurious_desched_syscall(struct syscall_info* info) {
   impose_spurious_desched = 1;
