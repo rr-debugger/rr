@@ -456,16 +456,30 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
     KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
     args.syscallbuf_ptr = syscallbuf_child;
+    if (syscallbuf_child != nullptr) {
+      // This needs to be skipped if we couldn't allocate the buffer
+      // since replaying only reads (and advances) the mmap record
+      // if `args.syscallbuf_ptr != nullptr`.
+      auto record_in_trace = trace_writer().write_mapped_region(
+        this, syscallbuf_km, syscallbuf_km.fake_stat(), syscallbuf_km.fsname(),
+        vector<TraceRemoteFd>(),
+        TraceWriter::RR_BUFFER_MAPPING);
+      ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
+    } else {
+      // This can fail, e.g. if the tracee died unexpectedly.
+      LOG(debug) << "Syscallbuf initialization failed";
+      args.syscallbuf_size = 0;
+    }
+  } else {
+    args.syscallbuf_ptr = remote_ptr<void>(nullptr);
+    args.syscallbuf_size = 0;
+  }
+
+  if (args.syscallbuf_ptr) {
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
     desched_fd = remote.retrieve_fd(desched_fd_child);
-
-    auto record_in_trace = trace_writer().write_mapped_region(
-        this, syscallbuf_km, syscallbuf_km.fake_stat(), syscallbuf_km.fsname(),
-        vector<TraceRemoteFd>(),
-        TraceWriter::RR_BUFFER_MAPPING);
-    ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {
@@ -492,9 +506,6 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
         args.cloned_file_data_fd = cloned_file_data_fd_child;
       }
     }
-  } else {
-    args.syscallbuf_ptr = remote_ptr<void>(nullptr);
-    args.syscallbuf_size = 0;
   }
   args.scratch_buf = scratch_ptr;
   args.usable_scratch_size = usable_scratch_size();
