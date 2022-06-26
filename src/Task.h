@@ -796,6 +796,26 @@ public:
    */
   void open_mem_fd_if_needed();
 
+  /**
+   * Perform a PTRACE_INTERRUPT set up the counter for potential spurious stops
+   * to be detected in `account_for_potential_ptrace_interrupt_stop`.
+   */
+  void do_ptrace_interrupt();
+
+  /**
+   * Sometimes we use PTRACE_INTERRUPT to kick the tracee out of various
+   * undesirable states. Unfortunately, that can (but need not) result in later
+   * undesired GROUP-STOP-SIGTRAP stops which report the PTRACE_INTERRUPT.
+   * This function may be called when examining stops to account for any
+   * such spurious stops.
+   *
+   * Should be called at exactly once for every ptrace stop.
+   *
+   * Returns true if the stop is caused by a PTRACE_INTERRUPT we know about,
+   * false otherwise.
+   */
+  bool account_for_potential_ptrace_interrupt_stop(WaitStatus status);
+
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
    * task B then writes to |b|.  Then B is switched out for A.

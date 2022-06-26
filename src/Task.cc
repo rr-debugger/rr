@@ -1845,6 +1845,22 @@ bool Task::wait_unexpected_exit() {
   return false;
 }
 
+void Task::do_ptrace_interrupt() {
+  ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+  expecting_ptrace_interrupt_stop = 2;
+}
+
+bool Task::account_for_potential_ptrace_interrupt_stop(WaitStatus status) {
+  if (expecting_ptrace_interrupt_stop > 0) {
+    --expecting_ptrace_interrupt_stop;
+    if (is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
+      expecting_ptrace_interrupt_stop = 0;
+      return true;
+    }
+  }
+  return false;
+}
+
 void Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking waitid(" << tid << ") ...";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == -1);
@@ -1858,9 +1874,12 @@ void Task::wait(double interrupt_after_elapsed) {
   int ret;
   while (true) {
     if (interrupt_after_elapsed == 0 && !sent_wait_interrupt) {
-      ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+      do_ptrace_interrupt();
+      if (session().is_recording()) {
+        // Force this timeslice to end
+        session().as_record()->scheduler().expire_timeslice();
+      }
       sent_wait_interrupt = true;
-      expecting_ptrace_interrupt_stop = 2;
     }
 
     if (interrupt_after_elapsed > 0) {
@@ -1997,23 +2016,15 @@ void Task::did_waitpid(WaitStatus status) {
   // we decrement it on every stop such that while this counter is positive,
   // any group-stop could be one induced by PTRACE_INTERRUPT
   bool siginfo_overriden = false;
-  if (expecting_ptrace_interrupt_stop > 0) {
-    expecting_ptrace_interrupt_stop--;
-    if (is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
-      // Assume this was PTRACE_INTERRUPT and thus treat this as
-      // TIME_SLICE_SIGNAL instead.
-      if (session().is_recording()) {
-        // Force this timeslice to end
-        session().as_record()->scheduler().expire_timeslice();
-      }
-      status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
-      memset(&pending_siginfo, 0, sizeof(pending_siginfo));
-      pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
-      pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
-      pending_siginfo.si_code = POLL_IN;
-      siginfo_overriden = true;
-      expecting_ptrace_interrupt_stop = 0;
-    }
+  if (account_for_potential_ptrace_interrupt_stop(status)) {
+    // Assume this was PTRACE_INTERRUPT and thus treat this as
+    // TIME_SLICE_SIGNAL instead.
+    status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
+    memset(&pending_siginfo, 0, sizeof(pending_siginfo));
+    pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
+    pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
+    pending_siginfo.si_code = POLL_IN;
+    siginfo_overriden = true;
   }
 
   if (!siginfo_overriden && status.stop_sig()) {
