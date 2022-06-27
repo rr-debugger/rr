@@ -1027,6 +1027,10 @@ public:
   // Used on aarch64 to detect whether we've recorded x0 and x8 on syscall entry
   Ticks ticks_at_last_syscall_entry;
   remote_code_ptr ip_at_last_syscall_entry;
+  // Whether the syscall entry corresponding to `{ticks,ip}_at_last_syscall_entry`
+  // has been recorded in the trace
+  // (used to avoid double recording on unexpected exit)
+  bool last_syscall_entry_recorded;
 
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
