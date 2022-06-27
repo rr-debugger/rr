@@ -1031,6 +1031,10 @@ public:
    */
   void forget();
 
+  // Used on aarch64 to detect whether we've recorded x0 and x8 on syscall entry
+  Ticks ticks_at_last_syscall_entry;
+  remote_code_ptr ip_at_last_syscall_entry;
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);
