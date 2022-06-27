@@ -189,19 +189,50 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // highly improbable.
           // Record the syscall-entry event that we otherwise failed to record.
           t->canonicalize_regs(t->arch());
-          t->apply_syscall_entry_regs();
+          auto r = t->regs();
+          if (t->arch() == aarch64) {
+            // On AArch64, when we get here, there are 3 different cases,
+            // 1. EXIT before we hit the syscall entry stop
+            // 2. EXIT after syscall entry stop but
+            //    before the result (X0) is overwritten
+            // 3. EXIT after syscall entry stop and
+            //    after the result (X0) is overwritten
+            //    (i.e. after the syscall but we got an EXIT
+            //     before the syscall exit stop.)
+
+            // We detect the first case based on `*_at_last_syscall_entry`
+            // set by `apply_syscall_entry_regs` and trust the current values
+            // `x0` and `x8`.
+
+            // For the second and third cases, we rely on the syscall enter stop
+            // to set the orig_arg1 and original_syscallno correctly.
+            if (t->ticks_at_last_syscall_entry == t->tick_count() &&
+                t->ip_at_last_syscall_entry == r.ip()) {
+              // We need to rely on the saved `orig_arg1` since in the third case
+              // the `x0` may already be overwritten.
+              // The assertion here assumes that
+              // `apply_syscall_entry_regs` is called when we enter the syscall
+              // and `x8` still holds the correct syscall number
+              // when we hit the process exit stop.
+              ASSERT(t, r.original_syscallno() == r.syscallno())
+                << "syscallno not saved by syscall enter handler: " << r;
+              r.set_arg1(r.orig_arg1());
+            } else {
+              r.set_original_syscallno(r.syscallno());
+            }
+          }
           // Assume it's a native-arch syscall. If it isn't, it doesn't matter
           // all that much since we aren't actually going to do anything with it
           // in this task.
           // Avoid calling detect_syscall_arch here since it could fail if the
           // task is already completely dead and gone.
-          SyscallEvent event(t->regs().original_syscallno(), t->arch());
+          SyscallEvent event(r.original_syscallno(), t->arch());
           event.state = ENTERING_SYSCALL;
           // Don't try to reset the syscallbuf here. The task may be exiting
           // while in arbitrary syscallbuf code. And of course, because it's
           // exiting, it doesn't matter if we don't reset the syscallbuf.
           t->record_event(event, RecordTask::FLUSH_SYSCALLBUF,
-                          RecordTask::DONT_RESET_SYSCALLBUF);
+                          RecordTask::DONT_RESET_SYSCALLBUF, &r);
         }
       } else {
         // Don't try to reset the syscallbuf here. The task may be exiting
@@ -629,13 +660,16 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
       }
 
       int seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      // We need to set the orig_* values before we let the process continue to exit
+      // since the handler for the exit event will need them.
+      // See `handle_ptrace_exit_event` above.
+      t->apply_syscall_entry_regs();
       if (seccomp_data < 0) {
         // Process just died. Urk. Just wait for the exit event and pretend this stop never happened!
         last_task_switchable = ALLOW_SWITCH;
         step_state->continue_type = DONT_CONTINUE;
         return true;
       }
-      t->apply_syscall_entry_regs();
       int syscallno = t->regs().original_syscallno();
       if (seccomp_data == SECCOMP_RET_DATA) {
         LOG(debug) << "  traced syscall entered: "

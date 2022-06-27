@@ -76,6 +76,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       own_namespace_rec_tid(_rec_tid > 0 ? _rec_tid: _tid),
       syscallbuf_size(0),
+      ticks_at_last_syscall_entry(0),
+      ip_at_last_syscall_entry(nullptr),
       serial(serial),
       prname("???"),
       ticks(0),
@@ -3924,6 +3926,8 @@ void Task::apply_syscall_entry_regs()
     registers.set_orig_arg1(registers.arg1());
     // Don't update registers_dirty here, because these registers are not part
     // of the ptrace state tracked by that flag.
+    ticks_at_last_syscall_entry = tick_count();
+    ip_at_last_syscall_entry = registers.ip();
   }
 }
 
