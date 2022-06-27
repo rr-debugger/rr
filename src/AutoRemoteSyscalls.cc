@@ -544,10 +544,14 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
   return their_fd;
 }
 
-static int recvmsg_socket(ScopedFd& sock) {
+static int recvmsg_socket(ScopedFd& sock, bool blocking=true) {
   fd_message<NativeArch> msg;
   struct msghdr *msgp = (struct msghdr*)&msg.msg;
-  if (0 > recvmsg(sock, msgp, MSG_CMSG_CLOEXEC)) {
+  int flag = MSG_CMSG_CLOEXEC;
+  if (!blocking) {
+    flag |= MSG_DONTWAIT;
+  }
+  if (0 > recvmsg(sock, msgp, flag)) {
     return -1;
   }
 
@@ -604,8 +608,13 @@ template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &ou
       child_recvmsg<Arch>(*this, task()->session().tracee_fd_number());
   if (child_syscall_result == -ESRCH) {
     /* The child did not receive the message. Read it out of the socket
-       buffer so it doesn't get read by another child later! */
-    int fd = recvmsg_socket(task()->session().tracee_socket_receiver_fd());
+     * buffer so it doesn't get read by another child later!
+     * Note that if the child was killed, we might get an error
+     * (i.e. process exit stop before syscall exit stop) even
+     * if the fd is already removed from the socket.
+     * Because of this, we use a non-blocking recvmsg to avoid blocking forever.
+     */
+    int fd = recvmsg_socket(task()->session().tracee_socket_receiver_fd(), false);
     if (fd >= 0) {
       ASSERT(t, fd != our_fd.get()) << "This should always return a fresh fd!";
       close(fd);
