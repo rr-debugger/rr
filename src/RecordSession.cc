@@ -136,6 +136,13 @@ static bool looks_like_syscall_entry(RecordTask* t) {
     // there.
     return t->regs().original_syscallno() >= 0 &&
            t->regs().syscall_result_signed() == -ENOSYS;
+  } else if (t->arch() == aarch64) {
+    // We recorded when we saw the last syscall entry
+    // so just use that to determine if we've already save it in the trace.
+    if (t->ticks_at_last_syscall_entry == t->tick_count() &&
+        t->ip_at_last_syscall_entry == t->regs().ip()) {
+      return !t->last_syscall_entry_recorded;
+    }
   }
   // Getting a sched event here is better than a spurious syscall event.
   // Syscall entry does not cause visible register modification, so upon

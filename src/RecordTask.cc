@@ -1867,16 +1867,26 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     }
   }
 
-  if (ev.is_syscall_event() && ev.Syscall().state == EXITING_SYSCALL) {
-    ticks_at_last_recorded_syscall_exit = tick_count();
-    ip_at_last_recorded_syscall_exit = registers->ip();
-    if (ticks_at_last_recorded_syscall_exit == ticks_at_last_syscall_entry &&
-        ip_at_last_recorded_syscall_exit == ip_at_last_syscall_entry) {
-      // We've done processing this syscall so we can forget about the entry now
-      // This makes sure that any restarted syscalls would not be treated
-      // as the same entry.
-      ticks_at_last_syscall_entry = 0;
-      ip_at_last_syscall_entry = nullptr;
+  if (ev.is_syscall_event()) {
+    auto state = ev.Syscall().state;
+    if (state == EXITING_SYSCALL) {
+      ticks_at_last_recorded_syscall_exit = tick_count();
+      ip_at_last_recorded_syscall_exit = registers->ip();
+      if (ticks_at_last_recorded_syscall_exit == ticks_at_last_syscall_entry &&
+          ip_at_last_recorded_syscall_exit == ip_at_last_syscall_entry) {
+        // We've done processing this syscall so we can forget about the entry now
+        // This makes sure that any restarted syscalls would not be treated
+        // as the same entry.
+        ticks_at_last_syscall_entry = 0;
+        ip_at_last_syscall_entry = nullptr;
+        last_syscall_entry_recorded = false;
+      }
+    } else if (state == ENTERING_SYSCALL || state == ENTERING_SYSCALL_PTRACE) {
+      if (tick_count() == ticks_at_last_syscall_entry &&
+          registers->ip() == ip_at_last_syscall_entry) {
+        // Let the process handler know that we've recorded the entry already
+        last_syscall_entry_recorded = true;
+      }
     }
   }
 

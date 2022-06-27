@@ -78,6 +78,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       syscallbuf_size(0),
       ticks_at_last_syscall_entry(0),
       ip_at_last_syscall_entry(nullptr),
+      last_syscall_entry_recorded(false),
       serial(serial),
       prname("???"),
       ticks(0),
@@ -3928,6 +3929,7 @@ void Task::apply_syscall_entry_regs()
     // of the ptrace state tracked by that flag.
     ticks_at_last_syscall_entry = tick_count();
     ip_at_last_syscall_entry = registers.ip();
+    last_syscall_entry_recorded = false;
   }
 }
 
