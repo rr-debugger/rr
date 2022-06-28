@@ -2175,12 +2175,21 @@ static ExeInfo read_exe_info(const string& exe_file) {
     }
   }
 
-  auto syms = reader.read_symbols(".dynsym", ".dynstr");
-  for (size_t i = 0; i < syms.size(); ++i) {
-    if (syms.is_name(i, "__asan_init")) {
-      ret.setup_asan_memory_ranges();
-    } else if (syms.is_name(i, "__tsan_init")) {
-      ret.setup_tsan_memory_ranges();
+  // Occasionally, dynsym might be missing the sanitizer symbols due
+  // to various optimizations. symtab is a superset of dynsym but
+  // it might be missing due to "strip".
+  auto elf_hdrs = { make_pair(".symtab", ".strtab"),
+                    make_pair(".dynsym", ".dynstr") };
+  for (auto& pair : elf_hdrs) {
+    auto syms = reader.read_symbols(pair.first, pair.second);
+    for (size_t i = 0; i < syms.size(); ++i) {
+      if (syms.is_name(i, "__asan_init")) {
+        ret.setup_asan_memory_ranges();
+        return ret;
+      } else if (syms.is_name(i, "__tsan_init")) {
+        ret.setup_tsan_memory_ranges();
+        return ret;
+      }
     }
   }
 
