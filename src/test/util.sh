@@ -20,6 +20,12 @@
 # scheduler, don't use it for anything else.
 #
 
+if ! which pidof &> /dev/null; then
+    pidof() {
+        ps ax -o 'pid= exe=' | grep ' \(\|.*/\)'"$1"'$' | awk '{print $1}'
+    }
+fi
+
 #  delay_kill <sig> <delay_secs> <proc>
 #
 # Deliver the signal |sig|, after waiting |delay_secs| seconds, to the
