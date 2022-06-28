@@ -10,6 +10,27 @@ static void clear(unsigned char* p) {
   }
 }
 
+static void check_page1(unsigned char* p, size_t page_size, int ret) {
+  if (3 == ret) {
+    test_assert(p[page_size - 7] == ((page_size - 7) & 0xff));
+    test_assert(p[page_size - 6] == 0);
+    test_assert(p[page_size - 5] == 1);
+    test_assert(p[page_size - 4] == 3);
+    test_assert(p[page_size - 3] == ((page_size - 3) & 0xff));
+    test_assert(p[page_size - 2] == ((page_size - 2) & 0xff));
+    test_assert(p[page_size - 1] == ((page_size - 1) & 0xff));
+  } else {
+    test_assert(4 == ret);
+    test_assert(p[page_size - 7] == ((page_size - 7) & 0xff));
+    test_assert(p[page_size - 6] == 0);
+    test_assert(p[page_size - 5] == 1);
+    test_assert(p[page_size - 4] == 3);
+    test_assert(p[page_size - 3] == ((page_size - 3) & 0xff));
+    test_assert(p[page_size - 2] == ((page_size - 2) & 0xff));
+    test_assert(p[page_size - 1] == 4);
+  }
+}
+
 int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   unsigned char* p =
@@ -32,37 +53,13 @@ int main(void) {
   out_iov[1].iov_len = 2;
 
   clear(p);
-  test_assert(4 == process_vm_readv(getpid(), out_iov, 2, in_iov, 2, 0));
+  ret = process_vm_readv(getpid(), out_iov, 2, in_iov, 2, 0);
   test_assert(out_iov[1].iov_len == 2);
-  test_assert(p[page_size - 7] == ((page_size - 7) & 0xff));
-  test_assert(p[page_size - 6] == 0);
-  test_assert(p[page_size - 5] == 1);
-  test_assert(p[page_size - 4] == 3);
-  test_assert(p[page_size - 3] == ((page_size - 3) & 0xff));
-  test_assert(p[page_size - 2] == ((page_size - 2) & 0xff));
-  test_assert(p[page_size - 1] == 4);
+  check_page1(p, page_size, ret);
   clear(p);
   ret = process_vm_writev(getpid(), in_iov, 2, out_iov, 2, 0);
-  if (3 == ret) {
-    test_assert(out_iov[1].iov_len == 2);
-    test_assert(p[page_size - 7] == ((page_size - 7) & 0xff));
-    test_assert(p[page_size - 6] == 0);
-    test_assert(p[page_size - 5] == 1);
-    test_assert(p[page_size - 4] == 3);
-    test_assert(p[page_size - 3] == ((page_size - 3) & 0xff));
-    test_assert(p[page_size - 2] == ((page_size - 2) & 0xff));
-    test_assert(p[page_size - 1] == ((page_size - 1) & 0xff));
-  } else {
-    test_assert(4 == ret);
-    test_assert(out_iov[1].iov_len == 2);
-    test_assert(p[page_size - 7] == ((page_size - 7) & 0xff));
-    test_assert(p[page_size - 6] == 0);
-    test_assert(p[page_size - 5] == 1);
-    test_assert(p[page_size - 4] == 3);
-    test_assert(p[page_size - 3] == ((page_size - 3) & 0xff));
-    test_assert(p[page_size - 2] == ((page_size - 2) & 0xff));
-    test_assert(p[page_size - 1] == 4);
-  }
+  test_assert(out_iov[1].iov_len == 2);
+  check_page1(p, page_size, ret);
 
   out_iov[1].iov_base = p + page_size - 2;
   out_iov[1].iov_len = 3;
@@ -113,14 +110,20 @@ int main(void) {
     test_assert(p[1] == 1);
   }
   clear(p);
-  test_assert(1 == process_vm_writev(getpid(), in_iov, 1, out_iov, 1, 0));
-  test_assert(p[0] == ((page_size - 1) & 0xff));
-  /* Linux kernel bug: should be 1, but sometimes is zero ---
-     extra data written. https://bugzilla.kernel.org/show_bug.cgi?id=113541 */
-  if (p[1] == 0) {
-    atomic_puts("Kernel bug detected!");
+  ret = process_vm_writev(getpid(), in_iov, 1, out_iov, 1, 0);
+  if (ret == -1 && errno == EFAULT) {
+    test_assert(p[0] == 0);
+    test_assert(p[1] == 1);
+  } else {
+    test_assert(1 == ret);
+    test_assert(p[0] == ((page_size - 1) & 0xff));
+    /* Linux kernel bug: should be 1, but sometimes is zero ---
+       extra data written. https://bugzilla.kernel.org/show_bug.cgi?id=113541 */
+    if (p[1] == 0) {
+      atomic_puts("Kernel bug detected!");
+    }
+    test_assert(p[1] == 1 || p[1] == 0);
   }
-  test_assert(p[1] == 1 || p[1] == 0);
 
   in_iov[0].iov_base = p + page_size - 4;
   in_iov[0].iov_len = 2;
