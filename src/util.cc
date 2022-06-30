@@ -196,6 +196,9 @@ static bool is_start_of_scratch_region(Task* t, remote_ptr<void> start_addr) {
 }
 
 bool probably_not_interactive(int fd) {
+  if (Flags::get().non_interactive) {
+    return true;
+  }
   /* Eminently tunable heuristic, but this is guaranteed to be
    * true during rr unit tests, where we care most about this
    * check (to a first degree).  A failing test shouldn't
