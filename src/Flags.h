@@ -40,6 +40,11 @@ struct Flags {
   // doesn't seem to be a tty.
   bool force_things;
 
+  // Force rr to assume that the terminal is non-interactive, disabling e.g.
+  // the interactive emergency debugger. If used with --force-things, this
+  // option prevails.
+  bool non_interactive;
+
   /* Mark the trace global time along with tracee writes to
    * stdio. */
   bool mark_stdio;
