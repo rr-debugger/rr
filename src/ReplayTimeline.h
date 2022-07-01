@@ -212,11 +212,11 @@ public:
   ReplayResult replay_step_forward(RunCommand command);
 
   ReplayResult reverse_continue(
-      const std::function<bool(ReplayTask* t)>& stop_filter,
+      const std::function<bool(ReplayTask* t, const BreakStatus &)>& stop_filter,
       const std::function<bool()>& interrupt_check);
   ReplayResult reverse_singlestep(
       const TaskUid& tuid, Ticks tuid_ticks,
-      const std::function<bool(ReplayTask* t)>& stop_filter,
+      const std::function<bool(ReplayTask* t, const BreakStatus &)>& stop_filter,
       const std::function<bool()>& interrupt_check);
 
   /**
@@ -425,7 +425,7 @@ private:
                                       const ReplayResult& result);
   ReplayResult reverse_singlestep(
       const Mark& origin, const TaskUid& step_tuid, Ticks step_ticks,
-      const std::function<bool(ReplayTask* t)>& stop_filter,
+      const std::function<bool(ReplayTask* t, const BreakStatus &)>& stop_filter,
       const std::function<bool()>& interrupt_check);
 
   // Reasonably fast since it just relies on checking the mark map.
