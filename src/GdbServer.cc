@@ -1379,15 +1379,14 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     // if tids get reused.
     RunCommand command = compute_run_command_for_reverse_exec(
         timeline.current_session(), debuggee_tguid, req, allowed_tasks);
-    auto stop_filter = [&](ReplayTask* t) -> bool {
+    auto stop_filter = [&](ReplayTask* t, const BreakStatus &break_status) -> bool {
       if (t->thread_group()->tguid() != debuggee_tguid) {
         return false;
       }
 
       // don't stop for a signal that has been specified by QPassSignal
-      Event const& stop_event = t->current_trace_frame().event();
-      if (stop_event.is_signal_event() && dbg->is_pass_signal(stop_event.Signal().siginfo.si_signo)) {
-        LOG(debug) << "Filtering out event for signal " << stop_event.Signal().siginfo;
+      if (break_status.signal && dbg->is_pass_signal(break_status.signal->si_signo)) {
+        LOG(debug) << "Filtering out event for signal " << break_status.signal->si_signo;
         return false;
       }
 

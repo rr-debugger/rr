@@ -941,7 +941,7 @@ static bool arch_watch_fires_before_instr(SupportedArch arch) {
 }
 
 ReplayResult ReplayTimeline::reverse_continue(
-    const std::function<bool(ReplayTask* t)>& stop_filter,
+    const std::function<bool(ReplayTask* t, const BreakStatus &)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
   Mark end = mark();
   LOG(debug) << "ReplayTimeline::reverse_continue from " << end;
@@ -1026,7 +1026,7 @@ ReplayResult ReplayTimeline::reverse_continue(
 
       evaluate_conditions(result);
       if (result.break_status.any_break() &&
-          !stop_filter(to_replay_task(result.break_status))) {
+          !stop_filter(to_replay_task(result.break_status), result.break_status)) {
         result.break_status = BreakStatus();
       }
 
@@ -1145,7 +1145,7 @@ ReplayResult ReplayTimeline::reverse_continue(
     } else {
       LOG(debug)
         << "Performing final reverse-singlestep to pass over watch/signal";
-      auto stop_filter = [&](ReplayTask* t) { return t->tuid() == final_tuid; };
+      auto stop_filter = [&](ReplayTask* t,const BreakStatus &) { return t->tuid() == final_tuid; };
       reverse_singlestep(dest, final_tuid, final_ticks, stop_filter,
                          interrupt_check);
     }
@@ -1174,7 +1174,7 @@ void ReplayTimeline::update_observable_break_status(
 
 ReplayResult ReplayTimeline::reverse_singlestep(
     const Mark& origin, const TaskUid& step_tuid, Ticks step_ticks,
-    const std::function<bool(ReplayTask* t)>& stop_filter,
+    const std::function<bool(ReplayTask* t,const BreakStatus &)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
   LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
 
@@ -1217,7 +1217,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       bool seen_other_task_break = false;
       while (!at_mark(end)) {
         ReplayTask* t = current->current_task();
-        if (stop_filter(t) && current->done_initial_exec()) {
+        if (stop_filter(t, BreakStatus()) && current->done_initial_exec()) {
           if (t->tuid() == step_tuid) {
             if (t->tick_count() >= ticks_target) {
               // Don't step any further.
@@ -1271,7 +1271,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       }
       end = start;
     }
-    DEBUG_ASSERT(stop_filter(current->current_task()) || seen_barrier);
+    DEBUG_ASSERT(stop_filter(current->current_task(), BreakStatus()) || seen_barrier);
 
     Mark destination_candidate;
     Mark step_start = set_short_checkpoint();
@@ -1292,7 +1292,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     while (true) {
       Mark now;
       ReplayResult result;
-      if (stop_filter(current->current_task())) {
+      if (stop_filter(current->current_task(), BreakStatus())) {
         apply_breakpoints_and_watchpoints();
         if (current->current_task()->tuid() == step_tuid) {
           Mark before_step = mark();
@@ -1486,7 +1486,7 @@ ReplayResult ReplayTimeline::replay_step_forward(RunCommand command) {
 
 ReplayResult ReplayTimeline::reverse_singlestep(
     const TaskUid& tuid, Ticks tuid_ticks,
-    const std::function<bool(ReplayTask* t)>& stop_filter,
+    const std::function<bool(ReplayTask* t, const BreakStatus &)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
   return reverse_singlestep(mark(), tuid, tuid_ticks, stop_filter,
                             interrupt_check);
