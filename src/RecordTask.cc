@@ -342,6 +342,8 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
 }
 
 void RecordTask::post_exec() {
+  ASSERT(this, ev().is_syscall_event()) << ev();
+
   // Change syscall number to execve/execveat *for the new arch*. If we don't do this,
   // and the arch changes, then the syscall number for execve in the old arch/
   // is treated as the syscall we're executing in the new arch, with hilarious
