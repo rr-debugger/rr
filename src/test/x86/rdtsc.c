@@ -11,7 +11,7 @@ static uint64_t my_rdtsc(void) {
   uint32_t low;
   uint32_t high;
   /* Make sure this doesn't get buffered */
-  asm ("rdtsc; xchg %%edx,%%edx" : "=a"(low), "=d"(high));
+  asm ("rdtsc_instruction: rdtsc; xchg %%edx,%%edx" : "=a"(low), "=d"(high));
   return ((uint64_t)high << 32) + low;
 }
 

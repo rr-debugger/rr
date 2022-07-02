@@ -1,8 +1,8 @@
 import re
 from util import *
 
-send_gdb('b my_rdtsc')
-expect_gdb('Breakpoint 1')
+send_gdb('hbreak *rdtsc_instruction')
+expect_gdb('breakpoint 1')
 
 send_gdb('c')
 expect_gdb('Breakpoint 1')
