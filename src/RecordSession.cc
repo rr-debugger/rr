@@ -2459,7 +2459,7 @@ RecordSession::RecordSession(const std::string& exe_path,
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 
-  if (task_map.size() == detached_task_map.size()) {
+  if (task_map.empty()) {
     result.status = STEP_EXITED;
     result.exit_status = initial_thread_group->exit_status;
     return result;
