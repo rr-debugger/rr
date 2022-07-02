@@ -600,7 +600,7 @@ bool RecordTask::is_at_syscallstub_exit_breakpoint() {
   return i == syscallstub_exit_breakpoint;
 }
 
-void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
+bool RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
                                        TicksRequest ticks_request, int sig) {
   // We may execute user code, which could lead to an RDTSC or grow-map
   // operation which unblocks SIGSEGV, and we'll need to know whether to
@@ -631,7 +631,9 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       // We're injecting a signal, so make sure that signal is unblocked.
       sigset &= ~signal_bit(sig);
     }
-    set_sigmask(sigset);
+    if (!set_sigmask(sigset)) {
+      return false;
+    }
   }
 
   // RESUME_NO_TICKS means that tracee code is not going to run so there's no
@@ -669,6 +671,7 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       }
     }
   }
+  return true;
 }
 
 vector<remote_code_ptr> RecordTask::syscallbuf_syscall_entry_breakpoints() {
@@ -1270,18 +1273,25 @@ sig_set_t RecordTask::get_sigmask() {
   return blocked_sigs;
 }
 
-void RecordTask::unblock_signal(int sig) {
+bool RecordTask::unblock_signal(int sig) {
   sig_set_t mask = get_sigmask();
   mask &= ~signal_bit(sig);
-  set_sigmask(mask);
+  if (!set_sigmask(mask)) {
+    return false;
+  }
   invalidate_sigmask();
+  return true;
 }
 
-void RecordTask::set_sigmask(sig_set_t mask) {
+bool RecordTask::set_sigmask(sig_set_t mask) {
   int ret = fallible_ptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &mask);
   if (ret < 0) {
     if (errno == EIO) {
       FATAL() << "PTRACE_SETSIGMASK not supported; rr requires Linux kernel >= 3.11";
+    }
+    if (errno == ESRCH) {
+      // Task most likely died while we at the ptrace stop.
+      return false;
     }
     ASSERT(this, errno == EINVAL);
   } else {
@@ -1289,6 +1299,7 @@ void RecordTask::set_sigmask(sig_set_t mask) {
                << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
                << " have a stashed signal";
   }
+  return true;
 }
 
 void RecordTask::set_sig_handler_default(int sig) {

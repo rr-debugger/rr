@@ -141,7 +141,8 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       sigmask_to_restore = rt->get_sigmask();
       sig_set_t all_blocked;
       memset(&all_blocked, 0xff, sizeof(all_blocked));
-      rt->set_sigmask(all_blocked);
+      // Ignore the process dying here - we'll notice later.
+      (void)rt->set_sigmask(all_blocked);
     }
   }
 }
