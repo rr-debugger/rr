@@ -11,17 +11,17 @@ int main(int argc, char *argv[]) {
     { BPF_JMP | BPF_JEQ | BPF_K, 0, 4, AUDIT_ARCH_I386 },
     // i386
     { BPF_LD | BPF_W | BPF_ABS,  0, 0, offsetof(struct seccomp_data, nr) },
-    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 172 /* __NR32_prctl */ },
+    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 37 /* __NR32_kill */ },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_TRAP },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_ALLOW },
     // x86_64
     { BPF_LD | BPF_W | BPF_ABS,  0, 0, offsetof(struct seccomp_data, nr) },
-    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 157 /* __NR_prctl */ },
+    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 62 /* __NR_kill */ },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_TRAP },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_ALLOW }
 #else
     { BPF_LD | BPF_W | BPF_ABS,  0, 0, offsetof(struct seccomp_data, nr) },
-    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, SYS_prctl },
+    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, SYS_kill },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_TRAP },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_ALLOW }
 #endif
