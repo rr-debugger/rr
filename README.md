@@ -19,4 +19,5 @@ rr development is sponsored by [Pernosco](https://pernos.co) and was originated 
 * rr currently requires either:
   * An Intel CPU with [Nehalem](https://en.wikipedia.org/wiki/Nehalem_%28microarchitecture%29) (2010) or later microarchitecture.
   * Certain AMD Zen or later processors (see https://github.com/rr-debugger/rr/wiki/Zen)
+  * Certain AArch64 microarchitectures (e.g. ARM Neoverse N1 or the Apple Silicon M-series)
 * Running in a VM guest is supported, as long as the VM supports virtualization of hardware performance counters. (VMware and KVM are known to work; Xen does not.)
