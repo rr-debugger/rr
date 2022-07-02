@@ -384,9 +384,11 @@ public:
 
   /**
    * Hook called by `resume_execution`.
+   * Returns `false` if the task is in the process of dying and setup could not
+   * be completed, `true` otherwise.
    */
-  virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
-                                     int /*sig*/) {}
+  virtual bool will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                                     int /*sig*/) { return true; }
   /**
    * Hook called by `did_waitpid`.
    */
