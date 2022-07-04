@@ -93,6 +93,8 @@ enum CpuMicroarch {
   FirstARM,
   ARMNeoverseN1 = FirstARM,
   ARMNeoverseE1,
+  ARMNeoverseV1,
+  ARMNeoverseN2,
   ARMCortexA55,
   ARMCortexA75,
   ARMCortexA76,
@@ -174,12 +176,16 @@ static const PmuConfig pmu_configs[] = {
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
   // Both counters are available on Zen, Zen+ and Zen2.
   { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB },
-  // Performance cores from ARM from cortex-a76 on (including neoverse-n1)
+  // Performance cores from ARM from cortex-a76 on (including neoverse-n1 and later)
   // have the following counters that are reliable enough for us.
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
   // 0x6F == STREX_SPEC - Speculatively executed strex instructions
   // 0x11 == CPU_CYCLES - Cycle
   { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3_0", 0x11, -1, -1 },
+  { ARMNeoverseV1, "ARM Neoverse V1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3_0", 0x11, -1, -1 },
+  { ARMNeoverseN2, "ARM Neoverse N2", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3_0", 0x11, -1, -1 },
   { ARMCortexA76, "ARM Cortex A76", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3", 0x11, -1, -1 },
