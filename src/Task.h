@@ -913,7 +913,9 @@ public:
   }
   void setup_preload_thread_locals();
   void setup_preload_thread_locals_from_clone(Task* origin);
-  const ThreadLocals& fetch_preload_thread_locals();
+  // If `fetch_full` is false, avoid fetching the full stub_scratch_2 on aarch64
+  // and only fetch the first two pointers from it.
+  const ThreadLocals& fetch_preload_thread_locals(bool fetch_full);
   void activate_preload_thread_locals();
 
   struct CapturedState {
