@@ -51,6 +51,7 @@ static inline size_t rrstrlen(const char* s) { return strlen(s); }
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 
 static inline int strprefix(const char* s1, const char* s2) {
   while (1) {
@@ -377,6 +378,12 @@ struct preload_thread_locals {
 
   uint8_t stub_scratch_2[PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE];
 };
+#if defined(__aarch64__) && (defined(RR_IMPLEMENT_PRELOAD) || \
+                             defined(RR_IMPLEMENT_AUDIT))
+// On aarch64, we the stub_scratch_2 offset is hardcoded in the syscallbuf code
+_Static_assert(offsetof(struct preload_thread_locals, stub_scratch_2) == 8 * 13,
+               "stub_scratch_2 offset mismatch");
+#endif
 
 // The set of flags that can be set for each fd in syscallbuf_fds_disabled.
 enum syscallbuf_fd_classes {
