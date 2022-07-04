@@ -235,9 +235,10 @@ void arm_desched_event(RecordTask* t) {
 
 template <typename Arch>
 static remote_code_ptr get_stub_scratch_1_arch(RecordTask* t) {
-  auto locals = t->read_mem(AddressSpace::preload_thread_locals_start()
-                                .cast<preload_thread_locals<Arch>>());
-  return locals.stub_scratch_1.rptr().as_int();
+  auto remote_locals = AddressSpace::preload_thread_locals_start()
+    .cast<preload_thread_locals<Arch>>();
+  auto remote_stub_scratch_1 = REMOTE_PTR_FIELD(remote_locals, stub_scratch_1);
+  return t->read_mem(remote_stub_scratch_1).rptr().as_int();
 }
 
 static remote_code_ptr get_stub_scratch_1(RecordTask* t) {
@@ -246,9 +247,10 @@ static remote_code_ptr get_stub_scratch_1(RecordTask* t) {
 
 template <typename Arch>
 static void get_stub_scratch_2_arch(RecordTask* t, void *buff, size_t sz) {
-  auto locals = t->read_mem(AddressSpace::preload_thread_locals_start()
-                                .cast<preload_thread_locals<Arch>>());
-  memcpy(buff, locals.stub_scratch_2, sz);
+  auto remote_locals = AddressSpace::preload_thread_locals_start()
+    .cast<preload_thread_locals<Arch>>();
+  auto remote_stub_scratch_2 = REMOTE_PTR_FIELD(remote_locals, stub_scratch_2);
+  t->read_bytes_helper(remote_stub_scratch_2, sz, buff);
 }
 
 static void get_stub_scratch_2(RecordTask* t, void *buff, size_t sz) {
