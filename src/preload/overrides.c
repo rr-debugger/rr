@@ -242,6 +242,13 @@ uid_t geteuid(void) {
 #endif
 }
 
+static void libstdcpp_not_found(void) {
+  const char msg[] = "[rr] Interposition for libstdc++ called but symbol lookups into libstdc++ failed.\n"
+    "Was libstdc++ loaded with RTLD_LOCAL? Try recording with `-v LD_PRELOAD=libstdc++.so.6`.\n"
+    "About to crash! ";
+  syscall(SYS_write, STDERR_FILENO, msg, sizeof(msg));
+}
+
 /**
  * libstdc++3 uses RDRAND. Bypass that with this incredible hack.
  */
@@ -252,10 +259,16 @@ void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIc
   if (!assign_string) {
     assign_string = (void (*)(void *, char*))dlsym(RTLD_NEXT,
       "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE6assignEPKc");
+    if (!assign_string) {
+      libstdcpp_not_found();
+    }
   }
   assign_string(token, "/dev/urandom");
   if (!random_init) {
     random_init = (void (*)(void *, void*))dlsym(RTLD_NEXT, __func__);
+    if (!random_init) {
+      libstdcpp_not_found();
+    }
   }
   random_init(this, token);
 }
@@ -270,10 +283,16 @@ void _ZNSt13random_device7_M_initERKSs(void* this,
   if (!assign_string) {
     assign_string = (void (*)(void *, char*))dlsym(RTLD_NEXT,
       "_ZNSs6assignEPKc");
+    if (!assign_string) {
+      libstdcpp_not_found();
+    }
   }
   assign_string(token, "/dev/urandom");
   if (!random_init) {
     random_init = (void (*)(void *, void*))dlsym(RTLD_NEXT, __func__);
+    if (!random_init) {
+      libstdcpp_not_found();
+    }
   }
   random_init(this, token);
 }
