@@ -1101,7 +1101,7 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
     return false;
   }
 
-  ASSERT(t, (syscall_hooks.size() == 1 && syscall_hooks[0].patch_region_length == 4,
+  ASSERT(t, (syscall_hooks.size() == 1 && syscall_hooks[0].patch_region_length == 4 &&
              memcmp(syscall_hooks[0].patch_region_bytes, &inst[1], 4) == 0))
     << "Unknown syscall hook";
 
