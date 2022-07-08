@@ -967,11 +967,9 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscallbuf_enabled = buffer_enabled;
 
 #ifdef __i386__
-  params.syscallhook_vsyscall_entry = (void*)__morestack;
   params.get_pc_thunks_start = &_get_pc_thunks_start;
   params.get_pc_thunks_end = &_get_pc_thunks_end;
 #else
-  params.syscallhook_vsyscall_entry = NULL;
   params.get_pc_thunks_start = NULL;
   params.get_pc_thunks_end = NULL;
 #endif

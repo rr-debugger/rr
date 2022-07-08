@@ -56,83 +56,20 @@
                     lebs
 
 #if defined(__i386__)
-/**
- * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
- * we otherwise couldn't wrap through LD_PRELOAD helpers.  Return the
- * *RAW* kernel return value, not the -1/errno mandated by POSIX.
- *
- * Remember, this function runs *below* the level of libc.  libc can't
- * know that its call to |__kernel_vsyscall()| has been re-routed to
- * us.
- */
-        .global __morestack
-        .hidden __morestack
-        .type __morestack, @function
+.text
+.set syscallbuf_stub_alt_stack, preload_thread_locals
+.set stub_scratch_1, preload_thread_locals + 8
+.set alt_stack_nesting_level, preload_thread_locals + 12
+.set saved_flags, preload_thread_locals + 16
 
-        .text
+.p2align 4
 
-        .set syscallbuf_stub_alt_stack, preload_thread_locals
-        .set stub_scratch_1, preload_thread_locals + 8
-        .set alt_stack_nesting_level, preload_thread_locals + 12
-        .set saved_flags, preload_thread_locals + 16
-
-        .p2align 4
 _syscallbuf_code_start:
-/* Insert a NOP here so no symbol has the same address as __morestack. Otherwise
-   in some configurations (gdb 7.7.1, Ubuntu 14.04) gdb sometimes maps the
-   __morestack address to _syscallbuf_code_start which defeats the morestack
-   hack. */
+/* Insert a NOP here so we have no symbol clashes. Otherwise
+   in some configurations (gdb 7.7.1, Ubuntu 14.04) gdb sometimes gets confused.
+ */
         nop
 
-/* See comments about morestack below. For x86-32 our setup doesn't need to be
-   as elaborate since we really only care about one entry function. */
-__morestack:
-        .cfi_startproc
-        call _switch_stack_vsyscall
-        popl (stub_scratch_1)
-        jmp _syscallbuf_final_exit_instruction
-        .cfi_endproc
-
-        .global _switch_stack_vsyscall
-        .hidden _switch_stack_vsyscall
-        .type _switch_stack_vsyscall, @function
-_switch_stack_vsyscall:
-        .cfi_startproc
-        movl %esp,(stub_scratch_1)
-        incl (alt_stack_nesting_level)
-        cmpl $1,(alt_stack_nesting_level)
-        jne 1f
-        movl (syscallbuf_stub_alt_stack),%esp
-1:
-        /* Set up stack frame so CFI stack walking works.
-           Push before-call ESP.
-         */
-        pushl (stub_scratch_1)
-        addl $4,(%esp)
-        /* Push return address EIP. */
-        mov %edi,(stub_scratch_1)
-        mov (%esp),%edi /* EDI == before-call ESP */
-        push -4(%edi)
-        mov (stub_scratch_1),%edi
-
-       .cfi_def_cfa_offset 0
-       .cfi_offset %eip, 0
-       .cfi_offset %esp, 4
-        call _syscall_hook_trampoline
-
-        /* Pop previous EIP */
-        lea 4(%esp),%esp
-
-        /* Restore previous ESP ... without modifying flags */
-        mov %eax,(stub_scratch_1)
-        mov (%esp),%eax
-        lea -4(%eax),%eax
-        mov %eax,(%esp)
-        mov (stub_scratch_1),%eax
-
-        pop %esp
-        ret
-        .cfi_endproc
 
 _syscallbuf_final_exit_instruction:
         jmp *(stub_scratch_1)
