@@ -411,7 +411,7 @@ struct rrcall_init_preload_params {
   int syscallbuf_enabled;
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
-  PTR(void) syscallhook_vsyscall_entry;
+  PTR(void) __unused;
   PTR(void) syscallbuf_code_start;
   PTR(void) syscallbuf_code_end;
   PTR(void) get_pc_thunks_start;
