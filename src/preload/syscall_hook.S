@@ -31,6 +31,16 @@
         ((val) & (0xFF << 0x30)) >> 0x30,       \
         ((val) & (0xFF << 0x38)) >> 0x38
 
+#define DW_OP_deref 0x06
+#define DW_OP_dup 0x12
+#define DW_OP_minus 0x1c
+#define DW_OP_lit(val) 0x30+val
+#define DW_OP_plus 0x22
+#define DW_OP_plus_uconst(const) 0x23, const
+
+#define DW_CFA_def_cfa_expression 0x0f
+#define DW_CFA_val_expression 0x16
+
 #define REG_AT_ADDR32(reg, addr)                                \
         .cfi_escape 0x10, /* DW_CFA_expression */               \
                     reg,                                        \
@@ -41,6 +51,20 @@
                     reg,                                        \
                     0x09, /* 9 byte expression follows */       \
                     DW_OP_CONST8U(addr)
+
+#define REG_AT_ADDR32_PLUS_OFFSET(reg, addr, offset)            \
+        .cfi_escape DW_CFA_val_expression,                      \
+                    reg,                                        \
+                    0x08, /* 8 byte expression follows */       \
+                    DW_OP_CONST4U(addr),                        \
+                    DW_OP_deref,                                \
+                    DW_OP_plus_uconst(offset);
+
+#define CFA_AT_ADDR32(addr) \
+        .cfi_escape DW_CFA_def_cfa_expression,                  \
+                0x06, /* 5 byte expression follows */           \
+                DW_OP_CONST4U(addr),                            \
+                DW_OP_deref;
 
 // 10 bytes LEB128 is enough to encode 64bit integer and we shouldn't
 // really need anything longer than that.
@@ -53,7 +77,17 @@
                     reg,                                                        \
                     (COUNT_LEB128(lebs) + 1), /* 1 byte + LEB128 bytes */       \
                     (0x70 + base), /* DW_OP_breg0 + base */                     \
-                    lebs
+                    lebs;
+
+#define REG_AT_REG_OFFSET_DEREF_OFFSET(reg, base, offset1, offset2)             \
+        .cfi_escape 0x10, /* DW_CFA_expression */                               \
+                    reg,                                                        \
+                    (2 + 1 + 2),                                                \
+                    (0x70 + base), /* DW_OP_breg0 + base */                     \
+                    offset1,                                                    \
+                    DW_OP_deref,                                                \
+                    DW_OP_plus_uconst(offset2);
+
 
 #if defined(__i386__)
 .text
@@ -61,6 +95,77 @@
 .set stub_scratch_1, preload_thread_locals + 8
 .set alt_stack_nesting_level, preload_thread_locals + 12
 .set saved_flags, preload_thread_locals + 16
+
+
+// Needs to match assembly_templates.py. Measured from the end of the call
+// instruction to before the jmp instruction.
+#define EXTENDED_JUMP_STUB_REGION_SIZE 23
+
+/*
+ * The syscallbuf extended jump patch has the form:
+ *
+ * call <syscallbuf_hook>
+ * pop %esl
+ * int $0x80
+ * <stub_code>
+ * jmpl
+ * <the relative jump address>
+ *
+ * The macros help read the relative jump address from memory and convert
+ * it to an absolute address. The idea is that during execution in the
+ * syscallbuf, our backtrace will look like:
+ *
+ *   < syscallbuf C code >
+ *   _syscall_hook_trampoline
+ *   < function that contains the patched syscall >
+ *
+ * except while executing in the actuall syscallhook stubs, where the back trace
+ * will look like:
+ *
+ *   _syscallbuf_hook_****
+ *   < function that contains the patched syscall >
+ *
+ * There are two things to note here:
+ *   1. We always omit the extended jump patch from the backtrace, because
+ *      we (currently) have no way to give GDB any unwind info for it.
+ *   2. While in the syscallbuf C code, we omit the syscallbuf_hook_* functions
+ *      from the backtrace. This is because we may switch out that frame for
+ *      the bail path, which would confuse GDB when attempting to leave a frame.
+ *      This setup is a bit weird, but it's not terrible, because we are essentially
+ *      modeling a set of leaf frames that tail call to each other, which is a
+ *      supported mode of operation and should thus not confused GDB too much.
+ */
+#define REL_JMP_FROM_JMP_INSTR(offset2) \
+        /* Move us to after the jmp instruction */                  \
+        DW_OP_plus_uconst(offset2),                                 \
+        DW_OP_dup,                                                  \
+        DW_OP_lit(4),                                               \
+        DW_OP_minus,                                                \
+        DW_OP_deref,                                                \
+        DW_OP_plus
+#define RIP_IS_AT_REL_JMP_OFFSET(base, offset1, offset2)                    \
+.cfi_escape DW_CFA_val_expression,                                          \
+                0x08 /* %eip */,                                            \
+                0xa, /* 10 byte expression follows */                       \
+                /* Compute the return address that's on the stack  */       \
+                (0x70 + base), /* DW_OP_breg0 + base */                     \
+                offset1,                                                    \
+                DW_OP_deref,                                                \
+                REL_JMP_FROM_JMP_INSTR(offset2);
+#define RIP_IS_AT_ADDR_REL_JMP_OFFSET(addr, offset2)                        \
+.cfi_escape DW_CFA_val_expression,                                          \
+                0x08 /* %eip */,                                            \
+                0xd, /* 13 byte expression follows */                       \
+                DW_OP_CONST4U(addr),                                        \
+                DW_OP_deref,                                                \
+                REL_JMP_FROM_JMP_INSTR(offset2);
+#define RIP_IS_AT_CFA_REL_JMP_OFFSET(offset1, offset2)                      \
+.cfi_escape DW_CFA_val_expression,                                          \
+                0x08 /* %eip */,                                            \
+                0xa, /* 13 byte expression follows */                       \
+                DW_OP_plus_uconst(offset1),                                 \
+                DW_OP_deref,                                                \
+                REL_JMP_FROM_JMP_INSTR(offset2);
 
 .p2align 4
 
@@ -76,6 +181,8 @@ _syscallbuf_final_exit_instruction:
 
 _syscall_hook_trampoline:
         .cfi_startproc
+        .cfi_offset %esp, 4;
+        RIP_IS_AT_CFA_REL_JMP_OFFSET(0x0, 0x5)
         /* Build a |struct syscall_info| by pushing all the syscall
          * args and the number onto the stack. */
                           /* struct syscall_info info; */
@@ -129,7 +236,7 @@ _syscall_hook_trampoline:
         pushl %ebp
 
         call syscall_hook
-        /* $eax = vsyscall_hook(&info); */
+        /* $eax = syscall_hook(&info); */
 
         movdqa 0x10(%esp),%xmm0
         movdqa 0x20(%esp),%xmm1
@@ -140,6 +247,13 @@ _syscall_hook_trampoline:
         movdqa 0x70(%esp),%xmm6
         movdqa 0x80(%esp),%xmm7
 
+        test %eax,%eax
+        jnz 2f
+
+        // Switch the syscallbuf hook frame to the bail path
+        movl $_syscall_hook_bail+1, 0x1c(%ebp)
+
+2:
         mov $saved_flags, %esp
         popfw
         /* From here on, non-application flag changes are not allowed */
@@ -148,9 +262,7 @@ _syscall_hook_trampoline:
         mov %ebp, %esp
         .cfi_def_cfa_register %esp
 
-        /* $eax is now the syscall return value.  Erase |info.no| from the
-         * stack so that we can restore the other registers we saved. */
-        lea 4(%esp),%esp
+        pop %eax
         .cfi_adjust_cfa_offset -4
 
         /* Contract of __kernel_vsyscall() and real syscalls is that even
@@ -189,18 +301,20 @@ _syscall_hook_trampoline:
 name:                           \
        .cfi_startproc;          \
        .cfi_def_cfa_offset 0;   \
-       .cfi_offset %eip, 0;     \
-       .cfi_offset %esp, 4
+       RIP_IS_AT_REL_JMP_OFFSET(0x04 /* esp */, 0x00, EXTENDED_JUMP_STUB_REGION_SIZE + 5) \
+       .cfi_offset %esp, 4;     \
+       addl $EXTENDED_JUMP_STUB_REGION_SIZE, (%esp); \
+       RIP_IS_AT_REL_JMP_OFFSET(0x04 /* esp */, 0x00, 5)
 
 #define SYSCALLHOOK_END(name)                                   \
         pop (stub_scratch_1);                                   \
         .cfi_adjust_cfa_offset -4;                              \
+        RIP_IS_AT_ADDR_REL_JMP_OFFSET(stub_scratch_1, 0x05)     \
         pop %esp;                                               \
         .cfi_same_value %esp;                                   \
-        REG_AT_ADDR32(0x08 /* %eip */, stub_scratch_1);         \
         jmp _syscallbuf_final_exit_instruction;                 \
        .cfi_endproc;                                            \
-       .size name, .-name
+       .size name, .-name;
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_3d_01_f0_ff_ff)
         call _syscall_hook_trampoline
@@ -210,6 +324,32 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_3d_01_f0_ff_ff)
 SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
         call _syscall_hook_trampoline
 SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
+
+.global _syscall_hook_bail
+.hidden _syscall_hook_bail
+.type _syscall_hook_bail, @function
+_syscall_hook_bail:
+.cfi_startproc
+        .cfi_def_cfa_offset 0;
+        .cfi_offset %esp, 4
+        RIP_IS_AT_REL_JMP_OFFSET(0x04 /* esp */, 0x00, 0x05)
+        nop
+        // We target our return here rather than the first instruction in the function,
+        // because gdb likes to back up a byte for function identification and gets confused.
+        pop (stub_scratch_1);
+        .cfi_def_cfa_offset -4;
+        RIP_IS_AT_ADDR_REL_JMP_OFFSET(stub_scratch_1, 0x05)
+        // GDB doesn't like stack adjustments in increments of 2, so use pushfl, rather than pushfw
+        pushfl
+        .cfi_def_cfa_offset 0;
+        subl $EXTENDED_JUMP_STUB_REGION_SIZE, (stub_scratch_1)
+        RIP_IS_AT_ADDR_REL_JMP_OFFSET(stub_scratch_1, EXTENDED_JUMP_STUB_REGION_SIZE + 0x05)
+        popfl
+        .cfi_def_cfa_offset -4;
+        jmp *(stub_scratch_1)
+nop
+ret
+.cfi_endproc
 
 /* Declare gcc get_pc thunks here so they're in a known region of code */
 
@@ -320,6 +460,23 @@ _syscall_hook_trampoline:
         movdqa 0x60(%rsp),%xmm6
         movdqa 0x70(%rsp),%xmm7
 
+        test %rax,%rax
+        jnz 2f
+
+        // Switch the syscallbuf hook frame to the bail path
+        lea (_syscall_hook_bail+1)(%rip), %rdi
+        movq %rdi, 0x48(%rbx)
+
+        // Canonicalize registers that are affected by syscall entry.
+        // We sometimes don't record a deferred event until we'we already
+        // hit the bail path syscall instruction, but want to pretend it
+        // hapened just before. By setting the registers here, replay will
+        // see that event point with the same register set we had during
+        // record.
+        movq $0x246, %r11
+        movq $-1, %rcx
+
+2:
         mov $saved_flags, %rsp
         popfw
         /* From here on, non-application flag changes are not allowed */
@@ -327,9 +484,9 @@ _syscall_hook_trampoline:
         mov %rbx,%rsp
         .cfi_def_cfa_register %rsp
 
-        /* On entrance, we pushed the %rax, the syscall number. But we don't
-           want to |pop %rax|, as that will overwrite our return value. Skip over it. */
-        pop %rdi
+        /* This restores either the original value of rax (if we're going out
+           via the bail path) or the syscall result (in the regular path). */
+        pop %rax
         .cfi_adjust_cfa_offset -8
 
         /* We don't really *need* to restore these, since the kernel could have
@@ -406,10 +563,14 @@ _syscallbuf_final_exit_instruction:
             0x77, offset; /* DW_OP_breg7, offset */
 
 #define RIP_IS_DEREF_RSP(offset) REG_AT_REG_OFFSET(0x10 /* %rip */, 7, offset)
+#define RIP_IS_DEREF_DEREF_RSP(offset1, offset2) \
+        REG_AT_REG_OFFSET_DEREF_OFFSET(0x10 /* %rip */, 7, offset1, offset2)
 
 /**
  * On syscallhook entry, the stack has been switched to the end of per-task
  * scratch space, then the old RSP and the return address have been pushed.
+ * The CFA of our syscallbuf frame is the value that rsp was at the syscall
+ * instruction we're patching (i.e. on the unswitched stack).
  */
 #define SYSCALLHOOK_START(name)    \
         .global name;              \
@@ -419,17 +580,28 @@ name:                              \
         .cfi_startproc;            \
         CFA_AT_RSP_OFFSET(8)       \
         RSP_IS_CFA                 \
-        RIP_IS_DEREF_RSP(0)
+        RIP_IS_DEREF_DEREF_RSP(0, 0x25)
 
+/* We skip returning into the extended jump patch, because we
+   don't have a CFI frame for it and this makes GDB slightly
+   happier. */
 #define SYSCALLHOOK_END(name)                                   \
-        pop (stub_scratch_1);                                   \
+        popq (stub_scratch_1);                                  \
         CFA_AT_RSP_OFFSET(0)                                    \
-        REG_AT_ADDR32(0x10 /* %rip */, stub_scratch_1);         \
-        pop %rsp;                                               \
+        REG_AT_ADDR32_PLUS_OFFSET(0x10 /* %rip */, stub_scratch_1, 0x25) \
+        popq %rsp;                                              \
         .cfi_def_cfa %rsp, 0;                                   \
+        xchgq %rsp, (stub_scratch_1);                           \
+        CFA_AT_ADDR32(stub_scratch_1)                           \
+        RIP_IS_DEREF_RSP(0x25);                                 \
+        mov 0x25(%rsp), %rsp;                                   \
+        RIP_IS_DEREF_RSP(0);                                    \
+        .cfi_def_cfa %rsp, 0;                                   \
+        xchgq %rsp, (stub_scratch_1);                           \
+        REG_AT_ADDR32(0x10 /* %rip */, stub_scratch_1);         \
         jmp _syscallbuf_final_exit_instruction;                 \
         .cfi_endproc;                                           \
-        .size name, .-name
+       .size name, .-name;
 
 /* See note above on what __morestack is for */
 .global __morestack
@@ -539,7 +711,6 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_c3_nop)
         pop (stub_scratch_1)
         .cfi_adjust_cfa_offset -8
         jmp _syscallbuf_final_exit_instruction
-
         .cfi_endproc
         .size _syscall_hook_trampoline_c3_nop, .-_syscall_hook_trampoline_c3_nop
 
@@ -608,6 +779,22 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_b8_ca_00_00_00)
         mov $0xca,%eax
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_b8_ca_00_00_00)
+
+.global _syscall_hook_bail
+.hidden _syscall_hook_bail
+.type _syscall_hook_bail, @function
+_syscall_hook_bail:
+.cfi_startproc
+CFA_AT_RSP_OFFSET(8)
+RSP_IS_CFA
+RIP_IS_DEREF_DEREF_RSP(0, 0x25)
+nop
+// We target our return here rather than the first instruction in the function,
+// because gdb likes to back up a byte for function identification and gets confused.
+nop
+retq
+.cfi_endproc
+
 
 #elif defined(__aarch64__)
         .text
@@ -762,6 +949,14 @@ _syscall_hook_trampoline:
 
         bl      syscall_hook
 
+        cbnz x0, 1f
+
+        // If the function requested the bail path, rewrite the return address
+        ldr x0, [sp, 688]
+        add x0, x0, 8
+        str x0, [sp, 688]
+
+1:
         movz    x29, #:abs_g1:alt_stack_nesting_level // assume 32bit address
         movk    x29, #:abs_g0_nc:alt_stack_nesting_level
         ldr     w30, [x29]
@@ -773,7 +968,7 @@ _syscall_hook_trampoline:
         // x30 should not use same_value since it's value is changed
         // by the function call instruction
         .cfi_restore x30
-        ldr     x8, [sp, 48]
+        LDPX_STACK(8, 0, 48)
         .cfi_same_value x8
         LDPX_STACK(1, 2, 64)
         LDPX_STACK(3, 4, 80)

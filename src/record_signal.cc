@@ -245,18 +245,6 @@ static remote_code_ptr get_stub_scratch_1(RecordTask* t) {
   RR_ARCH_FUNCTION(get_stub_scratch_1_arch, t->arch(), t);
 }
 
-template <typename Arch>
-static void get_stub_scratch_2_arch(RecordTask* t, void *buff, size_t sz) {
-  auto remote_locals = AddressSpace::preload_thread_locals_start()
-    .cast<preload_thread_locals<Arch>>();
-  auto remote_stub_scratch_2 = REMOTE_PTR_FIELD(remote_locals, stub_scratch_2);
-  t->read_bytes_helper(remote_stub_scratch_2, sz, buff);
-}
-
-static void get_stub_scratch_2(RecordTask* t, void *buff, size_t sz) {
-  RR_ARCH_FUNCTION(get_stub_scratch_2_arch, t->arch(), t, buff, sz);
-}
-
 /**
  * This function is responsible for handling breakpoints we set in syscallbuf
  * code to detect sigprocmask calls and syscallbuf exit. It's called when we
@@ -280,14 +268,25 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     // The address in stub_scratch_1 is already the correct address for this.
     if (t->arch() == aarch64) {
       uint64_t x15_x30[2];
-      get_stub_scratch_2(t, x15_x30, 16);
       Registers r = t->regs();
+      t->read_bytes_helper(r.x15(), sizeof(x15_x30), (void*)x15_x30);
+      r.set_ip(r.xlr()+4);
       r.set_x15(x15_x30[0]);
       r.set_xlr(x15_x30[1]);
+      // There's two possibilities here. Either we're in the bail path, in which
+      // case we're at a syscall instruction and are our of the critical region,
+      // or we're at a jump instruction to get us there, in which case we should
+      // evaluate it. TODO: Would it be better to instead make the jump instrcution
+      // part of the safe region?
+      if (!is_at_syscall_instruction(t, r.ip())) {
+        r.set_ip(r.ip()+12);
+        t->count_direct_jump();
+      }
       t->set_regs(r);
       t->count_direct_jump();
+    } else {
+      t->emulate_jump(get_stub_scratch_1(t));
     }
-    t->emulate_jump(get_stub_scratch_1(t));
 
     restore_sighandler_if_not_default(t, SIGTRAP);
     // Now we're back in application code so any pending stashed signals
@@ -364,6 +363,78 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
   LOG(debug) << "Disabling breakpoints at untraced syscalls";
   t->break_at_syscallbuf_untraced_syscalls = false;
   return true;
+}
+
+/**
+ * Pre-condition: We're at a syscall-entry or seccomp-trap event inside the
+ * syscallbuf.
+ *
+ * This function will abort the current syscall and moves us to the
+ * syscall-entry trap of the bail syscall.
+ */
+void leave_syscallbuf(RecordTask *t) {
+  // On aarch64, the syscallbuf final instruction breakpoint is on the
+  // bail path, so remove that breakpoint.
+  t->break_at_syscallbuf_final_instruction = false;
+
+  remote_ptr<const struct syscallbuf_record> desched_rec = t->desched_rec();
+  if (!desched_rec) {
+    LOG(debug) << "Desched initiated";
+
+    /* The tracee is (re-)entering the buffered syscall.  Stash
+     * away this breadcrumb so that we can figure out what syscall
+     * the tracee was in, and how much "scratch" space it carved
+     * off the syscallbuf, if needed. */
+    desched_rec = t->next_syscallbuf_record();
+    //t->push_event(DeschedEvent(desched_rec));
+    //int call = t->read_mem(REMOTE_PTR_FIELD(desched_rec, syscallno));
+
+    /* The descheduled syscall was interrupted by a signal, like
+     * all other may-restart syscalls, with the exception that
+     * this one has already been restarted (which we'll detect
+     * back in the main loop). */
+    //t->push_event(Event(interrupted, SyscallEvent(call, t->arch())));
+    //ev.desched_rec = desched_rec;
+  }
+
+  int call = t->read_mem(REMOTE_PTR_FIELD(desched_rec, syscallno));
+
+  t->exit_syscall();
+  t->write_mem(REMOTE_PTR_FIELD(desched_rec, aborted), (uint8_t)1);
+
+  Registers regs = t->regs();
+  regs.set_syscall_result((uintptr_t)-EINTR);
+  t->set_regs(regs);
+
+  LOG(debug) << "  resuming (and probably switching out) blocked `"
+             << syscall_name(call, t->arch()) << "'";
+
+  // Advance until we hit the syscall entry event outside the syscallbuf,
+  // since that's the state we expect to be in.
+  while (true) {
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    if (t->status().is_syscall()) {
+      if (t->is_in_syscallbuf()) {
+        continue;
+      }
+      break;
+    }
+    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      LOG(debug)
+          << "  (got exit, bailing out)";
+      t->push_event(Event::noop());
+      return;
+    }
+    int sig = t->stop_sig();
+    if (t->session().syscallbuf_desched_sig() == sig ||
+        PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {
+      LOG(debug) << "  dropping ignored " << signal_name(sig);
+      continue;
+    }
+
+    LOG(debug) << "  stashing " << signal_name(sig);
+    t->stash_sig();
+  }
 }
 
 /**
@@ -572,53 +643,12 @@ static void handle_desched_event(RecordTask* t) {
     return;
   }
 
-  if (t->desched_rec()) {
-    // We're already processing a desched. We probably reexecuted the
-    // system call (e.g. because a signal was processed) and the syscall
-    // blocked again. Carry on with the current desched.
-  } else {
-    /* This prevents the syscallbuf record counter from being
-     * reset until we've finished guiding the tracee through this
-     * interrupted call.  We use the record counter for
-     * assertions. */
-    ASSERT(t, !t->delay_syscallbuf_reset_for_desched);
-    t->delay_syscallbuf_reset_for_desched = true;
-    LOG(debug) << "Desched initiated";
+  // Get us out of this syscall so we can unwind the buffer and resume.
+  Registers regs = t->regs();
+  regs.set_original_syscallno((uintptr_t)-1);
+  t->set_regs(regs);
 
-    /* The tracee is (re-)entering the buffered syscall.  Stash
-     * away this breadcrumb so that we can figure out what syscall
-     * the tracee was in, and how much "scratch" space it carved
-     * off the syscallbuf, if needed. */
-    remote_ptr<const struct syscallbuf_record> desched_rec =
-        t->next_syscallbuf_record();
-    t->push_event(DeschedEvent(desched_rec));
-    int call = t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(), syscallno));
-
-    /* The descheduled syscall was interrupted by a signal, like
-     * all other may-restart syscalls, with the exception that
-     * this one has already been restarted (which we'll detect
-     * back in the main loop). */
-    t->push_event(Event(interrupted, SyscallEvent(call, t->arch())));
-    SyscallEvent& ev = t->ev().Syscall();
-    ev.desched_rec = desched_rec;
-  }
-
-  SyscallEvent& ev = t->ev().Syscall();
-  ev.regs = t->regs();
-  /* For some syscalls (at least poll) but not all (at least not read),
-   * repeated cont_syscall()s above of the same interrupted syscall
-   * can set $orig_eax to 0 ... for unclear reasons. Fix that up here
-   * otherwise we'll get a divergence during replay, which will not
-   * encounter this problem.
-   */
-  int call = t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(), syscallno));
-  ev.regs.set_original_syscallno(call);
-  t->set_regs(ev.regs);
-  // runnable_state_changed will observe us entering this syscall and change
-  // state to ENTERING_SYSCALL
-
-  LOG(debug) << "  resuming (and probably switching out) blocked `"
-             << syscall_name(call, ev.arch()) << "'";
+  leave_syscallbuf(t);
 }
 
 static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
@@ -632,71 +662,7 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
                << " because not in syscallbuf";
     return true;
   }
-
-  // Note that this will never fire on aarch64 in a signal stop
-  // since the ip has been moved to the syscall entry.
-  // We will catch it in the traced_syscall_entry case below.
-  // We will miss the exit for rrcall_notify_syscall_hook_exit
-  // but that should not be a big problem.
-  if (t->is_in_traced_syscall()) {
-    LOG(debug) << "Safe to deliver signal at " << t->ip()
-               << " because in traced syscall";
-    return true;
-  }
-
-  // Don't deliver signals just before entering rrcall_notify_syscall_hook_exit.
-  // At that point, notify_on_syscall_hook_exit will be set, but we have
-  // passed the point at which syscallbuf code has checked that flag.
-  // Replay will set notify_on_syscall_hook_exit when we replay towards the
-  // rrcall_notify_syscall_hook_exit *after* handling this signal, but
-  // that will be too late for syscallbuf to notice.
-  // It's OK to delay signal delivery until after rrcall_notify_syscall_hook_exit
-  // anyway.
-  if (t->is_at_traced_syscall_entry() &&
-      !is_rrcall_notify_syscall_hook_exit_syscall(t->regs().syscallno(), t->arch())) {
-    LOG(debug) << "Safe to deliver signal at " << t->ip()
-               << " because at entry to traced syscall";
-    return true;
-  }
-
-  // On aarch64, the untraced syscall here include both entry and exit
-  // if we are at a signal stop.
-  if (t->is_in_untraced_syscall() && t->desched_rec()) {
-    // Untraced syscalls always use the architecture of the process
-    LOG(debug) << "Safe to deliver signal at " << t->ip()
-               << " because tracee interrupted by desched of "
-               << syscall_name(t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(),
-                                                            syscallno)),
-                               t->arch());
-    return true;
-  }
-
-  if (t->is_in_untraced_syscall() && si->si_signo == SIGSYS &&
-      si->si_code == SYS_SECCOMP) {
-    LOG(debug) << "Safe to deliver signal at " << t->ip()
-               << " because signal is seccomp trap.";
-    return true;
-  }
-
-  // If the syscallbuf buffer hasn't been created yet, just delay the signal
-  // with no need to set notify_on_syscall_hook_exit; the signal will be
-  // delivered when rrcall_init_buffers is called.
-  if (t->syscallbuf_child) {
-    if (t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, locked)) & 2) {
-      LOG(debug) << "Safe to deliver signal at " << t->ip()
-                 << " because the syscallbuf is locked";
-      return true;
-    }
-
-    // A signal (e.g. seccomp SIGSYS) interrupted a untraced syscall in a
-    // non-restartable way. Defer it until SYS_rrcall_notify_syscall_hook_exit.
-    if (t->is_in_untraced_syscall()) {
-      // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
-      t->write_mem(
-          REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
-          (uint8_t)1);
-    }
-  }
+  (void)si;
 
   LOG(debug) << "Not safe to deliver signal at " << t->ip();
   return false;

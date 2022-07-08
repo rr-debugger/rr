@@ -72,9 +72,10 @@ static void process_syscall_arch(Task* t, int syscallno) {
   if (syscallno == t->session().syscall_number_for_rrcall_rdtsc()) {
     uint64_t rdtsc_value = static_cast<DiversionSession*>(&t->session())->next_rdtsc_value();
     LOG(debug) << "Faking rrcall_rdtsc syscall with value " << rdtsc_value;
-    remote_ptr<uint64_t> out_param(t->regs().arg1());
-    t->write_mem(out_param, rdtsc_value);
-    finish_emulated_syscall_with_ret(t, 0);
+    Registers r = t->regs();
+    r.set_dx(rdtsc_value >> 32);
+    t->set_regs(r);
+    finish_emulated_syscall_with_ret(t, (uint32_t)rdtsc_value);
     return;
   }
 

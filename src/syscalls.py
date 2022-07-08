@@ -1242,7 +1242,9 @@ set_thread_area = IrregularEmulatedSyscall(x86=243, x64=205)
 
 get_thread_area = IrregularEmulatedSyscall(x86=244, x64=211)
 io_setup = IrregularEmulatedSyscall(x86=245, x64=206, generic=0)
-io_destroy = UnsupportedSyscall(x86=246, x64=207, generic=1)
+# syscall 1 is common to get if a register gets corrupted. We just ENOSYS
+# it to avoid rr asserting for this kind of corruption.
+io_destroy = IrregularEmulatedSyscall(x86=246, x64=207, generic=1)
 io_getevents = UnsupportedSyscall(x86=247, x64=208, generic=4)
 io_submit = UnsupportedSyscall(x86=248, x64=209, generic=2)
 io_cancel = UnsupportedSyscall(x86=249, x64=210, generic=3)

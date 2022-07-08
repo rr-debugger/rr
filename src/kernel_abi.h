@@ -2051,6 +2051,21 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::sigcontext, sigcontext);
 
+  struct ucontext {
+    unsigned_long	       uc_flags;
+    ptr<struct ucontext> uc_link;
+    stack_t	             uc_stack;
+    struct sigcontext    uc_mcontext;
+    kernel_sigset_t	     uc_sigmask;
+  };
+
+  struct rt_sigframe {
+    ptr<char> pretcode;
+    struct ucontext uc;
+    siginfo_t info;
+    // Extended ISA state follows
+  };
+
   struct user_fpregs_struct {
     uint16_t cwd;
     uint16_t swd;
@@ -2273,6 +2288,24 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     uint32_t cr2;
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::sigcontext, sigcontext);
+
+  struct ucontext {
+    unsigned_long	       uc_flags;
+    ptr<struct ucontext> uc_link;
+    stack_t	             uc_stack;
+    struct sigcontext    uc_mcontext;
+    kernel_sigset_t	     uc_sigmask;
+  };
+
+  struct rt_sigframe {
+    ptr<char> pretcode;
+    int sig;
+    uint32_t pinfo;
+    uint32_t puc;
+    siginfo_t info;
+    struct ucontext uc;
+    // Extended ISA state follows
+  };
 
   struct user {
     user_regs_struct regs;

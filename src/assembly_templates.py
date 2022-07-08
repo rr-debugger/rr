@@ -14,13 +14,16 @@ class Field(object):
     def __init__(self, name, byte_length):
         self.name = name
         self.byte_length = byte_length
+        self.types = { 8: 'uint64_t', 4: 'uint32_t', 2: 'uint16_t', 1: 'uint8_t' }
 
     def __len__(self):
         return self.byte_length
 
     def c_type(self):
-        types = { 8: 'uint64_t', 4: 'uint32_t', 2: 'uint16_t', 1: 'uint8_t' }
-        return types[self.byte_length]
+        return self.types[self.byte_length] if (self.byte_length in self.types) else 'char'
+
+    def c_arr(self):
+        return '' if (self.byte_length in self.types) else '[' + str(self.byte_length) + ']'
 
 class ShiftField(object):
     """A field embedded at some bit shift offset in another object."""
@@ -36,6 +39,9 @@ class ShiftField(object):
     def c_type(self):
         types = { 8: 'uint64_t', 4: 'uint32_t', 2: 'uint16_t', 1: 'uint8_t' }
         return types[self.byte_length]
+
+    def c_arr(self):
+        return ''
 
     def patch_c_type(self):
         types = { 8: 'uint64_t', 4: 'uint32_t', 2: 'uint16_t', 1: 'uint8_t' }
@@ -96,10 +102,15 @@ templates = {
         RawBytes(0x8b, 0x25, 0x00, 0x10, 0x00, 0x70), # movl (syscallbuf_stub_alt_stack),%esp
         # dont_switch:
         RawBytes(0xff, 0x35, 0x08, 0x10, 0x00, 0x70), # pushl (stub_scratch_1)
-        RawBytes(0x68),                               # pushl $return_addr
-        Field('return_addr', 4),
-        RawBytes(0xe9),                               # jmp $trampoline_relative_addr
-        Field('trampoline_relative_addr', 4)
+        RawBytes(0xe8),                               # call $trampoline_relative_addr
+        Field('trampoline_relative_addr', 4),
+        # Restore the stack pointer
+        RawBytes(0x5c),                                     # popl %esp
+        RawBytes(0xcd, 0x80),                               # int $0x80
+        Field('stub', 20),
+        RawBytes(0xe9),       # jmp $return_addr_relative
+        Field('return_addr_relative', 4)
+
     ),
     'X86TrapInstructionStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
@@ -113,12 +124,16 @@ templates = {
         RawBytes(0x8b, 0x25, 0x00, 0x10, 0x00, 0x70), # movl (syscallbuf_stub_alt_stack),%esp
         # dont_switch:
         RawBytes(0xff, 0x35, 0x08, 0x10, 0x00, 0x70), # pushl (stub_scratch_1)
-        RawBytes(0x68),                               # pushl $return_addr
-        Field('return_addr', 4),
         RawBytes(0xb8),                               # movl $fake_syscall_no,%eax
         Field('fake_syscall_no', 4),
-        RawBytes(0xe9),                               # jmp $trampoline_relative_addr
-        Field('trampoline_relative_addr', 4)
+        RawBytes(0xe8),                               # call $trampoline_relative_addr
+        Field('trampoline_relative_addr', 4),
+        # Restore the stack pointer
+        RawBytes(0x5c),                                     # popl %esp
+        RawBytes(0xcd, 0x80),                               # int $0x80
+        Field('stub', 20),
+        RawBytes(0xe9),       # jmp $return_addr_relative
+        Field('return_addr_relative', 4)
     ),
     'X86SyscallStubRestore': AssemblyTemplate(
         RawBytes(0xe9),                               # jmp $trampoline_relative_addr
@@ -146,14 +161,16 @@ templates = {
         # dont_switch:
         RawBytes(0x48, 0x81, 0xec, 0x00, 0x01, 0x00, 0x00), # subq $256, %rsp
         # after adjust
+        # Push the stack pointer we saved above onto our new stack
         RawBytes(0xff, 0x34, 0x25, 0x10, 0x10, 0x00, 0x70), # pushq (stub_scratch_1)
-        RawBytes(0x50),                                     # pushq rax (just to make space for the next 2 instructions)
-        RawBytes(0xc7, 0x04, 0x24),                         # movl $return_addr_lo,(%rsp)
-        Field('return_addr_lo', 4),
-        RawBytes(0xc7, 0x44, 0x24, 0x04),                   # movl $return_addr_hi,(%rsp+4)
-        Field('return_addr_hi', 4),
-        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
+        RawBytes(0xff, 0x15, 0x1d, 0x00, 0x00, 0x00),       # callq *jump_target(%rip)
+        # Restore the stack pointer
+        RawBytes(0x5c),                                     # popq %rsp
+        RawBytes(0x0f, 0x05),                               # syscall
+        Field('stub', 20),
+        RawBytes(0xff, 0x25, 0x08, 0x00, 0x00, 0x00),       # jmp *8(%rip)
         Field('jump_target', 8),
+        Field('return_addr', 8)
     ),
     'X64TrapInstructionStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
@@ -170,15 +187,16 @@ templates = {
         RawBytes(0x48, 0x81, 0xec, 0x00, 0x01, 0x00, 0x00), # subq $256, %rsp
         # after adjust
         RawBytes(0xff, 0x34, 0x25, 0x10, 0x10, 0x00, 0x70), # pushq (stub_scratch_1)
-        RawBytes(0x50),                                     # pushq rax (just to make space for the next 2 instructions)
-        RawBytes(0xc7, 0x04, 0x24),                         # movl $return_addr_lo,(%rsp)
-        Field('return_addr_lo', 4),
-        RawBytes(0xc7, 0x44, 0x24, 0x04),                   # movl $return_addr_hi,(%rsp+4)
-        Field('return_addr_hi', 4),
         RawBytes(0xb8),                                     # movl $fake_syscall_no,%eax
         Field('fake_syscall_no', 4),
-        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
+        RawBytes(0xff, 0x15, 0x1d, 0x00, 0x00, 0x00),       # callq *jump_target(%rip)
+        # Restore the stack pointer
+        RawBytes(0x5c),                                     # popq %rsp
+        RawBytes(0x0f, 0x05),                               # syscall
+        Field('stub', 20),
+        RawBytes(0xff, 0x25, 0x08, 0x00, 0x00, 0x00),       # jmp *8(%rip)
         Field('jump_target', 8),
+        Field('return_addr', 8)
     ),
     'X64SyscallStubRestore': AssemblyTemplate(
         RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
@@ -232,7 +250,8 @@ def generate_match_method(byte_array, template):
     fields = template.fields()
     field_types = [f.c_type() for f in fields]
     field_names = [f.name for f in fields]
-    args = ', ' + ', '.join("%s* %s" % (t, n) for t, n in zip(field_types, field_names)) \
+    field_arrs = [f.c_arr() for f in fields]
+    args = ', ' + ', '.join("%s (*%s)%s" % (t, n, a) for t, n, a in zip(field_types, field_names, field_arrs)) \
            if fields else ''
 
     s.write('  static bool match(const uint8_t* buffer %s) {\n' % (args,))
@@ -240,8 +259,8 @@ def generate_match_method(byte_array, template):
     for chunk in template.chunks:
         if isinstance(chunk, Field):
             field_name = chunk.name
-            s.write('    memcpy(%s, &buffer[%d], sizeof(*%s));\n'
-                    % (field_name, offset, field_name))
+            s.write('    memcpy(%s, &buffer[%d], %d);\n'
+                    % (field_name, offset, len(chunk)))
         elif isinstance(chunk, ShiftField):
             s.write('    (void)%s;' % chunk.name)
             s.write('    assert(0 && "Matching not implemented for ShiftField");')
@@ -256,8 +275,8 @@ def generate_match_method(byte_array, template):
 def generate_substitute_chunk(s, chunk, byte_array, offset):
     if isinstance(chunk, Field):
         field_name = chunk.name
-        s.write('    memcpy(&buffer[%d], &%s, sizeof(%s));\n'
-                % (offset, field_name, field_name))
+        s.write('    memcpy(&buffer[%d], &%s, %d);\n'
+                % (offset, field_name if chunk.c_arr() == '' else '*'+field_name, len(chunk)))
     elif isinstance(chunk, ShiftField):
         generate_substitute_chunk(s, chunk.parent, byte_array, offset);
         typ = chunk.patch_c_type()
@@ -275,7 +294,8 @@ def generate_substitute_method(byte_array, template):
     fields = template.fields()
     field_types = [f.c_type() for f in fields]
     field_names = [f.name for f in fields]
-    args = ', ' + ', '.join("%s %s" % (t, n) for t, n in zip(field_types, field_names)) \
+    field_arrs = [f.c_arr() for f in fields]
+    args = ', ' + ', '.join("%s %s%s" % (t, n, a) for t, n, a in zip(field_types, field_names, field_arrs)) \
            if fields else ''
 
     s.write('  static void substitute(uint8_t* buffer %s) {\n' % (args,))
