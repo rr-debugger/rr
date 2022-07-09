@@ -74,6 +74,13 @@ int main(void) {
 
   unlink(addr.sun_path);
 
+  // Make sure the syscallbuf doesn't crash on an invalid fd
+  int procfd = open("/proc/self/mem", O_RDONLY);
+  test_assert(procfd >= 0);
+  test_assert(-1 == getsockopt(procfd, SOL_SOCKET, SO_PASSCRED, &got_opt,
+                               &got_opt_len));
+  test_assert(errno == ENOTSOCK);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
