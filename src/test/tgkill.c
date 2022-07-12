@@ -4,9 +4,6 @@
 
 static int num_signals_caught;
 
-#define tgkill(tgid, tid, sig) \
-  syscall(SYS_tgkill, (int)(tgid), (int)(tid), (int)(sig))
-
 static void sighandler(int sig) {
   atomic_printf("Task %d got signal %d\n", sys_gettid(), sig);
   ++num_signals_caught;

@@ -388,6 +388,9 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
       (SyscallWrapper)dlsym(RTLD_DEFAULT, "spurious_desched_syscall");
   return ret ? ret : default_syscall_wrapper;
 }
+/* Old systems don't have these functions, re-define using the syscall */
+#define tgkill(tgid, tid, sig) \
+  syscall(SYS_tgkill, (int)(tgid), (int)(tid), (int)(sig))
 
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
