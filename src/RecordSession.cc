@@ -2274,7 +2274,8 @@ static string lookup_by_path(const string& name) {
     const TraceUuid* trace_id,
     bool use_audit,
     bool unmap_vdso,
-    bool force_asan_active) {
+    bool force_asan_active,
+    bool force_tsan_active) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -2330,8 +2331,12 @@ static string lookup_by_path(const string& name) {
     CLEAN_FATAL() << "Provided tracee '" << argv[0] << "' is a directory, not an executable";
   }
   ExeInfo exe_info = read_exe_info(full_path);
-  if (force_asan_active && exe_info.sanitizer_exclude_memory_ranges.empty()) {
-    exe_info.setup_asan_memory_ranges();
+  if (exe_info.sanitizer_exclude_memory_ranges.empty()) {
+    if (force_asan_active) {
+      exe_info.setup_asan_memory_ranges();
+    } else if (force_tsan_active) {
+      exe_info.setup_tsan_memory_ranges();
+    }
   }
 
   // Strip any LD_PRELOAD that an outer rr may have inserted
