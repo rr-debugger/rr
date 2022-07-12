@@ -97,6 +97,8 @@ RecordCommand RecordCommand::singleton(
     "  --stap-sdt                 Enables the use of SystemTap statically-\n"
     "                             defined tracepoints\n"
     "  --asan                     Override heuristics and always enable ASAN\n"
+    "                             compatibility.\n"
+    "  --tsan                     Override heuristics and always enable TSAN\n"
     "                             compatibility.\n");
 
 struct RecordFlags {
@@ -174,6 +176,9 @@ struct RecordFlags {
   /* True if we should always enable ASAN compatibility. */
   bool asan;
 
+  /* True if we should always enable TSAN compatibility. */
+  bool tsan;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -196,7 +201,8 @@ struct RecordFlags {
         syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
         stap_sdt(false),
         unmap_vdso(false),
-        asan(false) {}
+        asan(false),
+        tsan(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -257,6 +263,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 15, "unmap-vdso", NO_PARAMETER },
     { 16, "disable-avx-512", NO_PARAMETER },
     { 17, "asan", NO_PARAMETER },
+    { 18, "tsan", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -467,6 +474,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 17:
       flags.asan = true;
       break;
+    case 18:
+      flags.tsan = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -646,7 +656,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get(),
-      flags.stap_sdt, flags.unmap_vdso, flags.asan);
+      flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();

@@ -70,7 +70,8 @@ public:
       const TraceUuid* trace_id = nullptr,
       bool use_audit = false,
       bool unmap_vdso = false,
-      bool force_asan_active = false);
+      bool force_asan_active = false,
+      bool force_tsan_active = false);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
