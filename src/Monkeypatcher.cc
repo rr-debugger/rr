@@ -673,29 +673,50 @@ static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,
 }
 
 template <typename ExtendedJumpPatch>
-static bool match_extended_jump_patch(uint8_t patch[],
- uint64_t *return_addr);
+static bool match_extended_jump_patch(Task* t,
+  uint8_t patch[], uint64_t* return_addr, vector<uint8_t>* instruction);
 
 template <>
 bool match_extended_jump_patch<X64SyscallStubExtendedJump>(
-      uint8_t patch[], uint64_t *return_addr) {
+      Task*, uint8_t patch[], uint64_t* return_addr, vector<uint8_t>* instruction) {
   uint32_t return_addr_lo, return_addr_hi;
   uint64_t jmp_target;
   if (!X64SyscallStubExtendedJump::match(patch, &return_addr_lo, &return_addr_hi, &jmp_target)) {
     return false;
   }
+  *instruction = rr::syscall_instruction(x86_64);
   *return_addr = return_addr_lo | (((uint64_t)return_addr_hi) << 32);
   return true;
 }
 
 template <>
+bool match_extended_jump_patch<X64TrapInstructionStubExtendedJump>(
+      Task* t, uint8_t patch[], uint64_t* return_addr, vector<uint8_t>* instruction) {
+  uint32_t return_addr_lo, return_addr_hi, fake_syscall_no;
+  uint64_t jmp_target;
+  if (!X64TrapInstructionStubExtendedJump::match(patch, &return_addr_lo, &return_addr_hi,
+                                                 &fake_syscall_no, &jmp_target)) {
+    return false;
+  }
+  *return_addr = return_addr_lo | (((uint64_t)return_addr_hi) << 32);
+  if ((int)fake_syscall_no == t->session().syscall_number_for_rrcall_rdtsc()) {
+    instruction->resize(sizeof(rdtsc_insn));
+    memcpy(instruction->data(), rdtsc_insn, instruction->size());
+  } else {
+    ASSERT(t, false) << "Unknown fake-syscall number " << fake_syscall_no;
+  }
+  return true;
+}
+
+template <>
 bool match_extended_jump_patch<X86SyscallStubExtendedJump>(
-      uint8_t patch[], uint64_t *return_addr) {
+      Task*, uint8_t patch[], uint64_t* return_addr, vector<uint8_t>* instruction) {
   uint32_t return_addr_32, jmp_target_relative;
   if (!X86SyscallStubExtendedJump::match(patch, &return_addr_32, &jmp_target_relative)) {
     return false;
   }
   *return_addr = return_addr_32;
+  *instruction = rr::syscall_instruction(x86);
   return true;
 }
 
@@ -721,21 +742,32 @@ void substitute_replacement_patch<X86SyscallStubRestore>(uint8_t *buffer, uint64
   X86SyscallStubRestore::substitute(buffer, (uint32_t)offset);
 }
 
-template <typename ExtendedJumpPatch, typename ReplacementPatch>
+template <typename ExtendedJumpPatch, typename FakeSyscallExtendedJumpPatch, typename ReplacementPatch>
 static void unpatch_extended_jumps(Monkeypatcher& patcher,
                                    Task* t) {
+  // If these were the same size then the logic below wouldn't work.
+  static_assert(ExtendedJumpPatch::size < FakeSyscallExtendedJumpPatch::size);
   for (auto patch : patcher.syscallbuf_stubs) {
     const syscall_patch_hook &hook = *patch.second.hook;
-    ASSERT(t, patch.second.size == ExtendedJumpPatch::size);
-    uint8_t bytes[ExtendedJumpPatch::size];
-    t->read_bytes_helper(patch.first, sizeof(bytes), bytes);
-    uint64_t return_addr;
-    if (!match_extended_jump_patch<ExtendedJumpPatch>(bytes, &return_addr)) {
-      ASSERT(t, false) << "Failed to match extended jump patch at " << patch.first;
-      return;
+    uint8_t bytes[FakeSyscallExtendedJumpPatch::size];
+    t->read_bytes_helper(patch.first, patch.second.size, bytes);
+    uint64_t return_addr = 0;
+    vector<uint8_t> syscall;
+    if (patch.second.size == ExtendedJumpPatch::size) {
+      if (!match_extended_jump_patch<ExtendedJumpPatch>(
+              t, bytes, &return_addr, &syscall)) {
+        ASSERT(t, false) << "Failed to match extended jump patch at " << patch.first;
+        return;
+      }
+    } else if (patch.second.size == FakeSyscallExtendedJumpPatch::size) {
+      if (!match_extended_jump_patch<FakeSyscallExtendedJumpPatch>(
+              t, bytes, &return_addr, &syscall)) {
+        ASSERT(t, false) << "Failed to match trap-instruction extended jump patch at " << patch.first;
+        return;
+      }
+    } else {
+      ASSERT(t, false) << "Unknown patch size " << patch.second.size;
     }
-
-    std::vector<uint8_t> syscall = rr::syscall_instruction(t->arch());
 
     // Replace with
     //  extended_jump:
@@ -745,9 +777,9 @@ static void unpatch_extended_jumps(Monkeypatcher& patcher,
     //    jmp *(return_addr)
     // As long as there are not relative branches or anything, this should
     // always be correct.
-    ASSERT(t, hook.patch_region_length + ReplacementPatch::size + syscall.size() <
-              ExtendedJumpPatch::size);
-    uint8_t *ptr = bytes;
+    size_t new_patch_size = hook.patch_region_length + ReplacementPatch::size + syscall.size();
+    ASSERT(t, new_patch_size <= sizeof(bytes));
+    uint8_t* ptr = bytes;
     if (!(hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST)) {
       memcpy(ptr, syscall.data(), syscall.size());
       ptr += syscall.size();
@@ -759,8 +791,8 @@ static void unpatch_extended_jumps(Monkeypatcher& patcher,
       ptr += syscall.size();
     }
     substitute_replacement_patch<ReplacementPatch>(ptr,
-      patch.first.as_int()+(ptr-bytes), return_addr);
-    t->write_bytes_helper(patch.first, sizeof(bytes), bytes);
+      patch.first.as_int() + new_patch_size, return_addr);
+    t->write_bytes_helper(patch.first, new_patch_size, bytes);
   }
 }
 
@@ -769,13 +801,18 @@ static void unpatch_syscalls_arch(Monkeypatcher &patcher, Task *t);
 
 template <>
 void unpatch_syscalls_arch<X86Arch>(Monkeypatcher &patcher, Task *t) {
+  // There is no 32-bit equivalent to X64TrapInstructionStubExtendedJump.
+  // We just pass the X64TrapInstructionStubExtendedJump; its length
+  // will never match any jump stub for 32-bit.
   return unpatch_extended_jumps<X86SyscallStubExtendedJump,
+                                X64TrapInstructionStubExtendedJump,
                                 X86SyscallStubRestore>(patcher, t);
 }
 
 template <>
 void unpatch_syscalls_arch<X64Arch>(Monkeypatcher &patcher, Task *t) {
   return unpatch_extended_jumps<X64SyscallStubExtendedJump,
+                                X64TrapInstructionStubExtendedJump,
                                 X64SyscallStubRestore>(patcher, t);
 }
 

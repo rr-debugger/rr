@@ -472,6 +472,8 @@ enum class TrappedInstruction {
 /* If |t->ip()| points at a decoded instruction, return the instruction */
 TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip);
 
+extern const uint8_t rdtsc_insn[2];
+
 /* Return the length of the TrappedInstruction */
 size_t trapped_instruction_len(TrappedInstruction insn);
 

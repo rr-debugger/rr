@@ -5,6 +5,15 @@
 char path1[PATH_MAX];
 char path2[PATH_MAX];
 
+void do_rdtsc(void) {
+#ifdef __x86_64__
+    asm volatile ("rdtsc\n\t"
+                  "mov %%rax,%%rcx\n\t" /* make it bufferable */
+                  ::: "eax", "edx");
+#endif
+    /* We don't buffer RDTSC on i386 so nothing to test there */
+}
+
 int main(int argc, char **argv) {
     if (argc == 2) {
         test_assert(strcmp(argv[1], "--inner") == 0);
@@ -60,12 +69,17 @@ int main(int argc, char **argv) {
         }
         test_assert(0 == setrlimit(RLIMIT_STACK, &lim1));
 
+        // Check that rdtsc gets unpatched
+        do_rdtsc();
+
         if (running_under_rr()) {
             rr_detach_teleport();
         }
 
         test_assert(0 == getrlimit(RLIMIT_STACK, &lim2));
         test_assert(0 == memcmp(&lim1, &lim2, sizeof(struct rlimit)));
+
+        do_rdtsc();
 
         newval = 2;
         test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off64_t)(uintptr_t)&stackval));

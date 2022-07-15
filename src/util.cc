@@ -1900,7 +1900,8 @@ int get_num_cpus() {
   return CPU_COUNT(&affinity_mask);
 }
 
-static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
+const uint8_t rdtsc_insn[2] = { 0x0f, 0x31 };
+
 static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
 static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
 static const uint8_t int3_insn[] = { 0xcc };
