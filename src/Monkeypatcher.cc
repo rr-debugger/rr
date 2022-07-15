@@ -777,7 +777,7 @@ static void unpatch_extended_jumps(Monkeypatcher& patcher,
     //    jmp *(return_addr)
     // As long as there are not relative branches or anything, this should
     // always be correct.
-    size_t new_patch_size = hook.patch_region_length + ReplacementPatch::size + syscall.size();
+    size_t new_patch_size = hook.patch_region_length + syscall.size() + ReplacementPatch::size;
     ASSERT(t, new_patch_size <= sizeof(bytes));
     uint8_t* ptr = bytes;
     if (!(hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST)) {
@@ -791,7 +791,7 @@ static void unpatch_extended_jumps(Monkeypatcher& patcher,
       ptr += syscall.size();
     }
     substitute_replacement_patch<ReplacementPatch>(ptr,
-      patch.first.as_int() + new_patch_size, return_addr);
+      patch.first.as_int() + hook.patch_region_length + syscall.size(), return_addr);
     t->write_bytes_helper(patch.first, new_patch_size, bytes);
   }
 }
