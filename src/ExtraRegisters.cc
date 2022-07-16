@@ -220,8 +220,9 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   // Apparently before any AVX registers are used, the feature bit is not set
   // in the XSAVE data, so we'll just return 0 for them here.
   const uint64_t* xsave_features_ = xsave_features(data_);
-  if (reg_data.xsave_feature_bit >= 0 && xsave_features_ &&
-      !(*xsave_features_ & (1 << reg_data.xsave_feature_bit))) {
+  if (reg_data.xsave_feature_bit >= 0 &&
+      (!xsave_features_ ||
+       !(*xsave_features_ & (1 << reg_data.xsave_feature_bit)))) {
     memset(buf, 0, reg_data.size);
   } else {
     DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
