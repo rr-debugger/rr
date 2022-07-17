@@ -891,7 +891,9 @@ retq
 _syscallbuf_code_start:
 
 _syscall_hook_trampoline:
-        // stack frame:
+        // parent frame:
+        // 0 (688): lr from the extended jump patch [this gets rewritten here in the bail path]
+        // this stack frame:
         // 208-688: q2 - q31
         // 128-200: x10 - x18
         // 112-128: x7, x9
@@ -952,6 +954,7 @@ _syscall_hook_trampoline:
         cbnz x0, 1f
 
         // If the function requested the bail path, rewrite the return address
+        // N.B.: This modifies the stack address saved in the parent frame.
         ldr x0, [sp, 688]
         add x0, x0, 8
         str x0, [sp, 688]

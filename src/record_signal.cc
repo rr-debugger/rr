@@ -298,7 +298,7 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     LOG(debug) << "Reached syscallstub exit instruction, singlestepping to "
                   "enable signal dispatch";
     ASSERT(t, t->arch() == aarch64 && t->syscallstub_exit_breakpoint);
-    auto retaddr_addr = t->syscallstub_exit_breakpoint.to_data_ptr<uint8_t>() + 3 * 4;
+    auto retaddr_addr = t->syscallstub_exit_breakpoint.to_data_ptr<uint8_t>() + 4;
     uint64_t retaddr;
     t->read_bytes_helper(retaddr_addr, sizeof(retaddr), &retaddr);
     Registers r = t->regs();

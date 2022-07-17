@@ -500,8 +500,8 @@ remote_code_ptr Monkeypatcher::get_jump_stub_exit_breakpoint(remote_code_ptr ip,
   --it;
   patched_syscall *ps = &syscall_stub_list[it->second];
   auto bp = it->first + ps->size - ps->safe_suffix;
-  if (pp == bp - 4 || pp == bp - 8) {
-    return remote_code_ptr((it->first + ps->size - 4).as_int());
+  if (pp == bp - 4 || pp == bp - 8 || pp == bp - 12) {
+    return remote_code_ptr((it->first + ps->size - 12).as_int());
   }
   return nullptr;
 }
@@ -717,13 +717,13 @@ bool patch_syscall_with_hook_arch<ARM64Arch>(Monkeypatcher& patcher,
     2 * 4,
     /**
      * safe_suffix:
-     * We've returned from syscallbuf and continue execution
-     * won't hit syscallbuf breakpoint
-     * (this also include the 8 bytes that stores the return address)
-     * Note that stack restore instruction also belongs to the syscallbuf return path
-     * However, since it is still using the scratch memory,
-     * it doesn't belong to the safe area.
-     * The caller needs to have special handling for that instruction.
+     * The safe suffix are all instructions that are no longer using syscallbuf
+     * private stack memory. On aarch64, that is the bail path svc instruction
+     * and the final jump instruction (including the 8 byte return address).
+     * See the detailed extended jump patch assembly above for details.
+     * Note that the stack restore instructions also occurr on the syscallbuf
+     * return path, but are not considered part of the safe suffix, since they
+     * still rely on the syscallbuf stack memory to function properly.
      */
     2 * 4 + 8
   });
