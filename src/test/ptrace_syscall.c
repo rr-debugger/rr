@@ -45,10 +45,10 @@ int main(void) {
   if (ret > 0) {
     test_assert((offsetof(struct ptrace_syscall_info, entry) + sizeof(info->entry)) == ret);
     test_assert(info->op == PTRACE_SYSCALL_INFO_ENTRY);
-    test_assert(info->instruction_pointer == (__u64)regs.IP);
-    test_assert(info->stack_pointer == (__u64)(uintptr_t)regs.SP);
+    test_assert(info->instruction_pointer == (uintptr_t)regs.IP);
+    test_assert(info->stack_pointer == (uintptr_t)regs.SP);
     test_assert(info->entry.nr == SYSCALLNO);
-    test_assert(info->entry.args[0] == (__u64)regs.SYSCALL_ARG1);
+    test_assert(info->entry.args[0] == (uintptr_t)regs.SYSCALL_ARG1);
   } else {
     test_assert(errno == EIO);
   }
@@ -92,9 +92,9 @@ int main(void) {
   if (ret > 0) {
     test_assert((offsetof(struct ptrace_syscall_info, exit) + sizeof(uint64_t) + sizeof(uint8_t)) == ret);
     test_assert(info->op == PTRACE_SYSCALL_INFO_EXIT);
-    test_assert(info->instruction_pointer == (__u64)regs.IP);
-    test_assert(info->stack_pointer == (__u64)(uintptr_t)regs.SP);
-    test_assert(info->exit.rval == (__s64)regs.SYSCALL_RESULT);
+    test_assert(info->instruction_pointer == (uintptr_t)regs.IP);
+    test_assert(info->stack_pointer == (uintptr_t)regs.SP);
+    test_assert(info->exit.rval == (intptr_t)regs.SYSCALL_RESULT);
   } else {
     test_assert(errno == EIO);
   }
