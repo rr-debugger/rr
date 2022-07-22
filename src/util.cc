@@ -1074,7 +1074,7 @@ vector<CPUIDRecord> all_cpuid_records() {
 #ifdef SYS_arch_prctl
 #define RR_ARCH_PRCTL(a, b) syscall(SYS_arch_prctl, a, b)
 #else
-#define RR_ARCH_PRCTL(a, b) -1
+#define RR_ARCH_PRCTL(a, b) ((void)a, (void)b, -1)
 #endif
 
 bool cpuid_faulting_works() {
