@@ -1312,7 +1312,7 @@ timer_settime = EmulatedSyscall(x86=260, x64=223, generic=110, arg4="typename Ar
 timer_gettime = EmulatedSyscall(x86=261, x64=224, generic=108, arg2="typename Arch::itimerspec")
 timer_getoverrun = EmulatedSyscall(x86=262, x64=225, generic=109)
 timer_delete = EmulatedSyscall(x86=263, x64=226, generic=111)
-clock_settime = UnsupportedSyscall(x86=264, x64=227, generic=112)
+clock_settime = EmulatedSyscall(x86=264, x64=227, generic=112, arg2="typename Arch::timespec")
 
 #  int clock_gettime(clockid_t clk_id, struct timespec *tp);
 #
@@ -1693,7 +1693,7 @@ io_pgetevents = UnsupportedSyscall(x86=385, x64=333, generic=292)
 rseq = IrregularEmulatedSyscall(x86=386, x64=334, generic=293)
 
 clock_gettime64 = EmulatedSyscall(x86=403, arg2="typename Arch::Arch64::timespec")
-clock_settime64 = UnsupportedSyscall(x86=404)
+clock_settime64 = EmulatedSyscall(x86=404, arg2="typename Arch::Arch64::timespec")
 clock_adjtime64 = EmulatedSyscall(x86=405, arg2="typename Arch::Arch64::timex")
 clock_getres_time64 = EmulatedSyscall(x86=406, arg2="typename Arch::Arch64::timespec")
 clock_nanosleep_time64 = IrregularEmulatedSyscall(x86=407)

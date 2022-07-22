@@ -10,9 +10,10 @@ static void breakpoint(void) {
 int main(void) {
   struct timespec ts;
   struct timeval tv;
-  int i;
+  int i, err;
 
-  clock_getres(CLOCK_MONOTONIC, &ts);
+  err = clock_getres(CLOCK_MONOTONIC, &ts);
+  test_assert(err == 0);
   atomic_printf("Clock resolution is >= %g us\n", ((double)ts.tv_nsec) / 1.0e3);
 
   memset(&ts, 0, sizeof(ts));
@@ -23,7 +24,8 @@ int main(void) {
     struct timespec ts_now;
     struct timeval tv_now;
 
-    clock_gettime(CLOCK_MONOTONIC, &ts_now);
+    err = clock_gettime(CLOCK_MONOTONIC, &ts_now);
+    test_assert(err == 0);
     test_assert(ts.tv_sec < ts_now.tv_sec ||
                 (ts.tv_sec == ts_now.tv_sec && ts.tv_nsec <= ts_now.tv_nsec));
     ts = ts_now;
@@ -35,7 +37,8 @@ int main(void) {
     /* technically gettimeofday() isn't monotonic, but the
      * value of this check is higher than the remote
      * possibility of a spurious failure */
-    gettimeofday(&tv_now, NULL);
+    err = gettimeofday(&tv_now, NULL);
+    test_assert(err == 0);
     test_assert(tv.tv_sec < tv_now.tv_sec ||
                 (tv.tv_sec == tv_now.tv_sec && tv.tv_usec <= tv_now.tv_usec));
     tv = tv_now;
@@ -45,6 +48,12 @@ int main(void) {
                   (long long int)tv.tv_usec);
   }
   breakpoint();
+
+  // Just make sure that rr has this system call. We don't actually try changing
+  // CLOCK_REALTIME, just in case we're root and actually have permissions to do
+  // that.
+  err = clock_settime(CLOCK_MONOTONIC, &ts);
+  test_assert(err == -1 && errno == EINVAL);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
