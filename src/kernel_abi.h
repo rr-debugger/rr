@@ -2014,8 +2014,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     uint64_t fs;
     uint64_t gs;
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_regs_struct,
-                      user_regs_struct);
+  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86_64, ::user_regs_struct,
+                          user_regs_struct);
 
   struct sigcontext {
     uint64_t r8;

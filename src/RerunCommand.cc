@@ -219,7 +219,7 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
   }
   union {
     NativeArch::user_regs_struct gp_regs;
-    uintptr_t regs_values[sizeof(struct user_regs_struct) / sizeof(uintptr_t)];
+    uintptr_t regs_values[sizeof(NativeArch::user_regs_struct) / sizeof(uintptr_t)];
   };
   bool got_gp_regs = false;
   bool first = true;
