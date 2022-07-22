@@ -107,7 +107,7 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
 
 static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
                                  const TraceFrame& frame,
-                                 bool dump_raw) {
+                                 const DumpFlags& flags) {
   if (frame.event().type() != EV_SYSCALLBUF_FLUSH) {
     return;
   }
@@ -130,7 +130,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
             (long)record->ret, (long)record->size,
             record->desched ? ", desched:1" : "",
             record->replay_assist ? ", replay_assist:1" : "");
-    if (dump_raw) {
+    if (flags.raw_dump) {
       fprintf(out, "  ");
       for (unsigned long i = 0; i < record->size; ++i) {
         fprintf(out, "%2.2x", *(record_ptr + (uintptr_t)i));
@@ -142,6 +142,22 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
       notifying_abort();
     }
     record_ptr += stored_record_size(record->size);
+  }
+  if (flags.dump_mmaps) {
+    for (auto& record : frame.event().SyscallbufFlush().mprotect_records) {
+      char prot_flags[] = "rwx";
+      if (!(record.prot & PROT_READ)) {
+        prot_flags[0] = '-';
+      }
+      if (!(record.prot & PROT_WRITE)) {
+        prot_flags[1] = '-';
+      }
+      if (!(record.prot & PROT_EXEC)) {
+        prot_flags[2] = '-';
+      }
+      fprintf(out, "  { start:'%p', size:'%lx', prot:%s }\n",
+              (void*)record.start, record.size, prot_flags);
+    }
   }
 }
 
@@ -257,7 +273,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         frame.dump(out);
       }
       if (flags.dump_syscallbuf) {
-        dump_syscallbuf_data(trace, out, frame, flags.raw_dump);
+        dump_syscallbuf_data(trace, out, frame, flags);
       }
       if (flags.dump_task_events) {
         auto it = task_events.find(frame.time());
