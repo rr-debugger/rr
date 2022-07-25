@@ -3993,10 +3993,11 @@ void Task::move_to_signal_stop()
   // During record make sure to use the syscallbuf desched sig.
   // During replay, it doesn't really matter, since we don't apply
   // the signal mask to the replay task.
-  int sig = SIGPWR;
+  int sig = SYSCALLBUF_DEFAULT_DESCHED_SIGNAL;
   if (session().is_recording()) {
     sig = session().as_record()->syscallbuf_desched_sig();
   }
+  // Note that this signal cannot be blocked by tracees.
   this->tgkill(sig);
   /* Now singlestep the task until we're in a signal-stop for the signal
    * we've just sent. We must absorb and forget that signal here since we
