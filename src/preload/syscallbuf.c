@@ -2522,6 +2522,13 @@ static long sys_ppoll(struct syscall_info* call) {
   const kernel_sigset_t *sigmask = (const kernel_sigset_t*)call->args[3];
   size_t sigmask_size = call->args[4];
 
+  if (sigmask) {
+    // See ppoll_deliver. ppoll calls that temporarily change the
+    // sigmask are hard to handle; we may get a signal that we can't
+    // deliver later because it's blocked by the application.
+    return traced_raw_syscall(call);
+  }
+
   void* ptr = prep_syscall();
   struct pollfd* fds2 = NULL;
   long ret;

@@ -1088,6 +1088,7 @@ set(BASIC_TESTS
   x86/pkeys
   poll_sig_race
   ppoll
+  ppoll_deliver
   prctl
   prctl_caps
   prctl_deathsig
