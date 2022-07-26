@@ -142,6 +142,21 @@ static void process_syscall_arch(Task* t, int syscallno) {
       t->set_regs(r);
       return;
     }
+
+    // We suppress the syscall from being dispatched here since that may result
+    // in GDB from bailing out of the replay entirely before we get a chance to
+    // turn it into a signal just for the diversion session.
+    // See e627c19b0aaf7f18207cc1ce4d019f4b9ffe603b.
+    case Arch::exit:
+    case Arch::exit_group: {
+      LOG(debug) << "Suppressing syscall "
+                 << syscall_name(syscallno, t->arch());
+      Registers r = t->regs();
+      r.set_syscall_result(-ENOSYS);
+      t->set_regs(r);
+      return;
+    }
+
   }
 
   LOG(debug) << "Executing syscall " << syscall_name(syscallno, t->arch());
