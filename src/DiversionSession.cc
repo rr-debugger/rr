@@ -103,7 +103,10 @@ static void process_syscall_arch(Task* t, int syscallno) {
     case Arch::rt_sigqueueinfo:
     case Arch::rt_tgsigqueueinfo:
     case Arch::tgkill:
-    case Arch::tkill: {
+    case Arch::tkill:
+    case Arch::fork:
+    case Arch::vfork:
+    case Arch::clone: {
       LOG(debug) << "Suppressing syscall "
                  << syscall_name(syscallno, t->arch());
       Registers r = t->regs();
