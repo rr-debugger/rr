@@ -104,6 +104,8 @@ static void process_syscall_arch(Task* t, int syscallno) {
     case Arch::rt_tgsigqueueinfo:
     case Arch::tgkill:
     case Arch::tkill:
+    // fork/vfork/clone are likely to lead to disaster because we only
+    // ever allow a single task to run.
     case Arch::fork:
     case Arch::vfork:
     case Arch::clone: {
