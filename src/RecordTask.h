@@ -409,7 +409,8 @@ public:
   ssize_t record_remote_fallible(remote_ptr<void> addr, uintptr_t num_bytes,
                                  const std::vector<WriteHole>& holes = std::vector<WriteHole>());
   // Record as much as we can of the bytes in this range. Will record only
-  // contiguous mapped-writable data starting at `addr`.
+  // contiguous mapped-writable data starting at `addr`. rr mappings (e.g. syscallbuf)
+  // are treated as non-contiguous with any other mapping.
   void record_remote_writable(remote_ptr<void> addr, ssize_t num_bytes);
 
   // Simple helper that attempts to use the local mapping to record if one

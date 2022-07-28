@@ -1696,12 +1696,19 @@ void RecordTask::record_remote_writable(remote_ptr<void> addr,
   ASSERT(this, num_bytes >= 0);
 
   remote_ptr<void> p = addr;
+  bool seen_rr_mapping = false;
+  int mapping_count = 0;
   while (p < addr + num_bytes) {
     if (!as->has_mapping(p)) {
       break;
     }
+    ++mapping_count;
     auto m = as->mapping_of(p);
-    if (!(m.map.prot() & PROT_WRITE)) {
+    if (m.flags) {
+      seen_rr_mapping = true;
+    }
+    if (!(m.map.prot() & PROT_WRITE) ||
+        (seen_rr_mapping && mapping_count > 1)) {
       break;
     }
     p = m.map.end();
