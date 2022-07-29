@@ -1291,6 +1291,7 @@ bool RecordTask::set_sigmask(sig_set_t mask) {
     }
     if (errno == ESRCH) {
       // Task most likely died while we at the ptrace stop.
+      detected_unexpected_exit = true;
       return false;
     }
     ASSERT(this, errno == EINVAL);
