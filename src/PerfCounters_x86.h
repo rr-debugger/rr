@@ -102,6 +102,7 @@ static CpuMicroarch compute_cpu_microarch() {
       break;
     case 0x20f10: // Vermeer (Zen 3)
     case 0x50f00: // Cezanne (Zen 3)
+    case 0x40f40: // Rembrandt (Zen 3+)
       if (ext_family == 0xa) {
         return AMDZen;
       }
