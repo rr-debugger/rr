@@ -5524,7 +5524,6 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   auto auxv_pointers = get_exe_entry_interp_base(t);
   auto exe_entry = auxv_pointers.first;
   auto interp_base = auxv_pointers.second;
-  ASSERT(t, !exe_entry.is_null()) << "AT_ENTRY not found";
   // NB: A binary is not required to have an interpreter.
 
   // Write out stack mappings first since during replay we need to set up the
@@ -5552,7 +5551,6 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       syscall_state.exec_saved_event->set_interp_name(interp_name);
     }
   }
-  ASSERT(t, !syscall_state.exec_saved_event->exe_base().is_null());
 
   t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
 
