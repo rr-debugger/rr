@@ -384,6 +384,7 @@ endif()
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/brotli/include")
+include_directories("${PROJECT_SOURCE_DIR}/third-party/crc32c")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
@@ -588,6 +589,7 @@ set(RR_SOURCES
   src/WaitStatus.cc
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
   ${BLAKE_ARCH_DIR}/blake2b.c
+  third-party/crc32c/crc32c.c
 )
 
 if(PROC_SERVICE_H)
@@ -1343,6 +1345,7 @@ set(TESTS_WITH_PROGRAM
   checkpoint_dying_threads
   checkpoint_mixed_mode
   checksum_sanity
+  checksum_huge_mmap
   check_lost_interrupts
   clone_interruption
   # Disabled because it fails
