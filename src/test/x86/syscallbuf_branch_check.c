@@ -3,11 +3,11 @@
 #include "util.h"
 
 #ifdef __x86_64__
-static const uint8_t SYS1 = 0x0f;
-static const uint8_t SYS2 = 0x05;
+#define SYS1 0x0f
+#define SYS2 0x05
 #else
-static const uint8_t SYS1 = 0xcd;
-static const uint8_t SYS2 = 0x80;
+#define SYS1 0xcd
+#define SYS2 0x80
 #endif
 
 static const uint8_t forward_branch_bad_code[136] = {
