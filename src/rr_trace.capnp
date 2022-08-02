@@ -114,6 +114,10 @@ struct Header {
     # Whether the version of rr that recorded this forced a tick after each
     # buffered syscall.
     bufferedSyscallForcedTick @21 :Bool = false;
+
+    # Whether the version of rr that recorded this was using the globals.in_replay
+    # flag rather than the rr page in_replay flag.
+    usesGlobalsInReplay @24 :Bool = true;
   }
   # Are we known to be in chaos mode? Useful for debugging.
   chaosMode @16 :ChaosMode = unknown;

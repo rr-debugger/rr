@@ -919,6 +919,7 @@ set(BASIC_TESTS
   deterministic_sigsys
   dev_zero
   direct
+  dlchecksum
   dup
   doublesegv
   epoll_create

@@ -446,11 +446,10 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     FATAL() << "Failed to open checksum file " << filename;
   }
 
+  ReplaySession *replay = t->session().as_replay();
   remote_ptr<unsigned char> in_replay_flag;
-  unsigned char in_replay = 0;
-  if (t->preload_globals) {
-    in_replay_flag = REMOTE_PTR_FIELD(t->preload_globals, in_replay);
-    in_replay = t->read_mem(in_replay_flag);
+  if (replay && replay->has_trace_quirk(TraceReader::UsesGlobalsInReplay) && t->preload_globals) {
+    in_replay_flag = REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_in_replay);
     t->write_mem(in_replay_flag, (unsigned char)0);
   }
 
@@ -577,7 +576,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   }
 
   if (in_replay_flag) {
-    t->write_mem(in_replay_flag, in_replay);
+    t->write_mem(in_replay_flag, (unsigned char)1);
   }
 
   fclose(c.checksums_file);

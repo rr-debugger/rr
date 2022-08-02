@@ -40,14 +40,22 @@ STARTPROC(syscall_untraced_replay_assist)
 #endif
     CFI_ENDPROC
 
-#ifndef IS_REPLAY
-// These 8 ff bytes are at a well known address during record and are used
-// during exit. However, since they aren't used during replay, they are not
-// currently part of the rr_page ABI. To ensure they don't unintentionally
-// become part of the ABI, we only include them in the record page.
-ff_bytes:
-.byte 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+LABEL(in_replay_flag)
+#ifdef IS_REPLAY
+    .byte 0x01
+#else
+    .byte 0x00
 #endif
+.byte 0x00, 0x00, 0x00
+
+// During replay, we put the breakpoint_value here. During record this remains
+// as -1, giving us 8 ff bytes at a well known address during record. These are used
+// during exit.
+LABEL(breakpoint_value)
+LABEL(ff_bytes)
+.byte 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+
+// ABI stability ends here.
 
 #undef REPLAY_ONLY_CALL
 #undef RECORD_ONLY_CALL

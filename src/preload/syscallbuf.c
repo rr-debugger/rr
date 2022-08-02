@@ -128,6 +128,10 @@ static long _traced_init_syscall(int syscallno, long a0, long a1, long a2,
 #endif
 #define syscall you_must_use_traced_syscall
 
+static inline unsigned char *rr_page_replay_flag_addr(void) {
+  return (unsigned char *)RR_PAGE_IN_REPLAY_FLAG;
+}
+
 /**
  * Declaring this to avoid issues with the declaration of f_owner_ex
  * across distros. See https://github.com/rr-debugger/rr/issues/2693 */
@@ -447,7 +451,7 @@ static long untraced_syscall_full(int syscallno, long a0, long a1, long a2,
    * This all assumes the compiler doesn't create unnecessary temporaries
    * holding values like |ret|. Inspection of generated code shows it doesn't.
    */
-  unsigned char tmp_in_replay = globals.in_replay;
+  unsigned char tmp_in_replay = *rr_page_replay_flag_addr();
   __asm__("test %1,%1\n\t"
           "cmovne %2,%0\n\t"
           "xor %1,%1\n\t"
@@ -455,9 +459,9 @@ static long untraced_syscall_full(int syscallno, long a0, long a1, long a2,
           : "m"(rec->ret)
           : "cc");
 #elif defined(__aarch64__)
-  unsigned char *globals_in_replay = &globals.in_replay;
+  unsigned char *globals_in_replay = rr_page_replay_flag_addr();
   long *rec_ret = &rec->ret;
-  __asm__("ldrb %w1, [%1]\n\t" // tmp_in_replay = globals.in_replay
+  __asm__("ldrb %w1, [%1]\n\t" // tmp_in_replay = *rr_page_replay_flag_addr()
           "ldr %2, [%2]\n\t" // tmp = rec->ret
           "cmp %w1, #0\n\t"
           "csel %0, %0, %2, eq\n\t" // ret = tmp_in_replay ? tmp : ret
@@ -982,7 +986,6 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscall_patch_hooks = syscall_patch_hooks;
   params.globals = &globals;
 
-  globals.breakpoint_value = (uint64_t)-1;
   globals.fdt_uniform = 1;
   params.breakpoint_instr_addr = &do_breakpoint_fault_addr;
   params.breakpoint_mode_sentinel = -1;
@@ -1259,7 +1262,7 @@ static void __attribute__((noinline)) do_breakpoint(size_t value)
 {
   char *unsafe_value = ((char*)-1)-0xf;
   char **safe_value = &unsafe_value;
-  uint64_t *breakpoint_value_addr = &globals.breakpoint_value;
+  uint64_t *breakpoint_value_addr = (uint64_t*)RR_PAGE_BREAKPOINT_VALUE;
 #if defined(__i386__) || defined(__x86_64__)
   __asm__ __volatile__(
                       "mov (%1),%1\n\t"
@@ -1418,7 +1421,7 @@ static void* copy_output_buffer(long ret_size, void* ptr, void* buf,
  */
 static void memcpy_input_parameter(void* buf, void* src, int size) {
 #if defined(__i386__) || defined(__x86_64__)
-  unsigned char tmp_in_replay = globals.in_replay;
+  unsigned char tmp_in_replay = *rr_page_replay_flag_addr();
   __asm__ __volatile__("test %0,%0\n\t"
                        "cmovne %1,%2\n\t"
                        "rep movsb\n\t"
@@ -1430,7 +1433,7 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
 #elif defined(__aarch64__)
   long c1;
   long c2;
-  unsigned char *globals_in_replay = &globals.in_replay;
+  unsigned char *globals_in_replay = rr_page_replay_flag_addr();
   __asm__ __volatile__("ldrb %w3, [%5]\n\t"
                        "cmp %3, #0\n\t" // eq -> record
                        "csel %1, %1, %0, eq\n\t"
@@ -1477,7 +1480,7 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
  * Otherwise 'buf' is unchanged.
  */
 static void rdtsc_recording_only(uint32_t buf[2]) {
-  unsigned char tmp_in_replay = globals.in_replay;
+  unsigned char tmp_in_replay = *rr_page_replay_flag_addr();
   __asm__ __volatile__("test %%eax,%%eax\n\t"
                        "jne 1f\n\t"
                        "rdtsc\n\t"
@@ -1500,7 +1503,7 @@ static void rdtsc_recording_only(uint32_t buf[2]) {
  */
 static void copy_futex_int(uint32_t* buf, uint32_t* real) {
 #if defined(__i386__) || defined(__x86_64__)
-  uint32_t tmp_in_replay = globals.in_replay;
+  uint32_t tmp_in_replay = *rr_page_replay_flag_addr();
   __asm__ __volatile__("test %0,%0\n\t"
                        "mov %2,%0\n\t"
                        "cmovne %1,%0\n\t"
@@ -1512,7 +1515,7 @@ static void copy_futex_int(uint32_t* buf, uint32_t* real) {
                        : "m"(*buf), "m"(*real)
                        : "cc", "memory");
 #elif defined(__aarch64__)
-  unsigned char *globals_in_replay = &globals.in_replay;
+  unsigned char *globals_in_replay = rr_page_replay_flag_addr();
   __asm__ __volatile__("ldrb %w2, [%2]\n\t"
                        "cmp %w2, #0\n\t" // eq -> record
                        "csel %2, %1, %0, eq\n\t"

@@ -1309,6 +1309,17 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
   return final_mprotect_record_count;
 }
 
+static void write_breakpoint_value(ReplayTask *t, uint64_t breakpoint_value)
+{
+  if (t->session().has_trace_quirk(TraceReader::UsesGlobalsInReplay)) {
+    t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_breakpoint_value),
+      breakpoint_value);
+  } else {
+    t->write_mem(remote_ptr<uint64_t>(RR_PAGE_BREAKPOINT_VALUE),
+      breakpoint_value);
+  }
+}
+
 /**
  * Replay all the syscalls recorded in the interval between |t|'s
  * current execution point and the next non-syscallbuf event (the one
@@ -1340,7 +1351,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
       ASSERT(t, added);
     } else {
       LOG(debug) << "Adding breakpoint";
-      t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, breakpoint_value),
+      write_breakpoint_value(t,
         (uint64_t)current_step.flush.stop_breakpoint_offset);
     }
 
@@ -1354,7 +1365,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                  BKPT_INTERNAL);
     } else {
       LOG(debug) << "Removing breakpoint " << t->status();
-      t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, breakpoint_value), (uint64_t)-1);
+      write_breakpoint_value(t, (uint64_t)-1);
     }
 
     // Account for buffered syscalls just completed

@@ -1431,6 +1431,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     quirks.setSpecialLibrrpage(false);
     quirks.setPkeyAllocRecordedExtraRegs(true);
     quirks.setBufferedSyscallForcedTick(true);
+    quirks.setUsesGlobalsInReplay(false);
   }
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
@@ -1609,6 +1610,9 @@ TraceReader::TraceReader(const string& dir)
     }
     if (quirks.getBufferedSyscallForcedTick()) {
       quirks_ |= BufferedSyscallForcedTick;
+    }
+    if (quirks.getUsesGlobalsInReplay()) {
+      quirks_ |= UsesGlobalsInReplay;
     }
   }
   Data::Reader uuid = header.getUuid();
