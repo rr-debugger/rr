@@ -3163,8 +3163,10 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
     tt->preload_globals = params.globals.rptr();
   }
 
-  t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, in_replay),
-               (unsigned char)t->session().is_replaying());
+  ReplaySession *replay = t->session().as_replay();
+  if (replay && replay->has_trace_quirk(TraceReader::UsesGlobalsInReplay)) {
+    t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_in_replay), (unsigned char)1);
+  }
 }
 
 static void do_preload_init(Task* t) {

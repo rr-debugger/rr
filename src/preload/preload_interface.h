@@ -141,7 +141,11 @@ static inline const char* extract_file_name(const char* s) {
 #define RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY                     \
   RR_PAGE_SYSCALL_ADDR(7)
 #define RR_PAGE_SYSCALL_UNTRACED_REPLAY_ASSIST RR_PAGE_SYSCALL_ADDR(8)
-#define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 9)
+#define RR_PAGE_IN_REPLAY_FLAG (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 9)
+#define RR_PAGE_BREAKPOINT_VALUE (RR_PAGE_IN_REPLAY_FLAG + 4)
+
+/* Not ABI stable - in record page only */
+#define RR_PAGE_FF_BYTES RR_PAGE_BREAKPOINT_VALUE
 
 /* PRELOAD_THREAD_LOCALS_ADDR should not change.
  * Tools depend on this address. */
@@ -228,7 +232,10 @@ struct mprotect_record {
  * below, since they don't all exist in all trace versions.
  */
 struct preload_globals {
-  /* 0 during recording, 1 during replay. Set by rr.
+  /* RESERVED in current versions of rr.
+   *
+   * QUIRK: With UsesGlobalsInReplayQuirk:
+   * 0 during recording, 1 during replay. Set by rr.
    * This MUST NOT be used in conditional branches. It should only be used
    * as the condition for conditional moves so that control flow during replay
    * does not diverge from control flow during recording.
@@ -236,7 +243,7 @@ struct preload_globals {
    * don't accidentally leak into other memory locations or registers.
    * USE WITH CAUTION.
    */
-  unsigned char in_replay;
+  unsigned char reserved_legacy_in_replay;
   /* 0 during recording and replay, 1 during diversion. Set by rr.
    */
   unsigned char in_diversion;
@@ -260,10 +267,13 @@ struct preload_globals {
   /* Random seed that can be used for various purposes. DO NOT READ from rr
      during replay, because this field does not exist in old traces. */
   uint64_t random_seed;
-  /* Indicates the value (in 8-byte increments) at which to raise a SIGSEGV
-     trap once reached. NOTE: This remains constant during record, and is
-     used only during replay. The same restrictions as in_replay above apply */
-  uint64_t breakpoint_value;
+  /* RESERVED in current versions of rr.
+   *
+   * QUIRK: With UsesGlobalsInReplayQuirk:
+   * Indicates the value (in 8-byte increments) at which to raise a SIGSEGV
+   * trap once reached. NOTE: This remains constant during record, and is
+   * used only during replay. The same restrictions as in_replay above apply */
+  uint64_t reserved_legacy_breakpoint_value;
   /* Indicates whether or not all tasks in this address space have the same
      fd table. Set by rr during record (modifications are recorded).
      Read by the syscallbuf */

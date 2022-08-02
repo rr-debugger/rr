@@ -484,7 +484,9 @@ public:
     // Whether this trace recorded extra regs for pkey_alloc(2).
     PkeyAllocRecordedExtraRegs = 0x4,
     // Whether this trace forced a tick after buffered syscalls.
-    BufferedSyscallForcedTick = 0x8
+    BufferedSyscallForcedTick = 0x8,
+    // Whether this trace requires globals.is_replay to be toggled.
+    UsesGlobalsInReplay = 0x10,
   };
 
   int quirks() const { return quirks_; }
