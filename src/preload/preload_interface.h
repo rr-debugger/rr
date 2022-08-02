@@ -245,9 +245,8 @@ struct preload_globals {
   unsigned char in_chaos;
   /* The signal to use for desched events */
   unsigned char desched_sig;
-  /* Number of cores to pretend we have. 0 means 1. rr sets this when
-   * the preload library is initialized. */
-  int pretend_num_cores;
+  /* RESERVED */
+  int reserved;
   /**
    * Set by rr.
    * For each fd, indicate a class that is valid for all fds with the given

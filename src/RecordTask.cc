@@ -394,11 +394,6 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   t->write_mem(in_chaos_ptr, in_chaos);
   t->record_local(in_chaos_ptr, &in_chaos);
 
-  int cores = t->session().scheduler().pretend_num_cores();
-  auto cores_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), pretend_num_cores);
-  t->write_mem(cores_ptr, cores);
-  t->record_local(cores_ptr, &cores);
-
   auto desched_sig = t->session().syscallbuf_desched_sig();
   auto desched_sig_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), desched_sig);
   t->write_mem(desched_sig_ptr, desched_sig);
