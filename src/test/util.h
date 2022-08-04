@@ -13,8 +13,6 @@
 
 /* btrfs needs NULL but doesn't #include it */
 #include <stdlib.h>
-/* need to include sys/mount.h before linux/fs.h */
-#include <sys/mount.h>
 
 #include <arpa/inet.h>
 #include <assert.h>
