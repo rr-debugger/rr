@@ -1200,6 +1200,22 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         case MADV_DONTNEED:
         case MADV_REMOVE:
           break;
+        /* These are not technically required to be passed through, but the
+           syscallbuf code does, so if we don't here, we risk fracturing
+           otherwise coelescable memory regions. Asan in particular triggers
+           a pathological case here that quickly exhausts the total mapping
+           limit by fracturing its shadow region */
+        case MADV_NORMAL:
+        case MADV_RANDOM:
+        case MADV_SEQUENTIAL:
+        case MADV_WILLNEED:
+        case MADV_MERGEABLE:
+        case MADV_UNMERGEABLE:
+        case MADV_HUGEPAGE:
+        case MADV_NOHUGEPAGE:
+        case MADV_DONTDUMP:
+        case MADV_DODUMP:
+          break;
         default:
           return;
       }
