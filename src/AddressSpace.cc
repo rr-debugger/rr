@@ -1690,6 +1690,8 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       mem(o.mem),
       shm_sizes(o.shm_sizes),
       monitored_mem(o.monitored_mem),
+      dont_fork(o.dont_fork),
+      wipe_on_fork(o.wipe_on_fork),
       session_(session),
       vdso_start_addr(o.vdso_start_addr),
       monkeypatch_state(o.monkeypatch_state
