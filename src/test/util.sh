@@ -97,7 +97,10 @@ function usage {
     echo Usage: "util.sh TESTNAME [LIB_ARG] [OBJDIR]"
 }
 
-GLOBAL_OPTIONS="--suppress-environment-warnings --check-cached-mmaps --fatal-errors"
+GLOBAL_OPTIONS="--suppress-environment-warnings --fatal-errors"
+if [[ "$NO_CHECK_CACHED_MMAP" == "" ]]; then
+    GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --check-cached-mmaps"
+fi
 
 SRCDIR=`dirname ${BASH_SOURCE[0]}`/../..
 SRCDIR=`realpath $SRCDIR`

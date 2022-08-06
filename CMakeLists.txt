@@ -1398,6 +1398,7 @@ set(TESTS_WITH_PROGRAM
   jit_proc_mem
   link
   madvise_dontfork
+  madvise_fracture_flags
   main_thread_exit
   many_yields
   mmap_fd_reuse_checkpoint

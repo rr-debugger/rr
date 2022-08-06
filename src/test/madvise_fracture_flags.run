@@ -1,0 +1,3 @@
+NO_CHECK_CACHED_MMAP=1
+source `dirname $0`/util.sh
+compare_test EXIT-SUCCESS
