@@ -7,6 +7,11 @@
    what we want to test here. */
 
 int main(__attribute__((unused)) int argc, char* argv[], char* envp[]) {
+  if (argc < 2) {
+    atomic_printf("Usage: %s <n>\n", argv[0]);
+    exit(1);
+  }
+
   int count = atoi(argv[1]);
 
   if (count > 0) {

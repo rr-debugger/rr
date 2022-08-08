@@ -68,12 +68,18 @@ stopped_locations = {
                     '(0x[0-9a-f]+ in )?pthread_barrier_wait',
                     '(0x[0-9a-f]+ in )?futex_wait',
                     '0x0*70000002 in \?\?',
+                    # This is the extended jump page. We hide it from the application,
+                    # but not from GDB. Eventually we may want to supply some additional
+                    # debug info to GDB to teach it about this, but for now we just let it be.
+                    '0x[0-9a-f]+ in \?\?',
                     '(0x[0-9a-f]+ in )?syscall_traced',
                     '(0x[0-9a-f]+ in )?rr_page_start'
                     ],
     'aarch64': ['(0x[0-9a-f]+ in )?syscall_traced',
                 '(0x[0-9a-f]+ in )?pthread_barrier_wait',
-                '(0x[0-9a-f]+ in )?futex_wait'],
+                '(0x[0-9a-f]+ in )?futex_wait',
+                # Extended jump page
+                '0x[0-9a-f]+ in \?\?',],
 }
 
 location_regex = '|'.join(stopped_locations[arch])

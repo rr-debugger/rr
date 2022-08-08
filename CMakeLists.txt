@@ -912,6 +912,7 @@ set(BASIC_TESTS
   daemon
   desched_blocking_poll
   desched_sigkill
+  desched_sigreturn
   detach_state
   detach_threads
   detach_sigkill

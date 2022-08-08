@@ -178,6 +178,7 @@ static inline const char* extract_file_name(const char* s) {
  */
 #define PATCH_SYSCALL_INSTRUCTION_IS_LAST (1 << 1)
 
+#define STUB_PATCH_LENGTH 20
 /**
  * To support syscall buffering, we replace syscall instructions with a "call"
  * instruction that calls a hook in the preload library to handle the syscall.
@@ -492,7 +493,7 @@ struct syscallbuf_record {
   /* Does this record require an assist during replay ? */
   uint8_t replay_assist : 1;
   uint8_t _flags_padding : 6;
-  uint8_t _padding;
+  uint8_t aborted;
   /* Size of entire record in bytes: this struct plus extra
    * recorded data stored inline after the last field, not
    * including padding.

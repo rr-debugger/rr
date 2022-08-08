@@ -4151,7 +4151,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::close_range:
     case Arch::clone3:
     case Arch::io_uring_setup:
-    case Arch::io_setup: {
+    case Arch::io_setup:
+    case Arch::io_destroy: {
       // Prevent the various syscalls that we don't support from being used by
       // applications and fake an ENOSYS return.
       Registers r = regs;
@@ -5039,11 +5040,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     // the syscallbuf as a fake rrcall_rdtsc, but we then can't buffer it
     // because the buffer is full or disabled.
     case SYS_rrcall_rdtsc: {
-      syscall_state.emulate_result(0);
       uint64_t tsc = rdtsc();
-      remote_ptr<uint64_t> addr(t->regs().arg1());
-      t->write_mem(addr, tsc);
-      t->record_local(addr, &tsc);
+      syscall_state.emulate_result((uint32_t)tsc);
+      Registers regs = t->regs();
+      regs.set_dx(tsc >> 32);
+      t->set_regs(regs);
       return PREVENT_SWITCH;
     }
 

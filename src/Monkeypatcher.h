@@ -125,24 +125,34 @@ public:
   };
   std::vector<ExtendedJumpPage> extended_jump_pages;
 
-  bool is_jump_stub_instruction(remote_code_ptr p, bool include_safearea);
-  // Return the breakpoint instruction (i.e. the last branch back to caller)
-  // if we are on the exit path in the jump stub
-  remote_code_ptr get_jump_stub_exit_breakpoint(remote_code_ptr ip, RecordTask *t);
 
   struct patched_syscall {
     // Pointer to hook inside the syscall_hooks array, which gets initialized
     // once and is fixed afterwars.
     const syscall_patch_hook *hook;
+    remote_ptr<uint8_t> patch_addr;
+    remote_ptr<uint8_t> stub_addr;
     size_t size;
     uint16_t safe_prefix = 0;
     uint16_t safe_suffix = 0;
   };
 
+  patched_syscall *find_jump_stub(remote_code_ptr ip, bool include_safearea);
+  bool is_jump_stub_instruction(remote_code_ptr p, bool include_safearea) {
+    return (bool)find_jump_stub(p, include_safearea);
+  }
+
+  patched_syscall *find_syscall_patch(remote_code_ptr patch_location);
+
+  // Return the breakpoint instruction (i.e. the last branch back to caller)
+  // if we are on the exit path in the jump stub
+  remote_code_ptr get_jump_stub_exit_breakpoint(remote_code_ptr ip, RecordTask *t);
   /**
    * Addresses/lengths of syscallbuf stubs.
    */
-  std::map<remote_ptr<uint8_t>, patched_syscall> syscallbuf_stubs;
+  std::vector<patched_syscall> syscall_stub_list;
+  std::map<remote_ptr<uint8_t>, int> syscallbuf_stubs_by_extended_patch;
+  std::map<remote_ptr<uint8_t>, int> syscallbuf_stubs_by_patch_addr;
 
 private:
   /**

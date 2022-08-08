@@ -434,6 +434,11 @@ public:
     return u.arm64regs.x[7];
   }
 
+  uintptr_t x15() const {
+    DEBUG_ASSERT(arch() == aarch64);
+    return u.arm64regs.x[15];
+  }
+
   uintptr_t xlr() const {
     DEBUG_ASSERT(arch() == aarch64);
     return u.arm64regs.x[30];

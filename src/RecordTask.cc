@@ -629,6 +629,9 @@ bool RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
     if (!set_sigmask(sigset)) {
       return false;
     }
+    LOG(debug) << "Set signal mask to block all signals (bar "
+              << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
+              << " have a stashed signal";
   }
 
   // RESUME_NO_TICKS means that tracee code is not going to run so there's no
@@ -705,7 +708,9 @@ void RecordTask::did_wait() {
     // state, because we do not allow stashed_signals_blocking_more_signals
     // to hold across syscalls (traced or untraced) that change the signal mask.
     ASSERT(this, !blocked_sigs_dirty);
-    xptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &blocked_sigs);
+    if (set_sigmask(blocked_sigs)) {
+      LOG(debug) << "Blocked signals restored";
+    }
   } else if (syscallbuf_child) {
     // The syscallbuf struct is only 32 bytes currently so read the whole thing
     // at once to avoid multiple calls to read_mem. Even though this shouldn't
@@ -1290,10 +1295,6 @@ bool RecordTask::set_sigmask(sig_set_t mask) {
       return false;
     }
     ASSERT(this, errno == EINVAL);
-  } else {
-    LOG(debug) << "Set signal mask to block all signals (bar "
-               << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
-               << " have a stashed signal";
   }
   return true;
 }
