@@ -754,7 +754,9 @@ void ExtraRegisters::reset() {
         RegData d = xsave_register_data(arch(), arch() == x86_64 ? DREG_64_PKRU : DREG_PKRU);
         DEBUG_ASSERT(d.xsave_feature_bit == PKRU_FEATURE_BIT);
         DEBUG_ASSERT(d.offset + d.size <= (int)data_.size());
-        *reinterpret_cast<int*>(data_.data() + d.offset) = 0x55555554;
+        // We can't assume PKRU will always be the default Kernel value. For
+        // more take a look in this GH issue: #2643.
+        // *reinterpret_cast<int*>(data_.data() + d.offset) = 0x55555554;
         xinuse |= pkru_bit;
       }
 
