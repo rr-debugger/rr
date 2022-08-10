@@ -667,8 +667,8 @@ inline static int is_proc_stat_file(const char* filename) {
 }
 
 inline static int is_rr_page_lib(const char* filename) {
-  return streq(extract_file_name(filename), "librrpage.so") ||
-         streq(extract_file_name(filename), "librrpage_32.so");
+  return streq(extract_file_name(filename), RRPAGE_LIB_FILENAME) ||
+         streq(extract_file_name(filename), RRPAGE_LIB_FILENAME_32);
 }
 
 /**
