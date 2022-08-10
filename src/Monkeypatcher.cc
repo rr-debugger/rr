@@ -745,8 +745,8 @@ void substitute_replacement_patch<X86SyscallStubRestore>(uint8_t *buffer, uint64
 template <typename ExtendedJumpPatch, typename FakeSyscallExtendedJumpPatch, typename ReplacementPatch>
 static void unpatch_extended_jumps(Monkeypatcher& patcher,
                                    Task* t) {
-  // If these were the same size then the logic below wouldn't work.
-  static_assert(ExtendedJumpPatch::size < FakeSyscallExtendedJumpPatch::size);
+  static_assert(ExtendedJumpPatch::size < FakeSyscallExtendedJumpPatch::size,
+                "If these were the same size then the logic below wouldn't work");
   for (auto patch : patcher.syscallbuf_stubs) {
     const syscall_patch_hook &hook = *patch.second.hook;
     uint8_t bytes[FakeSyscallExtendedJumpPatch::size];
