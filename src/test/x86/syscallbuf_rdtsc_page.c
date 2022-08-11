@@ -2,6 +2,12 @@
 
 #include "util.h"
 
+#ifdef __i386__
+int main(void) {
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}
+#else
 static const uint8_t code[6] = {
   0x0f, 0x31, /* rdtsc */
   /* nop; nop; nop; ret */
@@ -34,3 +40,4 @@ int main(void) {
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
+#endif
