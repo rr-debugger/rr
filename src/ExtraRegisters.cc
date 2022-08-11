@@ -626,6 +626,13 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
       }
       const XSaveFeatureLayout& native_feature =
           native_layout.feature_layouts[i];
+      if (native_feature.size == 0 && i == PKRU_FEATURE_BIT) {
+        // The native arch doesn't support PKRU.
+        // This must be during replay, and as the comments above explain,
+        // it's OK to not set PKRU during replay on a pre-PKRU CPU, so
+        // we can just ignore this.
+        continue;
+      }
       if (feature.size != native_feature.size) {
         LOG(error) << "Feature " << i << " has wrong size " << feature.size
                    << ", expected " << native_feature.size;
