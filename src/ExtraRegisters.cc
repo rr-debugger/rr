@@ -624,13 +624,23 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
                    << feature.size << " > " << layout.full_size;
         return false;
       }
+      if (i >= native_layout.feature_layouts.size()) {
+        if (i == PKRU_FEATURE_BIT) {
+          // The native arch doesn't support PKRU.
+          // This must be during replay, and as the comments above explain,
+          // it's OK to not set PKRU during replay on a pre-PKRU CPU, so
+          // we can just ignore this.
+          continue;
+        } else {
+          LOG(error) << "Invalid feature " << i << " beyond max layout "
+                     << layout.feature_layouts.size();
+          return false;
+        }
+      }
       const XSaveFeatureLayout& native_feature =
           native_layout.feature_layouts[i];
       if (native_feature.size == 0 && i == PKRU_FEATURE_BIT) {
-        // The native arch doesn't support PKRU.
-        // This must be during replay, and as the comments above explain,
-        // it's OK to not set PKRU during replay on a pre-PKRU CPU, so
-        // we can just ignore this.
+        // See the above comment about PKRU.
         continue;
       }
       if (feature.size != native_feature.size) {
