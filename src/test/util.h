@@ -13,6 +13,13 @@
 
 /* btrfs needs NULL but doesn't #include it */
 #include <stdlib.h>
+/* Still need a declaration for mount, umount, and umount2
+   with the <sys/mount.h> include removed */
+int mount(const char *source, const char *target,
+          const char *filesystemtype, unsigned long mountflags,
+          const void *data);
+int umount(const char *target);
+int umount2(const char *target, int flags);
 
 #include <arpa/inet.h>
 #include <assert.h>
