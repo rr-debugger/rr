@@ -68,6 +68,8 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
 static const int AVX_FEATURE_BIT = 2;
 static const int PKRU_FEATURE_BIT = 9;
 
+static const uint64_t PKRU_FEATURE_MASK = 1 << PKRU_FEATURE_BIT;
+
 static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
 static const size_t xsave_header_end = xsave_header_offset + xsave_header_size;
@@ -575,7 +577,7 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
      * feature bit. So ignore the PKRU bit here and leave users on their
      * own with respect to RDPKRU.
      */
-    features &= ~(uint64_t(1) << PKRU_FEATURE_BIT);
+    features &= ~PKRU_FEATURE_MASK;
     if (features & ~native_layout.supported_feature_bits) {
       LOG(error) << "Unsupported CPU features found: got " << HEX(features)
                  << " (" << xsave_feature_string(features)
@@ -604,13 +606,8 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   uint64_t features = features_used(data);
   // OK, now both our native layout and the input layout are using the full
-  // XSAVE header. Copy the header. Make sure to use our updated `features`.
-  memcpy(data_.data() + xsave_header_offset, &features, sizeof(features));
-  memcpy(data_.data() + xsave_header_offset + sizeof(features),
-         data + xsave_header_offset + sizeof(features),
-         xsave_header_size - sizeof(features));
-
-  // Now copy each optional and present area into the right place in our struct
+  // XSAVE header. Copy each optional and present area into the right place
+  // in our struct.
   for (size_t i = 2; i < 64; ++i) {
     if (features & (uint64_t(1) << i)) {
       if (i >= layout.feature_layouts.size()) {
@@ -624,8 +621,27 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
                    << feature.size << " > " << layout.full_size;
         return false;
       }
+      if (i >= native_layout.feature_layouts.size()) {
+        if (i == PKRU_FEATURE_BIT) {
+          // The native arch doesn't support PKRU.
+          // This must be during replay, and as the comments above explain,
+          // it's OK to not set PKRU during replay on a pre-PKRU CPU, so
+          // we can just ignore this.
+          features &= ~PKRU_FEATURE_MASK;
+          continue;
+        } else {
+          LOG(error) << "Invalid feature " << i << " beyond max layout "
+                     << layout.feature_layouts.size();
+          return false;
+        }
+      }
       const XSaveFeatureLayout& native_feature =
           native_layout.feature_layouts[i];
+      if (native_feature.size == 0 && i == PKRU_FEATURE_BIT) {
+        // See the above comment about PKRU.
+        features &= ~PKRU_FEATURE_MASK;
+        continue;
+      }
       if (feature.size != native_feature.size) {
         LOG(error) << "Feature " << i << " has wrong size " << feature.size
                    << ", expected " << native_feature.size;
@@ -639,6 +655,12 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
              feature.size);
     }
   }
+
+  // Copy the header. Make sure to use our updated `features`.
+  memcpy(data_.data() + xsave_header_offset, &features, sizeof(features));
+  memcpy(data_.data() + xsave_header_offset + sizeof(features),
+         data + xsave_header_offset + sizeof(features),
+         xsave_header_size - sizeof(features));
 
   return true;
 }
@@ -749,13 +771,12 @@ void ExtraRegisters::reset() {
       * Avoid this issue by setting the bit if the feature is supported by the
       * CPU.
       */
-      uint64_t pkru_bit = uint64_t(1) << PKRU_FEATURE_BIT;
-      if (xcr0() & pkru_bit) {
+      if (xcr0() & PKRU_FEATURE_MASK) {
         RegData d = xsave_register_data(arch(), arch() == x86_64 ? DREG_64_PKRU : DREG_PKRU);
         DEBUG_ASSERT(d.xsave_feature_bit == PKRU_FEATURE_BIT);
         DEBUG_ASSERT(d.offset + d.size <= (int)data_.size());
         *reinterpret_cast<int*>(data_.data() + d.offset) = 0x55555554;
-        xinuse |= pkru_bit;
+        xinuse |= PKRU_FEATURE_MASK;
       }
 
       memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
