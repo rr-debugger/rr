@@ -1450,17 +1450,17 @@ template <typename Arch> void get_ethtool_gstrings_arch(RecordTask* t) {
   AutoRemoteSyscalls remote(t);
 
   // Do a ETHTOOL_GSSET_INFO to get the number of strings
-  struct SingleStringSet {
-    ethtool_sset_info et;
-    uint32_t data;
-  };
-  SingleStringSet sss;
-  sss.et.cmd = ETHTOOL_GSSET_INFO;
-  sss.et.reserved = 0;
-  sss.et.sset_mask = 1 << et_gstrings.string_set;
-  AutoRestoreMem sss_mem(remote, &sss, sizeof(sss));
+  ethtool_sset_info et;
+  et.cmd = ETHTOOL_GSSET_INFO;
+  et.reserved = 0;
+  et.sset_mask = 1 << et_gstrings.string_set;
+  std::vector<uint8_t> buffer;
+  buffer.resize(sizeof(et) + sizeof(uint32_t));
+  memcpy(buffer.data(), &et, sizeof(et));
+  memset(buffer.data() + sizeof(et), 0, sizeof(uint32_t));
+  AutoRestoreMem et_mem(remote, buffer.data(), buffer.size());
 
-  ifreq.ifr_ifru.ifru_data = sss_mem.get();
+  ifreq.ifr_ifru.ifru_data = et_mem.get();
   AutoRestoreMem ifr_mem(remote, &ifreq, sizeof(ifreq));
 
   long ret = remote.syscall(regs.original_syscallno(), regs.arg1(),
@@ -1470,8 +1470,7 @@ template <typename Arch> void get_ethtool_gstrings_arch(RecordTask* t) {
     return;
   }
 
-  sss = t->read_mem(sss_mem.get().cast<SingleStringSet>());
-
+  uint32_t data = t->read_mem((et_mem.get() + sizeof(et)).cast<uint32_t>());
   // Now do the ETHTOOL_GSTRINGS call
   ret = remote.syscall(regs.original_syscallno(), regs.arg1(), SIOCETHTOOL,
       regs.arg3());
@@ -1479,7 +1478,7 @@ template <typename Arch> void get_ethtool_gstrings_arch(RecordTask* t) {
   if (ret < 0) {
     return;
   }
-  t->record_remote(orig_gstrings, sizeof(ethtool_gstrings) + ETH_GSTRING_LEN*sss.data);
+  t->record_remote(orig_gstrings, sizeof(ethtool_gstrings) + ETH_GSTRING_LEN*data);
 }
 
 static void get_ethtool_gstrings(RecordTask* t) {
