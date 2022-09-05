@@ -13,8 +13,16 @@
 
 /* btrfs needs NULL but doesn't #include it */
 #include <stdlib.h>
-/* need to include sys/mount.h before linux/fs.h */
-#include <sys/mount.h>
+
+// /* need to include sys/mount.h before linux/fs.h */
+// #include <sys/mount.h>
+// Temporary workaround for glibc 2.36 release bug.
+// TODO: Remove this once glibc is released 2.37 to ensure
+// usage of <linux/mount.h> and <sys/mount.h> do not conflict.
+int mount(const char* source, const char* target, const char* filesystemtype,
+          unsigned long mountflags, const void* data);
+int umount(const char* target);
+int umount2(const char* target, int flags);
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -181,11 +189,11 @@ inline static int atomic_puts(const char* str) {
 #define printf(...) USE_atomic_printf_INSTEAD
 #define puts(...) USE_atomic_puts_INSTEAD
 
-inline static int atomic_assert(int cond, const char *str,
-				const char *file, const int line) {
+inline static int atomic_assert(int cond, const char* str, const char* file,
+                                const int line) {
   if (!cond) {
     atomic_printf("FAILED at %s:%d: !(%s) errno:%d (%s)\n", file, line, str,
-		  errno, strerror(errno));
+                  errno, strerror(errno));
     raise(SIGABRT);
   }
   return 1;
@@ -213,7 +221,8 @@ inline static int sys_getcpu(unsigned int* cpu, unsigned int* node) {
 inline static void check_data(void* buf, size_t len) {
   ssize_t ret = syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
   if (ret == -1 && errno == EBADF) {
-    atomic_printf("Failed to write to RR_MAGIC_SAVE_DATA_FD. Not running under rr?\n");
+    atomic_printf(
+        "Failed to write to RR_MAGIC_SAVE_DATA_FD. Not running under rr?\n");
   } else {
     test_assert(ret == (ssize_t)len);
     atomic_printf("Wrote %zu bytes to magic fd\n", len);
@@ -390,12 +399,12 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 }
 
 static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
-                                             uintptr_t arg2,
-                                             uintptr_t arg3) {
+                                             uintptr_t arg2, uintptr_t arg3) {
   uintptr_t ret;
 #ifdef __x86_64__
   __asm__ volatile("syscall\n\t"
-                   /* Make sure we don't patch this syscall for syscall buffering */
+                   /* Make sure we don't patch this syscall for syscall
+                      buffering */
                    "cmp $0x77,%%rax\n\t"
                    : "=a"(ret)
                    : "a"(syscall), "D"(arg1), "S"(arg2), "d"(arg3)
@@ -424,9 +433,8 @@ static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
   return ret;
 }
 
-
 /* Old systems don't have these functions, re-define using the syscall */
-#define tgkill(tgid, tid, sig) \
+#define tgkill(tgid, tid, sig)                                                 \
   syscall(SYS_tgkill, (int)(tgid), (int)(tid), (int)(sig))
 
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
@@ -526,7 +534,7 @@ static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
 #endif
 
 #ifndef BLKGETDISKSEQ
-#define BLKGETDISKSEQ _IOR(0x12,128,__u64)
+#define BLKGETDISKSEQ _IOR(0x12, 128, __u64)
 #endif
 
 #endif /* RRUTIL_H */
