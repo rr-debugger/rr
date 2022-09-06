@@ -174,12 +174,17 @@ static void print_hex(uint8_t* value, size_t size, FILE* out) {
 }
 
 static void print_value(const char* name, void* value, size_t size,
-                        const RerunFlags& flags, FILE* out) {
+                        bool hex, const RerunFlags& flags, FILE* out) {
   if (flags.raw) {
     fwrite(value, size, 1, out);
-  } else {
+  } else if (hex) {
     fprintf(out, "%s:0x", name);
     print_hex(static_cast<uint8_t*>(value), size, out);
+  } else {
+    uint64_t v = 0;
+    DEBUG_ASSERT(size <= 8);
+    memcpy(&v, value, size);
+    fprintf(out, "%s:%lld", name, (long long)v);
   }
 }
 
@@ -233,51 +238,51 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
     switch (field.kind) {
       case TRACE_EVENT_NUMBER: {
         uint64_t value = event;
-        print_value("event", &value, sizeof(value), flags, out);
+        print_value("event", &value, sizeof(value), false, flags, out);
         break;
       }
       case TRACE_INSTRUCTION_COUNT:
         print_value("icount", &instruction_count, sizeof(instruction_count),
-                    flags, out);
+                    false, flags, out);
         break;
       case TRACE_IP: {
         uint64_t value = t->regs().ip().register_value();
         print_value(t->arch() == x86 ? "eip" : "rip", &value, sizeof(value),
-                    flags, out);
+                    true, flags, out);
         break;
       }
       case TRACE_FSBASE: {
         uint64_t value = t->regs().fs_base();
-        print_value("fsbase", &value, sizeof(value), flags, out);
+        print_value("fsbase", &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_GSBASE: {
         uint64_t value = t->regs().gs_base();
-        print_value("gsbase", &value, sizeof(value), flags, out);
+        print_value("gsbase", &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_FLAGS: {
         uint64_t value = t->regs().flags();
         print_value(t->arch() == x86 ? "eflags" : "rflags", &value,
-                    sizeof(value), flags, out);
+                    sizeof(value), true, flags, out);
         break;
       }
       case TRACE_ORIG_AX: {
         uint64_t value = t->regs().original_syscallno();
         print_value(t->arch() == x86 ? "orig_eax" : "orig_rax", &value,
-                    sizeof(value), flags, out);
+                    sizeof(value), true, flags, out);
         break;
       }
       case TRACE_SEG_REG: {
         uint64_t value = seg_reg(t->regs(), field.reg_num);
-        print_value(seg_reg_names[field.reg_num], &value, sizeof(value), flags,
-                    out);
+        print_value(seg_reg_names[field.reg_num], &value, sizeof(value), true,
+                    flags, out);
         break;
       }
       case TRACE_XINUSE: {
         bool defined;
         uint64_t value = t->extra_regs().read_xinuse(&defined);
-        print_value("xinuse", &value, sizeof(value), flags, out);
+        print_value("xinuse", &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_GP_REG: {
@@ -295,7 +300,7 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
         const char* name = (t->arch() == x86 && field.reg_num < 8)
                                ? gp_reg_names_32[field.reg_num]
                                : gp_reg_names[field.reg_num];
-        print_value(name, &value, sizeof(value), flags, out);
+        print_value(name, &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_XMM_REG: {
@@ -323,7 +328,7 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
         }
         char buf[8];
         sprintf(buf, "xmm%d", field.reg_num);
-        print_value(buf, value, sizeof(value), flags, out);
+        print_value(buf, value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_YMM_REG: {
@@ -357,33 +362,33 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
         }
         char buf[8];
         sprintf(buf, "ymm%d", field.reg_num);
-        print_value(buf, value, sizeof(value), flags, out);
+        print_value(buf, value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_FIP: {
         bool defined;
         uint64_t value = t->extra_regs().read_fip(&defined);
-        print_value("fip", &value, sizeof(value), flags, out);
+        print_value("fip", &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_FOP: {
         bool defined;
         uint16_t value = t->extra_regs().read_fop(&defined);
-        print_value("fop", &value, sizeof(value), flags, out);
+        print_value("fop", &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_MXCSR: {
         bool defined;
         uint32_t value = t->extra_regs().read_mxcsr(&defined);
-        print_value("mxcsr", &value, sizeof(value), flags, out);
+        print_value("mxcsr", &value, sizeof(value), true, flags, out);
         break;
       }
       case TRACE_TID:
-        print_value("tid", &t->rec_tid, sizeof(t->rec_tid), flags, out);
+        print_value("tid", &t->rec_tid, sizeof(t->rec_tid), false, flags, out);
         break;
       case TRACE_TICKS: {
         Ticks ticks = t->tick_count();
-        print_value("ticks", &ticks, sizeof(ticks), flags, out);
+        print_value("ticks", &ticks, sizeof(ticks), false, flags, out);
         break;
       }
     }
