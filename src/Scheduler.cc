@@ -21,6 +21,7 @@
 #include "Flags.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "WaitManager.h"
 #include "core.h"
 #include "log.h"
 
@@ -465,36 +466,28 @@ void Scheduler::validate_scheduled_task() {
  * (by timeout or some other signal).
  */
 static bool wait_any(pid_t& tid, WaitStatus& status, double timeout) {
-  int raw_status;
+  WaitOptions options;
   if (timeout > 0) {
-    struct itimerval timer = { { 0, 0 }, to_timeval(timeout) };
-    if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
-      FATAL() << "Failed to set itimer";
-    }
-    LOG(debug) << "  Arming one-second timer for polling";
+    options.block_seconds = timeout;
   }
-  tid = waitpid(-1, &raw_status, __WALL | WUNTRACED);
-  if (timeout > 0) {
-    struct itimerval timer = { { 0, 0 }, { 0, 0 } };
-    if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
-      FATAL() << "Failed to set itimer";
-    }
-    LOG(debug) << "  Disarming one-second timer for polling";
-  }
-  status = WaitStatus(raw_status);
-  if (-1 == tid) {
-    if (EINTR == errno) {
-      LOG(debug) << "  waitpid(-1) interrupted";
+  WaitResult result = WaitManager::wait_stop_or_exit(options);
+  switch (result.code) {
+    case WAIT_OK:
+      tid = result.tid;
+      status = result.status;
+      return true;
+    case WAIT_NO_STATUS:
+      LOG(debug) << "  wait interrupted";
       return false;
-    }
-    if (ECHILD == errno) {
+    case WAIT_NO_CHILD:
       // It's possible that the original thread group was detached,
       // and the only thing left we were waiting for, in which case we
       // get ECHILD here. Just abort this record step, so the caller
       // can end the record session.
       return false;
-    }
-    FATAL() << "Failed to waitpid()";
+    default:
+      FATAL() << "Unknown result code";
+      return false;
   }
   return true;
 }
@@ -542,12 +535,8 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
     if (!waited->already_exited()) {
       LOG(debug) << "        ... sending SIGKILL to detached process " << waited->rec_tid;;
       ::kill(waited->rec_tid, SIGKILL);
-      int raw_status;
-      pid_t npid = ::waitpid(waited->rec_tid, &raw_status, __WALL | WUNTRACED);
-      ASSERT(waited, npid == waited->rec_tid);
-      status = WaitStatus(raw_status);
-      ASSERT(waited, status.type() == WaitStatus::EXIT ||
-                     status.type() == WaitStatus::FATAL_SIGNAL);
+      WaitResult result = WaitManager::wait_exit(WaitOptions(waited->rec_tid));
+      ASSERT(waited, result.code == WAIT_OK);
     } else {
       LOG(debug) << "        ... but the detached process is already dead";
     }

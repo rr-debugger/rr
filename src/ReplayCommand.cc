@@ -14,6 +14,7 @@
 #include "GdbServer.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "WaitManager.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -543,21 +544,14 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
   // Child must have died before we were able to get debugger parameters
   // and exec gdb. Exit with the exit status of the child.
   while (true) {
-    int status;
-    int ret = waitpid(waiting_for_child, &status, 0);
-    int err = errno;
-    LOG(debug) << getpid() << ": waitpid(" << waiting_for_child << ") returned "
-               << errno_name(err) << "(" << err << "); status:" << HEX(status);
-    if (waiting_for_child != ret) {
-      if (EINTR == err) {
-        continue;
-      }
-      FATAL() << getpid() << ": waitpid(" << waiting_for_child << ") failed";
+    WaitResult result = WaitManager::wait_exit(WaitOptions(waiting_for_child));
+    if (result.code != WAIT_OK) {
+      FATAL() << "Failed to wait for child " << waiting_for_child;
     }
-    if (WIFEXITED(status) || WIFSIGNALED(status)) {
-      LOG(info) << ("Debugger server died.  Exiting.");
-      exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
-    }
+    LOG(debug) << getpid() << ": waitpid(" << waiting_for_child << ") returned status "
+               << result.status;
+    LOG(info) << "Debugger server died.  Exiting.";
+    exit(result.status.type() == WaitStatus::EXIT ? result.status.exit_code() : 1);
   }
 
   return 0;

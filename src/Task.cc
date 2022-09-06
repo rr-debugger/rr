@@ -46,6 +46,7 @@
 #include "ScopedFd.h"
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
+#include "WaitManager.h"
 #include "cpp_supplement.h"
 #include "fast_forward.h"
 #include "kernel_abi.h"
@@ -126,7 +127,6 @@ void Task::reenable_cpuid_tsc() {
 }
 
 void Task::wait_exit() {
-  siginfo_t info;
   LOG(debug) << "Waiting for exit of " << tid;
   /* We want to wait for the child to exit, but we don't actually
    * want to reap the task when it's dead. We could use WEXITED | WNOWAIT,
@@ -141,29 +141,23 @@ void Task::wait_exit() {
    * for this we add `| WNOWAIT` to prevent dequeing the event and simply take
    * it as an indication that the task has execed.
    */
-  while (true) {
-    int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
-    if (ret == 0) {
-      ASSERT(this, info.si_pid == tid) << "Expected " << tid << " got " << info.si_pid;
-      int event = WaitStatus(info).ptrace_event();
-      if (event == PTRACE_EVENT_EXIT) {
-        // It's possible that the earlier exit event was synthetic, in which
-        // case we're only now catching up to the real process exit. In that
-        // case, just ask the process to actually exit. (TODO: We may want to
-        // catch this earlier).
-        return proceed_to_exit(true);
-      }
-      ASSERT(this, event == PTRACE_EVENT_EXEC)
-        << "Expected PTRACE_EVENT_EXEC, got " << WaitStatus(info);
-      // The kernel will do the reaping for us in this case
-      was_reaped = true;
-      break;
-    } else if (ret == -1 && errno == EINTR) {
-      continue;
-    } else {
-      ASSERT(this, ret == -1 && errno == ECHILD) << "Got ret=" << ret << " errno=" << errno;
-      break;
+  WaitOptions options(tid);
+  options.consume = false;
+  WaitResult result = WaitManager::wait_stop(options);
+  if (result.code == WAIT_OK) {
+    if (result.status.ptrace_event() == PTRACE_EVENT_EXIT) {
+      // It's possible that the earlier exit event was synthetic, in which
+      // case we're only now catching up to the real process exit. In that
+      // case, just ask the process to actually exit. (TODO: We may want to
+      // catch this earlier).
+      return proceed_to_exit(true);
     }
+    ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXEC)
+      << "Expected PTRACE_EVENT_EXEC, got " << result.status;
+    // The kernel will do the reaping for us in this case
+    was_reaped = true;
+  } else {
+    ASSERT(this, result.code == WAIT_NO_CHILD);
   }
 }
 
@@ -198,17 +192,19 @@ WaitStatus Task::kill() {
   LOG(debug) << "Sending SIGKILL to " << tid;
   int ret = syscall(SYS_tgkill, real_tgid(), tid, SIGKILL);
   ASSERT(this, ret == 0);
-  int raw_status = -1;
-  int wait_ret = ::waitpid(tid, &raw_status, __WALL | WUNTRACED);
-  WaitStatus status = WaitStatus(raw_status);
-  LOG(debug) << " -> " << status;
-  bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
-  ASSERT(this, wait_ret == tid) << "Expected " << tid << " got " << wait_ret;
-  ASSERT(this,
-      is_exit_event || status.type() == WaitStatus::FATAL_SIGNAL ||
-      status.type() == WaitStatus::EXIT)
-      << "Expected exit or fatal signal for " << tid << " got " << status;
+  WaitResult result;
+  bool is_exit_event;
+  do {
+    result = WaitManager::wait_stop_or_exit(WaitOptions(tid));
+    ASSERT(this, result.code == WAIT_OK);
+    LOG(debug) << " -> " << result.status;
+    is_exit_event = result.status.ptrace_event() == PTRACE_EVENT_EXIT;
+    // Loop until we get a suitable event; there could be a cached stop
+    // notification.
+  } while (!(is_exit_event || result.status.type() == WaitStatus::FATAL_SIGNAL ||
+             result.status.type() == WaitStatus::EXIT));
   did_kill();
+  WaitStatus status = result.status;
   if (is_exit_event) {
     /* If this is the exit event, we can detach here and the task will
       * continue to zombie state for its parent to reap. If we're not in
@@ -231,11 +227,11 @@ WaitStatus Task::kill() {
       * as the detach request comes in. To address this, we waitpid again,
       * which will reap/detach us from ptrace and frees the real parent to
       * do its reaping. */
-      raw_status = 0;
-      wait_ret = ::waitpid(tid, &raw_status, __WALL | WUNTRACED);
-      status = WaitStatus(raw_status);
-      LOG(debug) << " --> " << status;
-      DEBUG_ASSERT(wait_ret == tid && status.fatal_sig() == SIGKILL);
+      result = WaitManager::wait_exit(WaitOptions(tid));
+      ASSERT(this, result.code == WAIT_OK);
+      LOG(debug) << " --> " << result.status;
+      ASSERT(this, result.status.fatal_sig() == SIGKILL);
+      status = result.status;
     }
   } else {
     was_reaped = true;
@@ -251,12 +247,8 @@ Task::~Task() {
 
     if (!session().is_recording() && !already_reaped()) {
       // Reap the zombie.
-      int ret = waitpid(tid, NULL, __WALL);
-      if (ret == -1) {
-        ASSERT(this, errno == ECHILD || errno == ESRCH);
-      } else {
-        ASSERT(this, ret == tid);
-      }
+      WaitResult result = WaitManager::wait_exit(WaitOptions(tid));
+      ASSERT(this, result.code == WAIT_OK || result.code == WAIT_NO_CHILD);
     }
 
     LOG(debug) << "  dead";
@@ -1459,7 +1451,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     flush_regs();
   }
 
-  pid_t wait_ret = 0;
+  bool detected_exit = false;
   if (session().is_recording() && !is_dying()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
      * and advances to the PTRACE_EXIT_EVENT ptrace-stop just before we
@@ -1471,12 +1463,11 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
      * a chance to SIGKILL our tracee and advance it to the PTRACE_EXIT_EVENT,
      * or just letting the tracee be scheduled to process its pending SIGKILL.
      */
-    int raw_status = 0;
-    wait_ret = waitpid(tid, &raw_status, WNOHANG | __WALL);
-    ASSERT(this, 0 <= wait_ret)
-        << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
-    WaitStatus status(raw_status);
-    if (wait_ret == tid) {
+    WaitOptions options(tid);
+    options.block_seconds = 0.0;
+    WaitResult result = WaitManager::wait_stop_or_exit(options);
+    ASSERT(this, result.code == WAIT_OK || result.code == WAIT_NO_STATUS);
+    if (result.code == WAIT_OK) {
       // In some (but not all) cases where the child was killed with SIGKILL,
       // we don't get PTRACE_EVENT_EXIT before it just exits, because a SIGKILL
       // arrived when the child was already in the PTRACE_EVENT_EXIT stop.
@@ -1484,16 +1475,14 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       // can reflect what caused the thread to exit before the SIGKILL arrived
       // and forced it out of the PTRACE_EVENT_EXIT stop.
       ASSERT(this,
-             status.ptrace_event() == PTRACE_EVENT_EXIT ||
-                 status.reaped())
-          << "got " << status;
-      did_waitpid(status);
-    } else {
-      ASSERT(this, 0 == wait_ret)
-          << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
+             result.status.ptrace_event() == PTRACE_EVENT_EXIT ||
+                 result.status.reaped())
+          << "got " << result.status;
+      did_waitpid(result.status);
+      detected_exit = true;
     }
   }
-  if (wait_ret > 0 || is_dying()) {
+  if (detected_exit || is_dying()) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
     // wait() will see this and report the ptrace-exit event.
     detected_unexpected_exit = true;
@@ -1904,16 +1893,15 @@ bool Task::account_for_potential_ptrace_interrupt_stop(WaitStatus status) {
 }
 
 void Task::wait(double interrupt_after_elapsed) {
-  LOG(debug) << "going into blocking waitid(" << tid << ") ...";
+  LOG(debug) << "going into blocking wait for " << tid << " ...";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == -1);
 
   if (wait_unexpected_exit()) {
     return;
   }
 
-  WaitStatus status;
   bool sent_wait_interrupt = false;
-  int ret;
+  WaitResult result;
   while (true) {
     if (interrupt_after_elapsed == 0 && !sent_wait_interrupt) {
       do_ptrace_interrupt();
@@ -1924,52 +1912,37 @@ void Task::wait(double interrupt_after_elapsed) {
       sent_wait_interrupt = true;
     }
 
+    WaitOptions options(tid);
     if (interrupt_after_elapsed > 0) {
-      struct itimerval timer = { { 0, 0 },
-                                 to_timeval(interrupt_after_elapsed) };
-      setitimer(ITIMER_REAL, &timer, nullptr);
-    }
-    siginfo_t info;
-    ret = waitid(P_PID, tid, &info, WSTOPPED);
-    DEBUG_ASSERT(ret == 0 || ret == -1);
-    if (ret == -1) {
-      ret = -errno;
-    }
-    if (interrupt_after_elapsed > 0) {
-      struct itimerval timer = { { 0, 0 }, { 0, 0 } };
-      setitimer(ITIMER_REAL, &timer, nullptr);
+      options.block_seconds = interrupt_after_elapsed;
       interrupt_after_elapsed = 0;
     }
+    result = WaitManager::wait_stop(options);
 
-    if (ret == 0) {
-      status = WaitStatus(info);
-      // waitpid was not interrupted by the alarm.
+    if (result.code == WAIT_OK) {
       break;
-    } else {
-      if (ret == -ECHILD) {
-        /* The process died without us getting a PTRACE_EXIT_EVENT notification.
-        * This is possible if the process receives a SIGKILL while in the exit
-        * event stop, but before we were able to read the event notification.
-        * We handle this situation by synthesizing an exit event, but otherwise
-        * going about our regular business.
-        */
-        LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
-        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-        break;
-      } else if (ret != -EINTR) {
-        FATAL() << "Unexpected wait error " << -ret;
-      }
-      continue;
     }
+    if (result.code == WAIT_NO_CHILD) {
+      /* The process died without us getting a PTRACE_EXIT_EVENT notification.
+       * This is possible if the process receives a SIGKILL while in the exit
+       * event stop, but before we were able to read the event notification.
+       * We handle this situation by synthesizing an exit event, but otherwise
+       * going about our regular business.
+       */
+      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
+      result.status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+      break;
+    }
+    ASSERT(this, result.code == WAIT_NO_STATUS);
   }
 
   if (sent_wait_interrupt) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
-    if (!is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
-      LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << status;
+    if (!is_signal_triggered_by_ptrace_interrupt(result.status.group_stop())) {
+      LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << result.status;
     }
   }
-  did_waitpid(status);
+  did_waitpid(result.status);
 }
 
 void Task::canonicalize_regs(SupportedArch syscall_arch) {
@@ -3843,21 +3816,25 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
     if (t->wait_unexpected_exit()) {
       break;
     }
-    int raw_status;
-    // Do our own waitpid instead of calling Task::wait() so we can detect and
+    // Do our own waiting instead of calling Task::wait() so we can detect and
     // handle tid changes due to off-main-thread execve.
-    // When we're expecting a tid change, we can't pass a tid here because we
-    // don't know which tid to wait for.
-    // Passing the original tid seems to cause a hang in some kernels
-    // (e.g. 4.10.0-19-generic) if the tid change races with our waitpid
-    int ret = waitpid(new_tid >= 0 ? -1 : t->tid, &raw_status, __WALL);
-    ASSERT(t, ret >= 0);
-    ASSERT(t, ret == (new_tid >= 0 ? new_tid : t->tid));
+    WaitOptions options(t->tid);
+    if (new_tid >= 0) {
+      options.unblock_on_other_tasks = true;
+    }
+    WaitResult result = WaitManager::wait_stop(options);
+    if (new_tid >= 0 && result.code == WAIT_NO_CHILD) {
+      // tid change happened before our wait call. Try another wait .
+      options.tid = new_tid;
+      options.unblock_on_other_tasks = false;
+      result = WaitManager::wait_stop(options);
+    }
+    ASSERT(t, result.code == WAIT_OK);
     if (new_tid >= 0) {
       t->hpc.set_tid(new_tid);
       t->tid = new_tid;
     }
-    t->did_waitpid(WaitStatus(raw_status));
+    t->did_waitpid(result.status);
 
     if (ReplaySession::is_ignored_signal(t->status().stop_sig())) {
       t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
