@@ -14,6 +14,7 @@
 #include "Flags.h"
 #include "RecordSession.h"
 #include "StringVectorToCharArray.h"
+#include "WaitManager.h"
 #include "WaitStatus.h"
 #include "core.h"
 #include "git_revision.h"
@@ -623,9 +624,11 @@ static void copy_preload_sources_to_trace(const string& trace_dir) {
     FATAL() << "Can't spawn 'zip'";
   }
   posix_spawn_file_actions_destroy(&actions);
-  int status;
-  waitpid(pid, &status, 0);
-  LOG(info) << "Got zip status " << WaitStatus(status);
+  WaitResult result = WaitManager::wait_exit(WaitOptions(pid));
+  if (result.code != WAIT_OK) {
+    FATAL() << "Wait failed";
+  }
+  LOG(info) << "Got zip status " << result.status;
 }
 
 static void save_rr_git_revision(const string& trace_dir) {

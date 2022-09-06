@@ -43,6 +43,7 @@
 #include "RecordTask.h"
 #include "ReplayTask.h"
 #include "TraceStream.h"
+#include "WaitManager.h"
 #include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -2385,8 +2386,7 @@ bool coredumping_signal_takes_down_entire_vm() {
   // 1 the old behavior.
   static int coredumping_signal_vm_behavior = -1;
   if (coredumping_signal_vm_behavior < 0) {
-    pid_t child = -1;
-    int status = -1;
+    pid_t child;
     LOG(debug) << "Testing coredumping behavior in the presence of CLONE_VM";
     if ((child = fork()) == 0) {
       // Remove any handlers and make sure we get the default signal behavior.
@@ -2402,16 +2402,16 @@ bool coredumping_signal_takes_down_entire_vm() {
                       CLONE_VM, NULL, NULL, NULL, NULL);
       DEBUG_ASSERT(tid > 0);
 
-      pid_t ret = waitpid(tid, &status, __WALL);
-      DEBUG_ASSERT(ret == tid);
-      DEBUG_ASSERT(WIFSIGNALED(status));
+      WaitResult result = WaitManager::wait_exit(WaitOptions(tid));
+      DEBUG_ASSERT(result.code == WAIT_OK);
+      DEBUG_ASSERT(result.status.type() == WaitStatus::FATAL_SIGNAL);
       exit(0);
     }
 
     DEBUG_ASSERT(child > 0);
-    pid_t ret = waitpid(child, &status, __WALL);
-    DEBUG_ASSERT(ret == child);
-    coredumping_signal_vm_behavior = WIFSIGNALED(status);
+    WaitResult result = WaitManager::wait_exit(WaitOptions(child));
+    DEBUG_ASSERT(result.code == WAIT_OK);
+    coredumping_signal_vm_behavior = result.status.type() == WaitStatus::FATAL_SIGNAL;
   }
 
   return coredumping_signal_vm_behavior > 0;

@@ -18,6 +18,7 @@
 #include "Flags.h"
 #include "RecordTask.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "WaitManager.h"
 #include "core.h"
 #include "ftrace.h"
 #include "kernel_metadata.h"
@@ -2627,10 +2628,12 @@ void RecordSession::term_detached_tasks() {
     if (!t->detached_proxy) {
       continue;
     }
-    int status;
-    pid_t ret = ::waitpid(t->rec_tid, &status, WEXITED);
-    if (ret != t->rec_tid) {
-      LOG(warn) << "Unexpected wait status " << WaitStatus(status) << " while waiting for detached child " << t->rec_tid;
+    WaitResult result = WaitManager::wait_exit(WaitOptions(t->rec_tid));
+    if (result.code != WAIT_OK) {
+      LOG(warn) << "Wait failed";
+    } else if (result.status.type() != WaitStatus::EXIT) {
+      LOG(warn) << "Unexpected wait status " << result.status <<
+        " while waiting for detached child " << t->rec_tid;
     }
   }
 }
