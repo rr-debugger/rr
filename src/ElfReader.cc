@@ -246,7 +246,7 @@ SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
     return result;
   }
   const typename Arch::ElfShdr* strings = find_section(strtab);
-  if (!strtab) {
+  if (!strings) {
     return result;
   }
 
@@ -275,6 +275,7 @@ SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
   auto strtab_ptr = r.read<char>(strings->sh_offset, strings->sh_size);
   if (!strtab_ptr) {
     LOG(debug) << "Invalid ELF file: can't read strings " << strtab;
+    return result;
   }
   result.strtab.resize(strings->sh_size);
   memcpy(result.strtab.data(), strtab_ptr, result.strtab.size());
@@ -335,6 +336,7 @@ template <typename Arch> DynamicSection ElfReaderImpl<Arch>::read_dynamic() {
   auto strtab = r.read<char>(dynstr->sh_offset, dynstr->sh_size);
   if (!strtab) {
     LOG(debug) << "Invalid ELF file: can't read .dynstr";
+    return result;
   }
   result.strtab.resize(dynstr->sh_size);
   memcpy(result.strtab.data(), strtab, result.strtab.size());
