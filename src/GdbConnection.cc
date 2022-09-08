@@ -416,7 +416,9 @@ static string read_target_desc(const char* file_name) {
   string path = resource_path() + share_path + string(file_name);
   stringstream ss;
   FILE* f = fopen(path.c_str(), "r");
-  DEBUG_ASSERT(f);
+  if (f == NULL) {
+      FATAL() << "Failed to load target description file: " << file_name;
+  }
   while (true) {
     int ch = getc(f);
     if (ch == EOF) {
