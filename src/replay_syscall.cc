@@ -814,6 +814,7 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
   size_t old_size = ceil_page_size(trace_regs.arg2());
   remote_ptr<void> new_addr = trace_frame.regs().syscall_result();
   size_t new_size = ceil_page_size(trace_regs.arg3());
+  int flags = trace_regs.arg4_signed();
 
   // The recorded mremap call succeeded, so we know the original mapping can be
   // treated as a single mapping.
@@ -845,13 +846,13 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
       // addresses? Hopefully the kernel doesn't do that to us!!!
       remote.infallible_syscall_if_alive(trace_regs.original_syscallno(), old_addr,
                                          old_size, new_size,
-                                         MREMAP_MAYMOVE | MREMAP_FIXED, new_addr);
+                                         flags | MREMAP_MAYMOVE | MREMAP_FIXED, new_addr);
     }
 
     remote.regs().set_syscall_result(new_addr);
   }
 
-  t->vm()->remap(t, old_addr, old_size, new_addr, new_size);
+  t->vm()->remap(t, old_addr, old_size, new_addr, new_size, flags);
 
   AddressSpace::Mapping mapping = t->vm()->mapping_of(new_addr);
   auto f = mapping.emu_file;

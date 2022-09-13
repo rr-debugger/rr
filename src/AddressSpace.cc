@@ -982,7 +982,7 @@ void AddressSpace::fixup_mprotect_growsdown_parameters(Task* t) {
 
 void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
                          size_t old_num_bytes, remote_ptr<void> new_addr,
-                         size_t new_num_bytes) {
+                         size_t new_num_bytes, int flags) {
   LOG(debug) << "mremap(" << old_addr << ", " << old_num_bytes << ", "
              << new_addr << ", " << new_num_bytes << ")";
   old_num_bytes = ceil_page_size(old_num_bytes);
@@ -992,6 +992,10 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
   KernelMapping km = mr.map.subrange(old_addr, min(mr.map.end(), old_addr + old_num_bytes));
 
   unmap_internal(t, old_addr, old_num_bytes);
+  if (flags & MREMAP_DONTUNMAP) {
+    // This can only ever be an anonymous private mapping.
+    map(t, old_addr, old_num_bytes, km.prot(), km.flags(), 0, string());
+  }
   if (0 == new_num_bytes) {
     return;
   }

@@ -541,7 +541,7 @@ public:
    * [new_addr, old_addr + new_num_bytes), preserving metadata.
    */
   void remap(Task* t, remote_ptr<void> old_addr, size_t old_num_bytes,
-             remote_ptr<void> new_addr, size_t new_num_bytes);
+             remote_ptr<void> new_addr, size_t new_num_bytes, int flags);
 
   /**
    * Notify that data was written to this address space by rr or

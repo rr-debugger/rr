@@ -529,4 +529,8 @@ static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
 #define BLKGETDISKSEQ _IOR(0x12,128,__u64)
 #endif
 
+#ifndef MREMAP_DONTUNMAP
+#define MREMAP_DONTUNMAP 4
+#endif
+
 #endif /* RRUTIL_H */

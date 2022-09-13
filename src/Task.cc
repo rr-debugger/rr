@@ -3690,7 +3690,8 @@ static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &k
          located in libpthread.so.0 is used. */
       remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), m.map.start(), m.map.size(),
                                 m.map.size(), MREMAP_MAYMOVE | MREMAP_FIXED, km.start());
-      remote.task()->vm()->remap(remote.task(), m.map.start(), m.map.size(), km.start(), m.map.size());
+      remote.task()->vm()->remap(remote.task(), m.map.start(), m.map.size(), km.start(), m.map.size(),
+                                 MREMAP_MAYMOVE | MREMAP_FIXED);
     }
   }
 }

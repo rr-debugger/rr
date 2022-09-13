@@ -1049,6 +1049,7 @@ set(BASIC_TESTS
   mprotect_stack
   mremap
   mremap_after_coalesce
+  mremap_dontunmap
   mremap_grow
   mremap_grow_shared
   mremap_non_page_size

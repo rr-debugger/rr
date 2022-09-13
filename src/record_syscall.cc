@@ -5903,7 +5903,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
 }
 
 static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
-                           size_t old_length, size_t new_length) {
+                           size_t old_length, size_t new_length, int flags) {
   if (t->regs().syscall_failed()) {
     // We purely emulate failed mremaps.
     return;
@@ -5913,7 +5913,7 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
   size_t new_size = ceil_page_size(new_length);
   remote_ptr<void> new_addr = t->regs().syscall_result();
 
-  t->vm()->remap(t, old_addr, old_size, new_addr, new_size);
+  t->vm()->remap(t, old_addr, old_size, new_addr, new_size, flags);
   AddressSpace::Mapping m = t->vm()->mapping_of(new_addr);
   KernelMapping km =
       m.map.subrange(new_addr, new_addr + min(new_size, old_size));
@@ -6405,7 +6405,8 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::mremap:
-      process_mremap(t, t->regs().orig_arg1(), t->regs().arg2(), t->regs().arg3());
+      process_mremap(t, t->regs().orig_arg1(), t->regs().arg2(), t->regs().arg3(),
+                     (int)t->regs().arg4_signed());
       break;
 
     case Arch::shmat:

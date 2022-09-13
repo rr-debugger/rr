@@ -592,7 +592,8 @@ void Session::make_private_shared(AutoRemoteSyscalls& remote,
   remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(sz);
   remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), start, sz,
                             sz, MREMAP_MAYMOVE | MREMAP_FIXED, free_mem);
-  remote.task()->vm()->remap(remote.task(), start, sz, free_mem, sz);
+  remote.task()->vm()->remap(remote.task(), start, sz, free_mem, sz,
+                             MREMAP_MAYMOVE | MREMAP_FIXED);
 
   // AutoRemoteSyscalls may have gotten unlucky and picked the old stack
   // segment as it's scratch space, reevaluate that choice
