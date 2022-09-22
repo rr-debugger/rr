@@ -34,7 +34,7 @@ protected:
   pid_t do_wait(pid_t tid, bool consume, int type, double block_seconds, WaitStatus& status);
   bool check_status(pid_t tid, bool consume, WaitResult& result);
 
-  map<pid_t, WaitStatus> stop_statuses;
+  map<pid_t, vector<WaitStatus>> stop_statuses;
 };
 
 pid_t WaitState::do_wait(pid_t tid, bool consume, int type, double block_seconds, WaitStatus& status) {
@@ -75,7 +75,7 @@ pid_t WaitState::do_wait(pid_t tid, bool consume, int type, double block_seconds
 }
 
 bool WaitState::check_status(pid_t tid, bool consume, WaitResult& result) {
-  map<pid_t, WaitStatus>::iterator it;
+  map<pid_t, vector<WaitStatus>>::iterator it;
   if (tid < 0) {
     it = stop_statuses.begin();
   } else {
@@ -84,9 +84,12 @@ bool WaitState::check_status(pid_t tid, bool consume, WaitResult& result) {
   if (it != stop_statuses.end()) {
     result.code = WAIT_OK;
     result.tid = it->first;
-    result.status = it->second;
+    result.status = it->second[0];
     if (consume) {
-      stop_statuses.erase(it);
+      it->second.erase(it->second.begin());
+      if (it->second.empty()) {
+        stop_statuses.erase(it);
+      }
     }
     return true;
   }
@@ -128,7 +131,7 @@ WaitResult WaitState::wait(const WaitOptions& options, int type) {
     if (options.consume) {
       // We told the kernel to consume it, so we need to store it here
       // so we can still return it when required.
-      stop_statuses[ret] = result.status;
+      stop_statuses[ret].push_back(result.status);
     }
     result.code = WAIT_NO_STATUS;
     return result;

@@ -519,9 +519,7 @@ public:
   pid_t find_newborn_process(pid_t child_parent);
 
   /**
-   * If the process looks alive, kill it. It is recommended to call try_wait(),
-   * on this task before, to make sure liveness is correctly reflected when
-   * making this decision
+   * If the process looks alive, kill it.
    */
   void kill_if_alive();
 

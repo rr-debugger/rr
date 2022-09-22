@@ -2880,10 +2880,6 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_KILL: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
-        // The tracee could already be dead, in which case sending it a signal
-        // would move it out of the exit stop, preventing us from doing our
-        // clean up work.
-        tracee->try_wait();
         tracee->kill_if_alive();
         syscall_state.emulate_result(0);
       }
