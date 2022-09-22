@@ -1309,14 +1309,14 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
   return final_mprotect_record_count;
 }
 
-static void write_breakpoint_value(ReplayTask *t, uint64_t breakpoint_value)
+static void write_breakpoint_value(ReplayTask *t, uint64_t breakpoint_value, uint32_t flags = 0)
 {
   if (t->session().has_trace_quirk(TraceReader::UsesGlobalsInReplay)) {
     t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_breakpoint_value),
-      breakpoint_value);
+      breakpoint_value, nullptr, flags);
   } else {
     t->write_mem(remote_ptr<uint64_t>(RR_PAGE_BREAKPOINT_VALUE),
-      breakpoint_value);
+      breakpoint_value, nullptr, flags);
   }
 }
 
