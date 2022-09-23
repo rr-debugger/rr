@@ -18,6 +18,7 @@ namespace rr {
 
 class RecordSession;
 class RecordTask;
+class WaitAggregator;
 
 /**
  * Overview of rr scheduling:
@@ -196,8 +197,8 @@ private:
    * on it again until it has run.
    * Considers only tasks with priority <= priority_threshold.
    */
-  RecordTask* find_next_runnable_task(RecordTask* t, bool* by_waitpid,
-                                      int priority_threshold);
+  RecordTask* find_next_runnable_task(RecordTask* t, WaitAggregator& wait_aggregator,
+                                      bool* by_waitpid, int priority_threshold);
   /**
    * Returns the first task in the round-robin queue or null if it's empty,
    * removing it from the round-robin queue.
@@ -212,7 +213,7 @@ private:
   void maybe_reset_high_priority_only_intervals(double now);
   bool in_high_priority_only_interval(double now);
   bool treat_as_high_priority(RecordTask* t);
-  bool is_task_runnable(RecordTask* t, bool* by_waitpid);
+  bool is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator, bool* by_waitpid);
   void validate_scheduled_task();
   void regenerate_affinity_mask();
 
