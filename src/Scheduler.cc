@@ -199,13 +199,80 @@ static bool treat_syscall_as_nonblocking(int syscallno, SupportedArch arch) {
          is_exit_group_syscall(syscallno, arch);
 }
 
+class WaitAggregator {
+public:
+  WaitAggregator() : did_poll_stops(false) {}
+  bool try_wait(RecordTask* t);
+  // Return a list of tasks that we should check for unexpected exits.
+  const vector<RecordTask*>& exit_candiates() { return exit_candidates_; }
+  static bool try_wait_exit(RecordTask* t);
+private:
+  // We defer making an actual wait syscall until we really need to.
+  // This records whether poll_stops has been called already.
+  bool did_poll_stops;
+  vector<RecordTask*> exit_candidates_;
+};
+
+bool WaitAggregator::try_wait(RecordTask* t) {
+  if (t->wait_unexpected_exit()) {
+    return true;
+  }
+
+  if (!did_poll_stops) {
+    WaitManager::poll_stops();
+    did_poll_stops = true;
+  }
+
+  // Check if there is a status change for us.
+  WaitOptions options(t->tid);
+  // Rely on already-polled stops, don't do another syscall.
+  options.can_perform_syscall = false;
+  WaitResult result = WaitManager::wait_stop(options);
+  if (result.code != WAIT_OK) {
+    exit_candidates_.push_back(t);
+    return false;
+  }
+  LOG(debug) << "wait on " << t->tid << " returns " << result.status;
+  t->did_waitpid(result.status);
+  return true;
+}
+
+bool WaitAggregator::try_wait_exit(RecordTask* t) {
+  WaitOptions options(t->tid);
+  options.block_seconds = 0;
+  // Either we died/are dying unexpectedly, or we were in exec and changed the tid,
+  // or we're not dying at all.
+  // Try to differentiate the first two situations by seeing if there is an exit
+  // notification ready for us to de-queue, in which case we synthesize an
+  // exit event (but don't actually reap the task, ipnstead leaving that
+  // for the generic cleanup code).
+  options.consume = false;
+  WaitResult result = WaitManager::wait_exit(options);
+  switch (result.code) {
+    case WAIT_OK:
+      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << t->tid;
+      t->did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
+      return true;
+    case WAIT_NO_STATUS:
+      // This can happen when the task is in zap_pid_ns_processes waiting for all tasks
+      // in the pid-namespace to exit. It's not in a signal stop, but it's also not
+      // ready to be reaped yet, yet we're still tracing it. Don't wait on this
+      // task, we should be able to reap it later.
+      // But most likely this task is just still blocked.
+      return false;
+    case WAIT_NO_CHILD:
+    default:
+      return false;
+  }
+}
+
 /**
  * Returns true if we should return t as the runnable task. Otherwise we
  * should check the next task. Note that if this returns true get_next_thread
  * |must| return t as the runnable task, otherwise we will lose an event and
  * probably deadlock!!!
  */
-bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
+bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator, bool* by_waitpid) {
   ASSERT(t, !must_run_task) << "is_task_runnable called again after it "
                                "returned a task that must run!";
 
@@ -259,7 +326,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
       // We just have to poll SigPnd in /proc/<pid>/status.
       enable_poll = true;
       // We also need to check if the task got killed.
-      t->try_wait();
+      WaitAggregator::try_wait_exit(t);
       // N.B.: If we supported ptrace exit notifications for killed tracee's
       // that would need handling here, but we don't at the moment.
       return t->is_dying();
@@ -302,7 +369,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   }
 
   bool did_wait_for_t;
-  did_wait_for_t = t->try_wait();
+  did_wait_for_t = wait_aggregator.try_wait(t);
   if (did_wait_for_t) {
     LOG(debug) << "  ready with status " << t->status();
     if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
@@ -319,8 +386,8 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   return false;
 }
 
-RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, bool* by_waitpid,
-                                               int priority_threshold) {
+RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, WaitAggregator& wait_aggregator,
+                                               bool* by_waitpid, int priority_threshold) {
   *by_waitpid = false;
 
   // The outer loop has one iteration per unique priority value.
@@ -341,7 +408,7 @@ RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, bool* by_waitpid,
       }
       shuffle(tasks.begin(), tasks.end(), random);
       for (RecordTask* next : tasks) {
-        if (is_task_runnable(next, by_waitpid)) {
+        if (is_task_runnable(next, wait_aggregator, by_waitpid)) {
           return next;
         }
       }
@@ -359,7 +426,7 @@ RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, bool* by_waitpid,
       do {
         RecordTask* next = task_iterator->second;
 
-        if (is_task_runnable(next, by_waitpid)) {
+        if (is_task_runnable(next, wait_aggregator, by_waitpid)) {
           return next;
         }
 
@@ -667,12 +734,13 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     maybe_reset_high_priority_only_intervals(now);
     last_reschedule_in_high_priority_only_interval =
         in_high_priority_only_interval(now);
+    WaitAggregator wait_aggregator;
 
     if (current_) {
       // Determine if we should run current_ again
       RecordTask* round_robin_task = get_round_robin_task();
       if (!round_robin_task) {
-        next = find_next_runnable_task(current_, &result.by_waitpid,
+        next = find_next_runnable_task(current_, wait_aggregator, &result.by_waitpid,
                                        current_->priority - 1);
         if (next) {
           // There is a runnable higher-priority task. Run it.
@@ -691,7 +759,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           (treat_as_high_priority(current_) ||
            !last_reschedule_in_high_priority_only_interval) &&
           current_->tick_count() < current_timeslice_end() &&
-          is_task_runnable(current_, &result.by_waitpid)) {
+          is_task_runnable(current_, wait_aggregator, &result.by_waitpid)) {
         LOG(debug) << "  Carrying on with task " << current_->tid;
         validate_scheduled_task();
         return result;
@@ -706,15 +774,34 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     next = get_round_robin_task();
     if (next) {
       LOG(debug) << "Trying task " << next->tid << " from yield queue";
-      if (is_task_runnable(next, &result.by_waitpid)) {
+      if (is_task_runnable(next, wait_aggregator, &result.by_waitpid)) {
         break;
       }
       maybe_pop_round_robin_task(next);
       continue;
     }
 
-    if (!next) {
-      next = find_next_runnable_task(current_, &result.by_waitpid, INT32_MAX);
+    next = find_next_runnable_task(current_, wait_aggregator, &result.by_waitpid, INT32_MAX);
+    if (!next && !wait_aggregator.exit_candiates().empty()) {
+      // We need to check for tasks that have unexpectedly exited.
+      // First check if there is any exit status pending. Normally there won't be.
+      WaitOptions options;
+      options.block_seconds = 0;
+      options.consume = false;
+      // We check for a stop_or_exit even though we'd really like to check for
+      // just an exit. Unfortunately wait_exit does not work properly if we
+      // don't consume the status and want to wait on any tracee.
+      // If we have a stop, that's OK, we'll just do extra work here.
+      WaitResult result = WaitManager::wait_stop_or_exit(options);
+      if (result.code == WAIT_OK) {
+        // Check which candidate has exited, if any.
+        for (RecordTask* t : wait_aggregator.exit_candiates()) {
+          if (WaitAggregator::try_wait_exit(t)) {
+            next = t;
+            break;
+          }
+        }
+      }
     }
 
     // When there's only one thread, treat it as low priority for the

@@ -20,6 +20,7 @@ namespace rr {
 class WaitState {
 public:
   WaitResult wait(const WaitOptions& options, int type);
+  void poll_stops();
 protected:
   // Poll child(ren) for a wait status. If tid == -1 we wait for any child, otherwise
   // we wait for the specific child 'tid' (which may be more efficient, the kernel
@@ -101,6 +102,10 @@ WaitResult WaitState::wait(const WaitOptions& options, int type) {
   if ((type & WSTOPPED) && check_status(options.tid, options.consume, result)) {
     return result;
   }
+  if (!options.can_perform_syscall) {
+    result.code = WAIT_NO_STATUS;
+    return result;
+  }
 
   pid_t ret = do_wait(options.unblock_on_other_tasks ? -1 : options.tid,
                       options.consume, type, options.block_seconds,
@@ -156,6 +161,27 @@ WaitResult WaitState::wait(const WaitOptions& options, int type) {
   return result;
 }
 
+void WaitState::poll_stops() {
+  while (true) {
+    WaitStatus status;
+    pid_t ret = do_wait(-1, true, WSTOPPED, 0, status);
+    if (ret == 0) {
+      return;
+    }
+    if (ret < 0) {
+      if (errno == EINTR || errno == ECHILD) {
+        return;
+      }
+      FATAL() << "Unexpected error polling for stops";
+    }
+    // We got a status for some task. Stash it.
+    if (status.reaped()) {
+      FATAL() << "Expected a stop!";
+    }
+    stop_statuses[ret].push_back(status);
+  }
+}
+
 static WaitState& wait_state() {
   static WaitState static_state;
   return static_state;
@@ -166,7 +192,7 @@ WaitResult WaitManager::wait_stop(const WaitOptions& options) {
 }
 
 WaitResult WaitManager::wait_exit(const WaitOptions& options) {
-  if (options.unblock_on_other_tasks) {
+  if (options.unblock_on_other_tasks || !options.can_perform_syscall) {
     FATAL() << "We can't stash exit statuses";
   }
   if (!options.consume && (options.block_seconds > 0 || options.tid < 0)) {
@@ -182,10 +208,14 @@ WaitResult WaitManager::wait_exit(const WaitOptions& options) {
 }
 
 WaitResult WaitManager::wait_stop_or_exit(const WaitOptions& options) {
-  if (options.unblock_on_other_tasks) {
+  if (options.unblock_on_other_tasks || !options.can_perform_syscall) {
     FATAL() << "We can't stash exit statuses";
   }
   return wait_state().wait(options, WSTOPPED | WEXITED);
+}
+
+void WaitManager::poll_stops() {
+  wait_state().poll_stops();
 }
 
 } // namespace rr

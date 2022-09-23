@@ -2094,47 +2094,6 @@ void RecordTask::reap() {
   was_reaped = true;
 }
 
-bool RecordTask::try_wait() {
-  if (wait_unexpected_exit()) {
-    return true;
-  }
-
-  // Check if there is a status change for us
-  WaitOptions options(tid);
-  options.block_seconds = 0;
-  WaitResult result = WaitManager::wait_stop(options);
-  if (result.code == WAIT_NO_STATUS) {
-    return false;
-  }
-  if (result.code == WAIT_NO_CHILD) {
-    // Either we died/are dying unexpectedly, or we were in exec and changed the tid.
-    // Try to differentiate the two situations by seeing if there is an exit
-    // notification ready for us to de-queue, in which case we synthesize an
-    // exit event (but don't actually reap the task, instead leaving that
-    // for the generic cleanup code).
-    options.consume = false;
-    result = WaitManager::wait_exit(options);
-    switch (result.code) {
-      case WAIT_OK:
-        LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << tid;
-        result.status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-        break;
-      case WAIT_NO_STATUS:
-        // This can happen when the task is in zap_pid_ns_processes waiting for all tasks
-        // in the pid-namespace to exit. It's not in a signal stop, but it's also not
-        // ready to be reaped yet, yet we're still tracing it. Don't wait on this
-        // task, we should be able to reap it later.
-        return false;
-      case WAIT_NO_CHILD:
-      default:
-        return false;
-    }
-  }
-  LOG(debug) << "wait on " << tid << " returns " << result.status;
-  did_waitpid(result.status);
-  return true;
-}
-
 static uint64_t read_pid_ns(const RecordTask* t) {
   char buf[PATH_MAX];
   sprintf(buf, "/proc/%d/ns/pid", t->tid);
