@@ -142,10 +142,14 @@ void Task::wait_exit() {
    * it as an indication that the task has execed.
    */
   while (true) {
-    int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
+    int ret = waitid(P_PID, tid, &info, WEXITED | WSTOPPED | WNOWAIT);
     if (ret == 0) {
       ASSERT(this, info.si_pid == tid) << "Expected " << tid << " got " << info.si_pid;
       int event = WaitStatus(info).ptrace_event();
+      if (event == 0) { // PTRACE_EVENT_STOP
+        // already finished
+        break;
+      }
       if (event == PTRACE_EVENT_EXIT) {
         // It's possible that the earlier exit event was synthetic, in which
         // case we're only now catching up to the real process exit. In that
