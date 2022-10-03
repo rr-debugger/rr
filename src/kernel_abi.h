@@ -1700,7 +1700,7 @@ struct BaseArch : public wordsize,
     uint64_t __spare2[14];
   } statx;
   // statx not yet widely available in system headers
-  // RR_VERIFY_TYPE(statx);
+  // RR_VERIFY_TYPE_EXPLICIT(struct ::statx, statx);
 
   struct sg_io_hdr {
     int interface_id;
