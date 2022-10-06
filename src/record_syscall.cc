@@ -5597,9 +5597,11 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     }
   }
 
-  // The kernel may zero part of the last page in each data mapping according
-  // to ELF BSS metadata. So we record the last page of each data mapping in
-  // the trace.
+  // The kernel may modify some of the pages in the mapping according to
+  // ELF BSS metadata. We use /proc/<pid>/pagemap to observe which pages
+  // have been changed and mark them for recording.
+  ScopedFd pagemap(t->proc_pagemap_path().c_str(), O_RDONLY, 0);
+  ASSERT(t, pagemap.is_open());
   vector<remote_ptr<void>> pages_to_record;
 
   for (const auto& m : t->vm()->maps()) {
@@ -5634,11 +5636,20 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
         t->record_remote(km.start(), km.size());
       }
     } else {
-      // See https://github.com/rr-debugger/rr/issues/1568; in some cases
-      // after exec we have memory areas that are rwx. These areas have
-      // a trailing page that may be partially zeroed by the kernel. Record the
-      // trailing page of every mapping just to be simple and safe.
-      pages_to_record.push_back(km.end() - page_size());
+      auto ptr = km.start();
+      auto r = lseek(pagemap.get(), ptr.as_int() / page_size() * 8, SEEK_SET);
+      ASSERT(t, r >= 0);
+      while (ptr != km.end()) {
+        uint64_t pfn;
+        r = read(pagemap.get(), &pfn, sizeof(pfn));
+        ASSERT(t, r == sizeof(pfn));
+        // If the page is physically present (bit 63) or in swap (bit 62)
+        // then it was modified by the kernel and we need to record it.
+        if (pfn & ((1UL << 63) | (1UL << 62))) {
+          pages_to_record.push_back(ptr);
+        }
+        ptr += page_size();
+      }
     }
   }
 

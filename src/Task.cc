@@ -297,6 +297,12 @@ std::string Task::proc_fd_path(int fd) {
   return path;
 }
 
+std::string Task::proc_pagemap_path() {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/pagemap", tid);
+  return path;
+}
+
 std::string Task::proc_stat_path() {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/stat", tid);
