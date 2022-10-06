@@ -205,6 +205,11 @@ public:
   std::string proc_fd_path(int fd);
 
   /**
+   * Return the path of /proc/<pid>/pagemap
+   */
+  std::string proc_pagemap_path();
+
+  /**
    * Return the path of /proc/<pid>/stat
    */
   std::string proc_stat_path();
