@@ -13,6 +13,7 @@
 
 #include "log.h"
 #include "main.h"
+#include "WaitManager.h"
 
 using namespace std;
 
@@ -259,9 +260,8 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
 
   // Wait for and reap all children
   for (size_t i = 0; i < children.size(); ++i) {
-    int status;
-    int ret = waitpid(children[i], &status, 0);
-    if (ret < 0) {
+    WaitResult result = WaitManager::wait_exit(WaitOptions(children[i]));
+    if (result.code != WAIT_OK) {
       FATAL() << "Failed to wait for child " << children[i];
     }
   }
