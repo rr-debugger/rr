@@ -799,7 +799,7 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
      * frequent than even system updates.
      *
      * XXX what about the fontconfig cache files? */
-    LOG(debug) << "  (no copy for root-owned " << file_name << ")";
+    LOG(debug) << "  (no copy for root-owned " << mapping.fsname() << ")";
     return false;
   }
   if (private_mapping) {
