@@ -1201,6 +1201,7 @@ set(BASIC_TESTS
   signal_during_preload_init
   signal_frame
   signal_unstoppable
+  x86/signal_xmm_state
   signalfd
   sigprocmask
   sigprocmask_ensure_delivery

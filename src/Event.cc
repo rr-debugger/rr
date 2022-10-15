@@ -105,6 +105,11 @@ bool Event::record_extra_regs() const {
               sys_ev.is_exec() ||
               is_pkey_alloc_syscall(sys_ev.number, sys_ev.arch()));
     }
+    case EV_SIGNAL:
+      // Record extra regs so we can deliver the signal at the
+      // right time even when GP regs and ticks values are unchanged
+      // but extra regs have changed.
+      return true;
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,
       // so record these effects.

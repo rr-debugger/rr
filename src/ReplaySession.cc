@@ -813,6 +813,7 @@ static void guard_unexpected_signal(ReplayTask* t) {
 }
 
 static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
+                                    const ExtraRegisters& rec_extra_regs,
                                     Ticks ticks_left,
                                     Registers* mismatched_regs,
                                     const Registers** mismatched_regs_ptr,
@@ -849,6 +850,11 @@ static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
     *mismatched_regs = t->regs();
     *mismatched_regs_ptr = mismatched_regs;
     return false;
+  } else if (!ExtraRegisters::compare_register_files(t, "rep", t->extra_regs(), "rec",
+                                                     rec_extra_regs, behavior)) {
+    LOG(debug) << "  not same execution point: extra regs differ (@" << rec_regs.ip()
+               << ")";
+    return false;
   }
   LOG(debug) << "  same execution point";
   return true;
@@ -871,6 +877,7 @@ Completion ReplaySession::emulate_async_signal(
   bool in_syscallbuf = !in_syscallbuf_syscall_hook.is_null();
 
   const Registers& regs = trace_frame.regs();
+  const ExtraRegisters& extra_regs = trace_frame.extra_regs();
   remote_code_ptr ip = regs.ip();
 
   /* Step 1: advance to the target ticks (minus a slack region) as
@@ -957,7 +964,7 @@ Completion ReplaySession::emulate_async_signal(
      * Determining whether we're at a debugger trap is
      * surprisingly complicated. */
     bool at_target = is_same_execution_point(
-        t, regs, ticks_left, &mismatched_regs, &mismatched_regs_ptr, in_syscallbuf);
+        t, regs, extra_regs, ticks_left, &mismatched_regs, &mismatched_regs_ptr, in_syscallbuf);
     if (pending_SIGTRAP) {
       TrapReasons trap_reasons = t->compute_trap_reasons();
       BreakpointType breakpoint_type =
@@ -1107,7 +1114,7 @@ Completion ReplaySession::emulate_async_signal(
      * advancing execution. So we allow |advance_to| to proceed and actually
      * reach the desired state.
      */
-    if (!is_same_execution_point(t, regs, ticks_left, &mismatched_regs,
+    if (!is_same_execution_point(t, regs, extra_regs, ticks_left, &mismatched_regs,
                                  &mismatched_regs_ptr, in_syscallbuf)) {
       guard_unexpected_signal(t);
     }

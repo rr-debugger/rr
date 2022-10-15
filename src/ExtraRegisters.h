@@ -9,10 +9,12 @@
 #include <vector>
 
 #include "GdbRegister.h"
+#include "Registers.h"
 #include "kernel_abi.h"
 
 namespace rr {
 
+class ReplayTask;
 struct XSaveLayout;
 
 /**
@@ -142,8 +144,29 @@ public:
 
   void validate(Task* t);
 
+  /**
+   * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
+   * indicates that the caller is using this as a general register
+   * compare and nothing special should be done if the register files
+   * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
+   * match.  Passing BAIL_ON_MISMATCH will additionally abort on
+   * mismatch.
+   * This is conservative; we only return false if we have enough
+   * information to verify that the registers definitely don't match.
+   * The register files must have the same arch.
+   */
+  static bool compare_register_files(ReplayTask* t, const char* name1,
+                                     const ExtraRegisters& reg1, const char* name2,
+                                     const ExtraRegisters& reg2,
+                                     MismatchBehavior mismatch_behavior);
+
 private:
   friend class Task;
+
+  static bool compare_register_files_internal(const char* name1,
+                                              const ExtraRegisters& reg1, const char* name2,
+                                              const ExtraRegisters& reg2,
+                                              MismatchBehavior mismatch_behavior);
 
   Format format_;
   SupportedArch arch_;

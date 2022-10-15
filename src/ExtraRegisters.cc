@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include "ReplayTask.h"
 #include "core.h"
 #include "log.h"
 #include "util.h"
@@ -378,9 +379,8 @@ void ExtraRegisters::validate(Task* t) {
   }
 }
 
-static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
-                      const char* name, FILE* f) {
-  uint8_t buf[128];
+static size_t get_full_value(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+                             uint8_t buf[128]) {
   bool defined = false;
   size_t len = r.read_register(buf, low, &defined);
   DEBUG_ASSERT(defined && len <= 64);
@@ -391,9 +391,15 @@ static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
       len += len2;
     }
   }
-  char out[257];
+  return len;
+}
+
+static string reg_to_string(const ExtraRegisters& r, GdbRegister low, GdbRegister hi) {
+  uint8_t buf[128];
+  size_t len = get_full_value(r, low, hi, buf);
   bool printed_digit = false;
-  char* p = out;
+  char out_buf[257];
+  char* p = out_buf;
   for (int i = len - 1; i >= 0; --i) {
     if (!printed_digit && !buf[i] && i > 0) {
       continue;
@@ -401,7 +407,13 @@ static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
     p += sprintf(p, printed_digit ? "%02x" : "%x", buf[i]);
     printed_digit = true;
   }
-  fprintf(f, "%s:0x%s", name, out);
+  return out_buf;
+}
+
+static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+                      const char* name, FILE* f) {
+  string out = reg_to_string(r, low, hi);
+  fprintf(f, "%s:0x%s", name, out.c_str());
 }
 
 static void print_regs(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
@@ -786,6 +798,91 @@ void ExtraRegisters::reset() {
     DEBUG_ASSERT(arch() == aarch64 &&
       "Ensure that nothing is required here for your architecture.");
   }
+}
+
+static bool compare_regs(const char* label1, const ExtraRegisters& reg1,
+                         const char* label2, const ExtraRegisters& reg2,
+                         GdbRegister low, GdbRegister hi,
+                         int num_regs, const char* name_base,
+                         MismatchBehavior mismatch_behavior) {
+  bool match = true;
+  for (int i = 0; i < num_regs; ++i) {
+    GdbRegister this_low = (GdbRegister)(low + i);
+    GdbRegister this_hi = hi == GdbRegister(0) ? hi : (GdbRegister)(hi + i);
+    uint8_t buf1[128];
+    size_t len1 = get_full_value(reg1, this_low, this_hi, buf1);
+    uint8_t buf2[128];
+    size_t len2 = get_full_value(reg2, this_low, this_hi, buf2);
+    DEBUG_ASSERT(len1 == len2);
+
+    if (!memcmp(buf1, buf2, len1)) {
+      continue;
+    }
+
+    char regname[80];
+    sprintf(regname, "%s%d", name_base, i);
+    string val1 = reg_to_string(reg1, this_low, this_hi);
+    string val2 = reg_to_string(reg2, this_low, this_hi);
+    if (mismatch_behavior >= BAIL_ON_MISMATCH) {
+      LOG(error) << regname << " " << val1 << " != " << val2 << " ("
+                 << label1 << " vs. " << label2 << ")";
+    } else if (mismatch_behavior >= LOG_MISMATCHES) {
+      LOG(info) << regname << " " << val1 << " != " << val2 << " ("
+                << label1 << " vs. " << label2 << ")";
+    }
+    match = false;
+  }
+  return match;
+}
+
+bool ExtraRegisters::compare_register_files_internal(const char* name1,
+  const ExtraRegisters& reg1, const char* name2, const ExtraRegisters& reg2,
+  MismatchBehavior mismatch_behavior) {
+  switch (reg1.arch()) {
+    case x86:
+      return compare_regs(name1, reg1, name2, reg2, DREG_ST0, GdbRegister(0), 8, "st", mismatch_behavior)
+        && compare_regs(name1, reg1, name2, reg2, DREG_XMM0, DREG_YMM0H, 8, "ymm", mismatch_behavior);
+    case x86_64:
+      return compare_regs(name1, reg1, name2, reg2, DREG_64_ST0, GdbRegister(0), 8, "st", mismatch_behavior)
+        && compare_regs(name1, reg1, name2, reg2, DREG_64_XMM0, DREG_64_YMM0H, 8, "ymm", mismatch_behavior);
+    case aarch64:
+      DEBUG_ASSERT(format_ == NT_FPR);
+      return compare_regs(name1, reg1, name2, reg2, DREG_V0, GdbRegister(0), 32, "v", mismatch_behavior);
+    default:
+      DEBUG_ASSERT(0 && "Unknown arch");
+      return true;
+  }
+}
+
+bool ExtraRegisters::compare_register_files(ReplayTask* t, const char* name1,
+                                            const ExtraRegisters& reg1, const char* name2,
+                                            const ExtraRegisters& reg2,
+                                            MismatchBehavior mismatch_behavior) {
+  ASSERT(t, reg1.arch() == reg2.arch()) << "Can't compare register files with different archs";
+  if (reg1.format() == NONE || reg2.format() == NONE) {
+    // Not enough data to check anything
+    return true;
+  }
+  ASSERT(t, reg1.format() == reg2.format()) << "Can't compare register files with different formats";
+
+  bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
+  bool match = compare_register_files_internal(name1, reg1, name2, reg2,
+                                               mismatch_behavior);
+
+  if (t) {
+    ASSERT(t, !bail_error || match)
+        << "Fatal extra-register mismatch (ticks/rec:" << t->tick_count() << "/"
+        << t->current_trace_frame().ticks() << ")";
+  } else {
+    DEBUG_ASSERT(!bail_error || match);
+  }
+
+  if (match && mismatch_behavior == LOG_MISMATCHES) {
+    LOG(info) << "(extra-register files are the same for " << name1 << " and "
+              << name2 << ")";
+  }
+
+  return match;
 }
 
 } // namespace rr
