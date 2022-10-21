@@ -846,7 +846,7 @@ bool ExtraRegisters::compare_register_files_internal(const char* name1,
       return compare_regs(name1, reg1, name2, reg2, DREG_64_ST0, GdbRegister(0), 8, "st", mismatch_behavior)
         && compare_regs(name1, reg1, name2, reg2, DREG_64_XMM0, DREG_64_YMM0H, 8, "ymm", mismatch_behavior);
     case aarch64:
-      DEBUG_ASSERT(format_ == NT_FPR);
+      DEBUG_ASSERT(reg1.format_ == NT_FPR);
       return compare_regs(name1, reg1, name2, reg2, DREG_V0, GdbRegister(0), 32, "v", mismatch_behavior);
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
