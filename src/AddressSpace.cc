@@ -2231,7 +2231,8 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
 
   int bits = random_addr_bits(t->arch());
   uint64_t addr_space_limit = uint64_t(1) << bits;
-  while (true) {
+  // Make two attempts to find a valid address.
+  for (int i = 0; i < 2; ++i) {
     remote_ptr<void> addr;
     if (hint) {
       addr = hint;
@@ -2303,6 +2304,9 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
 
     return addr;
   }
+
+  // Don't provide a hint, just let the kernel choose the address.
+  return nullptr;
 }
 
 remote_ptr<void> AddressSpace::find_free_memory(size_t required_space,
