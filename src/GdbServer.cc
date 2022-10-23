@@ -2036,7 +2036,7 @@ static ScopedFd generate_fake_proc_maps(Task* t) {
     FATAL() << "Can't write";
   }
 
-  return move(file.fd);
+  return std::move(file.fd);
 }
 
 static bool is_ld_mapping(string map_name) {
@@ -2190,7 +2190,7 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
   while (files.find(ret_fd) != files.end()) {
     ++ret_fd;
   }
-  files.insert(make_pair(ret_fd, move(contents)));
+  files.insert(make_pair(ret_fd, std::move(contents)));
   return ret_fd;
 }
 

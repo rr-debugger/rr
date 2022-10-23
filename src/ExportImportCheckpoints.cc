@@ -234,16 +234,16 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
     if (!child) {
       set_title(args);
       session->forget_tasks();
-      command_for_checkpoint.args = move(args);
-      command_for_checkpoint.session = move(checkpoint);
+      command_for_checkpoint.args = std::move(args);
+      command_for_checkpoint.session = std::move(checkpoint);
       setup_child_fds(fds_data, command_for_checkpoint);
       char ch;
       ret = read(parent_to_child_read, &ch, 1);
       if (ret != 1) {
         FATAL() << "Failed to read parent notification";
       }
-      command_for_checkpoint.session->reattach_tasks(move(new_tracee_socket),
-        move(new_tracee_socket_receiver));
+      command_for_checkpoint.session->reattach_tasks(std::move(new_tracee_socket),
+        std::move(new_tracee_socket_receiver));
       return command_for_checkpoint;
     }
     children.push_back(child);

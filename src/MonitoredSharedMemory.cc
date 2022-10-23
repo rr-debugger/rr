@@ -44,7 +44,7 @@ void MonitoredSharedMemory::maybe_monitor(RecordTask* t,
       new MonitoredSharedMemory(real_mem, m.map.size()));
 
   const AddressSpace::Mapping& shared =
-      Session::steal_mapping(remote, m, move(result));
+      Session::steal_mapping(remote, m, std::move(result));
   // m may be invalid now
   if (!shared.local_addr) {
     // tracee died
@@ -80,7 +80,7 @@ void MonitoredSharedMemory::check_for_changes(RecordTask* t,
     AutoRemoteSyscalls remote(t);
     auto msm = m.monitored_shared_memory;
     m = Session::recreate_shared_mmap(remote, m, Session::DISCARD_CONTENTS,
-                                      move(msm));
+                                      std::move(msm));
     if (!m.local_addr) {
       // Tracee died.
       return;

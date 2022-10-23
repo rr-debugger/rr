@@ -666,7 +666,7 @@ bool ReplayTimeline::add_breakpoint(
   if (!t->vm()->add_breakpoint(addr, BKPT_USER)) {
     return false;
   }
-  breakpoints.insert(make_tuple(t->vm()->uid(), addr, move(condition)));
+  breakpoints.insert(make_tuple(t->vm()->uid(), addr, std::move(condition)));
   return true;
 }
 
@@ -699,7 +699,7 @@ bool ReplayTimeline::add_watchpoint(ReplayTask* t, remote_ptr<void> addr,
     return false;
   }
   watchpoints.insert(
-      make_tuple(t->vm()->uid(), addr, num_bytes, type, move(condition)));
+      make_tuple(t->vm()->uid(), addr, num_bytes, type, std::move(condition)));
   no_watchpoints_hit_interval_start = no_watchpoints_hit_interval_end =
       Mark();
   return true;
@@ -903,7 +903,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     ReplayResult result = current->replay_step(constraints);
     if (at_mark(end)) {
       DEBUG_ASSERT(tmp_session);
-      current = move(tmp_session);
+      current = std::move(tmp_session);
       LOG(debug) << "Singlestepping arrived at |end|, restoring session";
     } else if (!m.equal_states(*current)) {
       LOG(debug) << "Did fast-singlestep forward to " << current_mark_key();
@@ -976,7 +976,7 @@ ReplayResult ReplayTimeline::reverse_continue(
         seek_to_mark(seek);
         LOG(debug) << "Seeked directly backward from " << start << " to "
                    << seek;
-        start = move(seek);
+        start = std::move(seek);
       }
     } else {
       checkpoint_at_first_break = false;

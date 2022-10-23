@@ -400,21 +400,21 @@ GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
         if (bits > 8) {
           vector<uint8_t> v = b;
           v[i + 1] = 8;
-          variants.push_back(move(v));
+          variants.push_back(std::move(v));
         }
         if (bits > 16) {
           vector<uint8_t> v = b;
           v[i + 1] = 16;
-          variants.push_back(move(v));
+          variants.push_back(std::move(v));
         }
         if (bits > 32) {
           vector<uint8_t> v = b;
           v[i + 1] = 32;
-          variants.push_back(move(v));
+          variants.push_back(std::move(v));
         }
-        variants.push_back(move(b));
+        variants.push_back(std::move(b));
       }
-      bytecode_variants = move(variants);
+      bytecode_variants = std::move(variants);
     }
   }
 }

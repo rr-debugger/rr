@@ -953,7 +953,7 @@ bool GdbConnection::process_vpacket(char* payload) {
     }
     req = GdbRequest(DREQ_CONT);
     req.cont().run_direction = RUN_FORWARD;
-    req.cont().actions = move(actions);
+    req.cont().actions = std::move(actions);
     return true;
   }
 
@@ -1274,7 +1274,7 @@ bool GdbConnection::process_packet() {
             parser_assert('\0' == *payload);
             payload[0] = tmp;
           }
-          req.watch().conditions.push_back(move(bytes));
+          req.watch().conditions.push_back(std::move(bytes));
         }
       }
       parser_assert('\0' == *payload);

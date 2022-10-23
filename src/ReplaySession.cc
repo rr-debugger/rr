@@ -2075,8 +2075,8 @@ void ReplaySession::detach_tasks(pid_t new_ptracer, ScopedFd& new_tracee_socket_
 }
 
 void ReplaySession::reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_tracee_socket_receiver) {
-  tracee_socket = make_shared<ScopedFd>(move(new_tracee_socket));
-  tracee_socket_receiver = make_shared<ScopedFd>(move(new_tracee_socket_receiver));
+  tracee_socket = make_shared<ScopedFd>(std::move(new_tracee_socket));
+  tracee_socket_receiver = make_shared<ScopedFd>(std::move(new_tracee_socket_receiver));
   // Seize all tasks.
   for (auto& entry : task_map) {
     Task* t = entry.second;

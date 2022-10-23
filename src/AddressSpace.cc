@@ -209,9 +209,9 @@ AddressSpace::Mapping::Mapping(const KernelMapping& map,
     : map(map),
       recorded_map(recorded_map),
       emu_file(emu_file),
-      mapped_file_stat(move(mapped_file_stat)),
+      mapped_file_stat(std::move(mapped_file_stat)),
       local_addr(static_cast<uint8_t*>(local_addr)),
-      monitored_shared_memory(move(monitored)),
+      monitored_shared_memory(std::move(monitored)),
       flags(FLAG_NONE) {}
 
 static unique_ptr<struct stat> clone_stat(
@@ -774,8 +774,10 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
   unmap_internal(t, addr, num_bytes);
 
   const KernelMapping& actual_recorded_map = recorded_map ? *recorded_map : m;
-  map_and_coalesce(t, m, actual_recorded_map, emu_file, move(mapped_file_stat),
-                   move(local_addr), move(monitored));
+  map_and_coalesce(t, m, actual_recorded_map, emu_file,
+                   std::move(mapped_file_stat),
+                   std::move(local_addr),
+                   std::move(monitored));
 
   // During an emulated exec, we will explicitly map in a (copy of) the VDSO
   // at the recorded address.
@@ -890,7 +892,7 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
                                                const MemoryRange& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
-    Mapping m = move(mm);
+    Mapping m = std::move(mm);
     remove_from_map(m.map);
 
     // PROT_GROWSDOWN means that if this is a grows-down segment
@@ -917,7 +919,7 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
           m.map.subrange(m.map.start(), rem.start()),
           m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
           m.emu_file, clone_stat(m.mapped_file_stat), m.local_addr,
-          move(monitored));
+          std::move(monitored));
       underflow.flags = m.flags;
       add_to_map(underflow);
     }
@@ -1295,7 +1297,7 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
   auto unmapper = [this](const Mapping& mm, const MemoryRange& rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
 
-    Mapping m = move(mm);
+    Mapping m = std::move(mm);
     remove_from_map(m.map);
 
     LOG(debug) << "  erased (" << m.map << ") ...";
@@ -1307,7 +1309,7 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
       Mapping underflow(m.map.subrange(m.map.start(), rem.start()),
                         m.recorded_map.subrange(m.map.start(), rem.start()),
                         m.emu_file, clone_stat(m.mapped_file_stat),
-                        m.local_addr, move(monitored));
+                        m.local_addr, std::move(monitored));
       underflow.flags = m.flags;
       add_to_map(underflow);
     }
@@ -1540,7 +1542,7 @@ void AddressSpace::ensure_replay_matches_single_recorded_mapping(Task* t, Memory
       // Existing single mapping covers entire range; nothing to do.
       return;
     }
-    Mapping mapping = move(mm);
+    Mapping mapping = std::move(mm);
 
     // These should be null during replay
     ASSERT(t, !mapping.mapped_file_stat);
@@ -2063,8 +2065,8 @@ void AddressSpace::map_and_coalesce(
     monitored_mem.insert(m.start());
   }
   auto ins = mem.insert(MemoryMap::value_type(
-      m, Mapping(m, recorded_map, emu_file, move(mapped_file_stat), local_addr,
-                 move(monitored))));
+      m, Mapping(m, recorded_map, emu_file, std::move(mapped_file_stat),
+                 local_addr, std::move(monitored))));
   coalesce_around(t, ins.first);
 
   update_watchpoint_values(m.start(), m.end());
