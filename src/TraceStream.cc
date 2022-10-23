@@ -1252,7 +1252,7 @@ bool TraceReader::read_raw_data_for_frame_with_holes(RawDataWithHoles& d) {
   auto& rec = raw_recs[raw_recs.size() - 1];
   d.rec_tid = rec.rec_tid;
   d.addr = rec.addr;
-  d.holes = move(rec.holes);
+  d.holes = std::move(rec.holes);
   size_t data_size = rec.size;
   for (auto& h : d.holes) {
     data_size -= h.size;

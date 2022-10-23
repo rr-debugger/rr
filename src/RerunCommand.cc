@@ -635,7 +635,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
   // exporter's child process.
   if (flags.export_checkpoints_event) {
     if (command_for_checkpoint.session) {
-      export_checkpoints_socket = move(command_for_checkpoint.fds.front());
+      export_checkpoints_socket = std::move(command_for_checkpoint.fds.front());
     } else {
       export_checkpoints_socket = bind_export_checkpoints_socket(flags.export_checkpoints_count, flags.export_checkpoints_socket);
     }
@@ -643,7 +643,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
 
   ReplaySession::shr_ptr replay_session;
   if (command_for_checkpoint.session) {
-    replay_session = move(command_for_checkpoint.session);
+    replay_session = std::move(command_for_checkpoint.session);
   } else if (flags.import_checkpoint_socket.empty()) {
     replay_session = ReplaySession::create(trace_dir, session_flags(flags));
     // Now that we've spawned the replay, raise our resource limits if
@@ -652,9 +652,9 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
   } else {
     vector<ScopedFd> fds;
     if (export_checkpoints_socket.is_open()) {
-      fds.push_back(move(export_checkpoints_socket));
+      fds.push_back(std::move(export_checkpoints_socket));
     }
-    return invoke_checkpoint_command(flags.import_checkpoint_socket, command_for_checkpoint.args, move(fds));
+    return invoke_checkpoint_command(flags.import_checkpoint_socket, command_for_checkpoint.args, std::move(fds));
   }
 
   uint64_t instruction_count_within_event = 0;
@@ -743,7 +743,8 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     }
 
     if (after_time == flags.export_checkpoints_event) {
-      command_for_checkpoint = export_checkpoints(move(replay_session), flags.export_checkpoints_count,
+      command_for_checkpoint = export_checkpoints(std::move(replay_session),
+          flags.export_checkpoints_count,
           export_checkpoints_socket, flags.export_checkpoints_socket);
       return 0;
     }
@@ -792,9 +793,9 @@ int RerunCommand::run_internal(CommandForCheckpoint& command_for_checkpoint) {
 
 int RerunCommand::run(vector<string>& args) {
   CommandForCheckpoint command_for_checkpoint;
-  command_for_checkpoint.args = move(args);
+  command_for_checkpoint.args = std::move(args);
   while (true) {
-    ScopedFd exit_notification_fd = move(command_for_checkpoint.exit_notification_fd);
+    ScopedFd exit_notification_fd = std::move(command_for_checkpoint.exit_notification_fd);
     int ret = run_internal(command_for_checkpoint);
     if (!command_for_checkpoint.session) {
       if (exit_notification_fd.is_open()) {

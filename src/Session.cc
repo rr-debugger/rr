@@ -705,7 +705,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
 
     group.clone_leader_state = group_leader->capture_state();
   }
-  dest.clone_completion = move(completion);
+  dest.clone_completion = std::move(completion);
 
   DEBUG_ASSERT(dest.vms().size() > 0);
 }

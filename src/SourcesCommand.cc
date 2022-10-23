@@ -304,7 +304,7 @@ static bool process_compilation_units(ElfFileReader& reader,
           if (comp_dir) {
             c = comp_dir;
           }
-          dwos->push_back({ dwo_name, trace_relative_name, move(c), full_name, dwo_id });
+          dwos->push_back({ dwo_name, trace_relative_name, std::move(c), full_name, dwo_id });
         } else {
           FATAL() << "DWO missing due to relative path " << full_name;
         }
@@ -698,7 +698,7 @@ static string resolve_symlinks(const string& path,
       if (!base_is_file) {
         check_vcs_root(resolved, vcs_dirs);
         // Cache the result of the readlink operation
-        resolved_dirs->insert(make_pair(move(resolved_base), resolved));
+        resolved_dirs->insert(make_pair(std::move(resolved_base), resolved));
         // And cache based on the original `base`.
         resolved_dirs->insert(make_pair(base, resolved));
       }
@@ -828,7 +828,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
     }
 
     if (has_source_files) {
-      relevant_binary_names.push_back(move(trace_relative_name));
+      relevant_binary_names.push_back(std::move(trace_relative_name));
     } else {
       LOG(info) << "No debuginfo found";
     }
@@ -1007,7 +1007,7 @@ int SourcesCommand::run(vector<string>& args) {
       break;
     }
     if (data.source == TraceReader::SOURCE_FILE) {
-      binary_file_names.insert(make_pair(move(data.file_name), km.fsname()));
+      binary_file_names.insert(make_pair(std::move(data.file_name), km.fsname()));
     }
   }
 
@@ -1043,7 +1043,7 @@ int ExplicitSourcesCommand::run(vector<string>& args) {
       LOG(warn) << "No build-id for `" << arg << "`";
       continue;
     }
-    binary_file_names.insert(make_pair(move(buildid), arg));
+    binary_file_names.insert(make_pair(std::move(buildid), arg));
   }
 
   return sources(binary_file_names, comp_dir_substitutions, true);

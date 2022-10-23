@@ -2433,7 +2433,7 @@ Task* Task::os_fork_into(Session* session, FdTable::shr_ptr new_fds) {
                // be copied by fork()ing the address
                // space.
                SIGCHLD,
-               move(new_fds));
+               std::move(new_fds));
   // When we forked ourselves, the child inherited the setup we
   // did to make the clone() call.  So we have to "finish" the
   // remote calls (i.e. undo fudged state) in the child too,
@@ -2466,7 +2466,7 @@ Task* Task::os_clone_into(const CapturedState& state,
                   (CLONE_VM | CLONE_FS | CLONE_SIGHAND |
                    CLONE_SYSVSEM),
                   fdtable_entry->second,
-                  move(new_tg),
+                  std::move(new_tg),
                   state.top_of_stack);
 }
 
@@ -2699,7 +2699,7 @@ bool Task::open_mem_fd() {
     LOG(info) << "Can't retrieve mem fd for " << tid << "; process no longer exists?";
     return false;
   }
-  as->set_mem_fd(move(fd));
+  as->set_mem_fd(std::move(fd));
   return true;
 }
 
@@ -3197,8 +3197,8 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 
   Task* child = remote.task()->clone(
       reason, clone_flags_to_task_flags(base_flags), stack, tls, ctid,
-      remote.new_tid(), rec_child_tid, new_serial, session, move(new_fds),
-      move(new_tg));
+      remote.new_tid(), rec_child_tid, new_serial, session, std::move(new_fds),
+      std::move(new_tg));
   return child;
 }
 

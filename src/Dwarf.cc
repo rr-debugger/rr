@@ -198,7 +198,7 @@ DwarfAbbrev* DwarfAbbrevSet::lookup(uint64_t code) {
       LOG(warn) << "Invalid DWARF abbrev table!";
       return nullptr;
     }
-    abbrevs.insert(make_pair(abbrev_code, move(abbrev)));
+    abbrevs.insert(make_pair(abbrev_code, std::move(abbrev)));
     if (code == abbrev_code) {
       return abbrev_raw;
     }
@@ -215,7 +215,7 @@ DwarfAbbrevSet& DwarfAbbrevs::lookup(uint64_t offset) {
 
   unique_ptr<DwarfAbbrevSet> set(new DwarfAbbrevSet(debug_abbrev.subspan(offset)));
   auto set_raw = set.get();
-  abbrevs.insert(make_pair(offset, move(set)));
+  abbrevs.insert(make_pair(offset, std::move(set)));
   return *set_raw;
 }
 
