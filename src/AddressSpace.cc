@@ -2166,13 +2166,13 @@ static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   return MemoryRange(start, km.end());
 }
 
-static bool overlaps_excluded_range(const RecordSession& session, MemoryRange range) {
+static MemoryRange overlaps_excluded_range(const RecordSession& session, MemoryRange range) {
   for (const auto& r : session.excluded_ranges()) {
     if (r.intersects(range)) {
-      return true;
+      return r;
     }
   }
-  return false;
+  return MemoryRange();
 }
 
 static bool is_all_memory_excluded(const RecordSession& session) {
@@ -2204,7 +2204,7 @@ static MemoryRange choose_global_exclusion_range(const RecordSession* session) {
     r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
     remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
     MemoryRange ret(addr, (uintptr_t)range_size);
-    if (!session || !overlaps_excluded_range(*session, ret)) {
+    if (!session || !overlaps_excluded_range(*session, ret).size()) {
       return ret;
     }
   }
@@ -2233,81 +2233,83 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
 
   int bits = random_addr_bits(t->arch());
   uint64_t addr_space_limit = uint64_t(1) << bits;
-  // Make two attempts to find a valid address.
-  for (int i = 0; i < 2; ++i) {
-    remote_ptr<void> addr;
-    if (hint) {
-      addr = hint;
-      // Don't try using the hint again.
-      hint = nullptr;
+  remote_ptr<void> start = hint;
+  if (!start) {
+    // Half the time, try to allocate at a completely random address. The other
+    // half of the time, we'll try to allocate immediately before or after a
+    // randomly chosen existing mapping.
+    if (random() % 2) {
+      uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+      start = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
     } else {
-      // Half the time, try to allocate at a completely random address. The other
-      // half of the time, we'll try to allocate immediately before or after a
-      // randomly chosen existing mapping.
-      if (random() % 2) {
-        // Some of these addresses will not be mappable. That's fine, the
-        // kernel will fall back to a valid address if the hint is not valid.
-        uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-        addr = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
-      } else {
-        ASSERT(t, !mem.empty());
-        int map_index = random() % mem.size();
-        int map_count = 0;
-        for (const auto& m : maps()) {
-          if (map_count == map_index) {
-            addr = m.map.start();
-            break;
-          }
-          ++map_count;
+      ASSERT(t, !mem.empty());
+      int map_index = random() % mem.size();
+      int map_count = 0;
+      for (const auto& m : maps()) {
+        if (map_count == map_index) {
+          start = m.map.start();
+          break;
         }
+        ++map_count;
+      }
+      if (start.as_int() > addr_space_limit) {
+        // probably vsyscall mapping
+        start = remote_ptr<void>(addr_space_limit) - len;
       }
     }
-
-    // If there's a collision (which there always will be in the second case
-    // above), either move the mapping forwards or backwards in memory until it
-    // fits. Choose the direction randomly.
-    int direction = (random() % 2) ? 1 : -1;
-    while (true) {
-      Maps m = maps_starting_at(addr);
-      if (m.begin() == m.end()) {
-        break;
-      }
-      MemoryRange range = adjust_range_for_stack_growth(m.begin()->map);
-      if (range.start() >= addr + len) {
-        // No overlap with an existing mapping; we're good!
-        break;
-      }
-      if (direction == -1) {
-        addr = range.start() - len;
-      } else {
-        addr = range.end();
-      }
-    }
-
-    if (uint64_t(addr.as_int()) >= addr_space_limit ||
-        uint64_t(addr.as_int()) + ceil_page_size(len) >= addr_space_limit) {
-      // We fell off one end of the address space. Try everything again.
-      continue;
-    }
-    MemoryRange r(addr, ceil_page_size(len));
-    if (r.intersects(rrpage_so_range)) {
-      continue;
-    }
-    if (r.intersects(global_exclusion_range)) {
-      continue;
-    }
-    if (!t->session().excluded_ranges().empty()) {
-      ASSERT(t, word_size(t->arch()) >= 8)
-        << "Chaos mode with ASAN/TSAN not supported in 32-bit processes";
-      if (overlaps_excluded_range(t->session(), r)) {
-        continue;
-      }
-    }
-
-    return addr;
   }
 
-  // Don't provide a hint, just let the kernel choose the address.
+  // Search the address space in one direction all the way to the end,
+  // then in the other direction.
+  int direction = (random() % 2) ? 1 : -1;
+  remote_ptr<void> addr;
+  for (int iteration = 0; iteration < 2; ++iteration) {
+    addr = start;
+
+    while (true) {
+      MemoryRange overlapping_range;
+      Maps m = maps_containing_or_after(addr);
+      if (m.begin() != m.end()) {
+        MemoryRange range = adjust_range_for_stack_growth(m.begin()->map);
+        if (range.start() < addr + len) {
+          overlapping_range = range;
+        }
+      }
+      if (!overlapping_range.size()) {
+        MemoryRange r(addr, ceil_page_size(len));
+        if (r.intersects(rrpage_so_range)) {
+          overlapping_range = rrpage_so_range;
+        } else if (r.intersects(global_exclusion_range)) {
+          overlapping_range = global_exclusion_range;
+        } else if (!t->session().excluded_ranges().empty()) {
+          ASSERT(t, word_size(t->arch()) >= 8)
+            << "Chaos mode with ASAN/TSAN not supported in 32-bit processes";
+          MemoryRange excluded = overlaps_excluded_range(t->session(), r);
+          if (excluded.size()) {
+            overlapping_range = excluded;
+          }
+        }
+      }
+      if (!overlapping_range.size()) {
+
+        return addr;
+      }
+      if (direction == -1) {
+        if (overlapping_range.start() < remote_ptr<void>(0x40000) + len) {
+          break;
+        }
+        addr = overlapping_range.start() - len;
+      } else {
+        if (overlapping_range.end() + len > addr_space_limit) {
+          break;
+        }
+        addr = overlapping_range.end();
+      }
+    }
+
+    direction = -direction;
+  }
+
   return nullptr;
 }
 

@@ -782,7 +782,7 @@ public:
 
   static uint32_t chaos_mode_min_stack_size() { return 8 * 1024 * 1024; }
 
-  /* Returns null if we should not override the memory allocation */
+  /* Returns null if we should return ENOMEM because there is no free space available. */
   remote_ptr<void> chaos_mode_find_free_memory(RecordTask* t, size_t len, remote_ptr<void> hint);
   remote_ptr<void> find_free_memory(
       size_t len, remote_ptr<void> after = remote_ptr<void>());

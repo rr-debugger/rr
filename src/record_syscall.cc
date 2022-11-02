@@ -3198,18 +3198,30 @@ static void prepare_mmap_register_params(RecordTask* t) {
 #endif
   if (t->session().enable_chaos() && !(r.arg4_signed() & mask_flag)) {
     // Not MAP_FIXED. Randomize the allocation address.
-    size_t len = r.arg2();
+    remote_ptr<void> hint = floor_page_size(r.arg1());
+    size_t orig_len = ceil_page_size(r.arg1() + r.arg2()) - hint.as_int();
+    size_t len = orig_len;
     if (r.arg4_signed() & MAP_GROWSDOWN) {
       // Ensure stacks can grow to the minimum size we choose
       len = max<size_t>(AddressSpace::chaos_mode_min_stack_size(), len);
     }
-    remote_ptr<void> addr = t->vm()->chaos_mode_find_free_memory(t, len, r.arg1());
-    if (!addr.is_null()) {
-      r.set_arg1(addr + len - r.arg2());
-      // Note that we don't set MAP_FIXED here. If anything goes wrong (e.g.
-      // we pick a hint address that actually can't be used on this system), the
-      // kernel will pick a valid address instead.
+    remote_ptr<void> addr = t->vm()->chaos_mode_find_free_memory(t, len, hint);
+    if (addr.is_null()) {
+      // force ENOMEM if other flags are valid
+      r.set_arg2(uintptr_t(1) << (word_size(t->arch())*8 - 1));
+      t->set_regs(r);
+      return;
     }
+    // We don't set MAP_FIXED. The new map *should* land at the address we request,
+    // because we tried to choose a free address.
+    // If that fails because there is something mapped there, that's an rr bug
+    // but we don't want to wipe out that mapping. Better to just carry on.
+    // This may mean the mapping lands in an area we tried to exclude; that's
+    // probably better than failing to record.
+    // We could use MAP_FIXED_NOREPLACE at some point (after the kernels
+    // that shipped the broken version (< 4.19) are no longer relevant).
+    r.set_arg1(addr + len - orig_len);
+    LOG(debug) << "Chaos mode selected address " << HEX(r.arg1());
   }
   r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
   t->set_regs(r);
