@@ -8,4 +8,4 @@ artifacts:
     # Configure _ARTIFACT_BUCKET in you cloud build trigger
     # https://cloud.google.com/build/docs/automating-builds/github/build-repos-from-github#creating_a_github_trigger.
     location: 'gs://$_ARTIFACT_BUCKET/$PROJECT_ID/$BUILD_ID'
-    paths: ["obj/dist/rr-5.5.0-Android-x86_64.tar.gz"]
+    paths: ["obj/dist/rr-*-Android-x86_64.tar.gz"]
