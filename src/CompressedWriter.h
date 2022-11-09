@@ -47,25 +47,6 @@ public:
     uint32_t uncompressed_length;
   };
 
-  template <typename T> CompressedWriter& operator<<(const T& value) {
-    write(&value, sizeof(value));
-    return *this;
-  }
-
-  CompressedWriter& operator<<(const std::string& value) {
-    write(value.c_str(), value.size() + 1);
-    return *this;
-  }
-
-  template <typename T>
-  CompressedWriter& operator<<(const std::vector<T>& value) {
-    *this << value.size();
-    for (auto& i : value) {
-      *this << i;
-    }
-    return *this;
-  }
-
 protected:
   enum WaitFlag { WAIT, NOWAIT };
   void update_reservation(WaitFlag wait_flag);

@@ -57,36 +57,6 @@ public:
   uint64_t uncompressed_bytes() const;
   uint64_t compressed_bytes() const;
 
-  template <typename T> CompressedReader& operator>>(T& value) {
-    read(&value, sizeof(value));
-    return *this;
-  }
-
-  CompressedReader& operator>>(std::string& value) {
-    value.empty();
-    while (true) {
-      char ch;
-      read(&ch, 1);
-      if (ch == 0) {
-        break;
-      }
-      value.append(1, ch);
-    }
-    return *this;
-  }
-
-  template <typename T> CompressedReader& operator>>(std::vector<T>& value) {
-    size_t len;
-    *this >> len;
-    value.resize(0);
-    for (size_t i = 0; i < len; ++i) {
-      T v;
-      *this >> v;
-      value.push_back(v);
-    }
-    return *this;
-  }
-
 protected:
   bool refill_buffer();
 
