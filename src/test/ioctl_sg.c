@@ -56,6 +56,21 @@ int main(void) {
     ret = ioctl(fd, CDROMREADTOCENTRY, &tocentry);
     atomic_printf("CDROMREADTOCENTRY returned ret=%d cdte_format=%d lba=%d cdte_datamode=%d\n",
                   ret, tocentry.cdte_format, tocentry.cdte_addr.lba, tocentry.cdte_datamode);
+
+    int atapi;
+    ret = ioctl(fd, SG_EMULATED_HOST, &atapi);
+    atomic_printf("SG_EMULATED_HOST returned ret=%d atapi=%d\n", ret, atapi);
+
+    int table_size;
+    ret = ioctl(fd, SG_GET_SG_TABLESIZE, &table_size);
+    atomic_printf("SG_GET_SG_TABLESIZE returned ret=%d table_size=%d\n", ret, table_size);
+
+    int reserved;
+    ret = ioctl(fd, SG_GET_RESERVED_SIZE, &reserved);
+    atomic_printf("SG_GET_RESERVED_SIZE returned ret=%d reserved=%d\n", ret, reserved);
+    ret = ioctl(fd, SG_SET_RESERVED_SIZE, &reserved);
+    atomic_printf("SG_SET_RESERVED_SIZE returned ret=%d\n", ret);
+
   }
 
   atomic_puts("EXIT-SUCCESS");

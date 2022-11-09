@@ -1816,6 +1816,9 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::hci_dev_list_req>(3);
       return PREVENT_SWITCH;
 
+    case SG_EMULATED_HOST:
+    case SG_GET_RESERVED_SIZE:
+    case SG_GET_SG_TABLESIZE:
     case SG_GET_VERSION_NUM:
       syscall_state.reg_parameter<typename Arch::signed_int>(3);
       return PREVENT_SWITCH;
