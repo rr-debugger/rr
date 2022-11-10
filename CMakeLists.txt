@@ -49,6 +49,10 @@ configure_file(
   ${CMAKE_SOURCE_DIR}/src/git_revision.h.in
   ${CMAKE_BINARY_DIR}/git_revision.h
 )
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/extra_version_string.h.in
+  ${CMAKE_BINARY_DIR}/extra_version_string.h
+)
 
 set(FLAGS_COMMON "-D__USE_LARGEFILE64 -pthread")
 set(supports32bit true)

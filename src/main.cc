@@ -16,6 +16,7 @@
 #include "RecordCommand.h"
 #include "ReplayCommand.h"
 #include "core.h"
+#include "extra_version_string.h"
 #include "log.h"
 #include "util.h"
 
@@ -48,7 +49,7 @@ void assert_prerequisites(bool use_syscall_buffer) {
   }
 }
 
-void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
+void print_version(FILE* out) { fprintf(out, "rr version %s %s\n", RR_VERSION, EXTRA_VERSION_STRING); }
 
 void print_global_options(FILE* out) {
   fputs(
