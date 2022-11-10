@@ -27,6 +27,7 @@ cmake .. $DEVICE_CMAKE_DEFS \
       -Ddisable32bit=True \
       -DBUILD_TESTS=False \
       -DSKIP_PKGCONFIG=True \
+      -DEXTRA_VERSION_STRING="$BUILD_ID" \
       -DCAPNP_CFLAGS=-I../capnproto-c++-0.10.2/src/ \
       -DCAPNP_LDFLAGS="-L../capnproto-c++-0.10.2/src/capnp -lcapnp -L../capnproto-c++-0.10.2/src/kj -lkj" \
       -DZLIB_LDFLAGS="-lz" \
