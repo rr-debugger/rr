@@ -1,0 +1,31 @@
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Dockerfile
+        shell: bash
+        run: docker build -t rr-android .android
+
+      - name: Create dist dir
+        shell: bash
+        run: mkdir -p obj/dist
+
+      - name: Build RR
+        shell: bash
+        run: |
+          docker run --rm \
+            -v $(pwd):/src/rr \
+            -v $(pwd)/obj/dist:/dist \
+            rr-android
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rr
+          path: obj/dist/rr-*-Android-x86_64.tar.gz
