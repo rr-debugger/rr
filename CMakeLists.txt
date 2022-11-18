@@ -37,6 +37,10 @@ set(rr_VERSION_MAJOR 5)
 set(rr_VERSION_MINOR 6)
 set(rr_VERSION_PATCH 0)
 
+if(ANDROID)
+  find_package(CapnProto REQUIRED)
+endif()
+
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
 
 execute_process(
@@ -665,6 +669,8 @@ if(staticlibs)
   target_link_libraries(rr -L/home/roc/lib -l:libcapnp.a -l:libkj.a)
   # Note that this works for both clang++ and g++
   set(RR_MAIN_LINKER_FLAGS "-static-libstdc++ ${RR_MAIN_LINKER_FLAGS}")
+elseif(ANDROID)
+  target_link_libraries(rr CapnProto::capnp)
 else()
   target_link_libraries(rr ${CAPNP_LDFLAGS})
 endif()
