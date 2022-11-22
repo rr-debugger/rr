@@ -57,7 +57,7 @@ typedef enum {
   IntelAlderlake,
   LastIntel = IntelAlderlake,
   FirstAMD,
-  AMDF15R30 = FirstAMD,
+  AMDF15 = FirstAMD,
   AMDZen,
   LastAMD = AMDZen,
   FirstARM,
@@ -126,7 +126,7 @@ static const PmuConfig pmu_configs[] = {
   { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0x50011d, 0, 100, PMU_TICKS_RCB },
   { IntelPenryn, "Intel Penryn", 0, 0, 0, 0, 100, 0 },
   { IntelMerom, "Intel Merom", 0, 0, 0, 0, 100, 0 },
-  { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
+  { AMDF15, "AMD Family 15h", 0xc4, 0xc6, 0, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
   // Both counters are available on Zen, Zen+ and Zen2.
@@ -258,8 +258,9 @@ static CpuMicroarch compute_cpu_microarch(void) {
 	return IntelCometlake;
     case 0x90670:
       return IntelAlderlake;
-    case 0x30f00:
-      return AMDF15R30;
+    case 0xf20:   // Piledriver
+    case 0x30f00: // Steamroller
+      return AMDF15;
     case 0x00f10: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
     case 0x10f10: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
     case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+) (UNTESTED)
@@ -272,7 +273,7 @@ static CpuMicroarch compute_cpu_microarch(void) {
       if (ext_family == 8 || ext_family == 0xa) {
         return AMDZen;
       } else if (ext_family == 3) {
-        return AMDF15R30;
+        return AMDF15;
       }
       break;
     case 0x20f10: // Vermeer (Zen 3)
