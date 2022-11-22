@@ -100,7 +100,7 @@ enum CpuMicroarch {
   IntelMeteorLake,
   LastIntel = IntelMeteorLake,
   FirstAMD,
-  AMDF15R30 = FirstAMD,
+  AMDF15 = FirstAMD,
   AMDZen,
   AMDZen2,
   AMDZen3,
@@ -200,7 +200,7 @@ static const PmuConfig pmu_configs[] = {
   { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
   { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
-  { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
+  { AMDF15, "AMD Family 15h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
   // Both counters are available on all Zen microarchitecures so far.

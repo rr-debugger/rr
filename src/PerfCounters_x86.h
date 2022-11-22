@@ -96,15 +96,16 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelEmeraldRapid;
     case 0xa06a0:
       return IntelMeteorLake;
-    case 0x30f00:
-      return AMDF15R30;
+    case 0xf20:  // Piledriver
+    case 0x30f00:  // Steamroller
+      return AMDF15;
     case 0x00f10: // A8-3530MX, Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
       if (ext_family == 8) {
         return AMDZen;
       } else if (ext_family == 0xa) {
         return AMDZen3;
       } else if (ext_family == 3) {
-        return AMDF15R30;
+        return AMDF15;
       }
       break;
     case 0x00f80: // Colfax, Pinnacle Ridge (Zen+), Chagall (Zen3) (UNTESTED)
