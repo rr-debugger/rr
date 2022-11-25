@@ -53,11 +53,27 @@ if not os.path.exists('/dev/cpu/0/msr'):
         sys.exit(ret)
 
 def read_msr(cpu):
-    msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_RDONLY)
-    os.lseek(msr, MSR, os.SEEK_SET)
-    (val,) = struct.unpack('<q', os.read(msr, 8))
-    os.close(msr)
-    return val
+    try:
+        msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_RDONLY)
+    except PermissionError:
+        sys.stderr.write(str(e) + '\n')
+        print("Permission denied opening MSR for reading.")
+        print("Try running as root / with sudo.")
+        sys.exit(1)
+    try:
+        os.lseek(msr, MSR, os.SEEK_SET)
+        (val,) = struct.unpack('<q', os.read(msr, 8))
+        return val
+    except PermissionError as e:
+        sys.stderr.write(str(e) + '\n')
+        print("Permission denied on reading from MSR.")
+        sys.exit(1)
+    except OSError as e:
+        sys.stderr.write(str(e) + '\n')
+        print("General error on reading from MSR.")
+        sys.exit(1)
+    finally:
+        os.close(msr)
 
 cpus = [cpu for cpu in os.listdir('/dev/cpu') if cpu.isdigit()]
 
@@ -72,21 +88,33 @@ if not args.check:
             if val & BIT:
                 continue
             val |= BIT
-        msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_WRONLY)
-        os.lseek(msr, MSR, os.SEEK_SET)
         try:
-          os.write(msr, struct.pack('<q', val))
+            msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_WRONLY)
         except PermissionError:
+            sys.stderr.write(str(e) + '\n')
+            print("Permission denied opening MSR for writing.")
+            print("Try running as root / with sudo.")
+            sys.exit(1)
+
+        try:
+            os.lseek(msr, MSR, os.SEEK_SET)
+            os.write(msr, struct.pack('<q', val))
+        except PermissionError as e:
             check = is_secure_boot_enabled() 
+            sys.stderr.write(str(e) + '\n')
+            print("Permission denied writing to MSR.")
             if check == SecureBoot.enabled:
-                print("Permission denied writing to MSR. Secure Boot is enabled, which causes this error. Try disabling Secure Boot")
+                print("Secure Boot is enabled, which causes this error. Try disabling Secure Boot.")
             elif check == SecureBoot.disabled:
-                print("Permission denied writing to MSR. Secure Boot is disabled so that's not the problem")
-            else:
-                print("Permission denied writing to MSR")
+                print("Secure Boot is disabled so that's not the problem.")
+            print("You may want to use another approach, please see https://github.com/rr-debugger/rr/wiki/Zen.")
+            sys.exit(1)
+        except OSError as e:
+            sys.stderr.write(str(e) + '\n')
+            print("General error on writing to MSR.")
+            sys.exit(1)
+        finally:
             os.close(msr)
-            break
-        os.close(msr)
 
 ssb_status = 'unknown'
 if not args.reset:
