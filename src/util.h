@@ -584,6 +584,17 @@ inline unsigned long long rdtsc(void) {
 #endif
 }
 
+inline unsigned long long dczid_el0_block_size(void) {
+#if defined(__aarch64__)
+  unsigned long long val;
+  asm volatile("mrs %0, DCZID_EL0" : "=r" (val));
+  return 1ULL << (val & 0xF);
+#else
+  FATAL() << "Reached AArch64-only code path on non-AArch64 architecture";
+  return 0;
+#endif
+}
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
