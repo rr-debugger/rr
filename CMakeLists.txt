@@ -1615,6 +1615,7 @@ set(TESTS_WITHOUT_PROGRAM
   vsyscall_singlestep
   watch_code
   watchpoint_cond
+  watchpoint_unaligned2
   when
 )
 
@@ -1685,6 +1686,11 @@ if(BUILD_TESTS)
   set_target_properties(tick0_less
     PROPERTIES LINK_FLAGS "-static -nostdlib -nodefaultlibs"
     COMPILE_FLAGS "-static -nostdlib -nodefaultlibs -O3 -g2")
+
+  add_executable(watchpoint_unaligned2 src/test/watchpoint_unaligned2.c)
+  post_build_executable(watchpoint_unaligned2)
+  set_target_properties(watchpoint_unaligned2
+    PROPERTIES COMPILE_FLAGS "${RR_TEST_FLAGS} -g -O3")
 
   # Test disabled because it requires libuvc to be built and installed, and a
   # working USB camera
@@ -1800,7 +1806,7 @@ if(BUILD_TESTS)
                     COPYONLY)
     endforeach(header)
 
-    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib tick0)
+    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib tick0 watchpoint_unaligned2)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                      COPYONLY)
@@ -1857,6 +1863,12 @@ if(BUILD_TESTS)
     set_target_properties(tick0_less_32
       PROPERTIES LINK_FLAGS "-m32 -static -nostdlib -nodefaultlibs"
       COMPILE_FLAGS "-m32 -static -nostdlib -nodefaultlibs -O3 -g2")
+
+    add_executable(watchpoint_unaligned2_32 "${CMAKE_CURRENT_BINARY_DIR}/32/watchpoint_unaligned2.c")
+    post_build_executable(watchpoint_unaligned2_32)
+    set_target_properties(watchpoint_unaligned2_32
+      PROPERTIES LINK_FLAGS "-m32"
+      COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g -O3")
 
     add_library(test_lib_32
       "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
