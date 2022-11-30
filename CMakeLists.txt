@@ -1691,6 +1691,7 @@ if(BUILD_TESTS)
   post_build_executable(watchpoint_unaligned2)
   set_target_properties(watchpoint_unaligned2
     PROPERTIES COMPILE_FLAGS "${RR_TEST_FLAGS} -g -O3")
+  add_dependencies(watchpoint_unaligned2 Generated)
 
   # Test disabled because it requires libuvc to be built and installed, and a
   # working USB camera
@@ -1869,6 +1870,7 @@ if(BUILD_TESTS)
     set_target_properties(watchpoint_unaligned2_32
       PROPERTIES LINK_FLAGS "-m32"
       COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g -O3")
+    add_dependencies(watchpoint_unaligned2_32 Generated)
 
     add_library(test_lib_32
       "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
