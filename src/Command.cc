@@ -134,8 +134,9 @@ bool Command::parse_option(std::vector<std::string>& args,
       }
     } else if (args[0][1] == '-') {
       size_t equals = args[0].find('=');
-      if (strncmp(args[0].c_str() + 2, option_specs[i].long_name,
-                  (equals == string::npos ? 9999 : equals) - 2) == 0) {
+      size_t cmp_len = (equals == string::npos ? 9999 : equals) - 2;
+      if (cmp_len >= strlen(option_specs[i].long_name) &&
+          strncmp(args[0].c_str() + 2, option_specs[i].long_name, cmp_len) == 0) {
         out->short_name = option_specs[i].short_name;
         switch (option_specs[i].param) {
           case NO_PARAMETER:
