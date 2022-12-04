@@ -163,6 +163,7 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       ticks_at_start_of_event(0),
       flags_(flags),
       skip_next_execution_event(false),
+      replay_stops_at_first_execve_(flags.replay_stops_at_first_execve),
       trace_start_time(0) {
   if (trace_in.required_forward_compatibility_version() > FORWARD_COMPATIBILITY_VERSION) {
     CLEAN_FATAL()
@@ -222,6 +223,7 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       flags_(other.flags_),
       fast_forward_status(other.fast_forward_status),
       skip_next_execution_event(other.skip_next_execution_event),
+      replay_stops_at_first_execve_(other.replay_stops_at_first_execve_),
       trace_start_time(other.trace_start_time) {}
 
 ReplaySession::~ReplaySession() {

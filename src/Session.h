@@ -289,8 +289,12 @@ public:
   bool is_replaying() { return as_replay() != nullptr; }
   bool is_diversion() { return as_diversion() != nullptr; }
 
+  // Returns true if execution should be "visible", i.e. it's the main
+  // session of a recording or a replay whose output could be echoed.
   bool visible_execution() const { return visible_execution_; }
   void set_visible_execution(bool visible) { visible_execution_ = visible; }
+
+  virtual bool need_performance_counters() const { return true; }
 
   struct Statistics {
     Statistics()

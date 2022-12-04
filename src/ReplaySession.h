@@ -287,6 +287,7 @@ public:
   }
 
   virtual ReplaySession* as_replay() override { return this; }
+  virtual bool need_performance_counters() const override { return replay_stops_at_first_execve_; }
 
   SupportedArch arch() { return trace_in.arch(); }
 
@@ -404,6 +405,7 @@ private:
   Flags flags_;
   FastForwardStatus fast_forward_status;
   bool skip_next_execution_event;
+  bool replay_stops_at_first_execve_;
 
   // The clock_gettime(CLOCK_MONOTONIC) timestamp of the first trace event, used
   // during 'replay' to calculate the elapsed time between the first event and

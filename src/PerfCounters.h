@@ -41,8 +41,10 @@ class PerfCounters {
 public:
   /**
    * Create performance counters monitoring the given task.
+   * When enable is false, we always report 0 and don't do any interrupts.
    */
-  PerfCounters(pid_t tid, int cpu_binding, TicksSemantics ticks_semantics);
+  PerfCounters(pid_t tid, int cpu_binding, TicksSemantics ticks_semantics,
+               bool enable);
   ~PerfCounters() { stop(); }
 
   void set_tid(pid_t tid);
@@ -152,6 +154,7 @@ private:
   ScopedFd fd_strex_counter;
 
   TicksSemantics ticks_semantics_;
+  bool enable;
   bool started;
   bool counting;
 };
