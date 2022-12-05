@@ -287,7 +287,7 @@ public:
   }
 
   virtual ReplaySession* as_replay() override { return this; }
-  virtual bool need_performance_counters() const override { return replay_stops_at_first_execve_; }
+  virtual bool need_performance_counters() const override { return !replay_stops_at_first_execve_; }
 
   SupportedArch arch() { return trace_in.arch(); }
 
