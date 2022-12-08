@@ -403,6 +403,8 @@ public:
      or trace */
   void do_bind_cpu();
 
+  cpu_set_t original_affinity() const { return original_affinity_; }
+
   const ThreadGroupMap& thread_group_map() const { return thread_group_map_; }
 
   virtual int tracee_output_fd(int dflt) {
@@ -454,6 +456,8 @@ protected:
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
 
   TicksSemantics ticks_semantics_;
+
+  cpu_set_t original_affinity_;
 
   /**
    * True if we've done an exec so tracees are now in a state that will be

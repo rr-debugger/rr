@@ -3551,8 +3551,9 @@ static pid_t do_detach_teleport(RecordTask *t)
   // Try to reset the scheduler affinity that we enforced upon the task.
   // XXX: It would be nice to track what affinity the tracee requested and
   // restore that.
-  cpu_set_t mask;
-  memset(&mask, 0xFF, sizeof(mask));
+  // For now honor whatever affinity rr itself has (e.g. for running on P-cores
+  // on Alder Lake).
+  cpu_set_t mask = t->session().original_affinity();
   syscall(SYS_sched_setaffinity, new_t->tid, sizeof(mask), &mask);
   new_t->detach();
   new_t->did_kill();

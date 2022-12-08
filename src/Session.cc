@@ -72,6 +72,7 @@ Session::Session(const Session& other) {
   tracee_socket_receiver = other.tracee_socket_receiver;
   tracee_socket_fd_number = other.tracee_socket_fd_number;
   ticks_semantics_ = other.ticks_semantics_;
+  original_affinity_ = other.original_affinity_;
 }
 
 void Session::on_create(ThreadGroup* tg) { thread_group_map_[tg->tguid()] = tg; }
@@ -736,6 +737,8 @@ static bool set_cpu_affinity(int cpu) {
 }
 
 void Session::do_bind_cpu() {
+  sched_getaffinity(0, sizeof(original_affinity_), &original_affinity_);
+
   int cpu_index = this->cpu_binding();
   if (cpu_index >= 0) {
     // Set CPU affinity now, after we've created any helper threads
