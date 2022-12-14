@@ -42,7 +42,7 @@ function generate(platform::Platform)
                 "key" => job_key,
                 "timeout_in_minutes" => 45,
                 "agents" => Dict(
-                    "sandbox.jl" => "true",
+                    "sandbox_capable" => "true",
                     "queue" => "juliaecosystem",
                     "arch" => "$(platform.arch)",
                     "os" => "linux",
