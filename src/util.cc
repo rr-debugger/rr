@@ -1790,6 +1790,7 @@ void ensure_dir(const string& dir, const char* dir_type, mode_t mode) {
     if (0 > stat(d.c_str(), &st)) {
       FATAL() << "Can't stat " << dir_type << " `" << dir << "'";
     }
+    return;
   }
 
   if (!(S_IFDIR & st.st_mode)) {
