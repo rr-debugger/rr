@@ -28,17 +28,27 @@
 
 #ifndef __BIONIC__
 
+// Use an old version of dlsym so this code still works when built against glibc > 2.34
+// but loaded into a process linking a pre-2.34 glibc.
+#ifdef __x86_64__
+__asm__(".symver dlsym,dlsym@GLIBC_2.2.5");
+#elif defined(__i386__)
+__asm__(".symver dlsym,dlsym@GLIBC_2.0");
+#endif
+
 static int (*real_pthread_mutex_init)(void* mutex, const void* attr);
 static int (*real_pthread_mutex_lock)(void* mutex);
 static int (*real_pthread_mutex_trylock)(void* mutex);
 static int (*real_pthread_mutex_timedlock)(void* mutex,
                                            const struct timespec* abstime);
+static int (*real_pthread_mutexattr_setprotocol)(void* attr, int protocol);
 
 static void __attribute__((constructor)) init_override(void) {
   real_pthread_mutex_init = dlsym(RTLD_NEXT, "pthread_mutex_init");
   real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
   real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
   real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+  real_pthread_mutexattr_setprotocol = dlsym(RTLD_NEXT, "pthread_mutexattr_setprotocol");
 }
 
 static void fix_mutex_kind(pthread_mutex_t* mutex) {
@@ -49,11 +59,15 @@ static void fix_mutex_kind(pthread_mutex_t* mutex) {
 #ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
 /*
  * We need to able to call directly to __pthread_mutex_lock and
- * __pthread_mutex_trylock because setting up indirect function pointers
- * in init_process requires calls to dlsym which itself can call
- * pthread_mutex_lock (e.g. via application code overriding malloc/calloc
- * to use a pthreads-based implementation). So before our pointers are set
- * up, call these.
+ * __pthread_mutex_trylock because setting up our indirect function pointers
+ * calls dlsym which itself can call pthread_mutex_lock (e.g. via application
+ * code overriding malloc/calloc to use a pthreads-based implementation).
+ * So before our pointers are set up, call these.
+ *
+ * If we're building against glibc 2.34 *but* we get run against a binary
+ * linking with glibc < 2.34 *and* the application overrides malloc to use
+ * pthreads-based synchronization then this won't work and we lose. Let's
+ * hope this doesn't happen.
  */
 extern int __pthread_mutex_init(pthread_mutex_t* mutex,
                                 const pthread_mutexattr_t* attr);
@@ -74,7 +88,15 @@ int pthread_mutex_init(pthread_mutex_t* mutex,
      * So we copy the attribute and force PTHREAD_PRIO_NONE.
      */
     memcpy(&realattr, attr, sizeof(realattr));
-    ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
+    // We assume dlsym doesn't call pthread_mutex_init with attributes.
+    // We avoid calling pthread_mutexattr_setprotocol (and any other pthread functions)
+    // directly because that won't work when we're built against glibc 2.34 but loaded
+    // into a process using glibc < 2.34. (pthread functions got a symbol version bump
+    // in 2.34.)
+    if (!real_pthread_mutexattr_setprotocol) {
+      real_pthread_mutexattr_setprotocol = dlsym(RTLD_NEXT, "pthread_mutexattr_setprotocol");
+    }
+    ret = real_pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
     if (ret) {
       return ret;
     }
