@@ -1779,10 +1779,9 @@ void ensure_dir(const string& dir, const char* dir_type, mode_t mode) {
     }
 
     size_t last_slash = d.find_last_of('/');
-    if (last_slash == string::npos) {
-      FATAL() << "Can't find directory `" << dir << "'";
+    if (last_slash != string::npos) {
+      ensure_dir(d.substr(0, max(last_slash, (size_t)1)), dir_type, mode);
     }
-    ensure_dir(d.substr(0, max(last_slash, (size_t)1)), dir_type, mode);
 
     // Allow for a race condition where someone else creates the directory
     if (0 > mkdir(d.c_str(), mode) && errno != EEXIST) {
