@@ -1766,11 +1766,12 @@ void check_for_leaks() {
 }
 
 void ensure_dir(const string& dir, const char* dir_type, mode_t mode) {
-  string d = dir;
-  while (!d.empty() && d[d.length() - 1] == '/') {
-    d = d.substr(0, d.length() - 1);
+  if (dir.empty()) {
+    FATAL() << "Empty directory name!";
   }
-
+  size_t last_dir_component = dir.find_last_not_of('/');
+  const string d = last_dir_component == string::npos
+    ? "/" : dir.substr(0, last_dir_component + 1);
   struct stat st;
   if (0 > stat(d.c_str(), &st)) {
     if (errno != ENOENT) {
