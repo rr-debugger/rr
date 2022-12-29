@@ -2382,6 +2382,10 @@ static string lookup_by_path(const string& name) {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
+  // Avoid GVFS using separate processes that might run
+  // outside the recording but share memory mapped files.
+  env.push_back("GIO_USE_VFS=local");
+
   // If we have CPUID faulting, don't use these environment hacks. We don't
   // need them and the user might want to use them themselves for other reasons.
   if (!Session::has_cpuid_faulting()) {
