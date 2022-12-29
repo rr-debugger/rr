@@ -74,6 +74,7 @@
 #include <linux/types.h>
 #include <linux/uio.h>
 #include <linux/un.h>
+#include <linux/utsname.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <syscall.h>
@@ -3346,6 +3347,30 @@ static long sys_socketpair(struct syscall_info* call) {
 }
 #endif
 
+static long sys_uname(struct syscall_info* call) {
+  const int syscallno = SYS_uname;
+  void* buf = (void*)call->args[0];
+
+  void* ptr = prep_syscall();
+  void* buf2;
+  long ret;
+  size_t bufsize = sizeof(struct new_utsname);
+
+  assert(syscallno == call->no);
+
+  buf2 = ptr;
+  ptr += bufsize;
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall1(syscallno, buf2);
+  if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(buf, buf2, bufsize);
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+
 #if defined(SYS_time)
 static long sys_time(struct syscall_info* call) {
   const int syscallno = SYS_time;
@@ -3881,6 +3906,7 @@ case SYS_epoll_pwait:
     CASE(time);
 #endif
     CASE_GENERIC_NONBLOCKING(truncate);
+    CASE(uname);
 #if defined(SYS_unlink)
     CASE_GENERIC_NONBLOCKING(unlink);
 #endif
