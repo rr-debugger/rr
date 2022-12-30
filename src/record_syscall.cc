@@ -5788,6 +5788,10 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
   return ret;
 }
 
+static bool starts_with(const string& s, const string& prefix) {
+  return strncmp(s.c_str(), prefix.c_str(), prefix.size()) == 0;
+}
+
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                          int fd, off64_t offset) {
   if (t->regs().syscall_failed()) {
@@ -5908,6 +5912,25 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
         "written by programs outside the rr tracee "
         "tree.";
     }
+    if (t->session().lsof() &&
+        !starts_with(tracee_file_name, "/memfd") &&
+        !starts_with(tracee_file_name, "/var/cache/fontconfig")) // fontconfig seems just a readonly mapping
+    {
+      string lsof_cmd = string("lsof -ad mem");
+      for (auto it : t->session().tasks()) {
+        lsof_cmd.append(string(" -p ^") + to_string(it.second->tid));
+      }
+      lsof_cmd.append(string(" \"") + tracee_file_name + string("\" > /dev/null 2>&1"));
+      //printf("%s\n", lsof_cmd.c_str());
+      if (!system(lsof_cmd.c_str())) {
+        printf("Warning: %s seems to be mapped by a process outside of the recording. "
+               "Diversions might happen when replaying this trace.\n",
+               tracee_file_name.c_str());
+      }
+    }
+    // Escaping of the filename needs improvement.
+    // Exclude files with "(deleted)".
+    // The PIDs from lsof could further checked if the mapping is just readonly like the fontconfig ones.
   }
 
   // We don't want to patch MAP_SHARED files. In the best case we'd end crashing

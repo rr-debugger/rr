@@ -100,7 +100,9 @@ RecordCommand RecordCommand::singleton(
     "  --asan                     Override heuristics and always enable ASAN\n"
     "                             compatibility.\n"
     "  --tsan                     Override heuristics and always enable TSAN\n"
-    "                             compatibility.\n");
+    "                             compatibility.\n"
+    "  --lsof                     Try to identify files that are mapped outside\n"
+    "                             of the trace and migth cause diversions.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -180,6 +182,9 @@ struct RecordFlags {
   /* True if we should always enable TSAN compatibility. */
   bool tsan;
 
+  /* True if we should check files being mapped outside of the recording. */
+  bool lsof;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -203,7 +208,8 @@ struct RecordFlags {
         stap_sdt(false),
         unmap_vdso(false),
         asan(false),
-        tsan(false) {}
+        tsan(false),
+        lsof(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -265,6 +271,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 16, "disable-avx-512", NO_PARAMETER },
     { 17, "asan", NO_PARAMETER },
     { 18, "tsan", NO_PARAMETER },
+    { 19, "lsof", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -478,6 +485,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 18:
       flags.tsan = true;
       break;
+    case 19:
+      flags.lsof = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -659,7 +669,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get(),
-      flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan);
+      flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan, flags.lsof);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();
