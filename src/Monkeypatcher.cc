@@ -148,6 +148,7 @@ void Monkeypatcher::init_dynamic_syscall_patching(
 template <typename Arch>
 static bool patch_syscall_with_hook_arch(Monkeypatcher& patcher, RecordTask* t,
                                          const syscall_patch_hook& hook,
+                                         remote_code_ptr ip_of_instruction,
                                          size_t instruction_length,
                                          uint32_t fake_syscall_number);
 
@@ -510,22 +511,19 @@ template <typename JumpPatch, typename ExtendedJumpPatch, typename FakeSyscallEx
 static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook,
+                                           remote_code_ptr ip_of_instruction,
                                            size_t instruction_length,
                                            uint32_t fake_syscall_number) {
   uint8_t jump_patch[instruction_length + hook.patch_region_length];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
-  auto jump_patch_start = t->regs().ip().to_data_ptr<uint8_t>();
-  auto jump_patch_end = jump_patch_start + JumpPatch::size;
-  auto return_addr = t->regs().ip().to_data_ptr<uint8_t>().as_int() +
-                     instruction_length +
-                     hook.patch_region_length;
-  if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST)) {
-    auto adjust = hook.patch_region_length + instruction_length;
-    jump_patch_start -= adjust;
-    jump_patch_end -= adjust;
-    return_addr -= adjust;
+  remote_ptr<uint8_t> jump_patch_start = ip_of_instruction.to_data_ptr<uint8_t>();
+  if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+    jump_patch_start -= hook.patch_region_length;
   }
+  remote_ptr<uint8_t> jump_patch_end = jump_patch_start + JumpPatch::size;
+  remote_ptr<uint8_t> return_addr =
+    jump_patch_start + instruction_length + hook.patch_region_length;
 
   remote_ptr<uint8_t> extended_jump_start;
   if (fake_syscall_number) {
@@ -543,7 +541,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
     uint8_t stub_patch[FakeSyscallExtendedJumpPatch::size];
     substitute_extended_jump<FakeSyscallExtendedJumpPatch>(stub_patch,
                                                 extended_jump_start.as_int(),
-                                                return_addr,
+                                                return_addr.as_int(),
                                                 hook.hook_address,
                                                 fake_syscall_number);
     write_and_record_bytes(t, extended_jump_start, stub_patch);
@@ -553,7 +551,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
     uint8_t stub_patch[ExtendedJumpPatch::size];
     substitute_extended_jump<ExtendedJumpPatch>(stub_patch,
                                                 extended_jump_start.as_int(),
-                                                return_addr,
+                                                return_addr.as_int(),
                                                 hook.hook_address,
                                                 0);
     write_and_record_bytes(t, extended_jump_start, stub_patch);
@@ -582,12 +580,15 @@ template <>
 bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook,
+                                           remote_code_ptr ip_of_instruction,
                                            size_t instruction_length,
                                            uint32_t fake_syscall_number) {
   return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
                                         X86SyscallStubExtendedJump,
                                         X86TrapInstructionStubExtendedJump>(patcher, t,
-                                                                            hook, instruction_length,
+                                                                            hook,
+                                                                            ip_of_instruction,
+                                                                            instruction_length,
                                                                             fake_syscall_number);
 }
 
@@ -595,12 +596,15 @@ template <>
 bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook,
+                                           remote_code_ptr ip_of_instruction,
                                            size_t instruction_length,
                                            uint32_t fake_syscall_number) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
                                         X64SyscallStubExtendedJump,
                                         X64TrapInstructionStubExtendedJump>(patcher, t,
-                                                                            hook, instruction_length,
+                                                                            hook,
+                                                                            ip_of_instruction,
+                                                                            instruction_length,
                                                                             fake_syscall_number);
 }
 
@@ -608,6 +612,7 @@ template <>
 bool patch_syscall_with_hook_arch<ARM64Arch>(Monkeypatcher& patcher,
                                              RecordTask *t,
                                              const syscall_patch_hook &hook,
+                                             remote_code_ptr,
                                              size_t,
                                              uint32_t) {
   Registers r = t->regs();
@@ -666,10 +671,11 @@ bool patch_syscall_with_hook_arch<ARM64Arch>(Monkeypatcher& patcher,
 
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,
                                     const syscall_patch_hook& hook,
+                                    remote_code_ptr ip_of_instruction,
                                     size_t instruction_length,
                                     uint32_t fake_syscall_number) {
   RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook,
-                        instruction_length, fake_syscall_number);
+                   ip_of_instruction, instruction_length, fake_syscall_number);
 }
 
 template <typename ExtendedJumpPatch>
@@ -939,7 +945,6 @@ bool Monkeypatcher::try_patch_vsyscall_caller(RecordTask* t, remote_code_ptr ret
 
 const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                                                            remote_code_ptr ip,
-                                                           bool allow_deferred_patching,
                                                            bool entering_syscall,
                                                            size_t instruction_length) {
   /* we need to inspect this many bytes before the start of the instruction,
@@ -987,7 +992,6 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                 hook.patch_region_length) == 0)) {
       matches_hook = true;
     } else if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
-               allow_deferred_patching &&
                hook.patch_region_length <= preceding_bytes_count &&
                memcmp(bytes + LOOK_BACK - hook.patch_region_length,
                       hook.patch_region_bytes,
@@ -1082,7 +1086,7 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscal
 
   size_t instruction_length = rr::syscall_instruction_length(arch);
   const syscall_patch_hook* hook_ptr = find_syscall_hook(t, ip - instruction_length,
-      true, entering_syscall, instruction_length);
+      entering_syscall, instruction_length);
   bool success = false;
   intptr_t syscallno = r.original_syscallno();
   if (hook_ptr) {
@@ -1094,7 +1098,7 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscal
     LOG(debug) << "Patching syscall at " << ip << " syscall "
                << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
 
-    success = patch_syscall_with_hook(*this, t, *hook_ptr, instruction_length, 0);
+    success = patch_syscall_with_hook(*this, t, *hook_ptr, ip - instruction_length, instruction_length, 0);
     if (!success && entering_syscall) {
       // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
       t->enter_syscall();
@@ -1157,7 +1161,7 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
   LOG(debug) << "Patching syscall at " << ip << " syscall "
              << syscall_name(r.original_syscallno(), aarch64) << " tid " << t->tid;
 
-  auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], 4, 0);
+  auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], ip, 4, 0);
   if (!success && entering_syscall) {
     // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
     t->enter_syscall();
@@ -1233,7 +1237,8 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   return try_patch_syscall_x86ish(t, entering_syscall, arch);
 }
 
-bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruction_length) {
+bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruction_length,
+                                                   bool before_instruction) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
     // fill tried_to_patch_syscall_addresses with addresses that we might be
@@ -1246,8 +1251,8 @@ bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruc
   }
 
   Registers r = t->regs();
-  remote_code_ptr ip = r.ip();
-  if (tried_to_patch_syscall_addresses.count(ip + instruction_length)) {
+  remote_code_ptr ip_of_instruction = r.ip() - (before_instruction ? 0 : instruction_length);
+  if (tried_to_patch_syscall_addresses.count(ip_of_instruction + instruction_length)) {
     return false;
   }
 
@@ -1256,17 +1261,21 @@ bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruc
   // event, not a FLUSH_SYSCALLBUF event.
   t->maybe_flush_syscallbuf();
 
-  const syscall_patch_hook* hook_ptr = find_syscall_hook(t, ip, false, false, instruction_length);
+  const syscall_patch_hook* hook_ptr =
+    find_syscall_hook(t, ip_of_instruction, before_instruction, instruction_length);
   bool success = false;
   if (hook_ptr) {
-    LOG(debug) << "Patching trapping instruction at " << ip << " tid " << t->tid;
+    LOG(debug) << "Patching trapping instruction at " << ip_of_instruction << " tid " << t->tid;
 
-    success = patch_syscall_with_hook(*this, t, *hook_ptr, instruction_length, SYS_rrcall_rdtsc);
+    success = patch_syscall_with_hook(*this, t, *hook_ptr, ip_of_instruction,
+                                      instruction_length, SYS_rrcall_rdtsc);
   }
 
   if (!success) {
-    LOG(debug) << "Failed to patch trapping instruction at " << ip << " tid " << t->tid;
-    tried_to_patch_syscall_addresses.insert(ip + instruction_length);
+    if (!t->retry_syscall_patching) {
+      LOG(debug) << "Failed to patch trapping instruction at " << ip_of_instruction << " tid " << t->tid;
+      tried_to_patch_syscall_addresses.insert(ip_of_instruction + instruction_length);
+    }
     return false;
   }
 

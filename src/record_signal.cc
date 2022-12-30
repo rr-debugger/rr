@@ -102,8 +102,7 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   if (trapped_instruction == TrappedInstruction::RDTSC ||
       trapped_instruction == TrappedInstruction::RDTSCP) {
     if (trapped_instruction == TrappedInstruction::RDTSC &&
-        t->vm()->monkeypatcher().try_patch_trapping_instruction(t,
-         trapped_instruction_len(trapped_instruction))) {
+        t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, true)) {
       Event ev = Event::patch_syscall();
       ev.PatchSyscall().patch_trapping_instruction = true;
       t->record_event(ev);
@@ -128,8 +127,20 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
 
   r.set_ip(r.ip() + len);
   t->set_regs(r);
+  t->record_event(Event::instruction_trap());
 
-  t->push_event(Event::instruction_trap());
+  if (t->retry_syscall_patching) {
+    LOG(debug) << "Retrying deferred syscall patching";
+    t->retry_syscall_patching = false;
+    if (t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, false)) {
+      // Instruction was patched. Emit event.
+      auto ev = Event::patch_syscall();
+      ev.PatchSyscall().patch_after_syscall = true;
+      t->record_event(ev);
+    }
+  }
+
+  t->push_event(Event::noop());
   return true;
 }
 

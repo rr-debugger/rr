@@ -1428,6 +1428,7 @@ set(TESTS_WITH_PROGRAM
   priority
   ptrace_remote_unmap
   x86/rdtsc_loop
+  x86/rdtsc_loop2
   read_big_struct
   remove_latest_trace
   restart_abnormal_exit

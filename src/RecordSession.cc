@@ -1325,13 +1325,13 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         if (!may_restart) {
           if (t->retry_syscall_patching) {
             LOG(debug) << "Retrying deferred syscall patching";
+            t->retry_syscall_patching = false;
             if (t->vm()->monkeypatcher().try_patch_syscall(t, false)) {
               // Syscall was patched. Emit event and continue execution.
               auto ev = Event::patch_syscall();
               ev.PatchSyscall().patch_after_syscall = true;
               t->record_event(ev);
             }
-            t->retry_syscall_patching = false;
           }
         }
       }

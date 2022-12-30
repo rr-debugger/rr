@@ -76,7 +76,8 @@ public:
    * Zero or more mapping operations are also recorded to the trace and must
    * be replayed.
    */
-  bool try_patch_trapping_instruction(RecordTask* t, size_t instruction_length);
+  bool try_patch_trapping_instruction(RecordTask* t, size_t instruction_length,
+                                      bool before_instruction = true);
 
   /**
    * Replace all extended jumps by syscalls again. Note that we do not try to
@@ -150,7 +151,6 @@ private:
    */
   const syscall_patch_hook* find_syscall_hook(RecordTask* t,
                                               remote_code_ptr ip,
-                                              bool allow_deferred_patching,
                                               bool entering_syscall,
                                               size_t instruction_length);
 

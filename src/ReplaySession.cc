@@ -1757,11 +1757,11 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_PATCH_SYSCALL:
-      if (ev.PatchSyscall().patch_trapping_instruction ||
-          ev.PatchSyscall().patch_vsyscall) {
-        current_step.action = TSTEP_PATCH_IP;
-      } else if (ev.PatchSyscall().patch_after_syscall) {
+      if (ev.PatchSyscall().patch_after_syscall) {
         current_step.action = TSTEP_PATCH_AFTER_SYSCALL;
+      } else if (ev.PatchSyscall().patch_trapping_instruction ||
+                 ev.PatchSyscall().patch_vsyscall) {
+        current_step.action = TSTEP_PATCH_IP;
       } else {
         current_step.action = TSTEP_PATCH_SYSCALL;
       }
