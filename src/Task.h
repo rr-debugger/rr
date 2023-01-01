@@ -438,9 +438,23 @@ public:
 
   /**
    * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
-   * /proc/tid/comm would say that the task's name is.
+   * /proc/tid/comm say that the task's name is.
+   *
+   * During recording we don't monitor changes to this, we just let
+   * the kernel update it directly. This lets us syscall-buffer PR_SET_NAME.
+   * During replay we monitor changes to this and cache the name in ReplayTask,
+   * hence these methods are virtual. During replay the task's actual name
+   * is "rr:" followed by the original name.
    */
-  const std::string& name() const { return prname; }
+  virtual std::string name() const;
+
+  virtual void set_name(AutoRemoteSyscalls& remote, const std::string& name);
+
+  /**
+   * Called for every PR_SET_NAME during replay but not always during recording
+   * (it is not called for syscall-buffered PR_SET_NAME).
+   */
+  virtual void did_prctl_set_prname(remote_ptr<void>) {}
 
   /**
    * Call this method when this task has just performed an |execve()|
@@ -448,16 +462,16 @@ public:
    * returned.
    * `exe_file` is the name of the executable file in the trace, if there is one,
    * otherwise the original exe file name --- a best-effort filename we can
-   * pass to gdb for it to read the exe. `original_exe_file` is the
-   * original file exe file name.
+   * pass to gdb for it to read the exe.
    */
-  void post_exec(const std::string& exe_file, const std::string& original_exe_file);
+  void post_exec(const std::string& exe_file);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.
    * At this point it is safe to make remote syscalls.
+   * `original_exe_file` is the original file exe file name.
    */
-  void post_exec_syscall();
+  void post_exec_syscall(const std::string& original_exe_file);
 
   /**
    * Return true if this task has execed.
@@ -666,14 +680,6 @@ public:
    * only.
    */
   uint32_t trace_time() const;
-
-  /**
-   * Call this after the tracee successfully makes a
-   * |prctl(PR_SET_NAME)| call to change the task name to the
-   * string pointed at in the tracee's address space by
-   * |child_addr|.
-   */
-  void update_prname(remote_ptr<void> child_addr);
 
   /**
    * Call this to reset syscallbuf_hdr->num_rec_bytes and zero out the data
@@ -1212,8 +1218,6 @@ protected:
   AddressSpace::shr_ptr as;
   // The file descriptor table of this task.
   FdTable::shr_ptr fds;
-  // Task's OS name.
-  std::string prname;
   // Count of all ticks seen by this task since tracees became
   // consistent and the task last wait()ed.
   Ticks ticks;

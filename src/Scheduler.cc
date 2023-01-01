@@ -876,7 +876,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     must_run_task = next;
   }
 
-  if (current_ && current_ != next) {
+  if (current_ && current_ != next && is_logging_enabled(LOG_debug, __FILE__)) {
     LOG(debug) << "Switching from " << current_->tid << "(" << current_->name()
                << ") to " << next->tid << "(" << next->name() << ") (priority "
                << current_->priority << " to " << next->priority << ") at "

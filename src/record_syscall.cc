@@ -3531,8 +3531,8 @@ static pid_t do_detach_teleport(RecordTask *t)
   session.set_tracee_fd_number(tracee_fd_number);
   new_t->os_exec(t->arch(), exe_path);
   session.post_exec();
-  new_t->post_exec(exe_path, exe_path);
-  new_t->post_exec_syscall();
+  new_t->post_exec(exe_path);
+  new_t->post_exec_syscall(exe_path);
   new_t->dup_from(t);
   // Emulate the success of the syscall in the new task
   Registers regs = new_t->regs();
@@ -5502,7 +5502,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     interp_name = reader.read_interp();
   }
 
-  t->post_exec_syscall();
+  t->post_exec_syscall(t->exe_path());
   t->ev().Syscall().exec_fds_to_close =
       t->fd_table()->fds_to_close_after_exec(t);
 

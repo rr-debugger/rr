@@ -13,8 +13,10 @@ using namespace std;
 namespace rr {
 
 ReplayTask::ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
-                       uint32_t serial, SupportedArch a)
+                       uint32_t serial, SupportedArch a,
+                       const std::string& name)
     : Task(session, _tid, _rec_tid, serial, a),
+      name_(name),
       seen_sched_in_syscallbuf_syscall_hook(false)
 {}
 
@@ -64,14 +66,14 @@ void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
 }
 
 void ReplayTask::post_exec_syscall(const string& replay_exe, const string& original_replay_exe) {
-  Task::post_exec(replay_exe, original_replay_exe);
+  Task::post_exec(replay_exe);
 
   // Perform post-exec-syscall tasks now (e.g. opening mem_fd) before we
   // switch registers. This lets us perform AutoRemoteSyscalls using the
   // regular stack instead of having to search the address space for usable
   // pages (which is error prone, e.g. if we happen to find the scratch space
   // allocated by an rr recorder under which we're running).
-  Task::post_exec_syscall();
+  Task::post_exec_syscall(original_replay_exe);
 
   // Delay setting the replay_regs until here so the original registers
   // are set while we populate AddressSpace. We need that for the kernel
@@ -80,6 +82,24 @@ void ReplayTask::post_exec_syscall(const string& replay_exe, const string& origi
   extra_registers = current_trace_frame().extra_regs();
   ASSERT(this, !extra_registers.empty());
   set_extra_regs(extra_registers);
+}
+
+void ReplayTask::set_name(AutoRemoteSyscalls& remote, const std::string& name) {
+  name_ = name;
+  Task::set_name(remote, "rr:" + name);
+}
+
+void ReplayTask::did_prctl_set_prname(remote_ptr<void> child_addr) {
+  char buf[16];
+  // The null-terminated name might start within the last 16 bytes of a memory
+  // mapping.
+  ssize_t bytes = read_bytes_fallible(child_addr, sizeof(buf), buf);
+  // If there was no readable data then this shouldn't be called
+  ASSERT(this, bytes > 0);
+  // Make sure the final byte is null if the string needed to be truncated
+  buf[bytes - 1] = 0;
+  AutoRemoteSyscalls remote(this);
+  set_name(remote, buf);
 }
 
 void ReplayTask::validate_regs(uint32_t flags) {

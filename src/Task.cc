@@ -82,7 +82,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       ip_at_last_syscall_entry(nullptr),
       last_syscall_entry_recorded(false),
       serial(serial),
-      prname("???"),
       ticks(0),
       registers(a),
       how_last_execution_resumed(RESUME_CONT),
@@ -278,11 +277,37 @@ void Task::finish_emulated_syscall() {
   wait_status = WaitStatus();
 }
 
+string Task::name() const {
+  char buf[1024];
+  sprintf(buf, "/proc/%d/comm", tid);
+  ScopedFd comm(buf, O_RDONLY);
+  if (!comm.is_open()) {
+    return "???";
+  }
+  ssize_t bytes = read(comm, buf, sizeof(buf) - 1);
+  ASSERT(this, bytes >= 0);
+  if (bytes > 0 && buf[bytes - 1] == '\n') {
+    --bytes;
+  }
+  return string(buf, bytes);
+}
+
+void Task::set_name(AutoRemoteSyscalls& remote, const std::string& name) {
+  ASSERT(this, this == remote.task());
+  char prname[17];
+  strncpy(prname, name.c_str(), sizeof(prname));
+  prname[16] = 0;
+  AutoRestoreMem remote_prname(remote, (const uint8_t*)prname, 16);
+  LOG(debug) << "    setting name to " << prname;
+  remote.infallible_syscall(syscall_number_for_prctl(remote.arch()), PR_SET_NAME,
+                            remote_prname.get().as_int());
+}
+
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   stringstream ss;
   ss << wait_status;
-  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%s)<%p>\n", prname.c_str(),
+  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%s)<%p>\n", name().c_str(),
           tid, rec_tid, ss.str().c_str(), this);
   if (session().is_recording()) {
     // TODO pending events are currently only meaningful
@@ -618,10 +643,9 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
             seccomp_bpf_enabled = true;
           }
           break;
-        case PR_SET_NAME: {
-          update_prname(regs.arg2());
+        case PR_SET_NAME:
+          did_prctl_set_prname(regs.arg2());
           break;
-        }
       }
       return;
 
@@ -921,11 +945,6 @@ bool Task::exit_syscall_and_prepare_restart() {
   return true;
 }
 
-static string prname_from_exe_image(const string& e) {
-  size_t last_slash = e.rfind('/');
-  return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
-}
-
 #if defined(__i386__) || defined(__x86_64__)
 #define AR_L (1 << 21)
 static bool is_long_mode_segment(uint32_t segment) {
@@ -935,7 +954,7 @@ static bool is_long_mode_segment(uint32_t segment) {
 }
 #endif
 
-void Task::post_exec(const string& exe_file, const string& original_exe_file) {
+void Task::post_exec(const string& exe_file) {
   Task* stopped_task_in_address_space = nullptr;
   bool other_task_in_address_space = false;
   for (Task* t : as->task_set()) {
@@ -988,15 +1007,20 @@ void Task::post_exec(const string& exe_file, const string& original_exe_file) {
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone();
   fds->insert_task(this);
-  prname = prname_from_exe_image(original_exe_file);
 }
 
-void Task::post_exec_syscall() {
+static string prname_from_exe_image(const string& e) {
+  size_t last_slash = e.rfind('/');
+  return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
+}
+
+void Task::post_exec_syscall(const std::string& original_exe_file) {
   canonicalize_regs(arch());
   as->post_exec_syscall(this);
 
+  AutoRemoteSyscalls remote(this);
+  set_name(remote, prname_from_exe_image(original_exe_file));
   if (session().has_cpuid_faulting()) {
-    AutoRemoteSyscalls remote(this);
     remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
                               ARCH_SET_CPUID, 0);
   }
@@ -1845,18 +1869,6 @@ uint32_t Task::trace_time() const {
   return trace ? trace->time() : 0;
 }
 
-void Task::update_prname(remote_ptr<void> child_addr) {
-  char buf[16];
-  // The null-terminated name might start within the last 16 bytes of a memory
-  // mapping.
-  ssize_t bytes = read_bytes_fallible(child_addr, sizeof(buf), buf);
-  // If there was no readable data then this shouldn't be called
-  ASSERT(this, bytes > 0);
-  // Make sure the final byte is null if the string needed to be truncated
-  buf[bytes - 1] = 0;
-  prname = buf;
-}
-
 static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {
   switch (group_stop_sig) {
     case SIGTRAP:
@@ -2289,8 +2301,12 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   } else {
     ASSERT(this, reason == TRACEE_CLONE);
   }
+  string n;
+  if (!session().is_recording()) {
+    n = name();
+  }
   Task* t =
-      new_task_session->new_task(new_tid, new_rec_tid, new_serial, arch());
+      new_task_session->new_task(new_tid, new_rec_tid, new_serial, arch(), n);
 
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
@@ -2332,9 +2348,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   t->fds->insert_task(t);
 
   t->top_of_stack = stack;
-  // Clone children, both thread and fork, inherit the parent
-  // prname.
-  t->prname = prname;
 
   // wait() before trying to do anything that might need to
   // use ptrace to access memory
@@ -2542,7 +2555,7 @@ Task::CapturedState Task::capture_state() {
   state.tguid = thread_group()->tguid();
   state.regs = regs();
   state.extra_regs = extra_regs();
-  state.prname = prname;
+  state.prname = name();
   if (arch() == aarch64) {
     bool ok = read_aarch64_tls_register(&state.tls_register);
     ASSERT(this, ok);
@@ -2578,17 +2591,7 @@ void Task::copy_state(const CapturedState& state) {
   set_extra_regs(state.extra_regs);
   {
     AutoRemoteSyscalls remote(this);
-    {
-      char prname[17];
-      strncpy(prname, state.prname.c_str(), sizeof(prname));
-      prname[16] = 0;
-      AutoRestoreMem remote_prname(remote, (const uint8_t*)prname, 16);
-      LOG(debug) << "    setting name to " << prname;
-      remote.infallible_syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
-                                remote_prname.get().as_int());
-      update_prname(remote_prname.get());
-    }
-
+    set_name(remote, state.prname);
     copy_tls(state, remote);
     thread_areas_ = state.thread_areas;
     syscallbuf_size = state.syscallbuf_size;
@@ -3523,7 +3526,7 @@ long Task::ptrace_seize(pid_t tid, Session& session) {
   }
 
   Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
-                             NativeArch::arch());
+                             NativeArch::arch(), "rr");
   auto tg = session.create_initial_tg(t);
   t->tg.swap(tg);
   auto as = session.create_vm(t);

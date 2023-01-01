@@ -471,8 +471,6 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     restore_mapped_region(t, remote, kms[0], datas[0]);
   }
 
-  const string& recorded_exe_name = kms[exe_km].fsname();
-
   {
     // Now that [stack] is mapped, reinitialize AutoRemoteSyscalls with
     // memory parameters enabled.
@@ -482,14 +480,6 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     for (ssize_t i = 1; i < ssize_t(kms.size()) - 1; ++i) {
       restore_mapped_region(t, remote, kms[i], datas[i]);
     }
-
-    size_t index = recorded_exe_name.rfind('/');
-    string name =
-        string("rr:") +
-        recorded_exe_name.substr(index == string::npos ? 0 : index + 1);
-    AutoRestoreMem mem(remote, name.c_str());
-    remote.infallible_syscall(syscall_number_for_prctl(t->arch()), PR_SET_NAME,
-                              mem.get());
   }
 
   init_scratch_memory(t, kms.back(), datas.back());

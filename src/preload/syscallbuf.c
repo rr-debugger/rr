@@ -3628,6 +3628,31 @@ static long sys_writev(struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_prctl(struct syscall_info* call) {
+  int syscallno = SYS_prctl;
+  long option = call->args[0];
+  unsigned long arg2 = call->args[1];
+  unsigned long arg3 = call->args[2];
+  unsigned long arg4 = call->args[3];
+  unsigned long arg5 = call->args[4];
+
+  if (option != PR_SET_NAME) {
+    return traced_raw_syscall(call);
+  }
+
+  void* ptr = prep_syscall();
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_replay_assist_syscall5(syscallno, option, arg2, arg3, arg4, arg5);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_ptrace(struct syscall_info* call) {
   int syscallno = SYS_ptrace;
   long request = call->args[0];
@@ -3917,6 +3942,7 @@ case SYS_epoll_pwait:
 #if defined(SYS_ppoll)
     CASE(ppoll);
 #endif
+    CASE(prctl);
 #if !defined(__i386__)
     CASE(pread64);
     CASE(pwrite64);

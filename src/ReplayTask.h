@@ -3,6 +3,7 @@
 #ifndef RR_REPLAY_TASK_H_
 #define RR_REPLAY_TASK_H_
 
+#include "AutoRemoteSyscalls.h"
 #include "Task.h"
 
 namespace rr {
@@ -16,7 +17,8 @@ class TraceFrame;
 class ReplayTask : public Task {
 public:
   ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
-             uint32_t serial, SupportedArch a);
+             uint32_t serial, SupportedArch a,
+             const std::string& name);
 
   ReplaySession& session() const;
   TraceReader& trace_reader() const;
@@ -38,6 +40,10 @@ public:
    * `original_replay_exe` is the name of the original executable file.
    */
   void post_exec_syscall(const std::string& replay_exe, const std::string& original_replay_exe);
+
+  void set_name(AutoRemoteSyscalls& remote, const std::string& name) override;
+
+  void did_prctl_set_prname(remote_ptr<void> child_addr) override;
 
   enum {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
@@ -75,10 +81,16 @@ public:
     seen_sched_in_syscallbuf_syscall_hook = true;
   }
 
+  std::string name() const override {
+    return name_;
+  }
+
 private:
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
 
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin);
+
+  std::string name_;
 
   // Set to true when we see a sched event with in_syscallbuf_syscall_hook set.
   bool seen_sched_in_syscallbuf_syscall_hook;

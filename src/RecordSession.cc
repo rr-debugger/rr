@@ -2652,7 +2652,7 @@ void RecordSession::close_trace_writer(TraceWriter::CloseStatus status) {
 }
 
 Task* RecordSession::new_task(pid_t tid, pid_t, uint32_t serial,
-                              SupportedArch a) {
+                              SupportedArch a, const std::string&) {
   return new RecordTask(*this, tid, serial, a);
 }
 
