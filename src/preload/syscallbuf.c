@@ -3748,6 +3748,33 @@ static long sys_rt_sigprocmask(struct syscall_info* call) {
   return ret;
 }
 
+static long sys_sigaltstack(struct syscall_info* call) {
+  const int syscallno = SYS_sigaltstack;
+  stack_t* ss = (void*)call->args[0];
+  stack_t* old_ss = (void*)call->args[1];
+
+  void* ptr = prep_syscall();
+  stack_t* old_ss2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (old_ss) {
+    old_ss2 = ptr;
+    ptr += sizeof(*old_ss2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, ss, old_ss2);
+  if (old_ss && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    /* This is small and won't get optimized to a memcpy call outside
+       our library. */
+    *old_ss = *old_ss2;
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_rrcall_rdtsc(struct syscall_info* call) {
 #if defined(__i386__) || defined(__x86_64__)
   const int syscallno = SYS_rrcall_rdtsc;
@@ -3899,6 +3926,7 @@ case SYS_epoll_pwait:
     CASE(getsockname);
 #endif
     CASE_GENERIC_NONBLOCKING(setxattr);
+    CASE(sigaltstack);
 #if defined(SYS_socketcall)
     CASE(socketcall);
 #endif
