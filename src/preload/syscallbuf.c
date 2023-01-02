@@ -761,6 +761,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_49_89_ca(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c1(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_c1_e2_20(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_49_8b_44_24_28(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_4c_89_f7(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_4c_89_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff(void);
@@ -919,6 +920,13 @@ static void __attribute__((constructor)) init_process(void) {
       4,
       { 0x48, 0xc1, 0xe2, 0x20 },
       (uintptr_t)_syscall_hook_trampoline_48_c1_e2_20 },
+    /* glibc-2.35-20.fc36.x86_64 __pthread_create_2_1 application has
+       syscall followed by 'mov 0x28(%r12),%rax' */
+    {
+      0,
+      5,
+      { 0x49, 0x8b, 0x44, 0x24, 0x28 },
+      (uintptr_t)_syscall_hook_trampoline_49_8b_44_24_28 },
     /* Some application has 'mov %r14,%rdi' followed by 'syscall' */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       3,
@@ -939,7 +947,8 @@ static void __attribute__((constructor)) init_process(void) {
       5,
       { 0xb8, 0xca, 0x00, 0x00, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_b8_ca_00_00_00 },
-    /* glibc __pthread_create_2_1 has 'mov $0xe,%eax' (sigprocmask) followed by 'syscall' */
+    /* glibc-2.35-20.fc36.x86_64 __pthread_create_2_1 has
+       'mov $0xe,%eax' (sigprocmask) followed by 'syscall' */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       5,
       { 0xb8, 0x0e, 0x00, 0x00, 0x00 },

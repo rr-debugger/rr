@@ -589,6 +589,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_c1_e2_20)
         shl $32, %rdx
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_c1_e2_20)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_49_8b_44_24_28)
+        callq __morestack
+        mov 0x28(%r12),%rax
+SYSCALLHOOK_END(_syscall_hook_trampoline_49_8b_44_24_28)
+
 SYSCALLHOOK_START(_syscall_hook_trampoline_4c_89_f7)
         mov %r14, %rdi
         callq __morestack
