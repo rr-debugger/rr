@@ -765,6 +765,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_4c_89_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_ca_00_00_00(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_b8_0e_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_e5(void);
 
 #define MOV_RDX_VARIANTS \
@@ -933,11 +934,16 @@ static void __attribute__((constructor)) init_process(void) {
       7,
       { 0x49, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff },
-    /* Some application has 'mov $0xca,%eax' followed by 'syscall' */
+    /* Some application has 'mov $0xca,%eax' (futex) followed by 'syscall' */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       5,
       { 0xb8, 0xca, 0x00, 0x00, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_b8_ca_00_00_00 },
+    /* glibc __pthread_create_2_1 has 'mov $0xe,%eax' (sigprocmask) followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      5,
+      { 0xb8, 0x0e, 0x00, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_b8_0e_00_00_00 },
     /* Some application has 'mov %rsp,%rbp' followed by 'rdtsc' */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       3,
