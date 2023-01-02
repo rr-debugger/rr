@@ -769,6 +769,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_11_01_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_ca_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_e5(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_8d_b3_f0_08_00_00(void);
 
 #define MOV_RDX_VARIANTS \
   MOV_RDX_TO_REG(48, d0) \
@@ -928,6 +929,12 @@ static void __attribute__((constructor)) init_process(void) {
       5,
       { 0x49, 0x8b, 0x44, 0x24, 0x28 },
       (uintptr_t)_syscall_hook_trampoline_49_8b_44_24_28 },
+    /* glibc-2.35-20.fc36.x86_64 thread_start has
+       'lea 0x8f0(%rbx),%rsi' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      7,
+      { 0x48, 0x8d, 0xb3, 0xf0, 0x08, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_48_8d_b3_f0_08_00_00 },
     /* Some application has 'mov %r14,%rdi' followed by 'syscall' */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       3,

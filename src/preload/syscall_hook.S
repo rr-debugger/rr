@@ -548,6 +548,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_40_80_f6_81)
 	call __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_40_80_f6_81)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_8d_b3_f0_08_00_00)
+	lea    0x8f0(%rbx),%rsi
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_8d_b3_f0_08_00_00)
+
 SYSCALLHOOK_START(_syscall_hook_trampoline_49_89_ca)
 	mov %rcx, %r10
 	call __morestack
