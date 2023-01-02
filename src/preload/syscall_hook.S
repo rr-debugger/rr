@@ -609,15 +609,20 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff)
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_49_c7_c1_ff_ff_ff_ff)
 
-SYSCALLHOOK_START(_syscall_hook_trampoline_b8_ca_00_00_00)
-        mov $0xca,%eax
-        callq __morestack
-SYSCALLHOOK_END(_syscall_hook_trampoline_b8_ca_00_00_00)
-
 SYSCALLHOOK_START(_syscall_hook_trampoline_b8_0e_00_00_00)
         mov $0x0e,%eax
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_b8_0e_00_00_00)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_b8_11_01_00_00)
+        mov $0x111,%eax
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_b8_11_01_00_00)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_b8_ca_00_00_00)
+        mov $0xca,%eax
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_b8_ca_00_00_00)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_e5)
         /* Previous RSP is stored on the stack above our return address */
