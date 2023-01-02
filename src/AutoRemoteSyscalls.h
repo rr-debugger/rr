@@ -300,6 +300,7 @@ private:
   remote_ptr<void> fixed_sp;
   std::vector<uint8_t> replaced_bytes;
   WaitStatus restore_wait_status;
+  ScopedFd pid_fd;
 
   pid_t new_tid_;
   /* Whether we had to mmap a scratch region because none was found */

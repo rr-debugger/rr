@@ -15,6 +15,7 @@
 #include "Session.h"
 #include "Task.h"
 #include "core.h"
+#include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
@@ -606,17 +607,44 @@ static void sendmsg_socket(ScopedFd& sock, int fd_to_send)
   }
 }
 
+static Task* thread_group_leader_for_fds(Task* t) {
+  for (Task* tt : t->fd_table()->task_set()) {
+    if (tt->tgid() == tt->rec_tid) {
+      return tt;
+    }
+  }
+  return nullptr;
+}
+
 template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
+  ScopedFd ret;
+  // Try to use pidfd_getfd to get the fd without round-tripping to the tracee
+  if (!pid_fd.is_open()) {
+    Task* tg_leader_for_fds = thread_group_leader_for_fds(t);
+    if (tg_leader_for_fds) {
+      pid_fd = ScopedFd(::syscall(NativeArch::pidfd_open, tg_leader_for_fds->tid, 0));
+      ASSERT(t, pid_fd.is_open() || errno == ENOSYS)
+        << "Error in pidfd_open errno=" << errno_name(errno);
+    }
+  }
+  if (pid_fd.is_open()) {
+    ret = ScopedFd(::syscall(NativeArch::pidfd_getfd, pid_fd.get(), fd, 0));
+    if (ret.is_open()) {
+      return ret;
+    }
+    ASSERT(t, errno == ENOSYS) << "Failed in pidfd_getfd errno=" << errno_name(errno);
+  }
+
   long child_syscall_result =
       child_sendmsg<Arch>(*this, task()->session().tracee_fd_number(), fd);
   if (child_syscall_result == -ESRCH) {
-    return ScopedFd();
+    return ret;
   }
   ASSERT(t, child_syscall_result > 0) << "Failed to sendmsg() in tracee; err="
                                       << errno_name(-child_syscall_result);
-  int our_fd = recvmsg_socket(task()->session().tracee_socket_fd());
-  ASSERT(t, our_fd >= 0) << "Failed to receive fd";
-  return ScopedFd(our_fd);
+  ret = ScopedFd(recvmsg_socket(task()->session().tracee_socket_fd()));
+  ASSERT(t, ret.is_open()) << "Failed to receive fd";
+  return ret;
 }
 
 ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
