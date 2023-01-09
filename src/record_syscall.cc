@@ -16,6 +16,7 @@
 #include <linux/futex.h>
 #include <linux/hidraw.h>
 #include <linux/if.h>
+#include <linux/if_bridge.h>
 #include <linux/if_packet.h>
 #include <linux/if_tun.h>
 #include <linux/input.h>
@@ -1714,6 +1715,27 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
+
+    // https://github.com/torvalds/linux/blob/254ec036db1123b10e23e1412c191a3cf70dce71/net/bridge/br_ioctl.c#L316-L369
+    case SIOCGIFBR: {
+        auto params = syscall_state.reg_parameter<unsigned long>(3, IN);
+        auto op = t->read_mem(params + 0);
+        switch (op) {
+            // does not mutate memory
+            case BRCTL_GET_VERSION:
+                break;
+            case BRCTL_GET_BRIDGES: {
+                auto len = t->read_mem(params + 2);
+                syscall_state.mem_ptr_parameter(params + 1, len * sizeof(int));
+                break;
+            }
+            case BRCTL_ADD_BRIDGE:
+            case BRCTL_DEL_BRIDGE:
+                syscall_state.mem_ptr_parameter<uint8_t[IFNAMSIZ]>(params + 1, IN);
+                break;
+        }
+        return PREVENT_SWITCH;
+    }
 
     // These haven't been observed to write beyond
     // tracees' stacks, but we record a stack page here
