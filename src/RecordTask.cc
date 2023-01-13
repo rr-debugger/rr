@@ -1794,6 +1794,29 @@ void RecordTask::log_pending_events() const {
   }
 }
 
+template <typename Arch>
+static void maybe_handle_set_robust_list_arch(RecordTask* t) {
+  auto remote_locals = AddressSpace::preload_thread_locals_start()
+    .cast<preload_thread_locals<Arch>>();
+  if (!remote_locals) {
+    return;
+  }
+  auto robust_list_ptr = REMOTE_PTR_FIELD(remote_locals, robust_list);
+  auto robust_list = t->read_mem(robust_list_ptr);
+  if (robust_list.len) {
+    t->set_robust_list(robust_list.head.rptr(), robust_list.len);
+
+    auto robust_list_len_ptr = REMOTE_PTR_FIELD(robust_list_ptr, len);
+    t->write_mem(robust_list_len_ptr, static_cast<uint32_t>(0));
+    robust_list.len = 0;
+    t->record_local(robust_list_len_ptr, &robust_list.len, 1);
+  }
+}
+
+static void maybe_handle_set_robust_list(RecordTask* t) {
+  RR_ARCH_FUNCTION(maybe_handle_set_robust_list_arch, t->arch(), t);
+}
+
 void RecordTask::maybe_flush_syscallbuf() {
   if (EV_SYSCALLBUF_FLUSH == ev().type()) {
     // Already flushing.
@@ -1842,6 +1865,8 @@ void RecordTask::maybe_flush_syscallbuf() {
   } else {
     record_remote(syscallbuf_child, syscallbuf_data_size());
   }
+  maybe_handle_set_robust_list(this);
+
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);
 

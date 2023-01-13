@@ -155,7 +155,7 @@ static inline const char* extract_file_name(const char* s) {
 #else
 #define PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE 0
 #endif
-#define PRELOAD_THREAD_LOCALS_SIZE (104 + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE)
+#define PRELOAD_THREAD_LOCALS_SIZE (120 + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE)
 
 #include "rrcalls.h"
 
@@ -166,14 +166,18 @@ static inline const char* extract_file_name(const char* s) {
 #define TEMPLATE_ARCH
 #define PTR(T) T*
 #define PTR_ARCH(T) T*
+#define EMBED_STRUCT(T) struct T
 #define VOLATILE volatile
 #define SIGNED_LONG long
+#define UNSIGNED_LONG unsigned long
 #else
 #define TEMPLATE_ARCH template <typename Arch>
 #define PTR(T) typename Arch::template ptr<T>
 #define PTR_ARCH(T) typename Arch::template ptr<T<Arch>>
+#define EMBED_STRUCT(T) T<Arch>
 #define VOLATILE
 #define SIGNED_LONG typename Arch::signed_long
+#define UNSIGNED_LONG typename Arch::unsigned_long
 #endif
 
 #define PATCH_IS_MULTIPLE_INSTRUCTIONS (1 << 0)
@@ -290,6 +294,12 @@ struct syscall_info {
   SIGNED_LONG args[6];
 };
 
+TEMPLATE_ARCH
+struct robust_list_info {
+  PTR(void) head;
+  uint32_t len;
+};
+
 /**
  * Can be architecture dependent. The rr process does not manipulate
  * these except to save and restore the values on task switches so that
@@ -335,14 +345,14 @@ struct preload_thread_locals {
 
   /* Nonzero when thread-local state like the syscallbuf has been
    * initialized.  */
-  int thread_inited;
+  int32_t thread_inited;
   /* The offset of this field MUST NOT CHANGE, it is part of the ABI tools
    * depend on. When buffering is enabled, points at the thread's mapped buffer
    * segment.  At the start of the segment is an object of type |struct
    * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
    * header. */
   PTR(uint8_t) buffer;
-  size_t buffer_size;
+  UNSIGNED_LONG buffer_size;
   /* This is used to support the buffering of "may-block" system calls.
    * The problem that needs to be addressed can be introduced with a
    * simple example; assume that we're buffering the "read" and "write"
@@ -377,15 +387,24 @@ struct preload_thread_locals {
    * The description above is sort of an idealized view; there are
    * numerous implementation details that are documented in
    * handle_signal.c, where they're dealt with. */
-  int desched_counter_fd;
-  int cloned_file_data_fd;
-  off_t cloned_file_data_offset;
+  int32_t desched_counter_fd;
+  int32_t cloned_file_data_fd;
+  SIGNED_LONG cloned_file_data_offset;
   PTR(void) scratch_buf;
-  size_t usable_scratch_size;
+  UNSIGNED_LONG usable_scratch_size;
 
   PTR(struct msghdr) notify_control_msg;
 
+  /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * rr depends on, on ARM.
+   */
   uint8_t stub_scratch_2[PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE];
+
+  /** When the size is non-zero, there has been a buffered set_robust_list
+   * that must be accounted for. Set by preload code only, read by rr
+   * only during recording.
+   */
+  EMBED_STRUCT(robust_list_info) robust_list;
 };
 #if defined(__aarch64__) && (defined(RR_IMPLEMENT_PRELOAD) || \
                              defined(RR_IMPLEMENT_AUDIT))

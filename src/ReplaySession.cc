@@ -1411,7 +1411,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
       Registers r = t->regs();
       r.set_ip(remote_brkpt_addr);
       t->set_regs(r);
-
+      t->apply_all_data_records_from_trace();
       return COMPLETE;
     }
 
@@ -1437,6 +1437,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
     skip_next_execution_event = true;
   }
 
+  t->apply_all_data_records_from_trace();
   return COMPLETE;
 }
 

@@ -611,6 +611,15 @@ public:
 
   bool set_sigmask(sig_set_t mask);
 
+  /**
+   * Update the futex robust list head pointer to |list| (which
+   * is of size |len|).
+   */
+  void set_robust_list(remote_ptr<void> list, size_t len) {
+    robust_futex_list = list;
+    robust_futex_list_len = len;
+  }
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
@@ -629,14 +638,6 @@ private:
    * Call this when SYS_sigaction is finishing with |regs|.
    */
   void update_sigaction(const Registers& regs);
-  /**
-   * Update the futex robust list head pointer to |list| (which
-   * is of size |len|).
-   */
-  void set_robust_list(remote_ptr<void> list, size_t len) {
-    robust_futex_list = list;
-    robust_futex_list_len = len;
-  }
 
   template <typename Arch> void init_buffers_arch();
   template <typename Arch>

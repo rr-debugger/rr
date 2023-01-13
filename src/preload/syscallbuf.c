@@ -3653,6 +3653,30 @@ static long sys_prctl(struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_set_robust_list(struct syscall_info* call) {
+  int syscallno = SYS_set_robust_list;
+  void* head = (void*)call->args[0];
+  size_t len = call->args[1];
+
+  void* ptr = prep_syscall();
+  long ret;
+
+  assert(syscallno == call->no);
+
+  /* Avoid len values we don't support via our buffering mechanism */
+  if (len == 0 || len >= UINT32_MAX ||
+      !start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall2(syscallno, head, len);
+  if (!ret) {
+    thread_locals->robust_list.head = head;
+    thread_locals->robust_list.len = len;
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_ptrace(struct syscall_info* call) {
   int syscallno = SYS_ptrace;
   long request = call->args[0];
@@ -3971,6 +3995,7 @@ case SYS_epoll_pwait:
 #if defined(SYS_sendto)
     CASE(sendto);
 #endif
+    CASE(set_robust_list);
 #if defined(SYS_setsockopt)
     CASE(setsockopt);
 #endif
