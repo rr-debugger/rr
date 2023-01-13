@@ -26,6 +26,7 @@ namespace rr {
 
 const char* DEBUGLINK = "debuglink";
 const char* DEBUGALTLINK = "debugaltlink";
+const char* DWP = "dwp";
 
 /// Prints JSON containing
 /// "relevant_binaries": an array of strings, trace-relative binary file names (or build-ids, for explicit-sources).
@@ -33,14 +34,14 @@ const char* DEBUGALTLINK = "debugaltlink";
 /// "external_debug_info": an array of objects, {"path":<path>, "build_id":<build-id>, "type":<type>}
 ///   These are ELF files in the filesystem that contain separate debuginfo. "build-id" is the
 ///   build-id of the file from whence it originated, as a string. "type" is the type of
-///   external file, one of "debuglink", "debugaltlink". Note that for "debugaltlink", it is possible
+///   external file, one of "debuglink", "debugaltlink", "dwp". Note that for "debugaltlink", it is possible
 ///   to have the same file appearing multiple times with different build-ids, when it's shared by
 ///   multiple ELF binaries.
-/// "dwo": an array of objects, {"name":<name>, "trace_file":<name>, "comp_dir":<path>, "id":<value>}
+/// "dwo": an array of objects, {"name":<name>, "trace_file":<name>, "build_id":<value>, "comp_dir":<path>, "id":<value>}
 ///   These are the references to DWO files found in the trace binaries. "name" is the value of
-/// DW_AT_GNU_dwo_name. "trace_file" is the trace-relative binary file name. "comp_dir" is the
-/// value of DW_AT_comp_dir for the compilation unit containing the DWO reference. "id"
-/// is the value of DW_AT_GNU_dwo_id (64 bit number).
+/// DW_AT_GNU_dwo_name. "trace_file" is the trace-relative binary file name. "build_id" is the
+/// binary's ELF build-id. "comp_dir" is the value of DW_AT_comp_dir for the compilation unit
+/// containing the DWO reference. "id" is the value of DW_AT_GNU_dwo_id (64 bit number).
 /// "symlinks": an array of objects, {"from":<path>, "to":<path>}.
 ///   These symlinks that exist in the filesystem that are relevant to the source file paths.
 /// "files": a map from VCS directory name to array of source files relative to that directory
@@ -207,6 +208,7 @@ static bool resolve_file_name(const char* original_file_name,
 struct DwoInfo {
   string name;
   string trace_file;
+  string build_id;
   // Could be an empty string
   string comp_dir;
   string full_path;
@@ -220,6 +222,7 @@ static bool process_compilation_units(ElfFileReader& reader,
                                       const string& comp_dir_substitution,
                                       set<string>* file_names, vector<DwoInfo>* dwos,
                                       DirExistsCache& dir_exists_cache) {
+  string build_id = reader.read_buildid();
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
   if (debug_info.empty()) {
     debug_info = reader.dwarf_section(".zdebug_info", true);
@@ -304,7 +307,7 @@ static bool process_compilation_units(ElfFileReader& reader,
           if (comp_dir) {
             c = comp_dir;
           }
-          dwos->push_back({ dwo_name, trace_relative_name, std::move(c), full_name, dwo_id });
+          dwos->push_back({ dwo_name, trace_relative_name, build_id, std::move(c), full_name, dwo_id });
         } else {
           FATAL() << "DWO missing due to relative path " << full_name;
         }
@@ -793,6 +796,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
                                               full_altfile_name);
 
     bool has_source_files;
+    auto dwo_count = dwos.size();
     LOG(debug) << "Looking for comp_dir substitutions for " << original_name;
     auto it = comp_dir_substitutions.find(original_name);
     if (it != comp_dir_substitutions.end()) {
@@ -825,6 +829,21 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
                                                  DEBUGALTLINK, comp_dir_substitutions,
                                                  &dwos, &external_debug_info,
                                                  original_had_source_files, dir_exists_cache);
+    }
+
+    if (dwos.size() > dwo_count) {
+      /* If there are any dwos, check for a dwp. */
+      string dwp_candidate = pair.second + ".dwp";
+      struct stat statbuf;
+      int ret = stat(dwp_candidate.c_str(), &statbuf);
+      if (ret == 0 && S_ISREG(statbuf.st_mode)) {
+        string build_id = reader.read_buildid();
+        if (!build_id.empty()) {
+          external_debug_info.insert({ dwp_candidate, build_id, string(DWP) });
+        } else {
+          LOG(warn) << "Main ELF binary has no build ID!";
+        }
+      }
     }
 
     if (has_source_files) {
@@ -905,9 +924,10 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
   printf("  \"dwos\":[\n");
   index = 0;
   for (auto& d : dwos) {
-    printf("    { \"name\":\"%s\", \"full_path\":\"%s\", \"trace_file\":\"%s\", ",
+    printf("    { \"name\":\"%s\", \"full_path\":\"%s\", \"build_id\":\"%s\", \"trace_file\":\"%s\", ",
            json_escape(d.name).c_str(),
            json_escape(d.full_path).c_str(),
+           json_escape(d.build_id).c_str(),
            json_escape(d.trace_file).c_str());
     if (!d.comp_dir.empty()) {
       printf("\"comp_dir\":\"%s\", ", json_escape(d.comp_dir).c_str());
