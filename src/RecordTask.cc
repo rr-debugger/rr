@@ -1809,7 +1809,7 @@ static void maybe_handle_set_robust_list_arch(RecordTask* t) {
     auto robust_list_len_ptr = REMOTE_PTR_FIELD(robust_list_ptr, len);
     t->write_mem(robust_list_len_ptr, static_cast<uint32_t>(0));
     robust_list.len = 0;
-    t->record_local(robust_list_len_ptr, &robust_list.len, 1);
+    t->record_local(robust_list_len_ptr, &robust_list.len);
   }
 }
 
