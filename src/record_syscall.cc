@@ -4236,6 +4236,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       addr = REMOTE_PTR_FIELD(rseq, cpu_id_start);
       t->write_mem(addr, cpu_id);
       t->record_local(addr, &cpu_id);
+
+      auto remote_locals = AddressSpace::preload_thread_locals_start()
+        .cast<preload_thread_locals<Arch>>();
+      if (remote_locals) {
+        auto rseq_called_ptr = REMOTE_PTR_FIELD(remote_locals, rseq_called);
+        int32_t rseq_called = 1;
+        t->write_mem(rseq_called_ptr, rseq_called);
+        t->record_local(rseq_called_ptr, &rseq_called);
+      }
+
       syscall_state.emulate_result(0);
       return PREVENT_SWITCH;
     }

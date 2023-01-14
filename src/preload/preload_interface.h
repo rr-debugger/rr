@@ -155,7 +155,7 @@ static inline const char* extract_file_name(const char* s) {
 #else
 #define PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE 0
 #endif
-#define PRELOAD_THREAD_LOCALS_SIZE (120 + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE)
+#define PRELOAD_THREAD_LOCALS_SIZE (144 + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE)
 
 #include "rrcalls.h"
 
@@ -282,6 +282,8 @@ struct preload_globals {
      fd table. Set by rr during record (modifications are recorded).
      Read by the syscallbuf */
   unsigned char fdt_uniform;
+  /* The CPU we're bound to, if any; -1 if not bound. */
+  int32_t cpu_binding;
 };
 
 /**
@@ -298,6 +300,13 @@ TEMPLATE_ARCH
 struct robust_list_info {
   PTR(void) head;
   uint32_t len;
+};
+
+TEMPLATE_ARCH
+struct rseq_info {
+  PTR(void) rseq;
+  uint32_t len;
+  uint32_t sig;
 };
 
 /**
@@ -405,6 +414,17 @@ struct preload_thread_locals {
    * only during recording.
    */
   EMBED_STRUCT(robust_list_info) robust_list;
+
+  /** True when either a buffered rseq or unbuffered rseq has been called
+   * for this thread. Set by rr for buffered rseq and preload for unbuffered
+   * rseq. */
+  int32_t rseq_called;
+
+  /** When the len is non-zero, there has been a buffered rseq
+   * that must be accounted for. Set by preload code only, read by rr
+   * only during recording.
+   */
+  EMBED_STRUCT(rseq_info) rseq;
 };
 #if defined(__aarch64__) && (defined(RR_IMPLEMENT_PRELOAD) || \
                              defined(RR_IMPLEMENT_AUDIT))

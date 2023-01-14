@@ -407,6 +407,11 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto random_seed_ptr REMOTE_PTR_FIELD(params.globals.rptr(), random_seed);
   t->write_mem(random_seed_ptr, random_seed);
   t->record_local(random_seed_ptr, &random_seed);
+
+  auto cpu_binding = t->session().cpu_binding();
+  auto cpu_binding_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), cpu_binding);
+  t->write_mem(cpu_binding_ptr, cpu_binding);
+  t->record_local(cpu_binding_ptr, &cpu_binding);
 }
 
 void RecordTask::push_syscall_event(int syscallno) {
@@ -1817,6 +1822,29 @@ static void maybe_handle_set_robust_list(RecordTask* t) {
   RR_ARCH_FUNCTION(maybe_handle_set_robust_list_arch, t->arch(), t);
 }
 
+template <typename Arch>
+static void maybe_handle_rseq_arch(RecordTask* t) {
+  auto remote_locals = AddressSpace::preload_thread_locals_start()
+    .cast<preload_thread_locals<Arch>>();
+  if (!remote_locals) {
+    return;
+  }
+  auto rseq_ptr = REMOTE_PTR_FIELD(remote_locals, rseq);
+  auto rseq = t->read_mem(rseq_ptr);
+  if (rseq.len) {
+    t->rseq_state = make_unique<RseqState>(rseq.rseq.rptr(), rseq.sig);
+
+    auto rseq_len_ptr = REMOTE_PTR_FIELD(rseq_ptr, len);
+    t->write_mem(rseq_len_ptr, static_cast<uint32_t>(0));
+    rseq.len = 0;
+    t->record_local(rseq_len_ptr, &rseq.len);
+  }
+}
+
+static void maybe_handle_rseq(RecordTask* t) {
+  RR_ARCH_FUNCTION(maybe_handle_rseq_arch, t->arch(), t);
+}
+
 void RecordTask::maybe_flush_syscallbuf() {
   if (EV_SYSCALLBUF_FLUSH == ev().type()) {
     // Already flushing.
@@ -1865,6 +1893,7 @@ void RecordTask::maybe_flush_syscallbuf() {
   } else {
     record_remote(syscallbuf_child, syscallbuf_data_size());
   }
+  maybe_handle_rseq(this);
   maybe_handle_set_robust_list(this);
 
   record_current_event();

@@ -111,6 +111,13 @@ struct btrfs_ioctl_clone_range_args {
 #define GRND_NONBLOCK 1
 #endif
 
+struct rr_rseq {
+  uint32_t cpu_id_start;
+  uint32_t cpu_id;
+  uint64_t rseq_cs;
+  uint32_t flags;
+} __attribute__((aligned(32)));
+
 /* NB: don't include any other local headers here. */
 
 #ifdef memcpy
@@ -3684,6 +3691,37 @@ static long sys_set_robust_list(struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_rseq(struct syscall_info* call) {
+  int syscallno = SYS_rseq;
+  struct rr_rseq* rseq = (struct rr_rseq*)call->args[0];
+  size_t rseq_len = call->args[1];
+  int flags = call->args[2];
+  uint32_t sig = call->args[3];
+
+  void* ptr = prep_syscall();
+
+  assert(syscallno == call->no);
+
+  /* Allow buffering only for the simplest case: setting up the
+     initial rseq, all parameters OK and CPU binding in place. */
+  if (flags || ((uintptr_t)rseq & 31) || rseq_len != sizeof(*rseq) ||
+      thread_locals->rseq_called || globals.cpu_binding < 0 ||
+      !start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  /* We don't actually need to make a syscall since rr is
+     going to emulate everything. */
+  rseq->cpu_id_start = rseq->cpu_id = globals.cpu_binding;
+  thread_locals->rseq_called = 1;
+  thread_locals->rseq.rseq = rseq;
+  thread_locals->rseq.len = rseq_len;
+  thread_locals->rseq.sig = sig;
+  /* We do need to commit a syscallbuf record to ensure that flushing
+     happens with associated processing. */
+  return commit_raw_syscall(syscallno, ptr, 0);
+}
+
 static long sys_ptrace(struct syscall_info* call) {
   int syscallno = SYS_ptrace;
   long request = call->args[0];
@@ -3992,6 +4030,7 @@ case SYS_epoll_pwait:
 #if defined(SYS_recvmsg)
     CASE(recvmsg);
 #endif
+    CASE(rseq);
 #if defined(SYS_rmdir)
     CASE_GENERIC_NONBLOCKING(rmdir);
 #endif

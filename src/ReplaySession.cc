@@ -1329,6 +1329,24 @@ static void write_breakpoint_value(ReplayTask *t, uint64_t breakpoint_value, uin
   }
 }
 
+template <typename Arch>
+static void maybe_handle_rseq_arch(ReplayTask* t) {
+  auto remote_locals = AddressSpace::preload_thread_locals_start()
+    .cast<preload_thread_locals<Arch>>();
+  if (!remote_locals) {
+    return;
+  }
+  auto rseq_ptr = REMOTE_PTR_FIELD(remote_locals, rseq);
+  auto rseq = t->read_mem(rseq_ptr);
+  if (rseq.len) {
+    t->rseq_state = make_unique<RseqState>(rseq.rseq.rptr(), rseq.sig);
+  }
+}
+
+static void maybe_handle_rseq(ReplayTask* t) {
+  RR_ARCH_FUNCTION(maybe_handle_rseq_arch, t->arch(), t);
+}
+
 /**
  * Replay all the syscalls recorded in the interval between |t|'s
  * current execution point and the next non-syscallbuf event (the one
@@ -1411,32 +1429,31 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
       Registers r = t->regs();
       r.set_ip(remote_brkpt_addr);
       t->set_regs(r);
-      t->apply_all_data_records_from_trace();
-      return COMPLETE;
+    } else {
+      return INCOMPLETE;
+    }
+  } else {
+    if (t->stop_sig() == SIGTRAP) {
+      return INCOMPLETE;
     }
 
-    return INCOMPLETE;
+    Registers r = t->regs();
+    ASSERT(t, t->stop_sig() == SIGSEGV && r.ip() == t->vm()->do_breakpoint_fault_addr())
+        << "Replay got unexpected signal (or none) " << t->stop_sig()
+        << " ip " << r.ip() << " breakpoint_fault_addr " << t->vm()->do_breakpoint_fault_addr();
+    r.set_ip(r.ip().increment_by_movrm_insn_length(t->arch()));
+    t->set_regs(r);
+
+    if (current_step.flush.recorded_ticks <= t->tick_count() && has_trace_quirk(TraceReader::BufferedSyscallForcedTick)) {
+      // We've reached the breakpoint and executed at least as many ticks as were recorded for the FLUSH_SYSCALLBUF.
+      // That means the flush was actually performed before we left the syscallbuf code, i.e. due to a SIGKILL
+      // in syscallbuf code. We will have recorded another execution event that triggered a flush, but just ignore it,
+      // since we probably already passed it and this task is about to die anyway.
+      skip_next_execution_event = true;
+    }
   }
 
-  if (t->stop_sig() == SIGTRAP) {
-    return INCOMPLETE;
-  }
-
-  Registers r = t->regs();
-  ASSERT(t, t->stop_sig() == SIGSEGV && r.ip() == t->vm()->do_breakpoint_fault_addr())
-      << "Replay got unexpected signal (or none) " << t->stop_sig()
-      << " ip " << r.ip() << " breakpoint_fault_addr " << t->vm()->do_breakpoint_fault_addr();
-  r.set_ip(r.ip().increment_by_movrm_insn_length(t->arch()));
-  t->set_regs(r);
-
-  if (current_step.flush.recorded_ticks <= t->tick_count() && has_trace_quirk(TraceReader::BufferedSyscallForcedTick)) {
-    // We've reached the breakpoint and executed at least as many ticks as were recorded for the FLUSH_SYSCALLBUF.
-    // That means the flush was actually performed before we left the syscallbuf code, i.e. due to a SIGKILL
-    // in syscallbuf code. We will have recorded another execution event that triggered a flush, but just ignore it,
-    // since we probably already passed it and this task is about to die anyway.
-    skip_next_execution_event = true;
-  }
-
+  maybe_handle_rseq(t);
   t->apply_all_data_records_from_trace();
   return COMPLETE;
 }
