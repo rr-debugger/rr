@@ -1321,43 +1321,11 @@ void Task::setup_preload_thread_locals() {
   RR_ARCH_FUNCTION(setup_preload_thread_locals_arch, arch(), this);
 }
 
-#ifdef __aarch64__
-static_assert(offsetof(preload_thread_locals<rr::ARM64Arch>, stub_scratch_2) +
-              PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE ==
-              sizeof(preload_thread_locals<rr::ARM64Arch>),
-              "stub_scratch_2 not the last member");
-static bool need_fetch_full(Task *t) {
-  // We only need to fetch the full size if x8 is pointing within
-  // [PRELOAD_THREAD_LOCALS_ADDR,
-  //  PRELOAD_THREAD_LOCALS_ADDR + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE - 16]
-  // We also don't need to fetch when we are in a syscall stop but when that's
-  // the case we should almost always trivially have an x8 outside this range.
-  // We could also check if it's in syscallbuf code range
-  // but the lookup of the stub address would probably be too expensive to worth it...
-  auto x8 = t->regs().syscallno();
-  return x8 >= PRELOAD_THREAD_LOCALS_ADDR &&
-    x8 <= PRELOAD_THREAD_LOCALS_ADDR + PRELOAD_THREAD_LOCAL_SCRATCH2_SIZE - 16;
-}
-// Always copy the first two pointers in stub_scratch_2 since those are used
-// past the entry of the syscallbuf.
-static size_t preload_thread_locals_size(bool full) {
-  return full ? PRELOAD_THREAD_LOCALS_SIZE :
-    (offsetof(preload_thread_locals<rr::ARM64Arch>, stub_scratch_2) + 16);
-}
-#else
-static bool need_fetch_full(Task*) {
-  return true;
-}
-static size_t preload_thread_locals_size(bool) {
-  return PRELOAD_THREAD_LOCALS_SIZE;
-}
-#endif
-
-const Task::ThreadLocals& Task::fetch_preload_thread_locals(bool fetch_full) {
+const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
   if (tuid() == as->thread_locals_tuid()) {
     void* local_addr = preload_thread_locals_local_addr(*as);
     if (local_addr) {
-      memcpy(thread_locals, local_addr, preload_thread_locals_size(fetch_full));
+      memcpy(thread_locals, local_addr, PRELOAD_THREAD_LOCALS_SIZE);
       return thread_locals;
     }
     // The mapping might have been removed by crazy application code.
@@ -1374,7 +1342,7 @@ void Task::activate_preload_thread_locals() {
     if (local_addr) {
       Task* t = session().find_task(as->thread_locals_tuid());
       if (t) {
-        t->fetch_preload_thread_locals(true);
+        t->fetch_preload_thread_locals();
       }
       memcpy(local_addr, thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
       as->set_thread_locals_tuid(tuid());
@@ -2270,7 +2238,7 @@ static void setup_preload_thread_locals_from_clone_arch(Task* t, Task* origin) {
     t->activate_preload_thread_locals();
     auto locals = reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
     auto origin_locals = reinterpret_cast<const preload_thread_locals<Arch>*>(
-        origin->fetch_preload_thread_locals(false));
+        origin->fetch_preload_thread_locals());
     locals->alt_stack_nesting_level = origin_locals->alt_stack_nesting_level;
     // vfork() will restore the flags on the way out since its on the same
     // stack.
@@ -2572,9 +2540,8 @@ Task::CapturedState Task::capture_state() {
       cloned_file_data_fd_child >= 0
           ? fd_offset(cloned_file_data_fd_child)
           : 0;
-  bool fetch_full = need_fetch_full(this);
-  memcpy(&state.thread_locals, fetch_preload_thread_locals(fetch_full),
-         preload_thread_locals_size(fetch_full));
+  memcpy(&state.thread_locals, fetch_preload_thread_locals(),
+         PRELOAD_THREAD_LOCALS_SIZE);
   state.syscallbuf_child = syscallbuf_child;
   state.syscallbuf_size = syscallbuf_size;
   state.preload_globals = preload_globals;
@@ -2615,8 +2582,7 @@ void Task::copy_state(const CapturedState& state) {
   }
   preload_globals = state.preload_globals;
   ASSERT(this, as->thread_locals_tuid() != tuid());
-  memcpy(&thread_locals, &state.thread_locals,
-         preload_thread_locals_size(need_fetch_full(this)));
+  memcpy(&thread_locals, &state.thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
   // address space has the semantics we want.  It's not used in
