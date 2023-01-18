@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <cstdint>
 
 namespace rr {
 
