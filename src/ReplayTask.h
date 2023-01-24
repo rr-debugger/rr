@@ -27,10 +27,16 @@ public:
    * Initialize tracee buffers in this, i.e., implement
    * RRCALL_init_syscall_buffer.  This task must be at the point
    * of *exit from* the rrcall.  Registers will be updated with
-   * the return value from the rrcall, which is also returned
-   * from this call..
+   * the return value from the rrcall.
    */
   void init_buffers();
+  /**
+   * Initialize tracee buffers in this, i.e., implement
+   * RRCALL_init_syscall_buffer2.  This task must be at the point
+   * of *exit from* the rrcall.  Registers will be updated with
+   * the return value from the rrcall.
+   */
+  void init_buffers2();
   /**
    * Call this method when the exec has completed.
    * `replay_exe` is the name of the real executable file in the trace if we have one,
@@ -85,7 +91,9 @@ public:
   }
 
 private:
+  void init_buffers_internal(int tracee_desched_fd, int tracee_cloned_file_data_fd);
   template <typename Arch> void init_buffers_arch();
+  template <typename Arch> void init_buffers2_arch();
 
   bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 

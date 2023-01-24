@@ -614,18 +614,27 @@ static vector<ScopedFd> maybe_receive_fds(ScopedFd& sock, bool blocking = true) 
   return ret;
 }
 
-static void sendmsg_socket(ScopedFd& sock, int fd_to_send)
-{
-  fd_message<NativeArch> msg;
+void send_fds(Session& session, vector<int> fds_to_send) {
+  // Clear out any pending message from the socket.
+  maybe_receive_fds(session.tracee_socket_receiver_fd(), false);
 
-  struct msghdr *msgp = (struct msghdr*)&msg.msg;
-  struct cmsghdr* cmsg = CMSG_FIRSTHDR(msgp);
+  struct msghdr msg;
+  memset(&msg, 0, sizeof(msg));
+  char ch = 'x';
+  struct iovec iov = { &ch, 1 };
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  vector<char> cmsgbuf;
+  cmsgbuf.resize(CMSG_SPACE(fds_to_send.size() * sizeof(int)));
+  msg.msg_control = cmsgbuf.data();
+  msg.msg_controllen = cmsgbuf.size();
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
-  cmsg->cmsg_len = CMSG_LEN(sizeof(fd_to_send));
-  *(int*)CMSG_DATA(cmsg) = fd_to_send;
+  cmsg->cmsg_len = CMSG_LEN(fds_to_send.size() * sizeof(int));
+  memcpy(CMSG_DATA(cmsg), fds_to_send.data(), fds_to_send.size() * sizeof(int));
 
-  if (0 > sendmsg(sock, msgp, 0)) {
+  if (sendmsg(session.tracee_socket_fd(), &msg, 0) <= 0) {
     FATAL() << "Failed to send fd";
   }
 }
@@ -683,11 +692,8 @@ template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &ou
     return -EBADF;
   }
 
-  // Clear out any pending message from the socket.
-  maybe_receive_fds(task()->session().tracee_socket_receiver_fd(), false);
-
   LOG(debug) << "Sending fd " << our_fd.get() << " via socket fd " << task()->session().tracee_socket_fd().get();
-  sendmsg_socket(task()->session().tracee_socket_fd(), our_fd.get());
+  send_fds(task()->session(), {our_fd.get()});
 
   long child_syscall_result =
       child_recvmsg<Arch>(*this, task()->session().tracee_fd_number());

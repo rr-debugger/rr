@@ -665,8 +665,10 @@ public:
   /**
    * Verify that this cached address space matches what the
    * kernel thinks it should be.
+   * Cached mappings at `ignore_mapping` are ignored; they are not
+   * expected to exist in the tracee (yet).
    */
-  void verify(Task* t) const;
+  void verify(Task* t, remote_ptr<void> ignore_mapping = nullptr) const;
 
   bool has_breakpoints() { return !breakpoints.empty(); }
   bool has_watchpoints() { return !watchpoints.empty(); }

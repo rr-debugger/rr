@@ -318,6 +318,12 @@ private:
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
 };
 
+// Send `fds_to_send` over the session's tracee_socket_fd in a one-byte message.
+// Errors are treated as fatal. Takes care of draining the tracee_socket_fd
+// in case some tracee unexpectedly terminated leaving an old message in the
+// socket buffer.
+void send_fds(Session& session, std::vector<int> fds_to_send);
+
 } // namespace rr
 
 #endif // RR_AUTO_REMOTE_SYSCALLS_H_

@@ -2740,14 +2740,21 @@ ScopedFd& Task::pagemap_fd() {
 }
 
 KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
-                                        remote_ptr<void> map_hint) {
+                                        remote_ptr<void> map_hint,
+                                        ScopedFd* buffer_fd) {
   char name[50];
   sprintf(name, "syscallbuf.%d", rec_tid);
-  KernelMapping km =
-      Session::create_shared_mmap(remote, syscallbuf_size, map_hint, name);
+
+  KernelMapping km;
+  if (buffer_fd) {
+    km = Session::create_shared_mmap(this, syscallbuf_size, map_hint, buffer_fd, name);
+  } else {
+    km = Session::create_shared_mmap_in_tracee(remote, syscallbuf_size, map_hint, name);
+  }
   if (!km.size()) {
     return km;
   }
+
   auto& m = remote.task()->vm()->mapping_of(km.start());
   remote.task()->vm()->mapping_flags_of(km.start()) |=
       AddressSpace::Mapping::IS_SYSCALLBUF;

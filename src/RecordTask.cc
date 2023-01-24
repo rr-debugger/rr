@@ -408,7 +408,7 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   do {
     random_seed = rand() | (uint64_t(rand()) << 32);
   } while (!random_seed);
-  auto random_seed_ptr REMOTE_PTR_FIELD(params.globals.rptr(), random_seed);
+  auto random_seed_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), random_seed);
   t->write_mem(random_seed_ptr, random_seed);
   t->record_local(random_seed_ptr, &random_seed);
 
@@ -416,6 +416,12 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto cpu_binding_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), cpu_binding);
   t->write_mem(cpu_binding_ptr, cpu_binding);
   t->record_local(cpu_binding_ptr, &cpu_binding);
+
+  uint32_t syscall_buffer_size = t->session().syscall_buffer_size();
+  auto syscallbuf_size_ptr =
+    REMOTE_PTR_FIELD(params.globals.rptr(), syscallbuf_size);
+  t->write_mem(syscallbuf_size_ptr, syscall_buffer_size);
+  t->record_local(syscallbuf_size_ptr, &syscall_buffer_size);
 }
 
 void RecordTask::push_syscall_event(int syscallno) {
@@ -482,71 +488,60 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   AutoRemoteSyscalls remote(this);
 
   // Arguments to the rrcall.
-  remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().orig_arg1();
+  remote_ptr<rrcall_init_buffers2_params<Arch>> child_args = regs().orig_arg1();
   auto args = read_mem(child_args);
 
-  args.cloned_file_data_fd = -1;
-  args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
-  KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
-  args.syscallbuf_ptr = syscallbuf_child;
-  if (syscallbuf_child != nullptr) {
-    // This needs to be skipped if we couldn't allocate the buffer
-    // since replaying only reads (and advances) the mmap record
-    // if `args.syscallbuf_ptr != nullptr`.
-    auto record_in_trace = trace_writer().write_mapped_region(
+  args.scratch_buf = scratch_ptr;
+  args.usable_scratch_size = usable_scratch_size();
+  args.fd_receiver_socket = session().tracee_fd_number();
+
+  ScopedFd buffer_fd;
+  ScopedFd clone_file;
+
+  syscallbuf_size = session().syscall_buffer_size();
+  KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr, &buffer_fd);
+  args.syscallbuf_ptr = syscallbuf_km.start();
+  if (!args.syscallbuf_ptr) {
+    return;
+  }
+  std::vector<int> fds_to_send = {buffer_fd.get()};
+  auto record_in_trace = trace_writer().write_mapped_region(
       this, syscallbuf_km, syscallbuf_km.fake_stat(), syscallbuf_km.fsname(),
       vector<TraceRemoteFd>(),
       TraceWriter::RR_BUFFER_MAPPING);
-    ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
-  } else {
-    // This can fail, e.g. if the tracee died unexpectedly.
-    LOG(debug) << "Syscallbuf initialization failed";
-    args.syscallbuf_size = 0;
-  }
+  ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
-  if (args.syscallbuf_ptr) {
-    desched_fd_child = args.desched_counter_fd;
-    // Prevent the child from closing this fd
-    fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
-    desched_fd = remote.retrieve_fd(desched_fd_child);
+  desched_fd_child = args.duplicated_desched_counter_fd >= 0 ?
+    args.duplicated_desched_counter_fd : args.original_desched_counter_fd;
+  ASSERT(this, desched_fd_child >= 0) << "tracee failed to allocate desched fd";
+  // Prevent the child from closing this fd
+  fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
+  desched_fd = remote.retrieve_fd(desched_fd_child);
 
-    if (trace_writer().supports_file_data_cloning() &&
-        session().use_read_cloning()) {
-      cloned_file_data_fname = trace_writer().file_data_clone_file_name(tuid());
-      ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDWR | O_CREAT, 0600);
-      int cloned_file_data = remote.infallible_send_fd_if_alive(clone_file);
-      if (cloned_file_data >= 0) {
-        int free_fd = find_free_file_descriptor(this);
-        cloned_file_data_fd_child =
-            remote.syscall(syscall_number_for_dup3(arch()), cloned_file_data,
-                            free_fd, O_CLOEXEC);
-        if (cloned_file_data_fd_child != free_fd) {
-          ASSERT(this, cloned_file_data_fd_child < 0);
-          LOG(warn) << "Couldn't dup clone-data file to free fd";
-          cloned_file_data_fd_child = cloned_file_data;
-        } else {
-          // Prevent the child from closing this fd. We're going to close it
-          // ourselves and we don't want the child closing it and then reopening
-          // its own file with this fd.
-          fds->add_monitor(this, cloned_file_data_fd_child,
-                            new PreserveFileMonitor());
-          remote.infallible_close_syscall_if_alive(cloned_file_data);
-        }
-        args.cloned_file_data_fd = cloned_file_data_fd_child;
-      }
+  if (trace_writer().supports_file_data_cloning() &&
+      session().use_read_cloning()) {
+    cloned_file_data_fname = trace_writer().file_data_clone_file_name(tuid());
+    clone_file = ScopedFd(cloned_file_data_fname.c_str(), O_RDWR | O_CREAT, 0600);
+    if (!clone_file.is_open()) {
+      FATAL() << "Couldn't create clone_file";
     }
+    // Choose the fd now where the child will put its received fd.
+    cloned_file_data_fd_child = args.cloned_file_data_fd = find_free_file_descriptor(this);
+    // Prevent the child from closing this fd. We're going to close it
+    // ourselves and we don't want the child closing it and then reopening
+    // its own file with this fd.
+    fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
+    fds_to_send.push_back(clone_file.get());
+  } else {
+    args.cloned_file_data_fd = -1;
   }
-  args.scratch_buf = scratch_ptr;
-  args.usable_scratch_size = usable_scratch_size();
+
+  send_fds(session(), fds_to_send);
 
   // Return the mapped buffers to the child.
   write_mem(child_args, args);
 
-  // The tracee doesn't need this addr returned, because it's
-  // already written to the inout |args| param, but we stash it
-  // away in the return value slot so that we can easily check
-  // that we map the segment at the same addr during replay.
-  remote.regs().set_syscall_result(syscallbuf_child);
+  remote.regs().set_syscall_result(0);
 }
 
 void RecordTask::init_buffers() { RR_ARCH_FUNCTION(init_buffers_arch, arch()); }

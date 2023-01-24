@@ -1758,6 +1758,7 @@ rrcall_detach_teleport = IrregularEmulatedSyscall(x86=1009, x64=1009, generic=10
 rrcall_arm_time_slice = IrregularEmulatedSyscall(x86=1010, x64=1010, generic=1010)
 rrcall_freeze_tid = IrregularEmulatedSyscall(x86=1011, x64=1011, generic=1011)
 rrcall_rdtsc = IrregularEmulatedSyscall(x86=1012, x64=1012, generic=1012)
+rrcall_init_buffers2 = IrregularEmulatedSyscall(x86=1013, x64=1013, generic=1013)
 
 # These syscalls also appear under `socketcall` on x86.
 socket = EmulatedSyscall(x86=359, x64=41, generic=198)

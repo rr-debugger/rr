@@ -1213,6 +1213,8 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       int syscallno = t->ev().Syscall().number;
       intptr_t retval = t->regs().syscall_result_signed();
 
+      last_task_switchable = ALLOW_SWITCH;
+
       if (t->desched_rec()) {
         // If we enabled the desched event above, disable it.
         disarm_desched_event(t);
@@ -1268,6 +1270,12 @@ void RecordSession::syscall_state_changed(RecordTask* t,
                      << syscall_name(syscallno, syscall_arch);
         }
 
+        if (syscallno == syscall_number_for_rrcall_init_buffers2()) {
+          // Prevent switching after rrcall_init_buffers2. The tracee needs to
+          // proceed immediately to map the syscallbuf.
+          last_task_switchable = PREVENT_SWITCH;
+        }
+
         /* TODO: is there any reason a restart_syscall can't
          * be interrupted by a signal and itself restarted? */
         bool may_restart = !is_restart_syscall_syscall(syscallno, t->arch())
@@ -1282,7 +1290,13 @@ void RecordSession::syscall_state_changed(RecordTask* t,
           rec_process_syscall(t);
           if (t->session().done_initial_exec() &&
               Flags::get().check_cached_mmaps) {
-            t->vm()->verify(t);
+            remote_ptr<void> ignore_mapping;
+            if (syscallno == syscall_number_for_rrcall_init_buffers2()) {
+              // We've added the syscallbuf mapping to the AddressSpace but the
+              // tracee hasn't actually mapped it yet.
+              ignore_mapping = t->syscallbuf_child;
+            }
+            t->vm()->verify(t, ignore_mapping);
           }
         } else {
           LOG(debug) << "  may restart "
@@ -1337,7 +1351,6 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         }
       }
 
-      last_task_switchable = ALLOW_SWITCH;
       step_state->continue_type = DONT_CONTINUE;
 
       if (!is_in_privileged_syscall(t)) {

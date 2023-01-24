@@ -90,10 +90,8 @@ public:
 
   /**
    * Initialize tracee buffers in this, i.e., implement
-   * RRCALL_init_syscall_buffer.  This task must be at the point
-   * of *exit from* the rrcall.  Registers will be updated with
-   * the return value from the rrcall, which is also returned
-   * from this call.
+   * RRCALL_init_syscall_buffer2. This task must be at the point
+   * of *exit from* the rrcall.
    */
   void init_buffers();
   void post_exec();

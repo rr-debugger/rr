@@ -101,3 +101,5 @@
  * memory location given by the first argument. RAX returns 0.
  */
 #define SYS_rrcall_rdtsc (RR_CALL_BASE + 12)
+
+#define SYS_rrcall_init_buffers2 (RR_CALL_BASE + 13)

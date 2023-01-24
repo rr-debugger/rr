@@ -1163,12 +1163,18 @@ protected:
   /**
    * Map the syscallbuffer for this, shared with this process.
    * |map_hint| is the address where the syscallbuf is expected
-   * to be mapped --- and this is asserted --- or nullptr if
-   * there are no expectations.
+   * to be mapped --- and this is asserted. During recording
+   * the shared buffer is *already* mapped at this address by the
+   * tracee via an untraced mmap, and we just need to update our
+   * accounting.
    * Initializes syscallbuf_child.
+   * During recording buffer_fd must not be null and we'll
+   * initialize *buffer_fd with the fd of the buffer (to be
+   * mapped by the child) instead of mapping it via `remote`.
    */
   KernelMapping init_syscall_buffer(AutoRemoteSyscalls& remote,
-                                    remote_ptr<void> map_hint);
+                                    remote_ptr<void> map_hint,
+                                    ScopedFd* buffer_fd = nullptr);
 
   /**
    * Make the OS-level calls to create a new fork or clone that

@@ -28,41 +28,72 @@ TraceReader& ReplayTask::trace_reader() const {
   return session().trace_reader();
 }
 
+void ReplayTask::init_buffers_internal(
+      int tracee_desched_fd, int tracee_cloned_file_data_fd) {
+  KernelMapping km = trace_reader().read_mapped_region();
+  syscallbuf_size = km.size();
+
+  AutoRemoteSyscalls remote(this);
+  // Create the mapping now via remote mmap(). During recording it
+  // was created a little later on via a record-only, unrecorded mmap,
+  // but it's cleaner to pretend during replay that the mapping sprang
+  // into existence during the init_buffers2 call.
+  init_syscall_buffer(remote, km.start(), nullptr);
+
+  desched_fd_child = tracee_desched_fd;
+  // Prevent the child from closing this fd
+  fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
+
+  if (tracee_cloned_file_data_fd >= 0) {
+    cloned_file_data_fd_child = tracee_cloned_file_data_fd;
+    cloned_file_data_fname = trace_reader().file_data_clone_file_name(tuid());
+    ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDONLY);
+    ASSERT(this, clone_file.is_open());
+    remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child, O_CLOEXEC);
+    fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
+  }
+}
+
 template <typename Arch>
 void ReplayTask::init_buffers_arch() {
   apply_all_data_records_from_trace();
-
-  AutoRemoteSyscalls remote(this);
 
   remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().arg1();
   auto args = read_mem(child_args);
 
   if (args.syscallbuf_ptr) {
-    syscallbuf_size = args.syscallbuf_size;
-    init_syscall_buffer(remote, args.syscallbuf_ptr);
-    desched_fd_child = args.desched_counter_fd;
-    // Prevent the child from closing this fd
-    fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
-
-    // Skip mmap record. It exists mainly to inform non-replay code
-    // (e.g. RemixModule) that this memory will be mapped.
-    trace_reader().read_mapped_region();
-
-    if (args.cloned_file_data_fd >= 0) {
-      cloned_file_data_fd_child = args.cloned_file_data_fd;
-      cloned_file_data_fname = trace_reader().file_data_clone_file_name(tuid());
-      ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDONLY);
-      ASSERT(this, clone_file.is_open());
-      remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child, O_CLOEXEC);
-      fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
-    }
+    init_buffers_internal(args.desched_counter_fd, args.cloned_file_data_fd);
   }
 
-  remote.regs().set_syscall_result(syscallbuf_child);
+  Registers r = regs();
+  r.set_syscall_result(syscallbuf_child);
+  set_regs(r);
 }
 
 void ReplayTask::init_buffers() {
   RR_ARCH_FUNCTION(init_buffers_arch, arch());
+}
+
+template <typename Arch>
+void ReplayTask::init_buffers2_arch() {
+  apply_all_data_records_from_trace();
+
+  remote_ptr<rrcall_init_buffers2_params<Arch>> child_args = regs().arg1();
+  auto args = read_mem(child_args);
+
+  if (args.syscallbuf_ptr) {
+    init_buffers_internal(args.duplicated_desched_counter_fd >= 0 ?
+      args.duplicated_desched_counter_fd : args.original_desched_counter_fd,
+      args.cloned_file_data_fd);
+  }
+
+  Registers r = regs();
+  r.set_syscall_result(0);
+  set_regs(r);
+}
+
+void ReplayTask::init_buffers2() {
+  RR_ARCH_FUNCTION(init_buffers2_arch, arch());
 }
 
 void ReplayTask::post_exec_syscall(const string& replay_exe, const string& original_replay_exe) {

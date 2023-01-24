@@ -532,7 +532,8 @@ Completion ReplaySession::cont_syscall_boundary(
 
   auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
   if (type && type->traced == AddressSpace::UNTRACED &&
-      type->enabled == AddressSpace::REPLAY_ONLY) {
+      (type->enabled == AddressSpace::REPLAY_ONLY ||
+       type->enabled == AddressSpace::RECORDING_AND_REPLAY)) {
     // Actually perform it. We can hit these when replaying through syscallbuf
     // code that was interrupted.
     perform_interrupted_syscall(t);

@@ -442,28 +442,28 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 /*static*/ const char* Session::rr_mapping_prefix() { return "/rr-shared-"; }
 
 KernelMapping Session::create_shared_mmap(
-    AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> required_child_addr,
-    const char* name, int tracee_prot, int tracee_flags,
+    Task* t, size_t size, remote_ptr<void> required_child_addr,
+    ScopedFd* shmem_fd, const char* name, int tracee_prot, int tracee_flags,
     MonitoredSharedMemory::shr_ptr monitored) {
-  Task* t = remote.task();
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "%s%s%s-%d-%d", tmp_dir(),
            rr_mapping_prefix(), name, t->real_tgid(), nonce++);
 
-  ScopedFd shmem_fd(path, O_CREAT | O_EXCL | O_RDWR);
-  ASSERT(t, shmem_fd.is_open());
+  ScopedFd mem_fd(path, O_CREAT | O_EXCL | O_RDWR);
+  ASSERT(t, mem_fd.is_open());
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(path);
 
   void* map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                        MAP_SHARED, shmem_fd, 0);
+                        MAP_SHARED, mem_fd, 0);
   if (map_addr == MAP_FAILED) {
     FATAL() << "Failed to mmap shmem region";
   }
-  resize_shmem_segment(shmem_fd, size);
+  resize_shmem_segment(mem_fd, size);
+  LOG(debug) << "created shmem segment " << path;
 
   remote_ptr<void> child_map_addr = required_child_addr;
   if (child_map_addr.is_null()) {
@@ -481,7 +481,7 @@ KernelMapping Session::create_shared_mmap(
   }
 
   struct stat st;
-  ASSERT(t, 0 == ::fstat(shmem_fd, &st));
+  ASSERT(t, 0 == ::fstat(mem_fd, &st));
   int flags = MAP_SHARED;
   if (!required_child_addr.is_null()) {
     flags |= MAP_FIXED;
@@ -490,17 +490,27 @@ KernelMapping Session::create_shared_mmap(
       t, child_map_addr, size, tracee_prot, flags | tracee_flags, 0,
       path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
       std::move(monitored));
+  *shmem_fd = std::move(mem_fd);
+  return km;
+}
+
+KernelMapping Session::create_shared_mmap_in_tracee(
+    AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> required_child_addr,
+    const char* name, int tracee_prot, int tracee_flags,
+    MonitoredSharedMemory::shr_ptr monitored) {
+  ScopedFd shmem_fd;
+  KernelMapping km = create_shared_mmap(remote.task(), size, required_child_addr,
+    &shmem_fd, name, tracee_prot, tracee_flags, monitored);
 
   int child_shmem_fd = remote.infallible_send_fd_if_alive(shmem_fd);
   if (child_shmem_fd < 0) {
     return km;
   }
-  LOG(debug) << "created shmem segment " << path;
 
   // Map the segment in ours and the tracee's address spaces.
-  remote.infallible_mmap_syscall_if_alive(
-      child_map_addr, size, tracee_prot, flags | MAP_FIXED, child_shmem_fd, 0);
-  if (!child_map_addr) {
+  remote_ptr<void> addr = remote.infallible_mmap_syscall_if_alive(
+      km.start(), size, tracee_prot, MAP_SHARED | MAP_FIXED, child_shmem_fd, 0);
+  if (!addr) {
     // tracee unexpectedly died
     return km;
   }
@@ -554,9 +564,9 @@ const AddressSpace::Mapping Session::recreate_shared_mmap(
     remote.task()->vm()->detach_local_mapping(m.map.start());
   }
   remote_ptr<void> new_addr =
-      create_shared_mmap(remote, m.map.size(), m.map.start(),
-                         extract_name(name, sizeof(name)), m.map.prot(), 0,
-                         std::move(monitored))
+      create_shared_mmap_in_tracee(remote, m.map.size(), m.map.start(),
+                                   extract_name(name, sizeof(name)), m.map.prot(), 0,
+                                   std::move(monitored))
           .start();
   AddressSpace::Mapping new_map;
   if (new_addr) {
@@ -589,9 +599,9 @@ const AddressSpace::Mapping& Session::steal_mapping(
   remote_ptr<void> start = m.map.start();
   size_t sz = m.map.size();
   const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
-      create_shared_mmap(remote, sz, start, name, m.map.prot(),
-                         m.map.flags() & (MAP_GROWSDOWN | MAP_STACK),
-                         std::move(monitored))
+      create_shared_mmap_in_tracee(remote, sz, start, name, m.map.prot(),
+                                   m.map.flags() & (MAP_GROWSDOWN | MAP_STACK),
+                                   std::move(monitored))
           .start());
   return new_m;
 }

@@ -944,6 +944,16 @@ static void process_init_buffers(ReplayTask* t, ReplayTraceStep* step) {
   t->validate_regs();
 }
 
+static void process_init_buffers2(ReplayTask* t, ReplayTraceStep* step) {
+  step->action = TSTEP_RETIRE;
+
+  /* We don't want the desched event fd during replay, because
+   * we already know where they were.  (The perf_event fd is
+   * emulated anyway.) */
+  t->init_buffers2();
+  t->validate_regs();
+}
+
 static int non_negative_syscall(int sys) { return sys < 0 ? INT32_MAX : sys; }
 
 template <typename Arch>
@@ -1372,6 +1382,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     handle_opened_files(t, 0);
   } else if (sys == t->session().syscall_number_for_rrcall_init_buffers()) {
     process_init_buffers(t, step);
+  } else if (sys == t->session().syscall_number_for_rrcall_init_buffers2()) {
+    process_init_buffers2(t, step);
   } else if (sys == t->session().syscall_number_for_rrcall_init_preload()) {
     t->at_preload_init();
   } else if (sys == t->session().syscall_number_for_rrcall_reload_auxv()) {

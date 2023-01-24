@@ -280,8 +280,10 @@ struct preload_globals {
      fd table. Set by rr during record (modifications are recorded).
      Read by the syscallbuf */
   unsigned char fdt_uniform;
+  unsigned char reserved_padding[3];
   /* The CPU we're bound to, if any; -1 if not bound. */
   int32_t cpu_binding;
+  uint32_t syscallbuf_size;
 };
 
 /**
@@ -510,6 +512,31 @@ struct rrcall_init_buffers_params {
   PTR(void) scratch_buf;
   uint32_t syscallbuf_size;
   uint32_t usable_scratch_size;
+};
+
+/**
+ * Packs up the inout parameters passed to |SYS_rrcall_init_buffers2|.
+ * "In" parameters pass from the tracee to rr.
+ */
+TEMPLATE_ARCH
+struct rrcall_init_buffers2_params {
+  /* In: the fd we opened to track desched events. */
+  int original_desched_counter_fd;
+  /* In: The fd we duped it to >= RR_DESCHED_EVENT_FLOOR_FD. */
+  int duplicated_desched_counter_fd;
+  /* Out: The address to map the syscallbuf at. */
+  PTR(void) syscallbuf_ptr;
+  /* Out: Pointer to rr's syscall scratch buffer */
+  PTR(void) scratch_buf;
+  /* Out */
+  uint32_t usable_scratch_size;
+  /* Out: fd of the socket where we can receive fds.
+     The first fd will be mapped as the syscall buffer.
+     The second fd, if present, will be for cloned_file_data_fd. */
+  int fd_receiver_socket;
+  /* Out: fd to use for the cloned_data_fd, or -1 if there isn't
+     going to be one. */
+  int cloned_file_data_fd;
 };
 
 /**

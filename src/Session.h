@@ -317,11 +317,24 @@ public:
 
   std::string read_spawned_task_error() const;
 
+  /* If map_address is non-null then we must use that address in the tracee,
+   * otherwse we select the address.
+   * Sets *shmem_fd to the fd of the mapping --- does NOT map it into the child,
+   * or modify the child state in any way. The caller is responsible for that.
+   */
+  static KernelMapping create_shared_mmap(
+      Task* t, size_t size, remote_ptr<void> required_child_addr,
+      ScopedFd* shmem_fd,
+      const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
+      int tracee_flags = 0,
+      MonitoredSharedMemory::shr_ptr monitored = nullptr);
+
   /* Returns an empty mapping if the tracee died.
    * If map_address is non-null then we must use that address in the tracee,
    * otherwise we select the address.
+   * Maps the shared segment into the child.
    */
-  static KernelMapping create_shared_mmap(
+  static KernelMapping create_shared_mmap_in_tracee(
       AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> required_child_addr,
       const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
       int tracee_flags = 0,
@@ -380,6 +393,9 @@ public:
   }
   int syscall_number_for_rrcall_init_buffers() const {
     return SYS_rrcall_init_buffers - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_init_buffers2() const {
+    return SYS_rrcall_init_buffers2 - RR_CALL_BASE + rrcall_base_;
   }
   int syscall_number_for_rrcall_notify_syscall_hook_exit() const {
     return SYS_rrcall_notify_syscall_hook_exit - RR_CALL_BASE + rrcall_base_;

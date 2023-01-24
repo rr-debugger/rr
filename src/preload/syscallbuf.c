@@ -125,6 +125,46 @@ struct rr_rseq {
 #endif
 #define memcpy you_must_use_local_memcpy
 
+/* These macros are from musl Copyright © 2005-2020 Rich Felker, et al. (MIT LICENSE) */
+#define __CMSG_LEN(cmsg) (((cmsg)->cmsg_len + sizeof(long) - 1) & ~(long)(sizeof(long) - 1))
+#define __CMSG_NEXT(cmsg) ((unsigned char *)(cmsg) + __CMSG_LEN(cmsg))
+#define __MHDR_END(mhdr) ((unsigned char *)(mhdr)->msg_control + (mhdr)->msg_controllen)
+
+#define CMSG_DATA(cmsg) ((unsigned char *) (((struct cmsghdr *)(cmsg)) + 1))
+#define CMSG_NXTHDR(mhdr, cmsg) ((cmsg)->cmsg_len < sizeof (struct cmsghdr) || \
+	(__CMSG_LEN(cmsg) + sizeof(struct cmsghdr) >= (unsigned long)(__MHDR_END(mhdr) - (unsigned char *)(cmsg))) \
+	? 0 : (struct cmsghdr *)__CMSG_NEXT(cmsg))
+#define CMSG_FIRSTHDR(mhdr) ((size_t) (mhdr)->msg_controllen >= sizeof (struct cmsghdr) ? (struct cmsghdr *) (mhdr)->msg_control : (struct cmsghdr *) 0)
+
+#define CMSG_ALIGN(len) (((len) + sizeof (size_t) - 1) & (size_t) ~(sizeof (size_t) - 1))
+#define CMSG_SPACE(len) (CMSG_ALIGN (len) + CMSG_ALIGN (sizeof (struct cmsghdr)))
+#define CMSG_LEN(len) (CMSG_ALIGN (sizeof (struct cmsghdr)) + (len))
+
+struct cmsghdr {
+  __kernel_size_t	cmsg_len;
+  int cmsg_level;
+  int cmsg_type;
+};
+
+struct msghdr /* struct user_msghdr in the kernel */ {
+  void* msg_name;
+  int msg_namelen;
+  struct iovec* msg_iov;
+  __kernel_size_t msg_iovlen;
+  void* msg_control;
+  __kernel_size_t msg_controllen;
+  unsigned int msg_flags;
+};
+
+#define SCM_RIGHTS 0x01
+#define SOL_PACKET 263
+
+#if defined(SYS_fcntl64)
+#define RR_FCNTL_SYSCALL SYS_fcntl64
+#else
+#define RR_FCNTL_SYSCALL SYS_fcntl
+#endif
+
 static long _traced_init_syscall(int syscallno, long a0, long a1, long a2,
                                  long a3, long a4, long a5)
 {
@@ -313,6 +353,17 @@ extern RR_HIDDEN long _raw_syscall(int syscallno, long a0, long a1, long a2,
                                    void* syscall_instruction,
                                    long stack_param_1, long stack_param_2);
 
+/**
+ * Make a raw traced syscall using the params in |call|, privileged.
+ */
+static long privileged_traced_raw_syscall(const struct syscall_info* call) {
+  /* FIXME: pass |call| to avoid pushing these on the stack
+   * again. */
+  return _raw_syscall(call->no, call->args[0], call->args[1], call->args[2],
+                      call->args[3], call->args[4], call->args[5],
+                      RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
+}
+
 static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
                                      long a3, long a4, long a5) {
   return _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
@@ -352,47 +403,8 @@ static long traced_raw_syscall(struct syscall_info* call) {
                       RR_PAGE_SYSCALL_TRACED, 0, 0);
 }
 
-/**
- * Make a raw traced syscall using the params in |call|, privileged.
- */
-static long privileged_traced_raw_syscall(const struct syscall_info* call) {
-  /* FIXME: pass |call| to avoid pushing these on the stack
-   * again. */
-  return _raw_syscall(call->no, call->args[0], call->args[1], call->args[2],
-                      call->args[3], call->args[4], call->args[5],
-                      RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
-}
-
-#if defined(SYS_fcntl64)
-#define RR_FCNTL_SYSCALL SYS_fcntl64
-#else
-#define RR_FCNTL_SYSCALL SYS_fcntl
-#endif
-
-static int privileged_traced_fcntl(int fd, int cmd, ...) {
-  va_list ap;
-  void* arg;
-
-  va_start(ap, cmd);
-  arg = va_arg(ap, void*);
-  va_end(ap);
-
-  return privileged_traced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
-}
-
 static pid_t privileged_traced_getpid(void) {
   return privileged_traced_syscall0(SYS_getpid);
-}
-
-static pid_t privileged_traced_gettid(void) {
-  return privileged_traced_syscall0(SYS_gettid);
-}
-
-static int privileged_traced_perf_event_open(struct perf_event_attr* attr,
-                                             pid_t pid, int cpu, int group_fd,
-                                             unsigned long flags) {
-  return privileged_traced_syscall5(SYS_perf_event_open, attr, pid, cpu,
-                                    group_fd, flags);
 }
 
 static __attribute__((noreturn)) void privileged_traced_raise(int sig) {
@@ -590,11 +602,35 @@ untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
 #define replay_only_syscall1(no, a0) replay_only_syscall2(no, a0, 0)
 #define replay_only_syscall0(no) replay_only_syscall1(no, 0)
 
-static int privileged_untraced_close(int fd) {
+static pid_t privileged_unrecorded_gettid(void) {
+  return privileged_unrecorded_syscall0(SYS_gettid);
+}
+
+static int privileged_unrecorded_perf_event_open(struct perf_event_attr* attr,
+                                                 pid_t pid, int cpu, int group_fd,
+                                                 unsigned long flags) {
+  return privileged_unrecorded_syscall5(SYS_perf_event_open, attr, pid, cpu,
+                                        group_fd, flags);
+}
+
+static ssize_t privileged_unrecorded_recvmsg(
+    int sockfd, struct msghdr* msghdr, int flags) {
+#ifdef __i386__
+  unsigned long recvmsg_args[3];
+  recvmsg_args[0] = sockfd;
+  recvmsg_args[1] = (unsigned long)msghdr;
+  recvmsg_args[2] = flags;
+  return privileged_unrecorded_syscall2(SYS_socketcall, SYS_RECVMSG, recvmsg_args);
+#else
+  return privileged_unrecorded_syscall3(SYS_recvmsg, sockfd, msghdr, flags);
+#endif
+}
+
+static int privileged_unrecorded_close(int fd) {
   return privileged_unrecorded_syscall1(SYS_close, fd);
 }
 
-static int privileged_untraced_fcntl(int fd, int cmd, ...) {
+static int privileged_unrecorded_fcntl(int fd, int cmd, ...) {
   va_list ap;
   void* arg;
 
@@ -605,71 +641,147 @@ static int privileged_untraced_fcntl(int fd, int cmd, ...) {
   return privileged_unrecorded_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
 }
 
-/**
- * Do what's necessary to set up buffers for the caller.
- * |untraced_syscall_ip| lets rr know where our untraced syscalls will
- * originate from.  |addr| is the address of the control socket the
- * child expects to connect to.  |msg| is a pre-prepared IPC that can
- * be used to share fds; |fdptr| is a pointer to the control-message
- * data buffer where the fd number being shared will be stored.
- * |args_vec| provides the tracer with preallocated space to make
- * socketcall syscalls.
- *
- * Return a pointer to the syscallbuf (with an initialized header
- * including the available size), if syscallbuf is enabled.
- *
- * This is a "magic" syscall implemented by rr.
- */
-static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
-  privileged_traced_syscall1(SYS_rrcall_init_buffers, args);
+static int privileged_unrecorded_dup2(int oldfd, int newfd) {
+  return privileged_unrecorded_syscall2(SYS_dup2, oldfd, newfd);
+}
+
+static void* privileged_unrecorded_mmap(void* hint, size_t size,
+    int prot, int flags, int fd, size_t offset) {
+#ifdef __i386__
+  return (void*)privileged_unrecorded_syscall6(
+    SYS_mmap2, hint, size, prot, flags, fd, offset / 4096);
+#else
+  return (void*)privileged_unrecorded_syscall6(
+    SYS_mmap, hint, size, prot, flags, fd, offset);
+#endif
+}
+
+#define MAX_FDS_READ 2
+
+inline void wipe_gp_regs(void) {
+#ifdef __x86_64__
+  asm("xor %%r8d,%%r8d\n\t"
+      "xor %%r9d,%%r9d\n\t"
+      "xor %%r10d,%%r10d\n\t"
+      "xor %%r11d,%%r11d\n\t"
+      "xor %%r12d,%%r12d\n\t"
+      "xor %%r13d,%%r13d\n\t"
+      "xor %%r14d,%%r14d\n\t"
+      "xor %%r15d,%%r15d\n\t"
+      "xor %%ebp,%%ebp\n\t"
+      : : "a"(0), "b"(0), "c"(0), "d"(0), "S"(0), "D"(0) : "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "rbp");
+#elif defined(__i386__)
+  asm("xor %%ebp,%%ebp\n\t"
+      : : "a"(0), "b"(0), "c"(0), "d"(0), "S"(0), "D"(0) : "ebp");
+#endif
 }
 
 /**
- * Return a counter that generates a signal targeted at this task
- * every time the task is descheduled |nr_descheds| times.
+ * Initialize syscall buffering for the current thread.
+ * We let replay diverge from recording a little bit here, because
+ * our untraced system calls won't execute during replay,
+ * so we have to be very very careful:
+ * * Don't do conditional branches on untraced syscall results
+ * * Store those values only in the rrcall_init_buffers_params
+ * Then we hope that these values won't leak out of this function.
  */
-static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
+static struct rrcall_init_buffers2_params __attribute__((noinline))
+init_buffers(void) {
+  struct rrcall_init_buffers2_params args;
   struct perf_event_attr attr;
-  int tmp_fd, fd;
   struct rr_f_owner_ex own;
+  int fds[MAX_FDS_READ] = { -1, -1 };
+  struct msghdr msg;
+  char ch = 'x';
+  struct iovec iov = { &ch, 1 };
+  char cmsg[CMSG_SPACE(MAX_FDS_READ * sizeof(int))];
+  ssize_t ret;
+  struct cmsghdr *cmsghdr;
+  int num_fds;
 
   local_memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
   attr.type = PERF_TYPE_SOFTWARE;
   attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
   attr.disabled = 1;
-  attr.sample_period = nr_descheds;
+  attr.sample_period = 1;
 
-  tmp_fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
-                                             -1, 0);
-  if (0 > tmp_fd) {
-    fatal("Failed to perf_event_open");
-  }
-  fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC,
-                               RR_DESCHED_EVENT_FLOOR_FD);
-  if (fd > 0) {
-    if (privileged_untraced_close(tmp_fd)) {
-      fatal("Failed to close tmp_fd");
-    }
-  } else {
-    // We may be unable to find an fd above the RR_DESCHED_EVENT_FLOOR_FD (e.g
-    // because of a low ulimit). In that case, just use the tmp_fd we already
-    // have.
-    fd = tmp_fd;
-  }
-  if (privileged_untraced_fcntl(fd, F_SETFL, FASYNC)) {
-    fatal("Failed to fcntl(FASYNC) the desched counter");
-  }
+  args.original_desched_counter_fd =
+    privileged_unrecorded_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1, 0);
+  // If that failed, the failure will just cascade below.
   own.type = F_OWNER_TID;
-  own.pid = tid;
-  if (privileged_untraced_fcntl(fd, F_SETOWN_EX, &own)) {
-    fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
-  }
-  if (privileged_untraced_fcntl(fd, F_SETSIG, globals.desched_sig)) {
-    fatal("Failed to fcntl(SETSIG) the desched counter");
+  own.pid = privileged_unrecorded_gettid();
+  privileged_unrecorded_fcntl(args.original_desched_counter_fd, F_SETOWN_EX, &own);
+  own.pid = 0;
+  privileged_unrecorded_fcntl(args.original_desched_counter_fd, F_SETSIG, globals.desched_sig);
+  privileged_unrecorded_fcntl(args.original_desched_counter_fd, F_SETFL, FASYNC);
+  args.duplicated_desched_counter_fd =
+    privileged_unrecorded_fcntl(args.original_desched_counter_fd, F_DUPFD_CLOEXEC,
+                                RR_DESCHED_EVENT_FLOOR_FD);
+
+  wipe_gp_regs();
+  privileged_traced_syscall1(SYS_rrcall_init_buffers2, &args);
+  /* Now the contents of 'args' are consistent between recording and
+     replay. We still need to do some work where values diverge between recording
+     and replay. */
+
+  num_fds = args.cloned_file_data_fd >= 0 ? 2 : 1;
+
+  if (args.cloned_file_data_fd >= 0) {
+    /* Bind assign_received_fd to socket_fd (it could be any available fd,
+       but 'socket_fd' is convenient), to ensure args.cloned_file_data_fd is
+       not equal to any fds obtained via recvmsg below. */
+    privileged_unrecorded_dup2(args.fd_receiver_socket, args.cloned_file_data_fd);
   }
 
-  return fd;
+  local_memset(&msg, 0, sizeof(msg));
+  msg.msg_control = cmsg;
+  msg.msg_controllen = sizeof(cmsg);
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  // Set up cmsg data for replay. During recording this is just overwritten
+  // by our recvmsg.
+  cmsghdr = CMSG_FIRSTHDR(&msg);
+  cmsghdr->cmsg_level = SOL_SOCKET;
+  cmsghdr->cmsg_type = SCM_RIGHTS;
+  cmsghdr->cmsg_len = CMSG_LEN(num_fds * sizeof(int));
+  local_memcpy(CMSG_DATA(cmsg), fds, num_fds * sizeof(int));
+
+  // During recording, this receives the syscallbuf and optional cloned_file_data
+  // fds from rr. During replay it does nothing, but the init_buffers2 syscall above
+  // will have already set up `cmsg` to reasonable values --- the fd values are -1
+  // but the rest of the metadata is correct. (We can't set the correct fd values
+  // during replay because we don't know what they were during recording without extra
+  // work we're not doing.)
+  ret = privileged_unrecorded_recvmsg(args.fd_receiver_socket, &msg, 0);
+  if (ret < 0) {
+    fatal("Failed to recvmsg fd");
+  }
+  cmsghdr = CMSG_FIRSTHDR(&msg);
+  if (!cmsghdr || cmsghdr->cmsg_level != SOL_SOCKET ||
+      cmsghdr->cmsg_type != SCM_RIGHTS ||
+      (cmsghdr->cmsg_len - CMSG_LEN(0))/sizeof(int) != (size_t)num_fds) {
+    // This will never happen during replay --- we diverge if this internal
+    // error occurs.
+    fatal("Failed to get fds");
+  }
+  local_memcpy(fds, CMSG_DATA(cmsghdr), num_fds * sizeof(int));
+
+  privileged_unrecorded_mmap(args.syscallbuf_ptr, globals.syscallbuf_size,
+      PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED | MAP_FILE, fds[0], 0);
+  privileged_unrecorded_close(fds[0]);
+
+  if (args.cloned_file_data_fd >= 0) {
+    privileged_unrecorded_dup2(fds[1], args.cloned_file_data_fd);
+    // This won't close args.cloned_file_data_fd because of the dup2
+    // we did before the recvmsg.
+    privileged_unrecorded_close(fds[1]);
+  }
+
+  wipe_gp_regs();
+  // XXX we should do something here to clean up register (and maybe
+  // memory) state before we return.
+  return args;
 }
 
 /**
@@ -677,8 +789,6 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
  * initialized.
  */
 static void init_thread(void) {
-  struct rrcall_init_buffers_params args;
-
   assert(process_inited);
   if (thread_locals->thread_inited) {
     return;
@@ -690,24 +800,17 @@ static void init_thread(void) {
     return;
   }
 
-  /* NB: we want this setup emulated during replay. */
-  thread_locals->desched_counter_fd =
-      open_desched_event_counter(1, privileged_traced_gettid());
-
-  args.desched_counter_fd = thread_locals->desched_counter_fd;
-
-  /* Trap to rr: let the magic begin!
-   *
-   * If the desched signal is currently blocked, then the tracer
-   * will clear our TCB guard and we won't be able to buffer
-   * syscalls.  But the tracee will set the guard when (or if)
-   * the signal is unblocked. */
-  rrcall_init_buffers(&args);
-
+  struct rrcall_init_buffers2_params args = init_buffers();
+  if (args.duplicated_desched_counter_fd >= 0) {
+    privileged_unrecorded_close(args.original_desched_counter_fd);
+    thread_locals->desched_counter_fd = args.duplicated_desched_counter_fd;
+  } else {
+    thread_locals->desched_counter_fd = args.original_desched_counter_fd;
+  }
   thread_locals->cloned_file_data_fd = args.cloned_file_data_fd;
   /* rr initializes the buffer header. */
   thread_locals->buffer = args.syscallbuf_ptr;
-  thread_locals->buffer_size = args.syscallbuf_size;
+  thread_locals->buffer_size = globals.syscallbuf_size;
   thread_locals->scratch_buf = args.scratch_buf;
   thread_locals->usable_scratch_size = args.usable_scratch_size;
 }
@@ -3113,36 +3216,6 @@ static long sys_recvfrom(struct syscall_info* call) {
 #endif
 
 #ifdef SYS_recvmsg
-
-/* These macros are from musl Copyright © 2005-2020 Rich Felker, et al. (MIT LICENSE) */
-#define __CMSG_LEN(cmsg) (((cmsg)->cmsg_len + sizeof(long) - 1) & ~(long)(sizeof(long) - 1))
-#define __CMSG_NEXT(cmsg) ((unsigned char *)(cmsg) + __CMSG_LEN(cmsg))
-#define __MHDR_END(mhdr) ((unsigned char *)(mhdr)->msg_control + (mhdr)->msg_controllen)
-
-#define CMSG_DATA(cmsg) ((unsigned char *) (((struct cmsghdr *)(cmsg)) + 1))
-#define CMSG_NXTHDR(mhdr, cmsg) ((cmsg)->cmsg_len < sizeof (struct cmsghdr) || \
-	(__CMSG_LEN(cmsg) + sizeof(struct cmsghdr) >= (unsigned long)(__MHDR_END(mhdr) - (unsigned char *)(cmsg))) \
-	? 0 : (struct cmsghdr *)__CMSG_NEXT(cmsg))
-#define CMSG_FIRSTHDR(mhdr) ((size_t) (mhdr)->msg_controllen >= sizeof (struct cmsghdr) ? (struct cmsghdr *) (mhdr)->msg_control : (struct cmsghdr *) 0)
-
-struct cmsghdr {
-  __kernel_size_t	cmsg_len;
-  int cmsg_level;
-  int cmsg_type;
-};
-
-struct msghdr /* struct user_msghdr in the kernel */ {
-  void* msg_name;
-  int msg_namelen;
-  struct iovec* msg_iov;
-  __kernel_size_t msg_iovlen;
-  void* msg_control;
-  __kernel_size_t msg_controllen;
-  unsigned int msg_flags;
-};
-
-#define SCM_RIGHTS 0x01
-#define SOL_PACKET 263
 
 static int msg_received_file_descriptors(struct msghdr* msg) {
   struct cmsghdr* cmh;

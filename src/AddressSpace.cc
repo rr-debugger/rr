@@ -595,9 +595,8 @@ void AddressSpace::post_exec_syscall(Task* t) {
   // us traced and untraced syscall instructions at known, fixed addresses.
   map_rr_page(remote);
   // Set up the preload_thread_locals shared area.
-  t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
-                                  preload_thread_locals_start(),
-                                  "preload_thread_locals");
+  t->session().create_shared_mmap_in_tracee(remote, PRELOAD_THREAD_LOCALS_SIZE,
+        preload_thread_locals_start(), "preload_thread_locals");
   mapping_flags_of(preload_thread_locals_start()) |=
       AddressSpace::Mapping::IS_THREAD_LOCALS;
 }
@@ -1601,7 +1600,7 @@ KernelMapping AddressSpace::vdso() const {
  * task's cached mapping matches the kernel's (given a lenient fuzz
  * factor).
  */
-void AddressSpace::verify(Task* t) const {
+void AddressSpace::verify(Task* t, remote_ptr<void> ignore_mapping) const {
   ASSERT(t, task_set().end() != task_set().find(t));
 
   if (thread_group_in_exec(t)) {
@@ -1627,13 +1626,22 @@ void AddressSpace::verify(Task* t) const {
       ++kernel_it;
     }
 
-    KernelMapping vm = mem_it->second.map;
-    ++mem_it;
-    while (mem_it != mem.end() && try_merge_adjacent(&vm, mem_it->second.map)) {
+    KernelMapping vm;
+    while (mem_it != mem.end()) {
+      vm = mem_it->second.map;
       ++mem_it;
+      while (mem_it != mem.end() && try_merge_adjacent(&vm, mem_it->second.map)) {
+        ++mem_it;
+      }
+      if (vm.start() != ignore_mapping) {
+        break;
+      }
     }
-
     assert_segments_match(t, vm, km);
+  }
+
+  if (mem_it != mem.end() && mem_it->first.start() == ignore_mapping) {
+    ++mem_it;
   }
 
   ASSERT(t, kernel_it.at_end() && mem_it == mem.end());
@@ -1755,9 +1763,9 @@ bool AddressSpace::post_vm_clone(Task* t) {
   // Otherwise, the preload_thread_locals mapping is nonexistent or ours.
   // Recreate it.
   AutoRemoteSyscalls remote(t);
-  t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
-                                  preload_thread_locals_start(),
-                                  "preload_thread_locals");
+  t->session().create_shared_mmap_in_tracee(remote, PRELOAD_THREAD_LOCALS_SIZE,
+                                            preload_thread_locals_start(),
+                                            "preload_thread_locals");
   mapping_flags_of(preload_thread_locals_start()) |=
       AddressSpace::Mapping::IS_THREAD_LOCALS;
   return true;

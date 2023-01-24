@@ -5111,11 +5111,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case SYS_rrcall_init_buffers:
+      ASSERT(t, false) <<
+        "Task called old init_buffers ... are you running with the wrong preload library somehow?";
+      return PREVENT_SWITCH;
+
+    case SYS_rrcall_init_buffers2:
       // This is purely for testing purposes. See signal_during_preload_init.
       if (send_signal_during_init_buffers()) {
         syscall(SYS_tgkill, t->tgid(), t->tid, SIGCHLD);
       }
-      syscall_state.reg_parameter<rrcall_init_buffers_params<Arch>>(1, IN_OUT);
+      syscall_state.reg_parameter<rrcall_init_buffers2_params<Arch>>(1, IN_OUT);
       return PREVENT_SWITCH;
 
     case SYS_rrcall_check_presence: {
@@ -6899,6 +6904,10 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case SYS_rrcall_init_buffers:
+      ASSERT(t, false) << "We should have already aborted";
+      break;
+
+    case SYS_rrcall_init_buffers2:
       t->init_buffers();
       break;
 
