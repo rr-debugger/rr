@@ -540,6 +540,8 @@ untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
 #define untraced_replay_assist_syscall0(no)                                    \
   untraced_replay_assist_syscall1(no, 0)
 
+// "Privileged" syscalls are not affected by the application's own seccomp
+// filters.
 #define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
   untraced_syscall_base(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
                         (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
