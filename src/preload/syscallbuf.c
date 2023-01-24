@@ -556,6 +556,8 @@ untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
   privileged_untraced_syscall2(no, a0, 0)
 #define privileged_untraced_syscall0(no) privileged_untraced_syscall1(no, 0)
 
+// "Unrecorded" syscalls are performed during recording only and are "raw";
+// they are not associated with syscallbuf records.
 #define privileged_unrecorded_syscall6(no, a0, a1, a2, a3, a4, a5)               \
   _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,                  \
                (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,                      \
