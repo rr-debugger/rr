@@ -118,6 +118,13 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
     fprintf(stderr, "Malformed trace file (bad recorded-bytes count)\n");
     notifying_abort();
   }
+  if (flags.raw_dump) {
+    fprintf(out, "  ");
+    for (unsigned long i = 0; i < sizeof(syscallbuf_hdr); ++i) {
+      fprintf(out, "%2.2x", *(buf.data.data() + (uintptr_t)i));
+    }
+    fprintf(out, "\n");
+  }
   bytes_remaining = flush_hdr->num_rec_bytes;
 
   auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr + 1);
