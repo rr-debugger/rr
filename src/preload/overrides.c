@@ -93,10 +93,22 @@ int pthread_mutex_init(pthread_mutex_t* mutex,
     // directly because that won't work when we're built against glibc 2.34 but loaded
     // into a process using glibc < 2.34. (pthread functions got a symbol version bump
     // in 2.34.)
+    //
+    // But note that we can't use dlsym in cases where we would want to use the double
+    // underscore methods (i.e. glibc < 2.34). There is no double underscore version of
+    // pthread_mutexattr_setprotocol, so we call it directly.
     if (!real_pthread_mutexattr_setprotocol) {
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+      ret = pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
+      goto setprotocol;
+#else
       real_pthread_mutexattr_setprotocol = dlsym(RTLD_NEXT, "pthread_mutexattr_setprotocol");
+#endif
     }
     ret = real_pthread_mutexattr_setprotocol(&realattr, PTHREAD_PRIO_NONE);
+#ifdef DOUBLE_UNDERSCORE_PTHREAD_LOCK_AVAILABLE
+setprotocol:
+#endif
     if (ret) {
       return ret;
     }
