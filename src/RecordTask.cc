@@ -444,6 +444,9 @@ static int find_free_file_descriptor(pid_t for_tid) {
 }
 
 template <typename Arch> void RecordTask::init_buffers_arch() {
+  ASSERT(this, as->syscallbuf_enabled())
+      << "Someone called rrcall_init_buffers with syscallbuf disabled?";
+
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
@@ -454,26 +457,21 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   auto args = read_mem(child_args);
 
   args.cloned_file_data_fd = -1;
-  if (as->syscallbuf_enabled()) {
-    args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
-    KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
-    args.syscallbuf_ptr = syscallbuf_child;
-    if (syscallbuf_child != nullptr) {
-      // This needs to be skipped if we couldn't allocate the buffer
-      // since replaying only reads (and advances) the mmap record
-      // if `args.syscallbuf_ptr != nullptr`.
-      auto record_in_trace = trace_writer().write_mapped_region(
-        this, syscallbuf_km, syscallbuf_km.fake_stat(), syscallbuf_km.fsname(),
-        vector<TraceRemoteFd>(),
-        TraceWriter::RR_BUFFER_MAPPING);
-      ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
-    } else {
-      // This can fail, e.g. if the tracee died unexpectedly.
-      LOG(debug) << "Syscallbuf initialization failed";
-      args.syscallbuf_size = 0;
-    }
+  args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
+  KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
+  args.syscallbuf_ptr = syscallbuf_child;
+  if (syscallbuf_child != nullptr) {
+    // This needs to be skipped if we couldn't allocate the buffer
+    // since replaying only reads (and advances) the mmap record
+    // if `args.syscallbuf_ptr != nullptr`.
+    auto record_in_trace = trace_writer().write_mapped_region(
+      this, syscallbuf_km, syscallbuf_km.fake_stat(), syscallbuf_km.fsname(),
+      vector<TraceRemoteFd>(),
+      TraceWriter::RR_BUFFER_MAPPING);
+    ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
   } else {
-    args.syscallbuf_ptr = remote_ptr<void>(nullptr);
+    // This can fail, e.g. if the tracee died unexpectedly.
+    LOG(debug) << "Syscallbuf initialization failed";
     args.syscallbuf_size = 0;
   }
 
