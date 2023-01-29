@@ -488,7 +488,6 @@ KernelMapping Session::create_shared_mmap(
       path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
       std::move(monitored));
 
-  shmem_fd.close();
   remote.infallible_close_syscall_if_alive(child_shmem_fd);
   return km;
 }
