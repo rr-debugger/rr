@@ -428,7 +428,7 @@ public:
       std::unique_ptr<struct stat> mapped_file_stat = nullptr,
       const KernelMapping* recorded_map = nullptr,
       EmuFile::shr_ptr emu_file = nullptr, void* local_addr = nullptr,
-      std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
+      std::shared_ptr<MonitoredSharedMemory> monitored = nullptr);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -940,7 +940,7 @@ private:
                         EmuFile::shr_ptr emu_file,
                         std::unique_ptr<struct stat> mapped_file_stat,
                         void* local_addr,
-                        std::shared_ptr<MonitoredSharedMemory>&& monitored);
+                        std::shared_ptr<MonitoredSharedMemory> monitored);
 
   void remove_from_map(const MemoryRange& range) {
     mem.erase(range);

@@ -442,7 +442,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 KernelMapping Session::create_shared_mmap(
     AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
     const char* name, int tracee_prot, int tracee_flags,
-    MonitoredSharedMemory::shr_ptr&& monitored) {
+    MonitoredSharedMemory::shr_ptr monitored) {
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
@@ -526,7 +526,7 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
 
 const AddressSpace::Mapping Session::recreate_shared_mmap(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
-    PreserveContents preserve, MonitoredSharedMemory::shr_ptr&& monitored) {
+    PreserveContents preserve, MonitoredSharedMemory::shr_ptr monitored) {
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name) - 1);
   name[sizeof(name) - 1] = 0;
@@ -556,7 +556,7 @@ const AddressSpace::Mapping Session::recreate_shared_mmap(
 
 const AddressSpace::Mapping& Session::steal_mapping(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
-    MonitoredSharedMemory::shr_ptr&& monitored) {
+    MonitoredSharedMemory::shr_ptr monitored) {
   // We will include the name of the full path of the original mapping in the
   // name of the shared mapping, replacing slashes by dashes.
   char name[PATH_MAX - 40];

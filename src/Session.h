@@ -322,7 +322,7 @@ public:
       AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
       const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
       int tracee_flags = 0,
-      MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
+      MonitoredSharedMemory::shr_ptr monitored = nullptr);
 
   static void make_private_shared(AutoRemoteSyscalls& remote,
                                   const AddressSpace::Mapping m);
@@ -339,7 +339,7 @@ public:
   static const AddressSpace::Mapping recreate_shared_mmap(
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
       PreserveContents preserve = DISCARD_CONTENTS,
-      MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
+      MonitoredSharedMemory::shr_ptr monitored = nullptr);
 
   /* Takes a mapping and replaces it by one that is shared between rr and
      the tracee. The caller is responsible for filling the contents of the
@@ -348,7 +348,7 @@ public:
    */
   static const AddressSpace::Mapping& steal_mapping(
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
-      MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
+      MonitoredSharedMemory::shr_ptr monitored = nullptr);
 
   enum PtraceSyscallBeforeSeccomp {
     PTRACE_SYSCALL_BEFORE_SECCOMP,

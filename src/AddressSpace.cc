@@ -752,7 +752,7 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
                                 unique_ptr<struct stat> mapped_file_stat,
                                 const KernelMapping* recorded_map,
                                 EmuFile::shr_ptr emu_file, void* local_addr,
-                                shared_ptr<MonitoredSharedMemory>&& monitored) {
+                                shared_ptr<MonitoredSharedMemory> monitored) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes) << ")";
   num_bytes = ceil_page_size(num_bytes);
@@ -2071,7 +2071,7 @@ void AddressSpace::for_each_in_range(
 void AddressSpace::map_and_coalesce(
     Task* t, const KernelMapping& m, const KernelMapping& recorded_map,
     EmuFile::shr_ptr emu_file, unique_ptr<struct stat> mapped_file_stat,
-    void* local_addr, shared_ptr<MonitoredSharedMemory>&& monitored) {
+    void* local_addr, shared_ptr<MonitoredSharedMemory> monitored) {
   LOG(debug) << "  mapping " << m;
 
   if (monitored) {
