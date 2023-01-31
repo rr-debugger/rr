@@ -317,9 +317,12 @@ public:
 
   std::string read_spawned_task_error() const;
 
-  /* Returns an empty mapping if the tracee died */
+  /* Returns an empty mapping if the tracee died.
+   * If map_address is non-null then we must use that address in the tracee,
+   * otherwse we select the address.
+   */
   static KernelMapping create_shared_mmap(
-      AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
+      AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> required_child_addr,
       const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
       int tracee_flags = 0,
       MonitoredSharedMemory::shr_ptr monitored = nullptr);

@@ -16,6 +16,7 @@
 #include "EmuFs.h"
 #include "Flags.h"
 #include "PerfCounters.h"
+#include "RecordSession.h"
 #include "RecordTask.h"
 #include "Task.h"
 #include "ThreadGroup.h"
@@ -440,22 +441,50 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 /*static*/ const char* Session::rr_mapping_prefix() { return "/rr-shared-"; }
 
 KernelMapping Session::create_shared_mmap(
-    AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
+    AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> required_child_addr,
     const char* name, int tracee_prot, int tracee_flags,
     MonitoredSharedMemory::shr_ptr monitored) {
+  Task* t = remote.task();
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "%s%s%s-%d-%d", tmp_dir(),
-           rr_mapping_prefix(), name, remote.task()->real_tgid(), nonce++);
+           rr_mapping_prefix(), name, t->real_tgid(), nonce++);
 
   ScopedFd shmem_fd(path, O_CREAT | O_EXCL | O_RDWR);
-  ASSERT(remote.task(), shmem_fd.is_open());
+  ASSERT(t, shmem_fd.is_open());
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(path);
 
-  KernelMapping km;
+  void* map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                        MAP_SHARED, shmem_fd, 0);
+  if (map_addr == MAP_FAILED) {
+    FATAL() << "Failed to mmap shmem region";
+  }
+  resize_shmem_segment(shmem_fd, size);
+
+  remote_ptr<void> child_map_addr = required_child_addr;
+  if (child_map_addr.is_null()) {
+    if (t->session().is_recording() && t->session().as_record()->enable_chaos()) {
+      child_map_addr = t->vm()->chaos_mode_find_free_memory(static_cast<RecordTask*>(t),
+          size, nullptr);
+    } else {
+      child_map_addr = t->vm()->find_free_memory(size, RR_PAGE_ADDR);
+    }
+  }
+
+  struct stat st;
+  ASSERT(t, 0 == ::fstat(shmem_fd, &st));
+  int flags = MAP_SHARED;
+  if (!required_child_addr.is_null()) {
+    flags |= MAP_FIXED;
+  }
+  KernelMapping km = t->vm()->map(
+      t, child_map_addr, size, tracee_prot, flags | tracee_flags, 0,
+      path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
+      std::move(monitored));
+
   int child_shmem_fd = remote.infallible_send_fd_if_alive(shmem_fd);
   if (child_shmem_fd < 0) {
     return km;
@@ -463,30 +492,12 @@ KernelMapping Session::create_shared_mmap(
   LOG(debug) << "created shmem segment " << path;
 
   // Map the segment in ours and the tracee's address spaces.
-  void* map_addr;
-  int flags = MAP_SHARED;
-  if (!map_hint.is_null()) {
-    flags |= MAP_FIXED;
-  }
-  remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall_if_alive(
-      map_hint, size, tracee_prot, flags, child_shmem_fd, 0);
+  remote.infallible_mmap_syscall_if_alive(
+      child_map_addr, size, tracee_prot, flags | MAP_FIXED, child_shmem_fd, 0);
   if (!child_map_addr) {
     // tracee unexpectedly died
     return km;
   }
-
-  if ((void*)-1 == (map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                                    MAP_SHARED, shmem_fd, 0))) {
-    FATAL() << "Failed to mmap shmem region";
-  }
-  resize_shmem_segment(shmem_fd, size);
-
-  struct stat st;
-  ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
-  km = remote.task()->vm()->map(
-      remote.task(), child_map_addr, size, tracee_prot, flags | tracee_flags, 0,
-      path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
-      std::move(monitored));
 
   remote.infallible_close_syscall_if_alive(child_shmem_fd);
   return km;
