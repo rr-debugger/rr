@@ -939,18 +939,10 @@ static void process_shmdt(ReplayTask* t, const TraceFrame& trace_frame,
 static void process_init_buffers(ReplayTask* t, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
-  /* Proceed to syscall exit so we can run our own syscalls. */
-  remote_ptr<void> rec_child_map_addr =
-      t->current_trace_frame().regs().syscall_result();
-
   /* We don't want the desched event fd during replay, because
    * we already know where they were.  (The perf_event fd is
    * emulated anyway.) */
-  t->init_buffers(rec_child_map_addr);
-
-  ASSERT(t, t->syscallbuf_child.cast<void>() == rec_child_map_addr)
-      << "Should have mapped syscallbuf at " << rec_child_map_addr
-      << ", but it's at " << t->syscallbuf_child;
+  t->init_buffers();
   t->validate_regs();
 }
 

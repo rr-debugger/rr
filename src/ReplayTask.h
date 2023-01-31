@@ -28,10 +28,9 @@ public:
    * RRCALL_init_syscall_buffer.  This task must be at the point
    * of *exit from* the rrcall.  Registers will be updated with
    * the return value from the rrcall, which is also returned
-   * from this call.  |map_hint| suggests where to map the
-   * region; see |init_syscallbuf_buffer()|.
+   * from this call..
    */
-  void init_buffers(remote_ptr<void> map_hint);
+  void init_buffers();
   /**
    * Call this method when the exec has completed.
    * `replay_exe` is the name of the real executable file in the trace if we have one,
@@ -86,7 +85,7 @@ public:
   }
 
 private:
-  template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
+  template <typename Arch> void init_buffers_arch();
 
   bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 

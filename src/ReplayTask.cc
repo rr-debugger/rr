@@ -29,7 +29,7 @@ TraceReader& ReplayTask::trace_reader() const {
 }
 
 template <typename Arch>
-void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
+void ReplayTask::init_buffers_arch() {
   apply_all_data_records_from_trace();
 
   AutoRemoteSyscalls remote(this);
@@ -39,7 +39,7 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
 
   if (args.syscallbuf_ptr) {
     syscallbuf_size = args.syscallbuf_size;
-    init_syscall_buffer(remote, map_hint);
+    init_syscall_buffer(remote, args.syscallbuf_ptr);
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
@@ -61,8 +61,8 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
   remote.regs().set_syscall_result(syscallbuf_child);
 }
 
-void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
-  RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
+void ReplayTask::init_buffers() {
+  RR_ARCH_FUNCTION(init_buffers_arch, arch());
 }
 
 void ReplayTask::post_exec_syscall(const string& replay_exe, const string& original_replay_exe) {
