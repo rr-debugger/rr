@@ -33,6 +33,10 @@
 #include <random>
 #include <sstream>
 
+#ifdef __ANDROID__
+#include <android/api-level.h>
+#endif
+
 #include "preload/preload_interface.h"
 
 #include "AddressSpace.h"
@@ -49,6 +53,14 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "seccomp-bpf.h"
+
+#ifdef __ANDROID__
+// backtrace() is not available in bionic until API 33. The presence of the
+// header does not imply the availability of APIs at runtime.
+#define CAN_USE_BACKTRACE_API (__ANDROID_MIN_SDK_VERSION__ >= 33)
+#else
+#define CAN_USE_BACKTRACE_API EXECINFO_H
+#endif
 
 void good_random(uint8_t* out, size_t out_len);
 
@@ -1739,7 +1751,7 @@ void notifying_abort() {
 void dump_rr_stack() {
   static const char msg[] = "=== Start rr backtrace:\n";
   write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-#if EXECINFO_H
+#if CAN_USE_BACKTRACE_API
   void* buffer[1024];
   int count = backtrace(buffer, 1024);
   backtrace_symbols_fd(buffer, count, STDERR_FILENO);
