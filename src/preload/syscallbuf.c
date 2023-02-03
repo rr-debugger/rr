@@ -3695,6 +3695,7 @@ static long sys_set_robust_list(struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#if defined(SYS_rseq)
 static long sys_rseq(struct syscall_info* call) {
   int syscallno = SYS_rseq;
   struct rr_rseq* rseq = (struct rr_rseq*)call->args[0];
@@ -3725,6 +3726,7 @@ static long sys_rseq(struct syscall_info* call) {
      happens with associated processing. */
   return commit_raw_syscall(syscallno, ptr, 0);
 }
+#endif
 
 static long sys_ptrace(struct syscall_info* call) {
   int syscallno = SYS_ptrace;
@@ -4034,7 +4036,9 @@ case SYS_epoll_pwait:
 #if defined(SYS_recvmsg)
     CASE(recvmsg);
 #endif
+#if defined(SYS_rseq)
     CASE(rseq);
+#endif
 #if defined(SYS_rmdir)
     CASE_GENERIC_NONBLOCKING(rmdir);
 #endif
