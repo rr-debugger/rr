@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <elf.h>
-#ifdef EXECINFO_H
+#ifdef EXECINFO_BACKTRACE
 #include <execinfo.h>
 #endif
 #include <fcntl.h>
@@ -1739,7 +1739,7 @@ void notifying_abort() {
 void dump_rr_stack() {
   static const char msg[] = "=== Start rr backtrace:\n";
   write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-#if EXECINFO_H
+#if EXECINFO_BACKTRACE
   void* buffer[1024];
   int count = backtrace(buffer, 1024);
   backtrace_symbols_fd(buffer, count, STDERR_FILENO);

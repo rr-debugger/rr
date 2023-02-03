@@ -310,13 +310,6 @@ if(NOT SECCOMP)
   message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
 endif()
 
-find_path(EXECINFO_H NAMES "execinfo.h")
-if(EXECINFO_H)
-  add_definitions(-DEXECINFO_H=1)
-else()
-  message(AUTHOR_WARNING "execinfo.h not present. Automatic backtraces for failures in rr are disabled.")
-endif()
-
 find_path(PROC_SERVICE_H NAMES "proc_service.h")
 if(PROC_SERVICE_H)
   add_definitions(-DPROC_SERVICE_H=1)
@@ -342,6 +335,11 @@ if(NOT RTLD_AUDIT)
   message(AUTHOR_WARNING "Couldn't find rtld-audit support. librraudit skipped.")
 endif()
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+
+check_symbol_exists(backtrace "execinfo.h" EXECINFO_BACKTRACE)
+if(NOT EXECINFO_BACKTRACE)
+  message(AUTHOR_WARNING "backtrace(3) not present in execinfo.h. Automatic backtraces for failures in rr are disabled.")
+endif()
 
 # Test only symbols
 check_symbol_exists(pthread_mutexattr_setrobust "pthread.h" HAVE_ROBUST_MUTEX)
