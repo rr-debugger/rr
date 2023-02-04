@@ -572,23 +572,43 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
   return their_fd;
 }
 
-static int recvmsg_socket(ScopedFd& sock, bool blocking=true) {
-  fd_message<NativeArch> msg;
-  struct msghdr *msgp = (struct msghdr*)&msg.msg;
-  int flag = MSG_CMSG_CLOEXEC;
+#define MAX_FDS_READ 2
+
+// Try to read a single-character message from `sock`. Will collect
+// up to MAX_FDS_READ fds in an SCM_RIGHTS control message and return those
+// fds. Returns an empty vector if reading the message failes.
+static vector<ScopedFd> maybe_receive_fds(ScopedFd& sock, bool blocking = true) {
+  vector<ScopedFd> ret;
+  struct msghdr msg;
+  memset(&msg, 0, sizeof(msg));
+  char ch;
+  struct iovec iov = { &ch, 1 };
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  char cmsgbuf[(CMSG_SPACE(MAX_FDS_READ * sizeof(int)))];
+  msg.msg_control = cmsgbuf;
+  msg.msg_controllen = sizeof(cmsgbuf);
+  int flags = MSG_CMSG_CLOEXEC;
   if (!blocking) {
-    flag |= MSG_DONTWAIT;
+    flags |= MSG_DONTWAIT;
   }
-  if (0 > recvmsg(sock, msgp, flag)) {
-    return -1;
+  if (recvmsg(sock, &msg, flags) < 0) {
+    return ret;
   }
 
-  struct cmsghdr* cmsg = CMSG_FIRSTHDR(msgp);
-  DEBUG_ASSERT(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
-               cmsg->cmsg_type == SCM_RIGHTS);
-  int our_fd = *(int*)CMSG_DATA(cmsg);
-  DEBUG_ASSERT(our_fd >= 0);
-  return our_fd;
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+  if (!cmsg || cmsg->cmsg_level != SOL_SOCKET ||
+      cmsg->cmsg_type != SCM_RIGHTS) {
+    FATAL() << "Invalid cmsg";
+  }
+  int num_fds = (cmsg->cmsg_len - CMSG_LEN(0))/sizeof(int);
+  for (int i = 0; i < num_fds; i++) {
+    int fd;
+    memcpy(&fd, CMSG_DATA(cmsg) + i*sizeof(int), sizeof(int));
+    DEBUG_ASSERT(fd >= 0);
+    ret.push_back(ScopedFd(fd));
+  }
+  return ret;
 }
 
 static void sendmsg_socket(ScopedFd& sock, int fd_to_send)
@@ -635,6 +655,9 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     ASSERT(t, errno == ENOSYS) << "Failed in pidfd_getfd errno=" << errno_name(errno);
   }
 
+  // Clear out any pending message in the socket.
+  maybe_receive_fds(task()->session().tracee_socket_receiver_fd(), false);
+
   long child_syscall_result =
       child_sendmsg<Arch>(*this, task()->session().tracee_fd_number(), fd);
   if (child_syscall_result == -ESRCH) {
@@ -642,9 +665,10 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   }
   ASSERT(t, child_syscall_result > 0) << "Failed to sendmsg() in tracee; err="
                                       << errno_name(-child_syscall_result);
-  ret = ScopedFd(recvmsg_socket(task()->session().tracee_socket_fd()));
-  ASSERT(t, ret.is_open()) << "Failed to receive fd";
-  return ret;
+  vector<ScopedFd> fds = maybe_receive_fds(task()->session().tracee_socket_fd());
+  ASSERT(t, !fds.empty()) << "Failed to receive fd";
+  ASSERT(t, fds.size() == 1);
+  return move(fds[0]);
 }
 
 ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
@@ -656,28 +680,21 @@ template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &ou
     return -EBADF;
   }
 
+  // Clear out any pending message from the socket.
+  maybe_receive_fds(task()->session().tracee_socket_receiver_fd(), false);
+
   LOG(debug) << "Sending fd " << our_fd.get() << " via socket fd " << task()->session().tracee_socket_fd().get();
   sendmsg_socket(task()->session().tracee_socket_fd(), our_fd.get());
 
   long child_syscall_result =
       child_recvmsg<Arch>(*this, task()->session().tracee_fd_number());
-  if (child_syscall_result == -ESRCH) {
-    /* The child did not receive the message. Read it out of the socket
-     * buffer so it doesn't get read by another child later!
-     * Note that if the child was killed, we might get an error
-     * (i.e. process exit stop before syscall exit stop) even
-     * if the fd is already removed from the socket.
-     * Because of this, we use a non-blocking recvmsg to avoid blocking forever.
-     */
-    int fd = recvmsg_socket(task()->session().tracee_socket_receiver_fd(), false);
-    if (fd >= 0) {
-      ASSERT(t, fd != our_fd.get()) << "This should always return a fresh fd!";
-      close(fd);
-    }
-    return -ESRCH;
-  }
-  ASSERT(t, child_syscall_result >= 0) << "Failed to recvmsg() in tracee; err="
-                                       << errno_name(-child_syscall_result);
+  // If the child died before reading the message from the socket,
+  // the message will still be in the socket buffer and will be received
+  // the next time we try to send something to a tracee. That's why
+  // before using tracee_socket_receiver_fd we need to drain up to one message
+  // from it.
+  ASSERT(t, child_syscall_result >= 0 || child_syscall_result == -ESRCH)
+    << "Failed to recvmsg() in tracee; err=" << errno_name(-child_syscall_result);
   return child_syscall_result;
 }
 

@@ -366,6 +366,7 @@ public:
   static const char* rr_mapping_prefix();
 
   ScopedFd& tracee_socket_fd() { return *tracee_socket; }
+  // Before using this, it must be drained. See AutoRemoteSyscalls.
   ScopedFd& tracee_socket_receiver_fd() { return *tracee_socket_receiver; }
   int tracee_fd_number() const { return tracee_socket_fd_number; }
 
