@@ -471,7 +471,8 @@ KernelMapping Session::create_shared_mmap(
       child_map_addr = t->vm()->chaos_mode_find_free_memory(static_cast<RecordTask*>(t),
           size, nullptr);
     } else {
-      child_map_addr = t->vm()->find_free_memory(t, size, RR_PAGE_ADDR);
+      child_map_addr = t->vm()->find_free_memory(t, size, RR_PAGE_ADDR,
+          AddressSpace::FindFreeMemoryPolicy::USE_LAST_FREE_HINT);
       if (!child_map_addr) {
         FATAL() << "Can't find free memory for shared mmap";
       }

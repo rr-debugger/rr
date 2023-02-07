@@ -1725,6 +1725,7 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       saved_auxv_(o.saved_auxv_),
       saved_interpreter_base_(o.saved_interpreter_base_),
       saved_ld_path_(o.saved_ld_path_),
+      last_free_memory(o.last_free_memory),
       first_run_event_(0) {
   for (auto& m : mem) {
     // The original address space continues to have exclusive ownership of
@@ -2152,7 +2153,7 @@ void AddressSpace::populate_address_space(Task* t) {
   ASSERT(t, found_stacks == 1);
 }
 
-static int random_addr_bits(SupportedArch arch) {
+static int addr_bits(SupportedArch arch) {
   switch (arch) {
     default:
       DEBUG_ASSERT(0 && "Unknown architecture");
@@ -2211,7 +2212,7 @@ static MemoryRange choose_global_exclusion_range(const RecordSession* session) {
 
   const uint64_t range_size = uint64_t(4)*1024*1024*1024*1024;
   while (true) {
-    int bits = random_addr_bits(x86_64);
+    int bits = addr_bits(x86_64);
     uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
     uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
     r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
@@ -2229,8 +2230,10 @@ MemoryRange AddressSpace::get_global_exclusion_range(const RecordSession* sessio
 }
 
 static remote_ptr<void> usable_address_space_end(Task* t) {
-  return remote_ptr<void>((uint64_t(1) << random_addr_bits(t->arch())) - page_size());
+  return remote_ptr<void>((uint64_t(1) << addr_bits(t->arch())) - page_size());
 }
+
+static const remote_ptr<void> addr_space_start(0x40000);
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len, remote_ptr<void> hint) {
@@ -2255,7 +2258,7 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     // randomly chosen existing mapping.
     if (random() % 2) {
       uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-      start = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << random_addr_bits(t->arch())) - 1)));
+      start = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << addr_bits(t->arch())) - 1)));
     } else {
       ASSERT(t, !mem.empty());
       int map_index = random() % mem.size();
@@ -2269,7 +2272,6 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
       }
     }
   }
-  remote_ptr<void> addr_space_start(0x40000);
   // Reserve 3 pages at the end of userspace in case Monkeypatcher wants
   // to allocate something there.
   uint64_t reserve_area_for_monkeypatching = 3 * page_size();
@@ -2342,25 +2344,42 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
 
 remote_ptr<void> AddressSpace::find_free_memory(Task* t,
                                                 size_t required_space,
-                                                remote_ptr<void> after) {
-  auto maps = maps_starting_at(after);
-  auto current = maps.begin();
-  remote_ptr<void> addr_space_end = usable_address_space_end(t);
-  while (current != maps.end()) {
-    auto next = current;
-    ++next;
-    remote_ptr<void> end_of_free_space;
-    if (next == maps.end()) {
-      end_of_free_space = addr_space_end;
-    } else {
-      end_of_free_space = min(addr_space_end, next->map.start());
-    }
-    if (current->map.end() + required_space <= end_of_free_space) {
-      return current->map.end();
-    }
-    current = next;
+                                                remote_ptr<void> after,
+                                                FindFreeMemoryPolicy policy) {
+  if (after < last_free_memory &&
+      policy == FindFreeMemoryPolicy::USE_LAST_FREE_HINT) {
+    // Search for free memory starting at the last place we finished
+    // our search. This is more efficient than starting at the beginning
+    // every time.
+    after = last_free_memory;
   }
-  return nullptr;
+  remote_ptr<void> addr_space_end = usable_address_space_end(t);
+  ASSERT(t, required_space < UINT64_MAX - addr_space_end.as_int());
+
+  bool started_from_beginning = after.is_null();
+  while (true) {
+    auto maps = maps_starting_at(after);
+    auto current = maps.begin();
+    while (current != maps.end()) {
+      auto next = current;
+      ++next;
+      remote_ptr<void> end_of_free_space;
+      if (next == maps.end()) {
+        end_of_free_space = addr_space_end;
+      } else {
+        end_of_free_space = min(addr_space_end, next->map.start());
+      }
+      if (current->map.end() + required_space <= end_of_free_space) {
+        return current->map.end();
+      }
+      current = next;
+    }
+    if (started_from_beginning) {
+      return nullptr;
+    }
+    started_from_beginning = true;
+    after = addr_space_start;
+  }
 }
 
 void AddressSpace::add_stap_semaphore_range(Task* task, MemoryRange range) {

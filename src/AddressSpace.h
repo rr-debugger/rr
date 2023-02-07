@@ -784,8 +784,16 @@ public:
 
   /* Returns null if we should return ENOMEM because there is no free space available. */
   remote_ptr<void> chaos_mode_find_free_memory(RecordTask* t, size_t len, remote_ptr<void> hint);
+  enum class FindFreeMemoryPolicy {
+    /* Use the first free memory after `after` */
+    STRICT_SEARCH,
+    /* Optimize for speed by starting the search from the address of the last
+       area returned by find_free_memory (if greater than `after`). */
+    USE_LAST_FREE_HINT,
+  };
   remote_ptr<void> find_free_memory(Task* t,
-      size_t len, remote_ptr<void> after = remote_ptr<void>());
+      size_t len, remote_ptr<void> after = remote_ptr<void>(),
+      FindFreeMemoryPolicy policy = FindFreeMemoryPolicy::STRICT_SEARCH);
 
   /**
    * The return value indicates whether we (re)created the preload_thread_locals
@@ -1147,6 +1155,8 @@ private:
   std::vector<uint8_t> saved_auxv_;
   remote_ptr<void> saved_interpreter_base_;
   std::string saved_ld_path_;
+
+  remote_ptr<void> last_free_memory;
 
   /**
    * The time of the first event that ran code for a task in this address space.
