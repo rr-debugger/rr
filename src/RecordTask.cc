@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <linux/perf_event.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 
 #include "AutoRemoteSyscalls.h"
@@ -431,12 +432,37 @@ void RecordTask::at_preload_init() {
  * Avoid using low-numbered file descriptors since that can confuse
  * developers.
  */
-static int find_free_file_descriptor(pid_t for_tid) {
-  int fd = 300 + (for_tid % 500);
+static int find_free_file_descriptor(RecordTask* t) {
+  int fd;
+  int fd_limit;
+  struct rlimit limit;
+  // Try to determine what the maximum fd is. If we can't, just
+  // start the search from 0 and bail out if we hit an absurd
+  // number of fds;
+  if (prlimit(t->tgid(), RLIMIT_NOFILE, nullptr, &limit) < 0) {
+    // We might get EPERM if the tracee has changed UID. If that
+    // happens fall back to being slow. (We can probably go faster
+    // using readdir().)
+    ASSERT(t, errno == EPERM) << "Unknown error in prlimit";
+    fd_limit = 128*1024;
+    fd = 0;
+  } else {
+    fd_limit = limit.rlim_cur;
+    fd = max(300, t->fd_table()->last_free_fd());
+  }
+
+  bool searched_from_start = fd == 0;
   while (true) {
+    if (fd >= fd_limit) {
+      ASSERT(t, !searched_from_start) << "No free fds available";
+      fd = 0;
+      searched_from_start = true;
+    }
+
     char buf[PATH_MAX];
-    sprintf(buf, "/proc/%d/fd/%d", for_tid, fd);
+    sprintf(buf, "/proc/%d/fd/%d", t->tid, fd);
     if (access(buf, F_OK) == -1 && errno == ENOENT) {
+      t->fd_table()->set_last_free_fd(fd);
       return fd;
     }
     ++fd;
@@ -487,7 +513,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
       ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDWR | O_CREAT, 0600);
       int cloned_file_data = remote.infallible_send_fd_if_alive(clone_file);
       if (cloned_file_data >= 0) {
-        int free_fd = find_free_file_descriptor(tid);
+        int free_fd = find_free_file_descriptor(this);
         cloned_file_data_fd_child =
             remote.syscall(syscall_number_for_dup3(arch()), cloned_file_data,
                             free_fd, O_CLOEXEC);

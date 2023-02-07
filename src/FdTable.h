@@ -70,16 +70,22 @@ public:
    */
   void close_after_exec(ReplayTask* t, const std::vector<int>& fds_to_close);
 
+  // Used to optimize ReplayTask's find_free_file_descriptor
+  int last_free_fd() const { return last_free_fd_; }
+  void set_last_free_fd(int last_free_fd) { last_free_fd_ = last_free_fd; }
+
 private:
-  FdTable() : fd_count_beyond_limit(0) {}
+  FdTable() : fd_count_beyond_limit(0), last_free_fd_(0) {}
   FdTable(const FdTable& other) : fds(other.fds),
-    fd_count_beyond_limit(other.fd_count_beyond_limit) {}
+    fd_count_beyond_limit(other.fd_count_beyond_limit),
+    last_free_fd_(other.last_free_fd_) {}
 
   void update_syscallbuf_fds_disabled(int fd);
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
   // Number of elements of `fds` that are >= SYSCALLBUF_FDS_DISABLED_SIZE
   uint32_t fd_count_beyond_limit;
+  int last_free_fd_;
 };
 
 } // namespace rr
