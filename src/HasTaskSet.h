@@ -18,8 +18,8 @@ public:
 
   const TaskSet& task_set() const { return tasks; }
 
-  void insert_task(Task* t);
-  void erase_task(Task* t);
+  virtual void insert_task(Task* t);
+  virtual void erase_task(Task* t);
   bool has_task(Task* t) const { return tasks.find(t) != tasks.end(); }
   Task* first_running_task() const;
 

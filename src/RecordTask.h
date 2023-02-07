@@ -770,10 +770,8 @@ public:
   // Our value for ARCH_GET/SET_CPUID (0 -> generate SIGSEGV, 1 -> do CPUID).
   // Only used if session().has_cpuid_faulting().
   int cpuid_mode;
-  // The current stack of events being processed.  (We use a
-  // deque instead of a stack because we need to iterate the
-  // events.)
-  std::deque<Event> pending_events;
+  // The current stack of events being processed.
+  std::vector<Event> pending_events;
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<StashedSignal> stashed_signals;

@@ -12,6 +12,7 @@
 
 namespace rr {
 
+class AddressSpace;
 class RecordTask;
 class ReplayTask;
 class Task;
@@ -74,15 +75,20 @@ public:
   int last_free_fd() const { return last_free_fd_; }
   void set_last_free_fd(int last_free_fd) { last_free_fd_ = last_free_fd; }
 
+  void insert_task(Task* t) override;
+  void erase_task(Task* t) override;
+
 private:
   FdTable() : fd_count_beyond_limit(0), last_free_fd_(0) {}
   FdTable(const FdTable& other) : fds(other.fds),
+    vms(other.vms),
     fd_count_beyond_limit(other.fd_count_beyond_limit),
     last_free_fd_(other.last_free_fd_) {}
 
   void update_syscallbuf_fds_disabled(int fd);
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
+  std::unordered_map<AddressSpace*, int> vms;
   // Number of elements of `fds` that are >= SYSCALLBUF_FDS_DISABLED_SIZE
   uint32_t fd_count_beyond_limit;
   int last_free_fd_;

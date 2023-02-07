@@ -302,7 +302,7 @@ public:
   typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
 
-  ~AddressSpace();
+  virtual ~AddressSpace();
 
   /**
    * Call this after a new task has been cloned within this

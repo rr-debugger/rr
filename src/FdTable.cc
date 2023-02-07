@@ -5,6 +5,7 @@
 #include <limits.h>
 
 #include <unordered_set>
+#include <utility>
 
 #include "rr/rr.h"
 
@@ -18,6 +19,26 @@
 using namespace std;
 
 namespace rr {
+
+void FdTable::insert_task(Task* t) {
+  HasTaskSet::insert_task(t);
+  ++vms[t->vm().get()];
+}
+
+void FdTable::erase_task(Task* t) {
+  if (task_set().find(t) == task_set().end()) {
+    return;
+  }
+  HasTaskSet::erase_task(t);
+  auto it = vms.find(t->vm().get());
+  if (it == vms.end()) {
+    FATAL() << "Lost track of VM already?";
+  }
+  --it->second;
+  if (!it->second) {
+    vms.erase(it);
+  }
+}
 
 void FdTable::add_monitor(Task* t, int fd, FileMonitor* monitor) {
   // In the future we could support multiple monitors on an fd, but we don't
@@ -154,31 +175,27 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
   DEBUG_ASSERT(fd >= 0);
   DEBUG_ASSERT(task_set().size() > 0);
 
-  unordered_set<AddressSpace*> vms_updated;
   // It's possible for tasks with different VMs to share this fd table.
   // But tasks with the same VM might have different fd tables...
-  for (Task* t : task_set()) {
-    if (!t->session().is_recording()) {
-      return;
+  for (auto address_space : vms) {
+    RecordTask* rt = nullptr;
+    for (Task* t : address_space.first->task_set()) {
+      if (!t->session().is_recording()) {
+        return;
+      }
+      rt = static_cast<RecordTask*>(t);
+      if (!rt->already_exited()) {
+        break;
+      }
+      rt = nullptr;
     }
-    RecordTask* rt = static_cast<RecordTask*>(t);
-    if (rt->already_exited()) {
-      continue;
-    }
-
-    AddressSpace* vm = rt->vm().get();
-    if (vms_updated.find(vm) != vms_updated.end()) {
-      continue;
-    }
-    vms_updated.insert(vm);
-
-    if (!rt->preload_globals.is_null()) {
+    if (rt && !rt->preload_globals.is_null()) {
       if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE) {
         fd = SYSCALLBUF_FDS_DISABLED_SIZE - 1;
       }
-      char disable = (char)join_fd_classes_over_tasks(vm, fd);
+      char disable = (char)join_fd_classes_over_tasks(address_space.first, fd);
       auto addr =
-          REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fd_class[0]) + fd;
+          REMOTE_PTR_FIELD(rt->preload_globals, syscallbuf_fd_class[0]) + fd;
       rt->write_mem(addr, disable);
       rt->record_local(addr, &disable);
     }
