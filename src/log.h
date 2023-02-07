@@ -22,6 +22,8 @@ class Task;
 
 enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug };
 
+struct LogModule;
+
 /* A log module is just a string where any uppercase ASCII characters have
  * been lowercased. We assign a LogLevel for each log module; this assignment
  * can be configured via the `RR_LOG` environment variable and also modified
@@ -34,6 +36,11 @@ enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug };
  *
  * This logging infrastructure is not thread safe. Use only on the main thread.
  */
+
+/**
+ * Get the LogModule from a __FILE__. Useful for caching the module.
+ */
+LogModule& get_log_module(const char* file);
 
 /**
  * Return the ostream to which log data will be written.
@@ -87,6 +94,13 @@ struct NewlineTerminatingOstream {
    * some value of `__FILE__`.
    */
   NewlineTerminatingOstream(LogLevel level, const char* file, int line,
+                            const char* function);
+  /**
+   * `file` must be a pointer that is valid forever, preferably
+   * some value of `__FILE__`.
+   * Use this variant to cached the LogModule for efficiency.
+   */
+  NewlineTerminatingOstream(LogModule** m, LogLevel level, const char* file, int line,
                             const char* function);
   ~NewlineTerminatingOstream();
 
@@ -165,6 +179,14 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
   NewlineTerminatingOstream(LOG_##_level, __FILE__, __LINE__, __FUNCTION__)
 
 #define IS_LOGGING(_level) is_logging_enabled(LOG_##_level, __FILE__)
+
+#define FILE_CACHE_LOG_MODULE() static LogModule* cached_log_module
+
+/**
+ * Like LOG but with a cached module
+ */
+#define LOGM(_level)                                                            \
+  NewlineTerminatingOstream(&cached_log_module, LOG_##_level, __FILE__, __LINE__, __FUNCTION__)
 
 /** A fatal error has occurred.  Log the error and exit. */
 #define FATAL() FatalOstream(__FILE__, __LINE__, __FUNCTION__)

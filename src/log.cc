@@ -242,7 +242,7 @@ static string file_to_name(const char* file) {
   return r;
 }
 
-static LogModule& get_log_module(const char* file) {
+LogModule& get_log_module(const char* file) {
   init_log_globals();
 
   auto it = log_modules->find(file);
@@ -351,6 +351,25 @@ NewlineTerminatingOstream::NewlineTerminatingOstream(LogLevel level,
                                                      const char* function)
     : level(level) {
   LogModule& m = get_log_module(file);
+  enabled = level <= m.level;
+  if (enabled) {
+    if (level == LOG_debug) {
+      *this << "[" << m.name << "] ";
+    } else {
+      write_prefix(*this, level, file, line, function);
+    }
+  }
+}
+
+NewlineTerminatingOstream::NewlineTerminatingOstream(LogModule** m_ptr,
+                                                     LogLevel level,
+                                                     const char* file, int line,
+                                                     const char* function)
+    : level(level) {
+  if (!*m_ptr) {
+    *m_ptr = &get_log_module(file);
+  }
+  LogModule& m = **m_ptr;
   enabled = level <= m.level;
   if (enabled) {
     if (level == LOG_debug) {

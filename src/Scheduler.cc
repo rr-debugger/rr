@@ -29,6 +29,8 @@ using namespace std;
 
 namespace rr {
 
+FILE_CACHE_LOG_MODULE();
+
 // Probability of making a thread low priority. Keep this reasonably low
 // because the goal is to victimize some specific threads
 static double low_priority_probability = 0.1;
@@ -128,7 +130,7 @@ void Scheduler::regenerate_affinity_mask() {
     return;
   }
   if (!CPU_ISSET(cpu, &pretend_affinity_mask_)) {
-    LOG(warn) << "Bound CPU " << cpu << " not in affinity mask";
+    LOGM(warn) << "Bound CPU " << cpu << " not in affinity mask";
     // Use the original affinity mask since something strange is
     // going on.
     return;
@@ -232,7 +234,7 @@ bool WaitAggregator::try_wait(RecordTask* t) {
     exit_candidates_.push_back(t);
     return false;
   }
-  LOG(debug) << "wait on " << t->tid << " returns " << result.status;
+  LOGM(debug) << "wait on " << t->tid << " returns " << result.status;
   t->did_waitpid(result.status);
   return true;
 }
@@ -250,7 +252,7 @@ bool WaitAggregator::try_wait_exit(RecordTask* t) {
   WaitResult result = WaitManager::wait_exit(options);
   switch (result.code) {
     case WAIT_OK:
-      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << t->tid;
+      LOGM(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << t->tid;
       t->did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
       return true;
     case WAIT_NO_STATUS:
@@ -277,32 +279,32 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
                                "returned a task that must run!";
 
   if (t->detached_proxy) {
-    LOG(debug) << "  " << t->tid << " is a detached proxy";
+    LOGM(debug) << "  " << t->tid << " is a detached proxy";
     return false;
   }
 
   if (t->waiting_for_reap) {
     if (t->may_reap()) {
-      LOG(debug) << "  " << t->tid << " is waiting to be reaped, and can be reaped";
+      LOGM(debug) << "  " << t->tid << " is waiting to be reaped, and can be reaped";
       return true;
     }
-    LOG(debug) << "  " << t->tid << " is waiting to be reaped, but can't be reaped yet";
+    LOGM(debug) << "  " << t->tid << " is waiting to be reaped, but can't be reaped yet";
     return false;
   }
 
 
-  LOG(debug) << "Task event is " << t->ev();
+  LOGM(debug) << "Task event is " << t->ev();
   if (!t->may_be_blocked()) {
-    LOG(debug) << "  " << t->tid << " isn't blocked";
+    LOGM(debug) << "  " << t->tid << " isn't blocked";
     if (t->schedule_frozen) {
-      LOG(debug) << "  " << t->tid << "  but is frozen";
+      LOGM(debug) << "  " << t->tid << "  but is frozen";
       return false;
     }
     return true;
   }
 
   if (t->waiting_for_zombie) {
-    LOG(debug) << "  " << t->tid << " is waiting to become a zombie";
+    LOGM(debug) << "  " << t->tid << " is waiting to become a zombie";
     return false;
   }
 
@@ -317,11 +319,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
       t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
       *by_waitpid = true;
       must_run_task = t;
-      LOG(debug) << "  Got " << t->tid
+      LOGM(debug) << "  Got " << t->tid
                  << " out of emulated stop due to pending SIGCONT";
       return true;
     } else {
-      LOG(debug) << "  " << t->tid << " is stopped by ptrace or signal";
+      LOGM(debug) << "  " << t->tid << " is stopped by ptrace or signal";
       // We have no way to detect a SIGCONT coming from outside the tracees.
       // We just have to poll SigPnd in /proc/<pid>/status.
       enable_poll = true;
@@ -334,11 +336,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
   }
 
   if (t->waiting_for_ptrace_exit) {
-    LOG(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
+    LOGM(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
   } else if (!t->is_running()) {
-    LOG(debug) << "  " << t->tid << "  was already stopped with status " << t->status();
+    LOGM(debug) << "  " << t->tid << "  was already stopped with status " << t->status();
     if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
-      LOG(debug) << "   but is frozen";
+      LOGM(debug) << "   but is frozen";
       return false;
     }
     // If we have may_be_blocked, but we aren't running, then somebody noticed
@@ -351,7 +353,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
       PROCESSING_SYSCALL == t->ev().Syscall().state &&
       treat_syscall_as_nonblocking(t->ev().Syscall().number, t->arch())) {
     if (t->schedule_frozen) {
-      LOG(debug) << "  " << t->tid << " is frozen in sched_yield";
+      LOGM(debug) << "  " << t->tid << " is frozen in sched_yield";
       return false;
     }
     // These syscalls never really block but the kernel may report that
@@ -361,19 +363,19 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
     ntasks_running--;
     *by_waitpid = true;
     must_run_task = t;
-    LOG(debug) << "  sched_yield ready with status " << t->status();
+    LOGM(debug) << "  sched_yield ready with status " << t->status();
     return true;
   } else {
-    LOG(debug) << "  " << t->tid << " is blocked on " << t->ev()
+    LOGM(debug) << "  " << t->tid << " is blocked on " << t->ev()
               << "; checking status ...";
   }
 
   bool did_wait_for_t;
   did_wait_for_t = wait_aggregator.try_wait(t);
   if (did_wait_for_t) {
-    LOG(debug) << "  ready with status " << t->status();
+    LOGM(debug) << "  ready with status " << t->status();
     if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
-      LOG(debug) << "   but is frozen";
+      LOGM(debug) << "   but is frozen";
       return false;
     }
     *by_waitpid = true;
@@ -381,7 +383,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
     must_run_task = t;
     return true;
   }
-  LOG(debug) << "  still blocked";
+  LOGM(debug) << "  still blocked";
   // Try next task
   return false;
 }
@@ -544,7 +546,7 @@ static bool wait_any(pid_t& tid, WaitStatus& status, double timeout) {
       status = result.status;
       return true;
     case WAIT_NO_STATUS:
-      LOG(debug) << "  wait interrupted";
+      LOGM(debug) << "  wait interrupted";
       return false;
     case WAIT_NO_CHILD:
       // It's possible that the original thread group was detached,
@@ -585,14 +587,14 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
     // See if this is one of our detached proxies' original tids.
     waited = session.find_detached_proxy_task(tid);
     if (!waited) {
-      LOG(debug) << "    ... but it's dead";
+      LOGM(debug) << "    ... but it's dead";
       return nullptr;
     }
 
 
     ASSERT(waited, waited->detached_proxy);
     ASSERT(waited, status.type() == WaitStatus::FATAL_SIGNAL);
-    LOG(debug) << "    ... but it's a detached proxy";
+    LOGM(debug) << "    ... but it's a detached proxy";
 
     // We received an unexpected SIGKILL for one of our detached proxies,
     // probably because the parent or some other task tried to SIGKILL it
@@ -600,21 +602,21 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
     // ... unless the Task has already exited and this SIGKILL raced with
     // us waiting for the parent to reap it.
     if (!waited->already_exited()) {
-      LOG(debug) << "        ... sending SIGKILL to detached process " << waited->rec_tid;;
+      LOGM(debug) << "        ... sending SIGKILL to detached process " << waited->rec_tid;;
       ::kill(waited->rec_tid, SIGKILL);
       WaitResult result = WaitManager::wait_exit(WaitOptions(waited->rec_tid));
       ASSERT(waited, result.code == WAIT_OK);
     } else {
-      LOG(debug) << "        ... but the detached process is already dead";
+      LOGM(debug) << "        ... but the detached process is already dead";
     }
   }
   if (waited->detached_proxy) {
     waited->did_waitpid(status);
     pid_t parent_rec_tid = waited->get_parent_pid();
-    LOG(debug) << "    ... but it's a detached process.";
+    LOGM(debug) << "    ... but it's a detached process.";
     RecordTask *parent = session.find_task(parent_rec_tid);
     if (parent && !waited->emulated_stop_pending) {
-      LOG(debug) << "    ... notifying parent.";
+      LOGM(debug) << "    ... notifying parent.";
       waited->emulated_stop_type = CHILD_STOP;
       waited->emulated_stop_pending = true;
       waited->emulated_SIGCHLD_pending = true;
@@ -650,7 +652,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   result.by_waitpid = false;
   result.started_new_timeslice = false;
 
-  LOG(debug) << "Scheduling next task (" <<
+  LOGM(debug) << "Scheduling next task (" <<
     ((switchable == PREVENT_SWITCH) ? "PREVENT_SWITCH)" : "ALLOW_SWITCH)");
 
   must_run_task = nullptr;
@@ -662,15 +664,15 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   maybe_reset_priorities(now);
 
   if (current_ && switchable == PREVENT_SWITCH) {
-    LOG(debug) << "  (" << current_->tid << " is un-switchable at "
+    LOGM(debug) << "  (" << current_->tid << " is un-switchable at "
                << current_->ev() << ")";
     if (current_->is_running()) {
       /* |current| is un-switchable, but already running. Wait for it to change
       * state before "scheduling it", so avoid busy-waiting with our client. */
-      LOG(debug) << "  and running; waiting for state change";
+      LOGM(debug) << "  and running; waiting for state change";
       while (true) {
         if (unlimited_ticks_mode) {
-          LOG(debug) << "Using unlimited ticks mode";
+          LOGM(debug) << "Using unlimited ticks mode";
           // Unlimited ticks mode means that there is only one non-blocked task.
           // We run it without a timeslice to avoid unnecessary switches to the
           // tracer. However, this does mean we need to be on the look out for
@@ -705,7 +707,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           // PTRACE_INTERRUPT it.
           double elapsed = now - monotonic_now_sec();
           timeout = elapsed > 0.05 ? 0.0 : 0.05 - elapsed;
-          LOG(debug) << "  But that's not our current task...";
+          LOGM(debug) << "  But that's not our current task...";
         } else {
           current_->wait(timeout);
           ntasks_running--;
@@ -720,7 +722,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       }
 #endif
       result.by_waitpid = true;
-      LOG(debug) << "  new status is " << current_->status();
+      LOGM(debug) << "  new status is " << current_->status();
     }
     validate_scheduled_task();
     return result;
@@ -760,7 +762,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
            !last_reschedule_in_high_priority_only_interval) &&
           current_->tick_count() < current_timeslice_end() &&
           is_task_runnable(current_, wait_aggregator, &result.by_waitpid)) {
-        LOG(debug) << "  Carrying on with task " << current_->tid;
+        LOGM(debug) << "  Carrying on with task " << current_->tid;
         validate_scheduled_task();
         return result;
       }
@@ -769,11 +771,11 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       maybe_pop_round_robin_task(current_);
     }
 
-    LOG(debug) << "  need to reschedule";
+    LOGM(debug) << "  need to reschedule";
 
     next = get_round_robin_task();
     if (next) {
-      LOG(debug) << "Trying task " << next->tid << " from yield queue";
+      LOGM(debug) << "Trying task " << next->tid << " from yield queue";
       if (is_task_runnable(next, wait_aggregator, &result.by_waitpid)) {
         break;
       }
@@ -810,7 +812,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     if (next && !treat_as_high_priority(next) &&
         last_reschedule_in_high_priority_only_interval) {
       if (result.by_waitpid) {
-        LOG(debug)
+        LOGM(debug)
             << "Waking up low-priority task with by_waitpid; not sleeping";
         // We must run this low-priority task. Fortunately it's just waking
         // up from a blocking syscall; we'll record the syscall event and then
@@ -818,7 +820,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         // get_next_thread, which will either run a higher priority thread
         // or (more likely) reach here again but in the !*by_waitpid case.
       } else {
-        LOG(debug)
+        LOGM(debug)
             << "Waking up low-priority task without by_waitpid; sleeping";
         sleep_time(0.001);
         now = monotonic_now_sec();
@@ -829,7 +831,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   }
 
   if (next) {
-    LOG(debug) << "  selecting task " << next->tid;
+    LOGM(debug) << "  selecting task " << next->tid;
   } else {
     // All the tasks are blocked.
     // Wait for the next one to change state.
@@ -840,7 +842,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       maybe_pop_round_robin_task(t);
     }
 
-    LOG(debug) << "  all tasks blocked, waiting for runnable ("
+    LOGM(debug) << "  all tasks blocked, waiting for runnable ("
                << task_priority_set.size() << " total)";
 
     WaitStatus status;
@@ -852,7 +854,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         result.interrupted_by_signal = true;
         return result;
       }
-      LOG(debug) << "  " << tid << " changed status to " << status;
+      LOGM(debug) << "  " << tid << " changed status to " << status;
       next = find_waited_task(session, tid, status);
       now = -1; // invalid, don't use
       if (next) {
@@ -867,7 +869,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           // Some threadgroup is doing execve and this task isn't in
           // that threadgroup. Don't schedule this task until the execve
           // is complete.
-          LOG(debug) << "  ... but threadgroup " << in_exec_tgid << " is in execve, so ignoring for now";
+          LOGM(debug) << "  ... but threadgroup " << in_exec_tgid << " is in execve, so ignoring for now";
           next = nullptr;
         }
       }
@@ -877,7 +879,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   }
 
   if (current_ && current_ != next && is_logging_enabled(LOG_debug, __FILE__)) {
-    LOG(debug) << "Switching from " << current_->tid << "(" << current_->name()
+    LOGM(debug) << "Switching from " << current_->tid << "(" << current_->name()
                << ") to " << next->tid << "(" << next->name() << ") (priority "
                << current_->priority << " to " << next->priority << ") at "
                << current_->trace_writer().time();
@@ -987,11 +989,11 @@ static bool round_robin_scheduling_enabled() {
 
 void Scheduler::schedule_one_round_robin(RecordTask* t) {
   if (!round_robin_scheduling_enabled()) {
-    LOG(debug) << "Would schedule round-robin because of task " << t->tid << ", but disabled";
+    LOGM(debug) << "Would schedule round-robin because of task " << t->tid << ", but disabled";
     return;
   }
 
-  LOG(debug) << "Scheduling round-robin because of task " << t->tid;
+  LOGM(debug) << "Scheduling round-robin because of task " << t->tid;
 
   ASSERT(t, t == current_);
   maybe_pop_round_robin_task(t);
