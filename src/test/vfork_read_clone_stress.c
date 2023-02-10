@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-// Global to protecte them from the compiler potentially
+// Global to protect them from the compiler potentially
 // smashing them, thinking they're unused
 volatile int fd;
 volatile void* buf;
