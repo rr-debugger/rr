@@ -1546,7 +1546,7 @@ void GdbConnection::notify_stop(GdbThreadId thread, int sig,
   // for the previously-stopped thread when it obviously intends
   // to be making requests about the stopped thread.
   // To make things even better, gdb expects different behavior
-  // for forward continue/interupt and reverse continue.
+  // for forward continue/interrupt and reverse continue.
   if (req.is_resume_request() && req.cont().run_direction == RUN_BACKWARD) {
     LOG(debug) << "Setting query/resume_thread to ANY after reverse continue";
     query_thread = resume_thread = GdbThreadId::ANY;
