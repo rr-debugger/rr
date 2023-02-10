@@ -509,7 +509,7 @@ void Registers::write_register_by_user_offset(uintptr_t offset,
 // on the 64-bit SP value and validates that the result points to writeable
 // memory. This validation fails if SP has been sign-extended to point
 // outside the 32-bit address space.
-// -- Some kernels (e.g. 4.3.3-301.fc23.x86_64) with commmit
+// -- Some kernels (e.g. 4.3.3-301.fc23.x86_64) with commit
 // c5c46f59e4e7c1ab244b8d38f2b61d317df90bba have a bug where if you clear
 // the upper 32 bits of %rax while in the kernel, syscalls may fail to
 // restart. So sign-extension is necessary for %eax in this case. We may as
