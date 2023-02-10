@@ -1185,7 +1185,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
           break;
         /* These are not technically required to be passed through, but the
            syscallbuf code does, so if we don't here, we risk fracturing
-           otherwise coelescable memory regions. Asan in particular triggers
+           otherwise coalescable memory regions. Asan in particular triggers
            a pathological case here that quickly exhausts the total mapping
            limit by fracturing its shadow region */
         case MADV_NORMAL:

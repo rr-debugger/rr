@@ -1927,9 +1927,9 @@ bool AddressSpace::allocate_watchpoints() {
   return false;
 }
 
-static inline void assert_coalesceable(Task* t,
-                                       const AddressSpace::Mapping& lower,
-                                       const AddressSpace::Mapping& higher) {
+static inline void assert_coalescable(Task* t,
+                                      const AddressSpace::Mapping& lower,
+                                      const AddressSpace::Mapping& higher) {
   ASSERT(t, lower.emu_file == higher.emu_file);
   ASSERT(t, lower.flags == higher.flags);
   ASSERT(t,
@@ -1957,7 +1957,7 @@ void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
       first_kv = next;
       break;
     }
-    assert_coalesceable(t, first_kv->second, next->second);
+    assert_coalescable(t, first_kv->second, next->second);
   }
   auto last_kv = it;
   while (true) {
@@ -1968,7 +1968,7 @@ void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
       last_kv = prev;
       break;
     }
-    assert_coalesceable(t, prev->second, last_kv->second);
+    assert_coalescable(t, prev->second, last_kv->second);
   }
   ASSERT(t, last_kv != mem.end());
   if (first_kv == last_kv) {
