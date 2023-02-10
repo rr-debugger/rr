@@ -1755,7 +1755,7 @@ bool AddressSpace::post_vm_clone(Task* t) {
     return false;
   }
 
-  // Otherwise, the preload_thread_locals mapping is non-existent or ours.
+  // Otherwise, the preload_thread_locals mapping is nonexistent or ours.
   // Recreate it.
   AutoRemoteSyscalls remote(t);
   t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
