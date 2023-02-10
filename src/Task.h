@@ -565,7 +565,7 @@ public:
   std::string read_c_str(remote_ptr<char> child_addr, bool *ok = nullptr);
 
   /**
-   * Resume execution |how|, deliverying |sig| if nonzero.
+   * Resume execution |how|, delivering |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
    * request a tick period of tick_period. The default value
    * of tick_period is 0, which means effectively infinite.
