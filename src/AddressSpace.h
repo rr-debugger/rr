@@ -48,7 +48,7 @@ public:
   /**
    * These are the flags we track internally to distinguish
    * between adjacent segments.  For example, the kernel
-   * considers a NORESERVE anonynmous mapping that's adjacent to
+   * considers a NORESERVE anonymous mapping that's adjacent to
    * a non-NORESERVE mapping distinct, even if all other
    * metadata are the same.  See |is_adjacent_mapping()|.
    */
