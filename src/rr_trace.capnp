@@ -97,7 +97,7 @@ struct Header {
     clearFipFdp @14 :Bool = false;
   }
   # These flags guard rr behavior differences that ensure old rr traces can
-  # be sucessfully replayed on newer replayers
+  # be successfully replayed on newer replayers
   quirks :group {
     # Whether the version of rr that recorded this, explicitly recorded
     # modifications made through /proc/<pid>/<mem>
