@@ -1380,7 +1380,7 @@ void Task::work_around_KNL_string_singlestep_bug() {
   if (cx > cutoff && at_x86_string_instruction(this)) {
     /* KNL has a quirk where single-stepping a string instruction can step up
       to 64 iterations. Work around this by fudging registers to force the
-      processor to execute one iteration and one interation only. */
+      processor to execute one iteration and one iteration only. */
     LOG(debug) << "Working around KNL single-step hardware bug (cx=" << cx
               << ")";
     if (cx > cutoff) {
