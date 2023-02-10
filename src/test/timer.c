@@ -72,7 +72,7 @@ int main(void) {
      * in kernel space or if there were any intervening ticks. In testing this
      * took a few thousand iterations to reproduce, so 5000 may not be
      * sufficient for reliable reproduction, but it should be an ok trade-off,
-     * between test runtime and reproducability.
+     * between test runtime and reproducibility.
      */
     test_assert(0 == timer_settime(*id, 0, &its3, NULL));
     for (int i = 0; i < 5000 && !caught_limit_sig; ++i) {
