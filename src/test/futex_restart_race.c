@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
   siginfo_t info;
   sigset_t set;
   sigemptyset(&set);
-  // Block all relevant singals on the main thread to make sure that
+  // Block all relevant signals on the main thread to make sure that
   // the thread gets selected to receive the signal (Condition 1).
   // Corner case: Because we do waitpid below, the kernel internally removes
   // SIGCHLD from the blocked list for this thread and does not wake up
