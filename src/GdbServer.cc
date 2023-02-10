@@ -1937,7 +1937,7 @@ void GdbServer::emergency_debug(Task* t) {
   // control another session. Instead, launch a new GdbServer and wait for
   // the user to connect from another window.
   GdbConnection::Features features;
-  // Don't advertise reverse_execution to gdb becase a) it won't work and
+  // Don't advertise reverse_execution to gdb because a) it won't work and
   // b) some gdb versions will fail if the user doesn't turn off async
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
