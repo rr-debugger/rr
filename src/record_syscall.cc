@@ -5033,7 +5033,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                !(p & (ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE |
                       ADDR_LIMIT_32BIT | ADDR_LIMIT_3GB)))
             << "Personality value " << HEX(p)
-            << " not compatible with chaos mode addres-space randomization";
+            << " not compatible with chaos mode address-space randomization";
       }
       if (p & 0xffffff00 &
           ~(ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE | ADDR_LIMIT_32BIT |
