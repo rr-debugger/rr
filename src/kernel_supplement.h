@@ -269,7 +269,7 @@ struct rr_input_mask {
 #define HCIGETDEVINFO _IOR('H', 211, int)
 #endif
 
-// Unfortuantely the header that defines these is not C++ safe, we we'll
+// Unfortunately the header that defines these is not C++ safe, we we'll
 // have to redefine them here
 #ifndef KEYCTL_GET_KEYRING_ID
 #define KEYCTL_GET_KEYRING_ID 0
