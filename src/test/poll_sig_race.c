@@ -26,7 +26,7 @@ int main(void) {
     }
 
     /* wait for 1 second, which should be long enough for
-       the chlid to do its write. In extreme cases the
+       the child to do its write. In extreme cases the
        child might run to completion before this poll()
        call is entered, in which case we will time out safely. */
     ret = poll(&pfd, 1, 1000);
