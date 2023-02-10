@@ -27,7 +27,7 @@ namespace rr {
 
 /**
  * Stores the table of signal dispositions and metadata for an
- * arbitrary set of tasks.  Each of those tasks must own one one of
+ * arbitrary set of tasks.  Each of those tasks must own one of
  * the |refcount|s while they still refer to this.
  */
 struct Sighandler {
