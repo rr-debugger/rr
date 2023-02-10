@@ -479,7 +479,7 @@ static void handle_desched_event(RecordTask* t) {
       // Untraced syscall, we may not have set original_syscallno for this on aarch64.
       syscallno = t->regs().syscallno();
     } else {
-      // On x86, syscall no is overwriten by return value.
+      // On x86, syscall no is overwritten by return value.
       ASSERT(t, is_x86ish(t->arch()));
       syscallno = t->regs().original_syscallno();
     }
