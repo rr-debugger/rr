@@ -1164,7 +1164,7 @@ private:
 
   /**
    * Ensure that the cached mapping of |t| matches /proc/maps,
-   * using adjancent-map-merging heuristics that are as lenient
+   * using adjacent-map-merging heuristics that are as lenient
    * as possible given the data available from /proc/maps.
    */
   static void check_segment_iterator(void* vasp, Task* t,
