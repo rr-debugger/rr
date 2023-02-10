@@ -133,7 +133,7 @@ public:
 
   struct patched_syscall {
     // Pointer to hook inside the syscall_hooks array, which gets initialized
-    // once and is fixed afterwars.
+    // once and is fixed afterwards.
     const syscall_patch_hook *hook;
     size_t size;
     uint16_t safe_prefix = 0;
