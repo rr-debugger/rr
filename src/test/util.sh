@@ -457,7 +457,7 @@ function count_events {
     # The |simple| test is just about the simplest possible C program,
     # and has around 180 events (when recorded on a particular
     # developer's machine).  If we count a number of events
-    # significalty less than that, almost certainly something has gone
+    # significantly less than that, almost certainly something has gone
     # wrong.
     if [ "$events" -le 150 ]; then
         failed ": Recording had too few events.  Is |rr dump -r| broken?"
