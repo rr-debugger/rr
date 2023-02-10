@@ -2874,7 +2874,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       // If the tracer wants to observe syscall entries, we can't use the
       // syscallbuf, because the tracer may want to change syscall numbers
-      // which the syscallbuf code is not prepared to handle. Aditionally,
+      // which the syscallbuf code is not prepared to handle. Additionally,
       // we also lock the syscallbuf for PTRACE_SINGLESTEP, since we usually
       // try to avoid delivering signals (e.g. PTRACE_SINGLESTEP's SIGTRAP)
       // inside syscallbuf code. However, if the syscallbuf if locked, doing
