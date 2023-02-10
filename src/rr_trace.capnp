@@ -124,7 +124,7 @@ struct Header {
   # If in chaos mode, what was the global exclusion range. Useful for debugging.
   exclusionRangeStart @17 :RemotePtr;
   exclusionRangeEnd @18 :RemotePtr;
-  # Replaying this trace requires at least this forward-compabilitity-version
+  # Replaying this trace requires at least this forward-compatibility-version
   requiredForwardCompatibilityVersion @19 :Int32;
   # real page size of the recorded process
   runtimePageSize @22 :UInt32 = 4096;
