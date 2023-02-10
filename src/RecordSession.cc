@@ -355,7 +355,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
   *did_enter_syscall = false;
 
   // Special case: If the tracee issues a vsyscall, we will get a seccomp trap,
-  // but no syscall traps whatsover. In particular, we wouldn't see it during
+  // but no syscall traps whatsoever. In particular, we wouldn't see it during
   // replay either. We try to monkeypatch the caller on the assumption that known
   // callers of this (deprecated) interface all follow a common pattern. If we
   // can't patch the caller, this is a fatal error, since the recording will
