@@ -716,7 +716,7 @@ static void init_thread(void) {
 // so declared this prototype manually
 extern const char* getenv(const char*);
 
-// getauxval is from glibc 2.16 (2012) - don't asssume it exists.
+// getauxval is from glibc 2.16 (2012) - don't assume it exists.
 unsigned long getauxval(unsigned long type) __attribute__((weak));
 #ifndef AT_SYSINFO_EHDR
 #define AT_SYSINFO_EHDR 33
