@@ -329,7 +329,7 @@ public:
   bool at_may_restart_syscall() const;
   /**
    * Return true iff this is at an execution state where
-   * a syscall that modifes isgnals was interrupted but will not
+   * a syscall that modifies isgnals was interrupted but will not
    * be automatically restarted.
    **/
   bool at_interrupted_non_restartable_signal_modifying_syscall() const;
