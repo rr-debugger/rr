@@ -149,7 +149,7 @@ struct DirExistsCache {
 // of original_file_name, and if we find a file there, we return that name.
 // original_file_name must be absolute if not NULL.
 //
-// If non-empty, `comp_dir_substution` should replace `original_comp_dir`
+// If non-empty, `comp_dir_substitution` should replace `original_comp_dir`
 // in `rel_dir` if `original_comp_dir` is a prefix of `rel_dir`.
 // Always returns an absolute file name.
 // Returns true if we got a result, otherwise false.
