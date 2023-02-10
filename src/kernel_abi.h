@@ -53,7 +53,7 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 // We want verify that the types have the same size as their
 // counterparts in the system header. To avoid having to include
 // all system headers here, we instead make the verification macros
-// a no-op unless inlcuded from kernel_abi.cc.
+// a no-op unless included from kernel_abi.cc.
 #ifndef RR_VERIFY_TYPE
 #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_) // no-op
 #define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)    // no-op
