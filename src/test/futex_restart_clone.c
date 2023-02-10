@@ -4,7 +4,7 @@
 
 // In this test we attempt to set up the following situation:
 // 1. The parent process gets kicked out of the futex wait by a signal.
-// 2. The child process execs and rr comandeers the parent process for cleanup.
+// 2. The child process execs and rr commandeers the parent process for cleanup.
 // 3. AutoRemoteSyscalls uses PTRACE_INTERRUPT to work around #3141
 // 4. rr attempts to inject the signal and sees a spurious group stop from the
 //    PTRACE_INTERRUPT.
