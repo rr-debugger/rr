@@ -249,7 +249,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   t->set_regs(r);
   t->canonicalize_regs(trace_frame.event().Syscall().arch());
 
-  // Dig the recorded tid out out of the trace. The tid value returned in
+  // Dig the recorded tid out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
   // so we can't use it directly.
   TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::CLONE);
