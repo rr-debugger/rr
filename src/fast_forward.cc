@@ -144,14 +144,14 @@ static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
   uintptr_t steps;
   if (direction > 0) {
     if (watch.addr < reg) {
-      // We're assuming wraparound can't happpen!
+      // We're assuming wraparound can't happen!
       return;
     }
     // We'll hit the first byte of the watchpoint moving forward.
     steps = (watch.addr - reg) / size;
   } else {
     if (watch.addr > reg) {
-      // We're assuming wraparound can't happpen!
+      // We're assuming wraparound can't happen!
       return;
     }
     // We'll hit the last byte of the watchpoint moving backward.
