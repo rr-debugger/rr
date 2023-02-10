@@ -1720,7 +1720,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // Nondeterministic signals were already filtered out.
         ASSERT(t, is_deterministic);
         // Usually, the kernel removes the killable-protection from an init process
-        // when a determinisic fatal signal gets executed, but (due to what is
+        // when a deterministic fatal signal gets executed, but (due to what is
         // arguably a bug) when a ptracer is attached, this does not happen.
         // If we try to inject it here, the kernel will just ignore it,
         // and we'll go around again. As a hack, we detach here, in the
