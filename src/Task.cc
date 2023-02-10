@@ -2017,7 +2017,7 @@ void Task::did_waitpid(WaitStatus status) {
   // When we issue PTRACE_INTERRUPT, we this set this counter to 2, and here
   // we decrement it on every stop such that while this counter is positive,
   // any group-stop could be one induced by PTRACE_INTERRUPT
-  bool siginfo_overriden = false;
+  bool siginfo_overridden = false;
   if (account_for_potential_ptrace_interrupt_stop(status)) {
     // Assume this was PTRACE_INTERRUPT and thus treat this as
     // TIME_SLICE_SIGNAL instead.
@@ -2026,10 +2026,10 @@ void Task::did_waitpid(WaitStatus status) {
     pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
     pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
     pending_siginfo.si_code = POLL_IN;
-    siginfo_overriden = true;
+    siginfo_overridden = true;
   }
 
-  if (!siginfo_overriden && status.stop_sig()) {
+  if (!siginfo_overridden && status.stop_sig()) {
     if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
       LOG(debug) << "Unexpected process death getting siginfo for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
