@@ -2506,7 +2506,7 @@ static long sys_openat(struct syscall_info* call) {
 #if defined(SYS_poll) || defined(SYS_ppoll)
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
- * Make it visiblity-"protected" so that our local definition binds to it
+ * Make it visibility-"protected" so that our local definition binds to it
  * directly and doesn't go through a PLT thunk (which would mean temporarily
  * leaving syscallbuf code).
  */
