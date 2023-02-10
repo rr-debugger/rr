@@ -584,7 +584,7 @@ public:
   bool is_container_init() const { return tg->tgid_own_namespace == 1; }
 
   /**
-   * Linux requires the invariant that that all members of a thread group
+   * Linux requires the invariant that all members of a thread group
    * are reaped before the thread group leader. This determines whether or
    * not we're allowed to attempt reaping this thread or whether doing so
    * risks deadlock.
