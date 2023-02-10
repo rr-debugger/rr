@@ -247,7 +247,7 @@ RecordTask::~RecordTask() {
   }
 
   if (detached_proxy) {
-    // We kept the zombie of the orginal task around to prevent its pid from
+    // We kept the zombie of the original task around to prevent its pid from
     // being re-used. Reap that now.
     proceed_to_exit();
     if (!already_reaped() && may_reap()) {

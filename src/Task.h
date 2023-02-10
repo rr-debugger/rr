@@ -1227,7 +1227,7 @@ protected:
   remote_code_ptr address_of_last_execution_resume;
   ResumeRequest how_last_execution_resumed;
   // In certain circumstances, due to hardware bugs, we need to fudge the
-  // cx register. If so, we record the orginal value here. See comments in
+  // cx register. If so, we record the original value here. See comments in
   // Task.cc
   uint64_t last_resume_orig_cx;
   // The instruction type we're singlestepping through.
