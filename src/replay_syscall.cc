@@ -403,7 +403,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
       // (up to) two kms that have different fsnames but do each have an
       // executable segment, as well as the km that contains the ip. This is
       // slightly complicated, but should handle the case where either file has
-      // more than one exectuable segment.
+      // more than one executable segment.
       const string& file_name = km.fsname();
       if ((km.prot() & PROT_EXEC) && file_name.size() > 0 &&
           // Make sure to exclude [vdso] (and similar) and executable stacks.
