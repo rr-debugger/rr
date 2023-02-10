@@ -118,7 +118,7 @@ int main(void) {
                           parent_desc.entry_number, &parent_desc));
   test_assert(parent_desc.limit == 2);
 
-  /* Next we're going to verify that these are actually reflected in to the LDT
+  /* Next we're going to verify that these are actually reflected into the LDT
      during execution */
   parent_desc.base_addr = (uintptr_t)&pattern;
   test_assert(0 == ptrace(PTRACE_SET_THREAD_AREA, child,
