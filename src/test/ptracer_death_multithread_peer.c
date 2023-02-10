@@ -6,7 +6,7 @@
    sub-threads.
    The pracer attaches to all the ptracee's threads, then exits.
    We check that all ptracee threads are resumed.
-   Similar to ptracer_detah_multithread, except the ptracer is
+   Similar to ptracer_detach_multithread, except the ptracer is
    not a parent of the ptracee.
 */
 
