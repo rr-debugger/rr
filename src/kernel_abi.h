@@ -70,7 +70,7 @@ struct KernelConstants {
   // These are the same across all architectures. The kernel defines them for
   // all architectures in the uapi headers, but the libc's headers may not.
   // Further, the libc headers may conflict with the kernel headers, so for
-  // simplicitly, we just define everything here:
+  // simplicity, we just define everything here:
   static const int PTRACE_TRACEME = 0;
   static const int PTRACE_PEEKTEXT = 1;
   static const int PTRACE_PEEKDATA = 2;
