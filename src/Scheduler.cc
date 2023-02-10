@@ -244,7 +244,7 @@ bool WaitAggregator::try_wait_exit(RecordTask* t) {
   // or we're not dying at all.
   // Try to differentiate the first two situations by seeing if there is an exit
   // notification ready for us to de-queue, in which case we synthesize an
-  // exit event (but don't actually reap the task, ipnstead leaving that
+  // exit event (but don't actually reap the task, instead leaving that
   // for the generic cleanup code).
   options.consume = false;
   WaitResult result = WaitManager::wait_exit(options);
