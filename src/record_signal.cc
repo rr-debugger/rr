@@ -449,7 +449,7 @@ static void handle_desched_event(RecordTask* t) {
    *  o parent is notified and sees counter value i+1
    *  o parent stops delivery of first signal and disarms
    *    counter
-   *  o second signal dequeued and delivered, notififying parent
+   *  o second signal dequeued and delivered, notifying parent
    *    (counter is disarmed now, so no pseudo-desched possible
    *    here)
    *  o parent notifiedand sees counter value i+1 again
