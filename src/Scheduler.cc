@@ -204,7 +204,7 @@ public:
   WaitAggregator() : did_poll_stops(false) {}
   bool try_wait(RecordTask* t);
   // Return a list of tasks that we should check for unexpected exits.
-  const vector<RecordTask*>& exit_candiates() { return exit_candidates_; }
+  const vector<RecordTask*>& exit_candidates() { return exit_candidates_; }
   static bool try_wait_exit(RecordTask* t);
 private:
   // We defer making an actual wait syscall until we really need to.
@@ -782,7 +782,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     }
 
     next = find_next_runnable_task(current_, wait_aggregator, &result.by_waitpid, INT32_MAX);
-    if (!next && !wait_aggregator.exit_candiates().empty()) {
+    if (!next && !wait_aggregator.exit_candidates().empty()) {
       // We need to check for tasks that have unexpectedly exited.
       // First check if there is any exit status pending. Normally there won't be.
       WaitOptions options;
@@ -795,7 +795,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       WaitResult result = WaitManager::wait_stop_or_exit(options);
       if (result.code == WAIT_OK) {
         // Check which candidate has exited, if any.
-        for (RecordTask* t : wait_aggregator.exit_candiates()) {
+        for (RecordTask* t : wait_aggregator.exit_candidates()) {
           if (WaitAggregator::try_wait_exit(t)) {
             next = t;
             break;
