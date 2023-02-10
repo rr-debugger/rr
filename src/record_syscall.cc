@@ -6914,7 +6914,7 @@ static void rec_process_syscall_arch(RecordTask* t,
   }
 }
 
-/* N.B.: `arch` is the the architecture of the syscall, which may be different
+/* N.B.: `arch` is the architecture of the syscall, which may be different
          from the architecture of the call (e.g. x86_64 may invoke x86 syscalls)
 */
 static void rec_process_syscall_internal(RecordTask* t, SupportedArch arch,
