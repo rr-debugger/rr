@@ -449,7 +449,7 @@ public:
 
   /**
    * Aarch64 has two flags that control single stepping. An EL1 one that
-   * enables singlestep execeptions and an EL0 one in pstate (SPSR_SS). The EL1 bit
+   * enables singlestep exceptions and an EL0 one in pstate (SPSR_SS). The EL1 bit
    * is controlled by PTRACE_SINGLESTEP (it gets turned on upon the first
    * PTRACE_(SYSEMU_)SINGLESTEP and turned off on any other ptrace resume).
    * The EL0 bit controls whether an exception is taken *before* execution
