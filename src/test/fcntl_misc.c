@@ -14,7 +14,7 @@ int main(void) {
   if (ret == -EPERM) {
     // Pipe resource buffer exhausted, e.g. due to
     // /proc/sys/fs/pipe-max-size or /proc/sys/fs/pipe-user-pages-{hard, soft}.
-    atomic_puts("Pipe buffer exausted during F_SETPIPE_SZ. Skipping.");
+    atomic_puts("Pipe buffer exhausted during F_SETPIPE_SZ. Skipping.");
     new_size = page_size;
   } else {
     test_assert(ret == (int)(new_size));
