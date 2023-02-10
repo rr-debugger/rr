@@ -25,7 +25,7 @@ int main(void) {
     for (int i = 0; i < NUM_THREADS; ++i) {
       pthread_create(&threads[i], NULL, do_thread, futex_addr);
     }
-    // Give the thredas a chance to run and block in the futex call
+    // Give the threads a chance to run and block in the futex call
     for (int i = 0; i < 2*NUM_THREADS; ++i) {
       sched_yield();
     }
