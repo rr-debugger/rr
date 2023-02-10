@@ -319,7 +319,7 @@ public:
 
   /* Returns an empty mapping if the tracee died.
    * If map_address is non-null then we must use that address in the tracee,
-   * otherwse we select the address.
+   * otherwise we select the address.
    */
   static KernelMapping create_shared_mmap(
       AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> required_child_addr,
