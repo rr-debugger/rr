@@ -13,7 +13,7 @@
  *
  * This file is compiled into a dso that's PRELOADed in recorded
  * applications.  The dso replaces libc syscall wrappers with our own
- * implementation that saves nondetermistic outparams in a fixed-size
+ * implementation that saves nondeterministic outparams in a fixed-size
  * buffer.  When the buffer is full or the recorded application
  * invokes an un-buffered syscall or receives a signal, we trap to rr
  * and it records the state of the buffer.
