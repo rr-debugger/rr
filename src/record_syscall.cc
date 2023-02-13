@@ -172,12 +172,12 @@ enum ArgMode {
  * and final sizes is used, if both are present.
  */
 struct ParamSize {
-  ParamSize() : incoming_size(size_t(-1)), from_syscall(false) {}
+  ParamSize() : incoming_size(size_t(-1)), from_syscall_multiplier(0) {}
   // Clamp incoming_size to INTPTR_MAX. No system call can read more data
   // than that in practice (to a single output parameter).
   ParamSize(size_t incoming_size)
       : incoming_size(min<size_t>(INTPTR_MAX, incoming_size)),
-        from_syscall(false) {}
+        from_syscall_multiplier(0) {}
   /**
    * p points to a tracee location that is already initialized with a
    * "maximum buffer size" passed in by the tracee, and which will be filled
@@ -208,14 +208,14 @@ struct ParamSize {
    */
   template <typename T> static ParamSize from_syscall_result() {
     ParamSize r;
-    r.from_syscall = true;
+    r.from_syscall_multiplier = 1;
     r.read_size = sizeof(T);
     return r;
   }
   template <typename T>
-  static ParamSize from_syscall_result(size_t incoming_size) {
+  static ParamSize from_syscall_result(size_t incoming_size, uint32_t multiplier = 1) {
     ParamSize r(incoming_size);
-    r.from_syscall = true;
+    r.from_syscall_multiplier = multiplier;
     r.read_size = sizeof(T);
     return r;
   }
@@ -238,7 +238,7 @@ struct ParamSize {
    */
   bool is_same_source(const ParamSize& other) const {
     return ((!mem_ptr.is_null() && other.mem_ptr == mem_ptr) ||
-            (from_syscall && other.from_syscall)) &&
+            (from_syscall_multiplier && other.from_syscall_multiplier)) &&
            (read_size == other.read_size);
   }
   /**
@@ -254,8 +254,9 @@ struct ParamSize {
   remote_ptr<void> mem_ptr;
   /** Size of the value at mem_ptr or in the syscall result register. */
   size_t read_size;
-  /** If true, the size is limited by the value of the syscall result. */
-  bool from_syscall;
+  /** If from_syscall_multiplier > 0, the size is limited by the value of
+   * the syscall result * from_syscall_multiplier. */
+  uint32_t from_syscall_multiplier;
 };
 
 size_t ParamSize::eval(RecordTask* t, size_t already_consumed) const {
@@ -276,8 +277,9 @@ size_t ParamSize::eval(RecordTask* t, size_t already_consumed) const {
     ASSERT(t, already_consumed <= mem_size);
     s = min(s, mem_size - already_consumed);
   }
-  if (from_syscall) {
-    size_t syscall_size = max<ssize_t>(0, t->regs().syscall_result_signed());
+  if (from_syscall_multiplier) {
+    size_t syscall_size = max<ssize_t>(0, t->regs().syscall_result_signed())
+      * from_syscall_multiplier;
     switch (read_size) {
       case 4:
         syscall_size = uint32_t(syscall_size);
@@ -4831,12 +4833,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
      * timeout); */
     case Arch::epoll_wait:
       syscall_state.reg_parameter(
-          2, sizeof(typename Arch::epoll_event) * regs.arg3_signed());
+          2, ParamSize::from_syscall_result<int>(sizeof(typename Arch::epoll_event) * regs.arg3_signed(),
+              sizeof(typename Arch::epoll_event)));
       return ALLOW_SWITCH;
 
     case Arch::epoll_pwait: {
       syscall_state.reg_parameter(
-          2, sizeof(typename Arch::epoll_event) * regs.arg3_signed());
+          2, ParamSize::from_syscall_result<int>(sizeof(typename Arch::epoll_event) * regs.arg3_signed(),
+              sizeof(typename Arch::epoll_event)));
       t->invalidate_sigmask();
       return ALLOW_SWITCH;
     }

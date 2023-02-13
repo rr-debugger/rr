@@ -928,6 +928,7 @@ set(BASIC_TESTS
   epoll_create
   epoll_create1
   epoll_edge
+  epoll_many
   epoll_pwait_eintr_sigmask
   eventfd
   exec_flags
