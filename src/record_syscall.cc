@@ -5697,7 +5697,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
         ASSERT(t, r == sizeof(pfn));
         // If the page is physically present (bit 63) or in swap (bit 62)
         // then it was modified by the kernel and we need to record it.
-        if (pfn & ((1UL << 63) | (1UL << 62))) {
+        if (pfn & ((1ULL << 63) | (1ULL << 62))) {
           pages_to_record.push_back(ptr);
         }
         ptr += page_size();
