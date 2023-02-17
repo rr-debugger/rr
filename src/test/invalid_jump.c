@@ -7,9 +7,13 @@ static void sighandler(int sig) {
   _exit(0);
 }
 
-char invalid_jump_here[] = { 0x00, 0x00, 0x00, 0x00, 0x00 };
-
 int main(void) {
+  char* invalid_jump_here;
+  size_t page_size = sysconf(_SC_PAGESIZE);
+
+  invalid_jump_here = (char*)mmap(NULL, page_size, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  test_assert(invalid_jump_here != MAP_FAILED);
+
   // Just for clean exit to not worry people running the test manually ;).
   signal(SIGSEGV, sighandler);
   ((void (*)(void))invalid_jump_here)();
