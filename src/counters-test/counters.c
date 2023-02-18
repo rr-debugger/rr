@@ -243,6 +243,7 @@ static CpuMicroarch compute_cpu_microarch(void) {
     case 0x50670:
       return IntelSilvermont;
     case 0x506f0:
+    case 0x506c0:
       return IntelGoldmont;
     case 0x706e0:
     case 0x606a0:
