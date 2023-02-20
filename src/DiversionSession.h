@@ -27,7 +27,7 @@ class ReplaySession;
  * feature.  A diversion is created for the call frame, then discarded
  * when the call finishes (loosely speaking).
  */
-class DiversionSession : public Session {
+class DiversionSession final : public Session {
 public:
   DiversionSession(int cpu_binding);
 

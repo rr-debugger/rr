@@ -154,7 +154,7 @@ private:
 };
 
 /** Encapsulates additional session state related to replay. */
-class ReplaySession : public Session {
+class ReplaySession final : public Session {
 public:
   typedef std::shared_ptr<ReplaySession> shr_ptr;
 

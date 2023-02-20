@@ -63,7 +63,7 @@ enum SignalDisposition { SIGNAL_DEFAULT, SIGNAL_IGNORE, SIGNAL_HANDLER };
  * Every Task owned by a RecordSession is a RecordTask. Functionality that
  * only applies during recording belongs here.
  */
-class RecordTask : public Task {
+class RecordTask final : public Task {
 public:
   RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
              SupportedArch a);

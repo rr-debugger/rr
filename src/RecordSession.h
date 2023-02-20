@@ -51,7 +51,7 @@ struct TraceUuid {
 };
 
 /** Encapsulates additional session state related to recording. */
-class RecordSession : public Session {
+class RecordSession final : public Session {
 public:
   typedef std::shared_ptr<RecordSession> shr_ptr;
 
