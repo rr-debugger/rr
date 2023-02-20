@@ -16,7 +16,7 @@ class RecordTask;
 class ReplayTask;
 class Task;
 
-class FdTable : public HasTaskSet {
+class FdTable final : public HasTaskSet {
 public:
   typedef std::shared_ptr<FdTable> shr_ptr;
 
