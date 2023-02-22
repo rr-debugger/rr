@@ -1118,7 +1118,6 @@ static void __attribute__((constructor)) init_process(void) {
  * See |sys_clock_gettime()| for a simple example of how this helper
  * should be used to buffer outparam data.
  */
-
 static void* prep_syscall(void) {
   /* We don't need to worry about a race between testing
    * |locked| and setting it here. rr recording is responsible
@@ -3675,15 +3674,17 @@ static long sys_set_robust_list(struct syscall_info* call) {
   int syscallno = SYS_set_robust_list;
   void* head = (void*)call->args[0];
   size_t len = call->args[1];
-
-  void* ptr = prep_syscall();
   long ret;
 
   assert(syscallno == call->no);
 
   /* Avoid len values we don't support via our buffering mechanism */
-  if (len == 0 || len >= UINT32_MAX ||
-      !start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+  if (len == 0 || len >= UINT32_MAX) {
+    return traced_raw_syscall(call);
+  }
+
+  void* ptr = prep_syscall();
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
 
@@ -3703,15 +3704,17 @@ static long sys_rseq(struct syscall_info* call) {
   int flags = call->args[2];
   uint32_t sig = call->args[3];
 
-  void* ptr = prep_syscall();
-
   assert(syscallno == call->no);
 
+  if (flags || ((uintptr_t)rseq & 31) || rseq_len != sizeof(*rseq) ||
+      thread_locals->rseq_called || globals.cpu_binding < 0) {
+    return traced_raw_syscall(call);
+  }
+
+  void* ptr = prep_syscall();
   /* Allow buffering only for the simplest case: setting up the
      initial rseq, all parameters OK and CPU binding in place. */
-  if (flags || ((uintptr_t)rseq & 31) || rseq_len != sizeof(*rseq) ||
-      thread_locals->rseq_called || globals.cpu_binding < 0 ||
-      !start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
 

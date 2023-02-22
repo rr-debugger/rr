@@ -106,6 +106,11 @@ static int main_child(void) {
 
   child = fork();
   if (!child) {
+    /* Issue invalid rseq call to make sure that doesn't break syscall buffering */
+    ret = syscall(RR_rseq, rs_ptr, sizeof(*rs_ptr), 0xffffffff, RSEQ_SIG);
+    test_assert(ret == -1);
+    test_assert(errno == EINVAL);
+
     struct timeval tv;
     while (!*stop_flag) {
       gettimeofday(&tv, NULL);
