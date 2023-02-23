@@ -6095,9 +6095,15 @@ static string extra_expected_errno_info(RecordTask* t,
         case Arch::fcntl64:
           ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
-        case Arch::prctl:
-          ss << "; unknown prctl(" << HEX((int)t->regs().arg1_signed()) << ")";
+        case Arch::prctl: {
+          int request = (int)t->regs().arg1_signed();
+          if (request == PR_SET_MM) {
+            ss << "; unknown prctl(PR_SET_MM, " << HEX((int)t->regs().arg2_signed()) << ")";
+          } else {
+            ss << "; unknown prctl(" << HEX(request) << ")";
+          }
           break;
+        }
         case Arch::arch_prctl:
           ss << "; unknown arch_prctl(" << HEX((int)t->regs().arg1_signed())
              << ")";
