@@ -114,11 +114,12 @@ set(RR_FLAGS ${RR_FLAGS_RELEASE})
 # Now override for build type.
 string(TOLOWER ${CMAKE_BUILD_TYPE} LOWERCASE_CMAKE_BUILD_TYPE)
 if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "debug")
-  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} -O2 -Werror")
+  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} -O3 -Werror")
   set(BROTLI_COMPILE_FLAGS "${RR_FLAGS_RELEASE} -O2")
   set(RR_TEST_FLAGS "${RR_TEST_FLAGS} -Werror")
   set(RR_FLAGS "${RR_FLAGS_DEBUG} -g3 -Werror")
-elseif(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
+elseif(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release" OR
+       LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "relwithdebinfo")
   # CMake itself will add optimization flags
   set(RR_FLAGS "${RR_FLAGS_RELEASE} -g3 -flto")
 endif()
@@ -139,6 +140,22 @@ endif()
 if (CMAKE_ASM_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -fno-integrated-as")
 endif()
+
+string(REPLACE "-O2" "-O3" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+string(REPLACE "-O2" "-O3" CMAKE_ASM_FLAGS_RELWITHDEBINFO "${CMAKE_ASM_FLAGS_RELWITHDEBINFO}")
+
+message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+message(STATUS "LINKER_FLAGS=${LINKER_FLAGS}")
+message(STATUS "PRELOAD_COMPILE_FLAGS=${PRELOAD_COMPILE_FLAGS}")
+message(STATUS "CMAKE_ASM_FLAGS_DEBUG=${CMAKE_ASM_FLAGS_DEBUG}")
+message(STATUS "CMAKE_ASM_FLAGS_RELEASE=${CMAKE_ASM_FLAGS_RELEASE}")
+message(STATUS "CMAKE_ASM_FLAGS_RELWITHDEBINFO=${CMAKE_ASM_FLAGS_RELWITHDEBINFO}")
+message(STATUS "CMAKE_C_FLAGS_DEBUG=${CMAKE_C_FLAGS_DEBUG}")
+message(STATUS "CMAKE_C_FLAGS_RELEASE=${CMAKE_C_FLAGS_RELEASE}")
+message(STATUS "CMAKE_C_FLAGS_RELWITHDEBINFO=${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+message(STATUS "CMAKE_CXX_FLAGS_DEBUG=${CMAKE_CXX_FLAGS_DEBUG}")
+message(STATUS "CMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}")
+message(STATUS "CMAKE_CXX_FLAGS_RELWITHDEBINFO=${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
 option(force32bit "Force a 32-bit rr build, rather than both 64 and 32-bit. rr will only be able to record and replay 32-bit processes.")
 option(disable32bit "On a 64-bit platform, avoid requiring a 32-bit cross-compilation toolchain by not building 32-bit components. rr will be able to record 32-bit processes but not replay them.")
@@ -637,7 +654,8 @@ if(strip)
 endif()
 
 # Add -flto option to linking step if release
-if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
+if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release" OR
+   LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "relwithdebinfo")
   CHECK_C_COMPILER_FLAG("-flto=auto" SUPPORTS_LTO_AUTO)
   if(SUPPORTS_LTO_AUTO)
     set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto=auto")
