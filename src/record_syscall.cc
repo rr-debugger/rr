@@ -4668,6 +4668,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
               syscall_state.reg_parameter(3, sizeof(unsigned int));
               break;
 
+            case PR_SET_MM_ARG_START:
+            case PR_SET_MM_ARG_END:
+              break;
+
             default:
               syscall_state.expect_errno = EINVAL;
               break;
