@@ -62,6 +62,14 @@ int main(void) {
   test_assert(0 == prctl(PR_SET_MM, PR_SET_MM_MAP_SIZE, &size, 0, 0));
   test_assert(size != 0);
 
+  // PR_SET_MM_ARG_START needs CAP_SYS_RESOURCE
+  int ret = prctl(PR_SET_MM, PR_SET_MM_ARG_START, setname, 0, 0);
+  test_assert(0 == ret || (-1 == ret && errno == EPERM));
+
+  // PR_SET_MM_ARG_END needs CAP_SYS_RESOURCE
+  ret = prctl(PR_SET_MM, PR_SET_MM_ARG_END, setname + sizeof(setname), 0, 0);
+  test_assert(0 == ret || (-1 == ret && errno == EPERM));
+
   // On a kernel without PR_SET_VMA, this will return EINVAL.
   // On a kernel with it, it should return EBADF, because
   // the rr page is not an anonymous mapping.
