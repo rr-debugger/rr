@@ -27,7 +27,24 @@ int main(void) {
     dummy += (dummy + i) % 9735;
   }
 
+  /* Do a syscall() call to avoid us going through lazy linking code
+     on the way to the sigprocmask below */
+  syscall(SYS_sched_yield);
+
   signals_unblocked = 1;
+#if defined(__i386__) || defined(__x86_64__)
+  char xmm_buf[16] =
+    { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  asm ("movdqu %0,%%xmm0\n\t"
+       "movdqu %0,%%xmm1\n\t"
+       "movdqu %0,%%xmm2\n\t"
+       "movdqu %0,%%xmm3\n\t"
+       "movdqu %0,%%xmm4\n\t"
+       "movdqu %0,%%xmm5\n\t"
+       "movdqu %0,%%xmm6\n\t"
+       "movdqu %0,%%xmm7\n\t" : : "m"(xmm_buf)
+       : "xmm0", "xmm1", "xmm2", "xmm3", "xmm4" ,"xmm5", "xmm6", "xmm7");
+#endif
 /* Some systems only have rt_sigprocmask. */
 #if defined(SYS_sigprocmask)
   syscall(SYS_sigprocmask, SIG_SETMASK, &oldmask, (void*)0);
