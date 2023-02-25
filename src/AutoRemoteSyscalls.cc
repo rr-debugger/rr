@@ -549,7 +549,8 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     sizeof(msg), &msg, &ok);
 
   if (!ok) {
-    ASSERT(remote.task(), errno == ESRCH);
+    ASSERT(remote.task(), errno == ESRCH) << "Error writing " << remote_buf.get()
+        << " in " << remote.task()->tid;
     LOG(debug) << "Failed to write memory";
     return -ESRCH;
   }
