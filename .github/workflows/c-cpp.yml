@@ -1,0 +1,42 @@
+name: C/C++ CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      commits:
+        description: git range to include
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: dependencies
+      run: |
+        sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive sudo apt-get -y install \
+          ccache cmake g++-multilib gdb \
+          manpages-dev \
+          ninja-build capnproto libcapnp-dev
+    - name: cmake
+      run: |
+        CC=clang CXX=clang++ cmake -G Ninja 
+        cmake --build .
+    - name: cherry-picks
+      if: github.event.inputs.commits
+      run: |
+        git config --global user.email "check-spelling-bot@users.noreply.github.com"
+        git config --global user.name "check-spelling-bot"
+
+        for commit in $(
+          git log --oneline ${{github.event.inputs.commits}} -- |perl -pe 's/\s.*//'|tac
+        ); do
+          git cherry-pick $commit || exit 1
+          cmake --build . || exit 2
+        done
