@@ -312,7 +312,7 @@ prof = InvalidSyscall(x86=44)
 #  int brk(void *addr)
 #
 # brk() and sbrk() change the location of the program break, which
-# defines the end of the process's data segment (i.e., theprogram
+# defines the end of the process's data segment (i.e., the program
 # break is the first location after the end of the uninitialized data
 # segment).  Increasing the program break has the effect of
 # allocating memory to the process; decreasing the break deallocates
