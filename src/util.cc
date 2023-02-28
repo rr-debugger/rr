@@ -1739,7 +1739,7 @@ void notifying_abort() {
 void dump_rr_stack() {
   static const char msg[] = "=== Start rr backtrace:\n";
   write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-#if EXECINFO_BACKTRACE
+#ifdef EXECINFO_BACKTRACE
   void* buffer[1024];
   int count = backtrace(buffer, 1024);
   backtrace_symbols_fd(buffer, count, STDERR_FILENO);
