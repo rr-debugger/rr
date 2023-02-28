@@ -337,7 +337,9 @@ endif()
 list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 
 check_symbol_exists(backtrace "execinfo.h" EXECINFO_BACKTRACE)
-if(NOT EXECINFO_BACKTRACE)
+if(EXECINFO_BACKTRACE)
+  add_compile_definitions(EXECINFO_BACKTRACE)
+else()
   message(AUTHOR_WARNING "backtrace(3) not present in execinfo.h. Automatic backtraces for failures in rr are disabled.")
 endif()
 
