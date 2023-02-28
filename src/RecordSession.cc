@@ -2147,12 +2147,12 @@ void strip_outer_ld_preload(vector<string>& env) {
 static const MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
                                      remote_ptr<void>((uintptr_t)0x10007fff8000LL));
 static const MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
-                                                 remote_ptr<void>((uintptr_t)0x640000000000LL));
+                                                 remote_ptr<void>((uintptr_t)0x640000002000LL));
 
 // See https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/tsan/rtl/tsan_platform_posix.cpp
 static const MemoryRange tsan_shadow(remote_ptr<void>((uintptr_t)0x008000000000LL),
                                      remote_ptr<void>((uintptr_t)0x550000000000LL));
-// The memory area 0x7b0000000000-0x7c0000000000 is reserved for TSAN's
+// The memory area 0x7b0000000000-0x7c0000002000 is reserved for TSAN's
 // custom heap allocator --- applications end up using it, but *we* can't use
 // it.
 static const MemoryRange tsan_exclude(remote_ptr<void>((uintptr_t)0x568000000000LL),
