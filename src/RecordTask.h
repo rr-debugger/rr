@@ -81,6 +81,8 @@ public:
                                      int /*sig*/) override;
   virtual void did_wait() override;
 
+  bool enable_chaos_memory_allocations() const;
+
   std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
   bool is_at_syscallbuf_final_instruction_breakpoint();

@@ -466,7 +466,8 @@ KernelMapping Session::create_shared_mmap(
 
   remote_ptr<void> child_map_addr = required_child_addr;
   if (child_map_addr.is_null()) {
-    if (t->session().is_recording() && t->session().as_record()->enable_chaos()) {
+    if (t->session().is_recording() &&
+        static_cast<RecordTask*>(t)->enable_chaos_memory_allocations()) {
       child_map_addr = t->vm()->chaos_mode_find_free_memory(static_cast<RecordTask*>(t),
           size, nullptr);
     } else {

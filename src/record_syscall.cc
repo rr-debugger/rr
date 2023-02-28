@@ -3223,7 +3223,7 @@ static void prepare_mmap_register_params(RecordTask* t) {
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
 #endif
-  if (t->session().enable_chaos() && !(r.arg4_signed() & mask_flag)) {
+  if (t->enable_chaos_memory_allocations() && !(r.arg4_signed() & mask_flag)) {
     // Not MAP_FIXED. Randomize the allocation address.
     remote_ptr<void> hint = floor_page_size(r.arg1());
     size_t orig_len = ceil_page_size(r.arg1() + r.arg2()) - hint.as_int();
