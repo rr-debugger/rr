@@ -53,7 +53,7 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 // We want verify that the types have the same size as their
 // counterparts in the system header. To avoid having to include
 // all system headers here, we instead make the verification macros
-// a no-op unless inlcuded from kernel_abi.cc.
+// a no-op unless included from kernel_abi.cc.
 #ifndef RR_VERIFY_TYPE
 #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_) // no-op
 #define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)    // no-op
@@ -70,7 +70,7 @@ struct KernelConstants {
   // These are the same across all architectures. The kernel defines them for
   // all architectures in the uapi headers, but the libc's headers may not.
   // Further, the libc headers may conflict with the kernel headers, so for
-  // simplicitly, we just define everything here:
+  // simplicity, we just define everything here:
   static const int PTRACE_TRACEME = 0;
   static const int PTRACE_PEEKTEXT = 1;
   static const int PTRACE_PEEKDATA = 2;

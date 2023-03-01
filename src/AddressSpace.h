@@ -48,7 +48,7 @@ public:
   /**
    * These are the flags we track internally to distinguish
    * between adjacent segments.  For example, the kernel
-   * considers a NORESERVE anonynmous mapping that's adjacent to
+   * considers a NORESERVE anonymous mapping that's adjacent to
    * a non-NORESERVE mapping distinct, even if all other
    * metadata are the same.  See |is_adjacent_mapping()|.
    */
@@ -1086,9 +1086,9 @@ private:
   /* Path of the real executable image this address space was
    * exec()'d with. */
   std::string exe;
-  /* Path of the intepreter, if any, of exe. */
+  /* Path of the interpreter, if any, of exe. */
   std::string interp_name_;
-  /* Base address of the interpeter (might be null!) */
+  /* Base address of the interpreter (might be null!) */
   remote_ptr<void> interp_base_;
   /* Pid of first task for this address space */
   pid_t leader_tid_;
@@ -1164,7 +1164,7 @@ private:
 
   /**
    * Ensure that the cached mapping of |t| matches /proc/maps,
-   * using adjancent-map-merging heuristics that are as lenient
+   * using adjacent-map-merging heuristics that are as lenient
    * as possible given the data available from /proc/maps.
    */
   static void check_segment_iterator(void* vasp, Task* t,

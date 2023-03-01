@@ -76,7 +76,7 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
 #elif defined(__aarch64__)
   test_assert(regs.regs[0] == 0);
 #else
-#error unuspported architecture
+#error unsupported architecture
 #endif
 }
 

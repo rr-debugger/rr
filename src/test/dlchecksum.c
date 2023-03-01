@@ -17,7 +17,7 @@ static int dl_iterate_phdr_cb(struct dl_phdr_info *info, size_t size, void *crcp
     const ElfW(Phdr) *phdr = &info->dlpi_phdr[i];
     if ((phdr->p_type != PT_LOAD) || (phdr->p_memsz == 0))
       continue;
-    /* This specifically exludes the rr_page code section, which differs between record and replay */
+    /* This specifically excludes the rr_page code section, which differs between record and replay */
     if (!(phdr->p_flags & PF_W))
       continue;
     *crc = crc32c_sw(*crc, (char *)(info->dlpi_addr + phdr->p_vaddr), phdr->p_memsz);

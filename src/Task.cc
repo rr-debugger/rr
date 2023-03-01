@@ -138,7 +138,7 @@ void Task::wait_exit() {
    * thread, and this is the group leader, then this task may lose its pid
    * as soon as it enters the zombie state, causing `tid` to refer to the
    * newly-execed thread and us getting a PTRACE_EVENT_EXEC instead. To account
-   * for this we add `| WNOWAIT` to prevent dequeing the event and simply take
+   * for this we add `| WNOWAIT` to prevent dequeuing the event and simply take
    * it as an indication that the task has execed.
    */
   WaitOptions options(tid);
@@ -1380,7 +1380,7 @@ void Task::work_around_KNL_string_singlestep_bug() {
   if (cx > cutoff && at_x86_string_instruction(this)) {
     /* KNL has a quirk where single-stepping a string instruction can step up
       to 64 iterations. Work around this by fudging registers to force the
-      processor to execute one iteration and one interation only. */
+      processor to execute one iteration and one iteration only. */
     LOG(debug) << "Working around KNL single-step hardware bug (cx=" << cx
               << ")";
     if (cx > cutoff) {
@@ -2017,7 +2017,7 @@ void Task::did_waitpid(WaitStatus status) {
   // When we issue PTRACE_INTERRUPT, we this set this counter to 2, and here
   // we decrement it on every stop such that while this counter is positive,
   // any group-stop could be one induced by PTRACE_INTERRUPT
-  bool siginfo_overriden = false;
+  bool siginfo_overridden = false;
   if (account_for_potential_ptrace_interrupt_stop(status)) {
     // Assume this was PTRACE_INTERRUPT and thus treat this as
     // TIME_SLICE_SIGNAL instead.
@@ -2026,10 +2026,10 @@ void Task::did_waitpid(WaitStatus status) {
     pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
     pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
     pending_siginfo.si_code = POLL_IN;
-    siginfo_overriden = true;
+    siginfo_overridden = true;
   }
 
-  if (!siginfo_overriden && status.stop_sig()) {
+  if (!siginfo_overridden && status.stop_sig()) {
     if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
       LOG(debug) << "Unexpected process death getting siginfo for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);

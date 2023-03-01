@@ -565,7 +565,7 @@ public:
   std::string read_c_str(remote_ptr<char> child_addr, bool *ok = nullptr);
 
   /**
-   * Resume execution |how|, deliverying |sig| if nonzero.
+   * Resume execution |how|, delivering |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
    * request a tick period of tick_period. The default value
    * of tick_period is 0, which means effectively infinite.
@@ -1227,7 +1227,7 @@ protected:
   remote_code_ptr address_of_last_execution_resume;
   ResumeRequest how_last_execution_resumed;
   // In certain circumstances, due to hardware bugs, we need to fudge the
-  // cx register. If so, we record the orginal value here. See comments in
+  // cx register. If so, we record the original value here. See comments in
   // Task.cc
   uint64_t last_resume_orig_cx;
   // The instruction type we're singlestepping through.

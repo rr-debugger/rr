@@ -156,7 +156,7 @@ export PATH="${OBJDIR}/bin:${PATH}"
 
 # Resource path is normally the same as the build directory, however, it is
 # slightly different when using the installable testsuite. The installable
-# testsuite will look for resources under DESTDIR/CMAKE_INSATALL_PREFIX. We
+# testsuite will look for resources under DESTDIR/CMAKE_INSTALL_PREFIX. We
 # can detect if it's the installable testsuite being run by checking if the
 # rr binary exists in the build directory.
 if [[ -f "$OBJDIR/bin/rr" ]]; then
@@ -457,7 +457,7 @@ function count_events {
     # The |simple| test is just about the simplest possible C program,
     # and has around 180 events (when recorded on a particular
     # developer's machine).  If we count a number of events
-    # significalty less than that, almost certainly something has gone
+    # significantly less than that, almost certainly something has gone
     # wrong.
     if [ "$events" -le 150 ]; then
         failed ": Recording had too few events.  Is |rr dump -r| broken?"

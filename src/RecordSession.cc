@@ -355,7 +355,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
   *did_enter_syscall = false;
 
   // Special case: If the tracee issues a vsyscall, we will get a seccomp trap,
-  // but no syscall traps whatsover. In particular, we wouldn't see it during
+  // but no syscall traps whatsoever. In particular, we wouldn't see it during
   // replay either. We try to monkeypatch the caller on the assumption that known
   // callers of this (deprecated) interface all follow a common pattern. If we
   // can't patch the caller, this is a fatal error, since the recording will
@@ -1720,7 +1720,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // Nondeterministic signals were already filtered out.
         ASSERT(t, is_deterministic);
         // Usually, the kernel removes the killable-protection from an init process
-        // when a determinisic fatal signal gets executed, but (due to what is
+        // when a deterministic fatal signal gets executed, but (due to what is
         // arguably a bug) when a ptracer is attached, this does not happen.
         // If we try to inject it here, the kernel will just ignore it,
         // and we'll go around again. As a hack, we detach here, in the

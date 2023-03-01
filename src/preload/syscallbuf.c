@@ -13,7 +13,7 @@
  *
  * This file is compiled into a dso that's PRELOADed in recorded
  * applications.  The dso replaces libc syscall wrappers with our own
- * implementation that saves nondetermistic outparams in a fixed-size
+ * implementation that saves nondeterministic outparams in a fixed-size
  * buffer.  When the buffer is full or the recorded application
  * invokes an un-buffered syscall or receives a signal, we trap to rr
  * and it records the state of the buffer.
@@ -716,7 +716,7 @@ static void init_thread(void) {
 // so declared this prototype manually
 extern const char* getenv(const char*);
 
-// getauxval is from glibc 2.16 (2012) - don't asssume it exists.
+// getauxval is from glibc 2.16 (2012) - don't assume it exists.
 unsigned long getauxval(unsigned long type) __attribute__((weak));
 #ifndef AT_SYSINFO_EHDR
 #define AT_SYSINFO_EHDR 33
@@ -2506,7 +2506,7 @@ static long sys_openat(struct syscall_info* call) {
 #if defined(SYS_poll) || defined(SYS_ppoll)
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
- * Make it visiblity-"protected" so that our local definition binds to it
+ * Make it visibility-"protected" so that our local definition binds to it
  * directly and doesn't go through a PLT thunk (which would mean temporarily
  * leaving syscallbuf code).
  */

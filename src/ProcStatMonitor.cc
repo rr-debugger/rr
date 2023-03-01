@@ -39,7 +39,7 @@ ProcStatMonitor::ProcStatMonitor(Task* t, const string&) {
   if (t->session().is_replaying())
     return;
   // Grab all the data now and buffer it for later access. This matches what the
-  // kernel does (execpt that it does the buffering on first access) and is
+  // kernel does (except that it does the buffering on first access) and is
   // required to give userspace code a consistent view of the file.
   std::ifstream proc_stat("/proc/stat");
   if (!proc_stat.is_open()) {

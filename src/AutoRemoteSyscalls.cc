@@ -577,7 +577,7 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
 
 // Try to read a single-character message from `sock`. Will collect
 // up to MAX_FDS_READ fds in an SCM_RIGHTS control message and return those
-// fds. Returns an empty vector if reading the message failes.
+// fds. Returns an empty vector if reading the message fails.
 static vector<ScopedFd> maybe_receive_fds(ScopedFd& sock, bool blocking = true) {
   vector<ScopedFd> ret;
   struct msghdr msg;

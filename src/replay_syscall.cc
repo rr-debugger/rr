@@ -249,7 +249,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   t->set_regs(r);
   t->canonicalize_regs(trace_frame.event().Syscall().arch());
 
-  // Dig the recorded tid out out of the trace. The tid value returned in
+  // Dig the recorded tid out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
   // so we can't use it directly.
   TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::CLONE);
@@ -403,7 +403,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
       // (up to) two kms that have different fsnames but do each have an
       // executable segment, as well as the km that contains the ip. This is
       // slightly complicated, but should handle the case where either file has
-      // more than one exectuable segment.
+      // more than one executable segment.
       const string& file_name = km.fsname();
       if ((km.prot() & PROT_EXEC) && file_name.size() > 0 &&
           // Make sure to exclude [vdso] (and similar) and executable stacks.
@@ -1185,7 +1185,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
           break;
         /* These are not technically required to be passed through, but the
            syscallbuf code does, so if we don't here, we risk fracturing
-           otherwise coelescable memory regions. Asan in particular triggers
+           otherwise coalescable memory regions. Asan in particular triggers
            a pathological case here that quickly exhausts the total mapping
            limit by fracturing its shadow region */
         case MADV_NORMAL:

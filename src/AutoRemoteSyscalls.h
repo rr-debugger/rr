@@ -132,7 +132,7 @@ public:
    * This is usually called automatically by the destructor;
    * don't call it directly unless you really know what you'd
    * doing.  *ESPECIALLY* don't call this on a |t| other than
-   * the one passed to the contructor, unless you really know
+   * the one passed to the constructor, unless you really know
    * what you're doing.
    */
   void restore_state_to(Task* t);

@@ -331,7 +331,7 @@ public:
   bool at_may_restart_syscall() const;
   /**
    * Return true iff this is at an execution state where
-   * a syscall that modifes isgnals was interrupted but will not
+   * a syscall that modifies signals was interrupted but will not
    * be automatically restarted.
    **/
   bool at_interrupted_non_restartable_signal_modifying_syscall() const;
@@ -586,7 +586,7 @@ public:
   bool is_container_init() const { return tg->tgid_own_namespace == 1; }
 
   /**
-   * Linux requires the invariant that that all members of a thread group
+   * Linux requires the invariant that all members of a thread group
    * are reaped before the thread group leader. This determines whether or
    * not we're allowed to attempt reaping this thread or whether doing so
    * risks deadlock.

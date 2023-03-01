@@ -102,14 +102,14 @@ public:
   virtual bool emulate_ioctl(RecordTask*, uint64_t*) { return false; }
 
   /**
-   * Return true if the fcntl should should be fully emulated. If so the
+   * Return true if the fcntl should be fully emulated. If so the
    * result is stored in the last parameter.
    * Only called during recording.
    */
   virtual bool emulate_fcntl(RecordTask*, uint64_t*) { return false; }
 
   /**
-   * Return true if the read should should be fully emulated. If so the
+   * Return true if the read should be fully emulated. If so the
    * result is stored in the last parameter. The emulation should write to the
    * task's memory ranges.
    * Only called during recording.

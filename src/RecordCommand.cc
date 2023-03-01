@@ -392,8 +392,8 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     }
     case 11: {
       const uint8_t SUM_GROUP_LENS[5] = { 8, 12, 16, 20, 32 };
-      /* Parse UUIDs from string form optionally with hypens */
-      uint8_t digit = 0; // This counts only hex digits (i.e. not hypens)
+      /* Parse UUIDs from string form optionally with hyphens */
+      uint8_t digit = 0; // This counts only hex digits (i.e. not hyphens)
       uint8_t group = 0;
       uint8_t acc = 0;
       unique_ptr<TraceUuid> buf(new TraceUuid);

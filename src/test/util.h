@@ -254,7 +254,7 @@ inline static size_t ceil_page_size(size_t size) {
  * an mrs instruction, which will cause SIGILL if the system
  * register used isn't accessible in EL0. Which register we
  * use doesn't matter here, but we should one that is neither
- * unsused and might do something else in the future, nor one
+ * unused and might do something else in the future, nor one
  * that the kernel or a hypervisor might emulate in the future.
  * Here we use `S3_6_C15_C8_0` which is a microcode patching
  * register and only available in EL3. Accessing it here

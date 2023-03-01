@@ -139,7 +139,7 @@ struct DirExistsCache {
 
 // Resolve a file name relative to a compilation directory and relative directory.
 // file_name cannot be null, but the others can be.
-// Takes into accout the original file name as follows:
+// Takes into account the original file name as follows:
 // -- if comp_dir, rel_dir or file_name are absolute, or original_file_name is NULL,
 // then ignore original_file_name.
 // The result is just the result of combining comp_dir/rel_dir/file_name.
@@ -149,7 +149,7 @@ struct DirExistsCache {
 // of original_file_name, and if we find a file there, we return that name.
 // original_file_name must be absolute if not NULL.
 //
-// If non-empty, `comp_dir_substution` should replace `original_comp_dir`
+// If non-empty, `comp_dir_substitution` should replace `original_comp_dir`
 // in `rel_dir` if `original_comp_dir` is a prefix of `rel_dir`.
 // Always returns an absolute file name.
 // Returns true if we got a result, otherwise false.

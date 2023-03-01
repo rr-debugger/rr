@@ -15,7 +15,7 @@ int main(void) {
   test_assert(0 == pipe(child_to_parent_fds));
 
   if (0 == (child = fork())) {
-    // Give the Monekeypatcher a chance to patch both the
+    // Give the Monkeypatcher a chance to patch both the
     // read and write syscalls
     test_assert(1 == read(parent_to_child_fds[0], &ch, 1));
     test_assert(1 == write(child_to_parent_fds[1], "x", 1));

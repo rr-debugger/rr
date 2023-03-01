@@ -779,7 +779,7 @@ void ExtraRegisters::reset() {
       * set in order to get the kernel to properly update the PKRU register
       * value. If this is not set, it has been observed that the PKRU register
       * may occasionally contain "stale" values, particularly after involuntary
-      * context swtiches.
+      * context switches.
       * Avoid this issue by setting the bit if the feature is supported by the
       * CPU.
       */

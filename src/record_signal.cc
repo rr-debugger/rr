@@ -449,7 +449,7 @@ static void handle_desched_event(RecordTask* t) {
    *  o parent is notified and sees counter value i+1
    *  o parent stops delivery of first signal and disarms
    *    counter
-   *  o second signal dequeued and delivered, notififying parent
+   *  o second signal dequeued and delivered, notifying parent
    *    (counter is disarmed now, so no pseudo-desched possible
    *    here)
    *  o parent notifiedand sees counter value i+1 again
@@ -479,7 +479,7 @@ static void handle_desched_event(RecordTask* t) {
       // Untraced syscall, we may not have set original_syscallno for this on aarch64.
       syscallno = t->regs().syscallno();
     } else {
-      // On x86, syscall no is overwriten by return value.
+      // On x86, syscall no is overwritten by return value.
       ASSERT(t, is_x86ish(t->arch()));
       syscallno = t->regs().original_syscallno();
     }

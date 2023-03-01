@@ -58,7 +58,7 @@ int main(void) {
     test_assert(0 && "Should not reach here");
   }
 
-  // Test redzone integrity in a singal handler during an interrupted blocking
+  // Test redzone integrity in a signal handler during an interrupted blocking
   // syscall.
   struct sigaction sact;
   sigemptyset(&sact.sa_mask);

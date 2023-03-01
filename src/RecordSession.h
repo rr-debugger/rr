@@ -179,7 +179,7 @@ public:
 
   RecordTask* find_task(pid_t rec_tid) const;
   RecordTask* find_task(const TaskUid& tuid) const;
-  RecordTask* find_detached_proxy_task(pid_t proxt_tid) const;
+  RecordTask* find_detached_proxy_task(pid_t proxy_tid) const;
 
   void on_proxy_detach(RecordTask *t, pid_t new_tid);
 

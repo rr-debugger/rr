@@ -312,7 +312,7 @@ prof = InvalidSyscall(x86=44)
 #  int brk(void *addr)
 #
 # brk() and sbrk() change the location of the program break, which
-# defines the end of the process's data segment (i.e., theprogram
+# defines the end of the process's data segment (i.e., the program
 # break is the first location after the end of the uninitialized data
 # segment).  Increasing the program break has the effect of
 # allocating memory to the process; decreasing the break deallocates
@@ -1341,7 +1341,7 @@ clock_nanosleep = IrregularEmulatedSyscall(x86=267, x64=230, generic=115)
 # approximately as follows...
 #
 # FIXME: we use arg3() here, although according to man pages this system
-# call has only 2 paramaters. However, strace tells another story...
+# call has only 2 parameters. However, strace tells another story...
 statfs64 = EmulatedSyscall(x86=268, arg3="struct Arch::statfs64")
 fstatfs64 = EmulatedSyscall(x86=269, arg3="struct Arch::statfs64")
 

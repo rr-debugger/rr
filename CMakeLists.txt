@@ -101,7 +101,7 @@ endif()
 set(RR_FLAGS_DEBUG "-Wall -Wextra -DDEBUG -UNDEBUG")
 set(RR_FLAGS_RELEASE "-Wall -Wextra -UDEBUG -DNDEBUG")
 
-# The folowing settings are the defaults for the OTHER build type.
+# The following settings are the defaults for the OTHER build type.
 # Flags used to build the preload library. MUST have debuginfo enabled. SHOULD be optimized.
 set(PRELOAD_COMPILE_FLAGS "${RR_FLAGS_RELEASE} -fno-stack-protector -g3 -U_FORTIFY_SOURCE")
 # Flags used to build Brotli. SHOULD be optimized. MUST NOT error on warnings.
