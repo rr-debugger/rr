@@ -1,6 +1,6 @@
 # *-* Mode: cmake; *-*
 
-cmake_minimum_required(VERSION 3.12.0)
+cmake_minimum_required(VERSION 3.1.0)
 project(rr C CXX ASM)
 
 # "Do not add flags to export symbols from executables without the ENABLE_EXPORTS target property."
@@ -338,7 +338,7 @@ list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 
 check_symbol_exists(backtrace "execinfo.h" EXECINFO_BACKTRACE)
 if(EXECINFO_BACKTRACE)
-  add_compile_definitions(EXECINFO_BACKTRACE)
+  add_definitions(-DEXECINFO_BACKTRACE)
 else()
   message(AUTHOR_WARNING "backtrace(3) not present in execinfo.h. Automatic backtraces for failures in rr are disabled.")
 endif()
