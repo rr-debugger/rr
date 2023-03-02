@@ -2245,7 +2245,6 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
   }
 
   int bits = random_addr_bits(t->arch());
-  uint64_t addr_space_limit = uint64_t(1) << bits;
   remote_ptr<void> start = hint;
   if (!start) {
     // Half the time, try to allocate at a completely random address. The other
@@ -2253,7 +2252,7 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     // randomly chosen existing mapping.
     if (random() % 2) {
       uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-      start = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
+      start = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
     } else {
       ASSERT(t, !mem.empty());
       int map_index = random() % mem.size();
@@ -2265,21 +2264,26 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
         }
         ++map_count;
       }
-      if (start.as_int() > addr_space_limit) {
-        // probably vsyscall mapping
-        start = remote_ptr<void>(addr_space_limit) - len;
-      }
     }
   }
+  remote_ptr<void> addr_space_start(0x40000);
+  remote_ptr<void> addr_space_end((uint64_t(1) << bits) - page_size());
+  // Clamp start so that we're in the usable address space.
+  start = max(start, addr_space_start);
+  start = min(start, addr_space_end - len);
 
   // Search the address space in one direction all the way to the end,
   // then in the other direction.
   int direction = (random() % 2) ? 1 : -1;
   remote_ptr<void> addr;
   for (int iteration = 0; iteration < 2; ++iteration) {
+    // Invariant: [addr, addr+len) is always in the usable address space
+    // [addr_space_start, addr_space_end).
     addr = start;
-
     while (true) {
+      // Look for any reserved address space that overlaps [addr, addr+len]
+      // and store any overlapping range here. If multiple reserved areas
+      // overlap, we just pick one arbitrarily.
       MemoryRange overlapping_range;
       Maps m = maps_containing_or_after(addr);
       if (m.begin() != m.end()) {
@@ -2304,16 +2308,20 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
         }
       }
       if (!overlapping_range.size()) {
-
+        // No overlap and the range fits into our address space. Stop.
         return addr;
       }
       if (direction == -1) {
-        if (overlapping_range.start() < remote_ptr<void>(0x40000) + len) {
+        // Try moving backwards to allocate just before the start of
+        // the overlapping range.
+        if (overlapping_range.start() < addr_space_start + len) {
           break;
         }
         addr = overlapping_range.start() - len;
       } else {
-        if (overlapping_range.end() + len > addr_space_limit) {
+        // Try moving forwards to allocate just after the end of
+        // the overlapping range.
+        if (overlapping_range.end() + len > addr_space_end) {
           break;
         }
         addr = overlapping_range.end();
