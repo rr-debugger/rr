@@ -7,6 +7,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <sstream>
+
 #include "rr/rr.h"
 
 #include "RecordSession.h"
@@ -781,6 +783,10 @@ void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allo
       extra_msg = " opening " + t->read_c_str(t->regs().arg1());
     } else if (is_openat_syscall(syscallno, arch())) {
       extra_msg = " opening " + t->read_c_str(t->regs().arg2());
+    } else if (is_mmap_syscall(syscallno, arch())) {
+      stringstream stream;
+      stream << " arg1=0x" << hex << t->regs().arg1() << " arg2=0x" << t->regs().arg2();
+      extra_msg = string(stream.str());
     }
     ASSERT(t, false) << "Syscall " << syscall_name(syscallno, arch())
                      << " failed with errno " << errno_name(-ret) << extra_msg;
