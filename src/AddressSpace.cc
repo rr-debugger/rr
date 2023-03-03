@@ -2244,6 +2244,9 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     hint = nullptr;
   }
 
+  /* add three pages for allocate_extended_jump_x86ish */
+  len += 3 * page_size();
+
   int bits = random_addr_bits(t->arch());
   remote_ptr<void> start = hint;
   if (!start) {
