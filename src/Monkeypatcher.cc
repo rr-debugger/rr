@@ -232,9 +232,13 @@ static remote_ptr<uint8_t> allocate_extended_jump_x86ish(
     // a page on each side as a guard page.
     uint32_t required_space = 3 * page_size();
     remote_ptr<void> free_mem =
-        t->vm()->find_free_memory(required_space,
+        t->vm()->find_free_memory(t, required_space,
                                   // Find free space after the patch site.
                                   t->vm()->mapping_of(from_end).map.start());
+    if (!free_mem) {
+      LOG(debug) << "Can't find free memory anywhere after the jump";
+      return nullptr;
+    }
 
     remote_ptr<uint8_t> addr = (free_mem + page_size()).cast<uint8_t>();
     int64_t offset = addr - from_end;
@@ -401,9 +405,13 @@ static remote_ptr<uint8_t> allocate_extended_jump_aarch64(
     // a page on each side as a guard page.
     uint32_t required_space = 3 * page_size();
     remote_ptr<void> free_mem =
-        t->vm()->find_free_memory(required_space,
+        t->vm()->find_free_memory(t, required_space,
                                   // Find free space after the patch site.
                                   t->vm()->mapping_of(svc_ip).map.start());
+    if (!free_mem) {
+      LOG(debug) << "Can't find free memory anywhere after the jump";
+      return nullptr;
+    }
 
     remote_ptr<uint8_t> addr = (free_mem + page_size()).cast<uint8_t>();
     int64_t offset = addr - svc_ip;

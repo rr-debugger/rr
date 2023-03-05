@@ -2228,6 +2228,10 @@ MemoryRange AddressSpace::get_global_exclusion_range(const RecordSession* sessio
   return global_exclusion_range;
 }
 
+static remote_ptr<void> usable_address_space_end(Task* t) {
+  return remote_ptr<void>((uint64_t(1) << random_addr_bits(t->arch())) - page_size());
+}
+
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len, remote_ptr<void> hint) {
   if (is_all_memory_excluded(t->session())) {
@@ -2244,7 +2248,6 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     hint = nullptr;
   }
 
-  int bits = random_addr_bits(t->arch());
   remote_ptr<void> start = hint;
   if (!start) {
     // Half the time, try to allocate at a completely random address. The other
@@ -2252,7 +2255,7 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     // randomly chosen existing mapping.
     if (random() % 2) {
       uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-      start = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
+      start = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << random_addr_bits(t->arch())) - 1)));
     } else {
       ASSERT(t, !mem.empty());
       int map_index = random() % mem.size();
@@ -2267,7 +2270,7 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     }
   }
   remote_ptr<void> addr_space_start(0x40000);
-  remote_ptr<void> addr_space_end((uint64_t(1) << bits) - page_size());
+  remote_ptr<void> addr_space_end = usable_address_space_end(t);
   // Clamp start so that we're in the usable address space.
   start = max(start, addr_space_start);
   start = min(start, addr_space_end - len);
@@ -2334,25 +2337,26 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
   return nullptr;
 }
 
-remote_ptr<void> AddressSpace::find_free_memory(size_t required_space,
+remote_ptr<void> AddressSpace::find_free_memory(Task* t,
+                                                size_t required_space,
                                                 remote_ptr<void> after) {
   auto maps = maps_starting_at(after);
   auto current = maps.begin();
   while (current != maps.end()) {
     auto next = current;
     ++next;
+    remote_ptr<void> end_of_free_space;
     if (next == maps.end()) {
-      if (current->map.end() + required_space >= current->map.end()) {
-        break;
-      }
+      end_of_free_space = usable_address_space_end(t);
     } else {
-      if (current->map.end() + required_space <= next->map.start()) {
-        break;
-      }
+      end_of_free_space = next->map.start();
+    }
+    if (current->map.end() + required_space <= end_of_free_space) {
+      return current->map.end();
     }
     current = next;
   }
-  return current->map.end();
+  return nullptr;
 }
 
 void AddressSpace::add_stap_semaphore_range(Task* task, MemoryRange range) {

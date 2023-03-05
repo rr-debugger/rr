@@ -784,7 +784,7 @@ public:
 
   /* Returns null if we should return ENOMEM because there is no free space available. */
   remote_ptr<void> chaos_mode_find_free_memory(RecordTask* t, size_t len, remote_ptr<void> hint);
-  remote_ptr<void> find_free_memory(
+  remote_ptr<void> find_free_memory(Task* t,
       size_t len, remote_ptr<void> after = remote_ptr<void>());
 
   /**

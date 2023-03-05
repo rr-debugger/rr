@@ -471,7 +471,10 @@ KernelMapping Session::create_shared_mmap(
       child_map_addr = t->vm()->chaos_mode_find_free_memory(static_cast<RecordTask*>(t),
           size, nullptr);
     } else {
-      child_map_addr = t->vm()->find_free_memory(size, RR_PAGE_ADDR);
+      child_map_addr = t->vm()->find_free_memory(t, size, RR_PAGE_ADDR);
+      if (!child_map_addr) {
+        FATAL() << "Can't find free memory for shared mmap";
+      }
     }
   }
 
@@ -601,7 +604,7 @@ void Session::make_private_shared(AutoRemoteSyscalls& remote,
   // Find a place to map the current segment to temporarily
   remote_ptr<void> start = m.map.start();
   size_t sz = m.map.size();
-  remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(sz);
+  remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(remote.task(), sz);
   remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), start, sz,
                             sz, MREMAP_MAYMOVE | MREMAP_FIXED, free_mem);
   remote.task()->vm()->remap(remote.task(), start, sz, free_mem, sz,
