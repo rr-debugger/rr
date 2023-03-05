@@ -2270,7 +2270,10 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     }
   }
   remote_ptr<void> addr_space_start(0x40000);
-  remote_ptr<void> addr_space_end = usable_address_space_end(t);
+  // Reserve 3 pages at the end of userspace in case Monkeypatcher wants
+  // to allocate something there.
+  uint64_t reserve_area_for_monkeypatching = 3 * page_size();
+  remote_ptr<void> addr_space_end = usable_address_space_end(t) - reserve_area_for_monkeypatching;
   // Clamp start so that we're in the usable address space.
   start = max(start, addr_space_start);
   start = min(start, addr_space_end - len);
