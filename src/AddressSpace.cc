@@ -2345,14 +2345,15 @@ remote_ptr<void> AddressSpace::find_free_memory(Task* t,
                                                 remote_ptr<void> after) {
   auto maps = maps_starting_at(after);
   auto current = maps.begin();
+  remote_ptr<void> addr_space_end = usable_address_space_end(t);
   while (current != maps.end()) {
     auto next = current;
     ++next;
     remote_ptr<void> end_of_free_space;
     if (next == maps.end()) {
-      end_of_free_space = usable_address_space_end(t);
+      end_of_free_space = addr_space_end;
     } else {
-      end_of_free_space = next->map.start();
+      end_of_free_space = min(addr_space_end, next->map.start());
     }
     if (current->map.end() + required_space <= end_of_free_space) {
       return current->map.end();
