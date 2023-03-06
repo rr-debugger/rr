@@ -71,7 +71,8 @@ public:
       bool use_audit = false,
       bool unmap_vdso = false,
       bool force_asan_active = false,
-      bool force_tsan_active = false);
+      bool force_tsan_active = false,
+      bool lsof = false);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
@@ -95,6 +96,7 @@ public:
   }
   bool use_audit() const { return use_audit_; }
   bool unmap_vdso() { return unmap_vdso_; }
+  bool lsof() { return lsof_; }
   uint64_t rr_signal_mask() const;
 
   enum RecordStatus {
@@ -217,7 +219,8 @@ private:
                 const std::string& output_trace_dir,
                 const TraceUuid* trace_id,
                 bool use_audit,
-                bool unmap_vdso);
+                bool unmap_vdso,
+                bool lsof);
 
   virtual void on_create(Task* t) override;
 
@@ -278,6 +281,7 @@ private:
 
   bool use_audit_;
   bool unmap_vdso_;
+  bool lsof_;
 };
 
 } // namespace rr
