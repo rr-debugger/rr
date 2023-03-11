@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+record $TESTNAME
+export RR_LOG=all
+_RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags >> myreplay.log 2>&1
+check 'EXIT-SUCCESS'

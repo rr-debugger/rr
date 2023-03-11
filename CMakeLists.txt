@@ -952,7 +952,6 @@ set(BASIC_TESTS
   fcntl_rw_hints
   fcntl_seals
   fcntl_sig
-  fd_cleanup
   fd_tracking_across_threads
   fds_clean
   flock
@@ -1384,6 +1383,7 @@ set(TESTS_WITH_PROGRAM
   exit_race
   exit_status
   x86/explicit_checkpoints
+  fd_cleanup
   fd_limit
   fork_stress
   fork_syscalls
