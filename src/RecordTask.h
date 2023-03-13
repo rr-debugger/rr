@@ -653,6 +653,7 @@ private:
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 
 public:
+  uint64_t scheduler_token;
   std::unique_ptr<TaskSyscallStateBase> syscall_state;
   Ticks ticks_at_last_recorded_syscall_exit;
   remote_code_ptr ip_at_last_recorded_syscall_exit;

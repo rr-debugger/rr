@@ -159,6 +159,7 @@ private:
 RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
                        SupportedArch a)
     : Task(session, _tid, _tid, serial, a),
+      scheduler_token(0),
       ticks_at_last_recorded_syscall_exit(0),
       ip_at_last_recorded_syscall_exit(nullptr),
       time_at_start_of_last_timeslice(0),

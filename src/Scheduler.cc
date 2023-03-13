@@ -84,7 +84,9 @@ static double high_priority_only_duration_step_factor = 2;
 static double high_priority_only_fraction = 0.2;
 
 Scheduler::Scheduler(RecordSession& session)
-    : session(session),
+    : reschedule_count(0),
+      session(session),
+      task_priority_set_total_count(0),
       current_(nullptr),
       current_timeslice_end_(0),
       high_priority_only_intervals_refresh_time(0),
@@ -374,25 +376,23 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
   return false;
 }
 
-RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, WaitAggregator& wait_aggregator,
+RecordTask* Scheduler::find_next_runnable_task(WaitAggregator& wait_aggregator,
                                                bool* by_waitpid, int priority_threshold) {
   *by_waitpid = false;
 
   // The outer loop has one iteration per unique priority value.
   // The inner loop iterates over all tasks with that priority.
-  for (auto same_priority_start = task_priority_set.begin();
-       same_priority_start != task_priority_set.end();) {
-    int priority = same_priority_start->first;
+  for (auto& task_priority_set_entry : task_priority_set) {
+    int priority = task_priority_set_entry.first;
     if (priority > priority_threshold) {
       return nullptr;
     }
-    auto same_priority_end = task_priority_set.lower_bound(
-        make_pair(same_priority_start->first + 1, nullptr));
 
+    SamePriorityTasks& same_priority_tasks = task_priority_set_entry.second;
     if (enable_chaos) {
       vector<RecordTask*> tasks;
-      for (auto it = same_priority_start; it != same_priority_end; ++it) {
-        tasks.push_back(it->second);
+      for (RecordTask* t : same_priority_tasks.tasks) {
+        tasks.push_back(t);
       }
       shuffle(tasks.begin(), tasks.end(), random);
       for (RecordTask* next : tasks) {
@@ -401,31 +401,15 @@ RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, WaitAggregator& wa
         }
       }
     } else {
-      auto begin_at = same_priority_start;
-      if (t && priority == t->priority) {
-        begin_at = task_priority_set.find(make_pair(priority, t));
-        ++begin_at;
-        if (begin_at == same_priority_end) {
-          begin_at = same_priority_start;
+      // Every time we schedule a new task we put it last on the list.
+      // Thus starting from the beginning essentially gives us round-robin
+      // behavior at each task priority level.
+      for (RecordTask* t : same_priority_tasks.tasks) {
+        if (is_task_runnable(t, wait_aggregator, by_waitpid)) {
+          return t;
         }
       }
-
-      auto task_iterator = begin_at;
-      do {
-        RecordTask* next = task_iterator->second;
-
-        if (is_task_runnable(next, wait_aggregator, by_waitpid)) {
-          return next;
-        }
-
-        ++task_iterator;
-        if (task_iterator == same_priority_end) {
-          task_iterator = same_priority_start;
-        }
-      } while (task_iterator != begin_at);
     }
-
-    same_priority_start = same_priority_end;
   }
 
   return nullptr;
@@ -461,7 +445,9 @@ void Scheduler::maybe_reset_priorities(double now) {
       now + random_frac() * priorities_refresh_max_interval;
   vector<RecordTask*> tasks;
   for (auto p : task_priority_set) {
-    tasks.push_back(p.second);
+    for (RecordTask* t : p.second.tasks) {
+      tasks.push_back(t);
+    }
   }
   for (RecordTask* t : task_round_robin_queue) {
     tasks.push_back(t);
@@ -503,7 +489,7 @@ bool Scheduler::in_high_priority_only_interval(double now) {
 }
 
 bool Scheduler::treat_as_high_priority(RecordTask* t) {
-  return task_priority_set.size() > 1 && t->priority == 0;
+  return task_priority_set_total_count > 1 && t->priority == 0;
 }
 
 void Scheduler::validate_scheduled_task() {
@@ -732,7 +718,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       // Determine if we should run current_ again
       RecordTask* round_robin_task = get_round_robin_task();
       if (!round_robin_task) {
-        next = find_next_runnable_task(current_, wait_aggregator, &result.by_waitpid,
+        next = find_next_runnable_task(wait_aggregator, &result.by_waitpid,
                                        current_->priority - 1);
         if (next) {
           // There is a runnable higher-priority task. Run it.
@@ -773,7 +759,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       continue;
     }
 
-    next = find_next_runnable_task(current_, wait_aggregator, &result.by_waitpid, INT32_MAX);
+    next = find_next_runnable_task(wait_aggregator, &result.by_waitpid, INT32_MAX);
     if (!next && !wait_aggregator.exit_candidates().empty()) {
       // We need to check for tasks that have unexpectedly exited.
       // First check if there is any exit status pending. Normally there won't be.
@@ -833,7 +819,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     }
 
     LOGM(debug) << "  all tasks blocked, waiting for runnable ("
-               << task_priority_set.size() << " total)";
+               << task_priority_set_total_count << " total)";
 
     WaitStatus status;
     do {
@@ -877,6 +863,11 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
 
   maybe_reset_high_priority_only_intervals(now);
   current_ = next;
+  if (!current_->in_round_robin_queue) {
+    // Move it to the end of the per-priority task list
+    remove_from_task_priority_set(current_);
+    insert_into_task_priority_set(current_);
+  }
   validate_scheduled_task();
   setup_new_timeslice();
   result.started_new_timeslice = true;
@@ -913,13 +904,29 @@ double Scheduler::interrupt_after_elapsed_time() const {
   return max(0.001, delay);
 }
 
+bool Scheduler::CompareByScheduleOrder::operator()(
+        RecordTask* a, RecordTask* b) const {
+  return a->scheduler_token < b->scheduler_token;
+}
+
+void Scheduler::insert_into_task_priority_set(RecordTask* t) {
+  t->scheduler_token = ++reschedule_count;
+  task_priority_set[t->priority].tasks.insert(t);
+  ++task_priority_set_total_count;
+}
+
+void Scheduler::remove_from_task_priority_set(RecordTask* t) {
+  task_priority_set[t->priority].tasks.erase(t);
+  --task_priority_set_total_count;
+}
+
 void Scheduler::on_create(RecordTask* t) {
   DEBUG_ASSERT(!t->in_round_robin_queue);
   if (enable_chaos) {
     // new tasks get a random priority
     t->priority = choose_random_priority(t);
   }
-  task_priority_set.insert(make_pair(t->priority, t));
+  insert_into_task_priority_set(t);
   unlimited_ticks_mode = false;
 }
 
@@ -939,7 +946,7 @@ void Scheduler::on_destroy(RecordTask* t) {
         find(task_round_robin_queue.begin(), task_round_robin_queue.end(), t);
     task_round_robin_queue.erase(iter);
   } else {
-    task_priority_set.erase(make_pair(t->priority, t));
+    remove_from_task_priority_set(t);
   }
 }
 
@@ -967,9 +974,9 @@ void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
     t->priority = value;
     return;
   }
-  task_priority_set.erase(make_pair(t->priority, t));
+  remove_from_task_priority_set(t);
   t->priority = value;
-  task_priority_set.insert(make_pair(t->priority, t));
+  insert_into_task_priority_set(t);
 }
 
 static bool round_robin_scheduling_enabled() {
@@ -989,10 +996,12 @@ void Scheduler::schedule_one_round_robin(RecordTask* t) {
   maybe_pop_round_robin_task(t);
   ASSERT(t, !t->in_round_robin_queue);
 
-  for (auto iter : task_priority_set) {
-    if (iter.second != t && !iter.second->in_round_robin_queue) {
-      task_round_robin_queue.push_back(iter.second);
-      iter.second->in_round_robin_queue = true;
+  for (auto p : task_priority_set) {
+    for (RecordTask* tt : p.second.tasks) {
+      if (tt != t && !tt->in_round_robin_queue) {
+        task_round_robin_queue.push_back(tt);
+        tt->in_round_robin_queue = true;
+      }
     }
   }
   task_priority_set.clear();
@@ -1012,7 +1021,7 @@ void Scheduler::maybe_pop_round_robin_task(RecordTask* t) {
   }
   task_round_robin_queue.pop_front();
   t->in_round_robin_queue = false;
-  task_priority_set.insert(make_pair(t->priority, t));
+  insert_into_task_priority_set(t);
 }
 
 void Scheduler::did_enter_execve(RecordTask* t) {

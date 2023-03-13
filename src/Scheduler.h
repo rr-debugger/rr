@@ -6,6 +6,7 @@
 #include <sched.h>
 
 #include <deque>
+#include <map>
 #include <random>
 #include <set>
 
@@ -181,8 +182,15 @@ public:
   void did_exit_execve(RecordTask* t);
 
 private:
+  struct CompareByScheduleOrder {
+    bool operator()(RecordTask* a, RecordTask* b) const;
+  };
+  struct SamePriorityTasks {
+    // Tasks ordered in of last-scheduled, most recently scheduled last
+    std::set<RecordTask*, CompareByScheduleOrder> tasks;
+  };
   // Tasks sorted by priority.
-  typedef std::set<std::pair<int, RecordTask*>> TaskPrioritySet;
+  typedef std::map<int, SamePriorityTasks> TaskPrioritySet;
   typedef std::deque<RecordTask*> TaskQueue;
   typedef std::default_random_engine Random;
 
@@ -197,7 +205,7 @@ private:
    * on it again until it has run.
    * Considers only tasks with priority <= priority_threshold.
    */
-  RecordTask* find_next_runnable_task(RecordTask* t, WaitAggregator& wait_aggregator,
+  RecordTask* find_next_runnable_task(WaitAggregator& wait_aggregator,
                                       bool* by_waitpid, int priority_threshold);
   /**
    * Returns the first task in the round-robin queue or null if it's empty,
@@ -216,6 +224,11 @@ private:
   void validate_scheduled_task();
   void regenerate_affinity_mask();
 
+  void insert_into_task_priority_set(RecordTask* t);
+  void remove_from_task_priority_set(RecordTask* t);
+
+  uint64_t reschedule_count;
+
   Random random;
 
   RecordSession& session;
@@ -230,6 +243,7 @@ private:
    * all tasks in priority order.
    */
   TaskPrioritySet task_priority_set;
+  size_t task_priority_set_total_count;
   TaskQueue task_round_robin_queue;
 
   /**
