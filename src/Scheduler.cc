@@ -173,20 +173,6 @@ void Scheduler::set_num_cores(int cores) {
   regenerate_affinity_mask();
 }
 
-RecordTask* Scheduler::get_next_task_with_same_priority(RecordTask* t) {
-  if (!t || t->in_round_robin_queue) {
-    return nullptr;
-  }
-
-  auto it = task_priority_set.find(make_pair(t->priority, t));
-  DEBUG_ASSERT(it != task_priority_set.end());
-  ++it;
-  if (it == task_priority_set.end() || it->first != t->priority) {
-    it = task_priority_set.lower_bound(make_pair(t->priority, nullptr));
-  }
-  return it->second;
-}
-
 static double random_frac() { return double(random() % INT32_MAX) / INT32_MAX; }
 
 int Scheduler::choose_random_priority(RecordTask* t) {

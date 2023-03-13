@@ -205,7 +205,6 @@ private:
    */
   RecordTask* get_round_robin_task();
   void maybe_pop_round_robin_task(RecordTask* t);
-  RecordTask* get_next_task_with_same_priority(RecordTask* t);
   void setup_new_timeslice();
   void maybe_reset_priorities(double now);
   int choose_random_priority(RecordTask* t);
