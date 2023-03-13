@@ -5133,22 +5133,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
 
       t->exit_syscall();
-      Registers regs = t->regs();
       pid_t new_tid = do_detach_teleport(t);
 
-      // Cause the actual task to exit
-      regs.set_syscallno(syscall_number_for_exit_group(t->arch()));
-      regs.set_arg1(0);
-      regs.set_original_syscallno(-1);
-      regs.set_ip(regs.ip() - syscall_instruction_length(t->arch()));
-      ASSERT(t, is_at_syscall_instruction(t, regs.ip()));;
-      // Restart the SYS_exit call.
-      t->set_regs(regs);
-      t->enter_syscall();
-      t->exit_syscall();
-
-      // Don't reap the zombie to prevent the pid from being re-used, which
-      // the child might see.
+      // Leave the proxy where it is --- just exited the detach_teleport
+      // syscall. We won't resume it again until we kill it in ~RecordTask.
       t->detached_proxy = true;
       // Just have the same task object represent both the zombie task
       // and be able to receive death notices for the detached tracee
@@ -6815,6 +6803,13 @@ static void rec_process_syscall_arch(RecordTask* t,
               auto rt = static_cast<RecordTask*>(thread);
               rt->emulated_stop_pending = false;
             }
+          }
+          if (tracee->detached_proxy &&
+              (tracee->emulated_stop_code.type() == WaitStatus::EXIT ||
+               tracee->emulated_stop_code.type() == WaitStatus::FATAL_SIGNAL)) {
+            // parent has reaped the proxy, so we're done with this task.
+            // This kills the proxy.
+            delete tracee;
           }
         }
         if (tracee->waiting_for_reap || tracee->waiting_for_zombie) {

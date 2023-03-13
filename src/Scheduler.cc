@@ -583,6 +583,7 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
       waited = session.revive_task_for_exec(tid);
     }
   }
+
   if (!waited) {
     // See if this is one of our detached proxies' original tids.
     waited = session.find_detached_proxy_task(tid);
@@ -591,25 +592,32 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
       return nullptr;
     }
 
-
     ASSERT(waited, waited->detached_proxy);
-    ASSERT(waited, status.type() == WaitStatus::FATAL_SIGNAL);
     LOGM(debug) << "    ... but it's a detached proxy";
-
-    // We received an unexpected SIGKILL for one of our detached proxies,
-    // probably because the parent or some other task tried to SIGKILL it
-    // using the original pid. Forward the SIGKILL to the detached process
-    // ... unless the Task has already exited and this SIGKILL raced with
-    // us waiting for the parent to reap it.
-    if (!waited->already_exited()) {
-      LOGM(debug) << "        ... sending SIGKILL to detached process " << waited->rec_tid;;
-      ::kill(waited->rec_tid, SIGKILL);
-      WaitResult result = WaitManager::wait_exit(WaitOptions(waited->rec_tid));
-      ASSERT(waited, result.code == WAIT_OK);
-    } else {
-      LOGM(debug) << "        ... but the detached process is already dead";
+    switch (status.type()) {
+      case WaitStatus::PTRACE_EVENT:
+        if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
+          // Proxy was killed, perhaps via SIGKILL.
+          // Forward that to the real task.
+          ::kill(waited->rec_tid, SIGKILL);
+          LOGM(debug) << "        ... sending SIGKILL to detached process " << waited->rec_tid;;
+        } else {
+          ASSERT(waited, false) << "Unexpected proxy ptrace event " << status;
+        }
+        break;
+      case WaitStatus::SIGNAL_STOP:
+        // forward the signal to the real task, don't deliver it to the proxy.
+        ::kill(waited->rec_tid, status.stop_sig());
+        LOGM(debug) << "        ... sending " << signal_name(status.stop_sig()) <<
+          " to detached process " << waited->rec_tid;;
+        break;
+      default:
+        ASSERT(waited, false) << "Unexpected proxy event " << status;
+        break;
     }
+    return nullptr;
   }
+
   if (waited->detached_proxy) {
     waited->did_waitpid(status);
     pid_t parent_rec_tid = waited->get_parent_pid();
@@ -624,18 +632,14 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
       parent->send_synthetic_SIGCHLD_if_necessary();
     }
 
-    // The status we got was an exit. There won't be any further events
-    // from this proxy. Delete it now, unless we need to keep it around for
-    // reaping.
-    if (status.type() == WaitStatus::EXIT || status.type() == WaitStatus::FATAL_SIGNAL) {
-      if (parent) {
-        waited->waiting_for_reap = true;
-      } else {
-        // The task is now dead, but so is our parent, so none of our
-        // tasks care about this. We can now delete the proxy task.
-        // This will also reap the rec_tid of the proxy task.
-        delete waited;
-      }
+    if (!parent &&
+        (status.type() == WaitStatus::EXIT || status.type() == WaitStatus::FATAL_SIGNAL)) {
+      // The task is now dead, but so is our parent, so none of our
+      // tasks care about this. We can now delete the proxy task.
+      // This will also reap the rec_tid of the proxy task.
+      delete waited;
+      // If there is a parent, we'll kill this task when the parent reaps it
+      // in our wait() emulation.
     }
     return nullptr;
   }

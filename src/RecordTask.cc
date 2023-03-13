@@ -248,6 +248,8 @@ RecordTask::~RecordTask() {
   }
 
   if (detached_proxy) {
+    // Kill it so that proceed_to_exit will reach PTRACE_EVENT_EXIT.
+    ::kill(tid, SIGKILL);
     // We kept the zombie of the original task around to prevent its pid from
     // being re-used. Reap that now.
     proceed_to_exit();

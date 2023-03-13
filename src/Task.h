@@ -898,11 +898,13 @@ public:
 
   PerfCounters hpc;
 
-  /* This is always the "real" tid of the tracee. */
+  /* This is always the "real" tid of the tracee. For a detached proxy,
+   * it's the proxy tid. */
   pid_t tid;
   /* This is always the recorded tid of the tracee.  During
    * recording, it's synonymous with |tid|, and during replay
-   * it's the tid that was recorded. */
+   * it's the tid that was recorded. For a detached proxy,
+   * this is the tid of the detachd process. */
   pid_t rec_tid;
   /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
