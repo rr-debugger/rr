@@ -21,6 +21,7 @@
 #include "Flags.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "TraceeAttentionSet.h"
 #include "WaitManager.h"
 #include "core.h"
 #include "log.h"
@@ -191,12 +192,15 @@ static bool treat_syscall_as_nonblocking(int syscallno, SupportedArch arch) {
 
 class WaitAggregator {
 public:
-  WaitAggregator() : did_poll_stops(false) {}
+  explicit WaitAggregator(int num_waits_before_polling_stops) :
+    num_waits_before_polling_stops(num_waits_before_polling_stops),
+    did_poll_stops(false) {}
   bool try_wait(RecordTask* t);
   // Return a list of tasks that we should check for unexpected exits.
   const vector<RecordTask*>& exit_candidates() { return exit_candidates_; }
   static bool try_wait_exit(RecordTask* t);
 private:
+  int num_waits_before_polling_stops;
   // We defer making an actual wait syscall until we really need to.
   // This records whether poll_stops has been called already.
   bool did_poll_stops;
@@ -209,14 +213,19 @@ bool WaitAggregator::try_wait(RecordTask* t) {
   }
 
   if (!did_poll_stops) {
-    WaitManager::poll_stops();
-    did_poll_stops = true;
+    if (num_waits_before_polling_stops > 0) {
+      --num_waits_before_polling_stops;
+    } else {
+      WaitManager::poll_stops();
+      did_poll_stops = true;
+    }
   }
 
   // Check if there is a status change for us.
   WaitOptions options(t->tid);
-  // Rely on already-polled stops, don't do another syscall.
-  options.can_perform_syscall = false;
+  // Rely on already-polled stops if we have them (don't do another syscall)
+  options.can_perform_syscall = !did_poll_stops;
+  options.block_seconds = 0;
   WaitResult result = WaitManager::wait_stop(options);
   if (result.code != WAIT_OK) {
     exit_candidates_.push_back(t);
@@ -377,6 +386,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
 }
 
 RecordTask* Scheduler::find_next_runnable_task(WaitAggregator& wait_aggregator,
+                                               map<int, vector<RecordTask*>>& attention_set_by_priority,
                                                bool* by_waitpid, int priority_threshold) {
   *by_waitpid = false;
 
@@ -401,6 +411,21 @@ RecordTask* Scheduler::find_next_runnable_task(WaitAggregator& wait_aggregator,
         }
       }
     } else {
+      if (same_priority_tasks.consecutive_uses_of_attention_set < 20) {
+        ++same_priority_tasks.consecutive_uses_of_attention_set;
+        vector<RecordTask*>& attention_set = attention_set_by_priority[priority];
+        sort(attention_set.begin(), attention_set.end(),
+            [](RecordTask* a, RecordTask* b) -> bool {
+              return a->scheduler_token < b->scheduler_token;
+            });
+        for (RecordTask* t : attention_set) {
+          if (is_task_runnable(t, wait_aggregator, by_waitpid)) {
+            return t;
+          }
+        }
+      }
+      same_priority_tasks.consecutive_uses_of_attention_set = 0;
+
       // Every time we schedule a new task we put it last on the list.
       // Thus starting from the beginning essentially gives us round-robin
       // behavior at each task priority level.
@@ -712,13 +737,21 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     maybe_reset_high_priority_only_intervals(now);
     last_reschedule_in_high_priority_only_interval =
         in_high_priority_only_interval(now);
-    WaitAggregator wait_aggregator;
+    WaitAggregator wait_aggregator((task_priority_set_total_count + task_round_robin_queue.size())/100 + 1);
+
+    map<int, vector<RecordTask*>> attention_set_by_priority;
+    for (pid_t pid : TraceeAttentionSet::read()) {
+      RecordTask* t = session.find_task(pid);
+      if (t) {
+        attention_set_by_priority[t->priority].push_back(t);
+      }
+    }
 
     if (current_) {
       // Determine if we should run current_ again
       RecordTask* round_robin_task = get_round_robin_task();
       if (!round_robin_task) {
-        next = find_next_runnable_task(wait_aggregator, &result.by_waitpid,
+        next = find_next_runnable_task(wait_aggregator, attention_set_by_priority, &result.by_waitpid,
                                        current_->priority - 1);
         if (next) {
           // There is a runnable higher-priority task. Run it.
@@ -759,7 +792,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       continue;
     }
 
-    next = find_next_runnable_task(wait_aggregator, &result.by_waitpid, INT32_MAX);
+    next = find_next_runnable_task(wait_aggregator, attention_set_by_priority, &result.by_waitpid, INT32_MAX);
     if (!next && !wait_aggregator.exit_candidates().empty()) {
       // We need to check for tasks that have unexpectedly exited.
       // First check if there is any exit status pending. Normally there won't be.

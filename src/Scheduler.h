@@ -9,6 +9,7 @@
 #include <map>
 #include <random>
 #include <set>
+#include <vector>
 
 #include "Ticks.h"
 #include "TraceFrame.h"
@@ -188,6 +189,9 @@ private:
   struct SamePriorityTasks {
     // Tasks ordered in of last-scheduled, most recently scheduled last
     std::set<RecordTask*, CompareByScheduleOrder> tasks;
+    int consecutive_uses_of_attention_set;
+
+    SamePriorityTasks() : consecutive_uses_of_attention_set(0) {}
   };
   // Tasks sorted by priority.
   typedef std::map<int, SamePriorityTasks> TaskPrioritySet;
@@ -206,6 +210,7 @@ private:
    * Considers only tasks with priority <= priority_threshold.
    */
   RecordTask* find_next_runnable_task(WaitAggregator& wait_aggregator,
+                                      std::map<int, std::vector<RecordTask*>>& attention_set_by_priority,
                                       bool* by_waitpid, int priority_threshold);
   /**
    * Returns the first task in the round-robin queue or null if it's empty,

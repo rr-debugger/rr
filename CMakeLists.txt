@@ -584,6 +584,7 @@ set(RR_SOURCES
   src/SysCpuMonitor.cc
   src/Task.cc
   src/ThreadGroup.cc
+  src/TraceeAttentionSet.cc
   src/TraceFrame.cc
   src/TraceInfoCommand.cc
   src/TraceStream.cc

@@ -17,6 +17,7 @@
 #include "ElfReader.h"
 #include "Flags.h"
 #include "RecordTask.h"
+#include "TraceeAttentionSet.h"
 #include "VirtualPerfCounterMonitor.h"
 #include "WaitManager.h"
 #include "core.h"
@@ -2277,6 +2278,8 @@ static string lookup_by_path(const string& name) {
     bool unmap_vdso,
     bool force_asan_active,
     bool force_tsan_active) {
+  TraceeAttentionSet::initialize();
+
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether

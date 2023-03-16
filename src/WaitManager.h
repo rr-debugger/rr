@@ -93,4 +93,4 @@ public:
 
 }
 
-#endif
+#endif // RR_WAIT_MANAGER_H_

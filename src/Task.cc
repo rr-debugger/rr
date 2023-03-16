@@ -46,6 +46,7 @@
 #include "ScopedFd.h"
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
+#include "TraceeAttentionSet.h"
 #include "WaitManager.h"
 #include "cpp_supplement.h"
 #include "fast_forward.h"
@@ -3223,6 +3224,11 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
                            const ScopedFd& sock_fd, int sock_fd_number) {
   /* TODO tracees can probably undo some of the setup below
    * ... */
+
+  // Restore signal mask
+  sigset_t sigmask;
+  TraceeAttentionSet::get_original_sigmask(&sigmask);
+  sigprocmask(SIG_SETMASK, &sigmask, nullptr);
 
   struct NativeArch::cap_header header = {.version =
                                               _LINUX_CAPABILITY_VERSION_3,
