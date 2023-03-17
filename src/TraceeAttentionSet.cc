@@ -46,23 +46,23 @@ void TraceeAttentionSet::initialize() {
     return;
   }
   attention_set = new unordered_set<pid_t>();
-  // Block SIGCHLD in all threads so our thread can read it via signalfd
+  // Block all signals so when we create our child thread,
+  // it has all signals blocked. This also initializes original_mask.
   sigset_t set;
-  sigemptyset(&set);
-  sigaddset(&set, SIGCHLD);
+  sigfillset(&set);
   sigprocmask(SIG_BLOCK, &set, &original_mask);
   pthread_mutex_unlock(&attention_set_lock);
 
-  // Create new thread with all signals blocked. We don't want to receive
-  // any signals on that thread.
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  sigfillset(&set);
-  pthread_attr_setsigmask_np(&attr, &set);
-
   pthread_t thread;
-  pthread_create(&thread, &attr, tracee_attention_set_thread, nullptr);
+  pthread_create(&thread, nullptr, tracee_attention_set_thread, nullptr);
   pthread_setname_np(thread, "TraceeAttention");
+
+  // Restore original sigmask but block SIGCHLD in this thread
+  // (and all future spawned threads) so that our attention thread
+  // gets all the SIGCHLD notifications via signalfd.
+  sigorset(&set, &original_mask, &original_mask);
+  sigdelset(&set, SIGCHLD);
+  sigprocmask(SIG_SETMASK, &set, nullptr);
 }
 
 unordered_set<pid_t> TraceeAttentionSet::read() {
