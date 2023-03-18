@@ -61,7 +61,7 @@ void TraceeAttentionSet::initialize() {
   // (and all future spawned threads) so that our attention thread
   // gets all the SIGCHLD notifications via signalfd.
   sigorset(&set, &original_mask, &original_mask);
-  sigdelset(&set, SIGCHLD);
+  sigaddset(&set, SIGCHLD);
   sigprocmask(SIG_SETMASK, &set, nullptr);
 }
 
