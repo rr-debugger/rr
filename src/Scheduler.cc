@@ -740,8 +740,14 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     WaitAggregator wait_aggregator((task_priority_set_total_count + task_round_robin_queue.size())/100 + 1);
 
     map<int, vector<RecordTask*>> attention_set_by_priority;
-    for (pid_t pid : TraceeAttentionSet::read()) {
-      RecordTask* t = session.find_task(pid);
+    for (pid_t tid : TraceeAttentionSet::read()) {
+      if (current_ && current_->tid == tid) {
+        // current_ will almost always be in the attention set because of
+        // ptrace-stop activity related to when we last ran it.
+        // It's fairer to leave it out of the attention set.
+        continue;
+      }
+      RecordTask* t = session.find_task(tid);
       if (t) {
         attention_set_by_priority[t->priority].push_back(t);
       }
