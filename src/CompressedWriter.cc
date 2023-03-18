@@ -6,6 +6,7 @@
 
 #include <brotli/encode.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -57,6 +58,11 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
     return;
   }
 
+  // Make sure the compression threads block all signals
+  sigset_t set;
+  sigset_t old_mask;
+  sigfillset(&set);
+  sigprocmask(SIG_BLOCK, &set, &old_mask);
   // Hold the lock so threads don't inspect the 'threads' array
   // until we've finished initializing it.
   pthread_mutex_lock(&mutex);
@@ -79,6 +85,7 @@ CompressedWriter::CompressedWriter(const string& filename, size_t block_size,
     pthread_setname_np(threads[i], thread_name.substr(0, 15).c_str());
   }
   pthread_mutex_unlock(&mutex);
+  sigprocmask(SIG_SETMASK, &old_mask, nullptr);
 }
 
 CompressedWriter::~CompressedWriter() {
