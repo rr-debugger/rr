@@ -1426,6 +1426,7 @@ set(TESTS_WITH_PROGRAM
   mprotect_syscallbuf_overflow
   mutex_pi_stress
   nested_detach_wait
+  nested_detach_kill_stuck
   overflow_branch_counter
   patch_page_end
   x86/patch_40_80_f6_81
