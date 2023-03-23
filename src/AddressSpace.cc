@@ -1793,7 +1793,13 @@ static vector<MemoryRange> split_range(const MemoryRange& range) {
 
 static void configure_watch_registers(vector<WatchConfig>& regs,
                                       const MemoryRange& range, WatchType type,
-                                      vector<int8_t>* assigned_regs) {
+                                      vector<int8_t>* assigned_regs,
+                                      AddressSpace::WatchpointAlignment alignment) {
+  if (alignment == AddressSpace::UNALIGNED) {
+    regs.push_back(WatchConfig(range.start(), range.size(), type));
+    return;
+  }
+
   // Zero-sized WatchConfigs return no ranges here, so are ignored.
   auto split_ranges = split_range(range);
 
@@ -1829,31 +1835,10 @@ static void configure_watch_registers(vector<WatchConfig>& regs,
   }
 }
 
-vector<WatchConfig> AddressSpace::get_watch_configs(
-    WillSetTaskState will_set_task_state) {
-  vector<WatchConfig> result;
-  for (auto& kv : watchpoints) {
-    vector<int8_t>* assigned_regs = nullptr;
-    if (will_set_task_state == SETTING_TASK_STATE) {
-      kv.second.debug_regs_for_exec_read.clear();
-      assigned_regs = &kv.second.debug_regs_for_exec_read;
-    }
-    const MemoryRange& r = kv.first;
-    int watching = kv.second.watched_bits();
-    if (EXEC_BIT & watching) {
-      configure_watch_registers(result, r, WATCH_EXEC, assigned_regs);
-    }
-    if (READ_BIT & watching) {
-      configure_watch_registers(result, r, WATCH_READWRITE, assigned_regs);
-    } else if (WRITE_BIT & watching) {
-      configure_watch_registers(result, r, WATCH_WRITE, nullptr);
-    }
-  }
-  return result;
-}
-
 vector<WatchConfig> AddressSpace::get_watchpoints_internal(
-    WatchpointFilter filter) {
+    WatchpointFilter filter,
+    WatchpointAlignment alignment,
+    UpdateWatchpointRegisterAssignments update_watchpoint_register_assignments) {
   vector<WatchConfig> result;
   for (auto& kv : watchpoints) {
     if (filter == CHANGED_WATCHPOINTS) {
@@ -1862,26 +1847,23 @@ vector<WatchConfig> AddressSpace::get_watchpoints_internal(
       }
       kv.second.changed = false;
     }
+    vector<int8_t>* assigned_regs = nullptr;
+    if (update_watchpoint_register_assignments == UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS) {
+      kv.second.debug_regs_for_exec_read.clear();
+      assigned_regs = &kv.second.debug_regs_for_exec_read;
+    }
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
-      result.push_back(WatchConfig(r.start(), r.size(), WATCH_EXEC));
+      configure_watch_registers(result, r, WATCH_EXEC, assigned_regs, alignment);
     }
     if (READ_BIT & watching) {
-      result.push_back(WatchConfig(r.start(), r.size(), WATCH_READWRITE));
+      configure_watch_registers(result, r, WATCH_READWRITE, assigned_regs, alignment);
     } else if (WRITE_BIT & watching) {
-      result.push_back(WatchConfig(r.start(), r.size(), WATCH_WRITE));
+      configure_watch_registers(result, r, WATCH_WRITE, nullptr, alignment);
     }
   }
   return result;
-}
-
-vector<WatchConfig> AddressSpace::consume_watchpoint_changes() {
-  return get_watchpoints_internal(CHANGED_WATCHPOINTS);
-}
-
-vector<WatchConfig> AddressSpace::all_watchpoints() {
-  return get_watchpoints_internal(ALL_WATCHPOINTS);
 }
 
 bool AddressSpace::has_any_watchpoint_changes() {
@@ -1904,7 +1886,8 @@ bool AddressSpace::has_exec_watchpoint_fired(remote_code_ptr addr) {
 }
 
 bool AddressSpace::allocate_watchpoints() {
-  Task::DebugRegs regs = get_watch_configs(SETTING_TASK_STATE);
+  Task::DebugRegs regs = get_watchpoints_internal(ALL_WATCHPOINTS, ALIGNED,
+      UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
 
   if (regs.size() <= 0x7f) {
     bool ok = true;

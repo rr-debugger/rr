@@ -231,7 +231,7 @@ enum DebugStatus {
 
 /**
  * A distinct watchpoint, corresponding to the information needed to
- * program a single x86 debug register.
+ * program a single hardware watchpoint.
  */
 struct WatchConfig {
   WatchConfig(remote_ptr<void> addr, size_t num_bytes, WatchType type)
@@ -582,7 +582,10 @@ public:
   void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   void remove_all_watchpoints();
-  std::vector<WatchConfig> all_watchpoints();
+  std::vector<WatchConfig> all_watchpoints() {
+    return get_watchpoints_internal(ALL_WATCHPOINTS, UNALIGNED,
+      DONT_UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
+  }
 
   /**
    * Save all watchpoint state onto a stack.
@@ -620,7 +623,10 @@ public:
   /**
    * Return all changed watchpoints in |watches| and clear their changed flags.
    */
-  std::vector<WatchConfig> consume_watchpoint_changes();
+  std::vector<WatchConfig> consume_watchpoint_changes() {
+    return get_watchpoints_internal(CHANGED_WATCHPOINTS, UNALIGNED,
+      DONT_UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
+  }
 
   void set_shm_size(remote_ptr<void> addr, size_t bytes) {
     shm_sizes[addr] = bytes;
@@ -866,6 +872,10 @@ public:
 
   static MemoryRange get_global_exclusion_range(const RecordSession* session);
 
+  // Whether to return WatchConfigs consisting of only aligned locations
+  // suitable for hardware watchpoint registers.
+  enum WatchpointAlignment { UNALIGNED, ALIGNED };
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
@@ -895,12 +905,17 @@ private:
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);
   void update_watchpoint_values(remote_ptr<void> start, remote_ptr<void> end);
+  // Whether to handle all watchpoints or just data watchpoints whose data
+  // has changed. In the latter case we clear their changed status.
   enum WatchpointFilter { ALL_WATCHPOINTS, CHANGED_WATCHPOINTS };
-  std::vector<WatchConfig> get_watchpoints_internal(WatchpointFilter filter);
-
-  enum WillSetTaskState { SETTING_TASK_STATE, NOT_SETTING_TASK_STATE };
-  std::vector<WatchConfig> get_watch_configs(
-      WillSetTaskState will_set_task_state);
+  // Whether to update the watchpoint's assigned register list. Use
+  // UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS when we'll use the watchpoints
+  // to configure HW watchpoint registers.
+  enum UpdateWatchpointRegisterAssignments { UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS,
+      DONT_UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS };
+  std::vector<WatchConfig> get_watchpoints_internal(WatchpointFilter filter,
+        WatchpointAlignment alignment,
+        UpdateWatchpointRegisterAssignments update_watchpoint_register_assignments);
 
   /**
    * Construct a minimal set of watchpoints to be enabled based
