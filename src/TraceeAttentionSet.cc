@@ -60,7 +60,7 @@ void TraceeAttentionSet::initialize() {
   // Restore original sigmask but block SIGCHLD in this thread
   // (and all future spawned threads) so that our attention thread
   // gets all the SIGCHLD notifications via signalfd.
-  sigorset(&set, &original_mask, &original_mask);
+  set = original_mask;
   sigaddset(&set, SIGCHLD);
   sigprocmask(SIG_SETMASK, &set, nullptr);
 }
@@ -79,7 +79,7 @@ unordered_set<pid_t> TraceeAttentionSet::read() {
 void TraceeAttentionSet::get_original_sigmask(sigset_t* out) {
   pthread_mutex_lock(&attention_set_lock);
   if (attention_set) {
-    sigorset(out, &original_mask, &original_mask);
+    *out = original_mask;
   } else {
     sigprocmask(SIG_BLOCK, nullptr, out);
   }
