@@ -144,22 +144,27 @@ void Task::wait_exit() {
    */
   WaitOptions options(tid);
   options.consume = false;
-  WaitResult result = WaitManager::wait_stop(options);
-  if (result.code == WAIT_OK) {
-    if (result.status.ptrace_event() == PTRACE_EVENT_EXIT) {
-      // It's possible that the earlier exit event was synthetic, in which
-      // case we're only now catching up to the real process exit. In that
-      // case, just ask the process to actually exit. (TODO: We may want to
-      // catch this earlier).
-      return proceed_to_exit(true);
+  do {
+    WaitResult result = WaitManager::wait_stop(options);
+    if (result.code == WAIT_OK) {
+      if (result.status.ptrace_event() == PTRACE_EVENT_EXIT) {
+        // It's possible that the earlier exit event was synthetic, in which
+        // case we're only now catching up to the real process exit. In that
+        // case, just ask the process to actually exit. (TODO: We may want to
+        // catch this earlier).
+        return proceed_to_exit(true);
+      }
+      ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXEC)
+        << "Expected PTRACE_EVENT_EXEC, got " << result.status;
+      // The kernel will do the reaping for us in this case
+      was_reaped = true;
+    } else if (result.code == WAIT_NO_STATUS) {
+      // Wait was EINTR'd most likely - retry.
+      continue;
+    } else {
+      ASSERT(this, result.code == WAIT_NO_CHILD);
     }
-    ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXEC)
-      << "Expected PTRACE_EVENT_EXEC, got " << result.status;
-    // The kernel will do the reaping for us in this case
-    was_reaped = true;
-  } else {
-    ASSERT(this, result.code == WAIT_NO_CHILD);
-  }
+  } while (false);
 }
 
 void Task::proceed_to_exit(bool wait) {

@@ -506,14 +506,16 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
 }
 
 static volatile double term_requested;
+static bool did_print_reassurance = false;
 
 static const double TRACEE_SIGTERM_RESPONSE_MAX_TIME = 5;
+static const double RR_SIGKILL_GRACE_TIME = 5;
 
 /**
  * A terminating signal was received.
  *
  * First we forward it to the tracee. Then if the tracee is still
- * running after 1s + TRACEE_SIGTERM_RESPONSE_MAX_TIME, we kill it with SIGKILL.
+ * running after TRACEE_SIGTERM_RESPONSE_MAX_TIME, we kill it with SIGKILL.
  * If a term request remains pending for more than one second,
  * then assume rr is wedged and abort().
  *
@@ -526,11 +528,14 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
   if (term_requested > 0) {
     double now = monotonic_now_sec();
     if (now - term_requested > 1 + TRACEE_SIGTERM_RESPONSE_MAX_TIME) {
-      static const char msg[] =
-        "Received SIGTERM while an earlier one was pending.  We're "
-        "probably wedged.\n";
-      write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-      notifying_abort();
+      if (!did_print_reassurance) {
+        static const char msg[] =
+          "[rr] Tracee failed to exit within 1s after SIGKILL. Recording will forcibly terminate in 4s.\n";
+        did_print_reassurance = true;
+        write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+      } else if (now - term_requested > RR_SIGKILL_GRACE_TIME + TRACEE_SIGTERM_RESPONSE_MAX_TIME) {
+        notifying_abort();
+      }
     }
   } else {
     term_requested = monotonic_now_sec();
@@ -644,8 +649,11 @@ static void save_rr_git_revision(const string& trace_dir) {
 
 static void* repeat_SIGTERM(__attribute__((unused)) void* p) {
   sleep_time(TRACEE_SIGTERM_RESPONSE_MAX_TIME);
+  /* send another SIGTERM so we wake up and SIGKILL our tracees */
+  kill(getpid(), SIGTERM);
+  sleep_time(RR_SIGKILL_GRACE_TIME);
+  /* Ok, now we're really wedged, just repeatedly SIGTERM until we're out */
   while (1) {
-    /* send another SIGTERM so we wake up and SIGKILL our tracees */
     kill(getpid(), SIGTERM);
     sleep_time(0.01);
   }
