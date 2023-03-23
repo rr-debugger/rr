@@ -2635,9 +2635,10 @@ void RecordSession::term_detached_tasks() {
     }
     ::kill(t->rec_tid, SIGTERM);
   }
-  for (auto& v : task_map) {
-    RecordTask* t = static_cast<RecordTask*>(v.second);
+  for (auto it = task_map.begin(); it != task_map.end(); ) {
+    RecordTask* t = static_cast<RecordTask*>(it->second);
     if (!t->detached_proxy) {
+      ++it;
       continue;
     }
     WaitResult result = WaitManager::wait_exit(WaitOptions(t->rec_tid));
@@ -2647,6 +2648,8 @@ void RecordSession::term_detached_tasks() {
       LOG(warn) << "Unexpected wait status " << result.status <<
         " while waiting for detached child " << t->rec_tid;
     }
+    ++it;
+    delete t;
   }
 }
 
