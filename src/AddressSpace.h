@@ -239,6 +239,14 @@ struct WatchConfig {
   remote_ptr<void> addr;
   size_t num_bytes;
   WatchType type;
+
+  bool operator==(const WatchConfig& other) const {
+    return addr == other.addr && num_bytes == other.num_bytes &&
+      type == other.type;
+  }
+  bool operator!=(const WatchConfig& other) const {
+    return !(*this == other);
+  }
 };
 
 /**
@@ -303,12 +311,6 @@ public:
   typedef std::shared_ptr<AddressSpace> shr_ptr;
 
   virtual ~AddressSpace();
-
-  /**
-   * Call this after a new task has been cloned within this
-   * address space.
-   */
-  void after_clone();
 
   /**
    * Call this after a successful execve syscall has completed. At this point
@@ -625,6 +627,14 @@ public:
    */
   std::vector<WatchConfig> consume_watchpoint_changes() {
     return get_watchpoints_internal(CHANGED_WATCHPOINTS, UNALIGNED,
+      DONT_UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
+  }
+
+  /**
+   * Get hardware watchpoint assignments.
+   */
+  std::vector<WatchConfig> get_hw_watchpoints() {
+    return get_watchpoints_internal(ALL_WATCHPOINTS, ALIGNED,
       DONT_UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
   }
 

@@ -134,7 +134,7 @@ class Task {
   friend class ReplaySession;
 
 public:
-  typedef std::vector<WatchConfig> DebugRegs;
+  typedef std::vector<WatchConfig> HardwareWatchpoints;
 
   /**
    * Ptrace-detach the task.
@@ -610,7 +610,7 @@ public:
    * has been enabled; either all of |regs| is enabled and true
    * is returned, or none are and false is returned.
    */
-  bool set_debug_regs(const DebugRegs& regs);
+  bool set_debug_regs(const HardwareWatchpoints& watchpoints);
 
   bool set_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs, size_t nregs);
   bool get_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs);
@@ -1227,6 +1227,8 @@ protected:
   Registers registers;
   // Where we last resumed execution
   remote_code_ptr address_of_last_execution_resume;
+  // Current hardware watchpoint state as programmed into debug registers
+  HardwareWatchpoints current_hardware_watchpoints;
   ResumeRequest how_last_execution_resumed;
   // In certain circumstances, due to hardware bugs, we need to fudge the
   // cx register. If so, we record the original value here. See comments in

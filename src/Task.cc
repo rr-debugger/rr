@@ -1397,6 +1397,10 @@ void Task::work_around_KNL_string_singlestep_bug() {
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
+  // Ensure our HW debug registers are up to date before we execute any code.
+  // If this fails because the task died, the code below will detect it.
+  set_debug_regs(vm()->get_hw_watchpoints());
+
   bool setup_succeeded = will_resume_execution(how, wait_how, tick_period, sig);
 
   // During record, the process could have died, but otherwise, we control
@@ -1656,7 +1660,7 @@ union PackedDebugControl {
   DebugControl ctl;
 };
 
-static bool set_x86_debug_regs(Task *t, const Task::DebugRegs& regs) {
+static bool set_x86_debug_regs(Task *t, const Task::HardwareWatchpoints& regs) {
   // Reset the debug status since we're about to change the set
   // of programmed watchpoints.
   t->set_x86_debug_reg(6, 0);
@@ -1677,6 +1681,10 @@ static bool set_x86_debug_regs(Task *t, const Task::DebugRegs& regs) {
     dr7.ctl.enable(i, BYTES_1, WATCH_EXEC);
   }
   t->set_x86_debug_reg(7, dr7.packed);
+  if (regs.empty()) {
+    // Don't do another redundant poke to DR7.
+    return true;
+  }
 
   size_t index = 0;
   for (auto reg : regs) {
@@ -1691,11 +1699,14 @@ static bool set_x86_debug_regs(Task *t, const Task::DebugRegs& regs) {
 }
 
 template <typename Arch>
-static bool set_debug_regs_arch(Task* t, const Task::DebugRegs& regs);
-template <> bool set_debug_regs_arch<X86Arch>(Task* t, const Task::DebugRegs& regs) {
+static bool set_debug_regs_arch(Task* t,
+                                const Task::HardwareWatchpoints& regs);
+template <> bool set_debug_regs_arch<X86Arch>(Task* t,
+                                              const Task::HardwareWatchpoints& regs) {
   return set_x86_debug_regs(t, regs);
 }
-template <> bool set_debug_regs_arch<X64Arch>(Task* t, const Task::DebugRegs& regs) {
+template <> bool set_debug_regs_arch<X64Arch>(Task* t,
+                                              const Task::HardwareWatchpoints& regs) {
   return set_x86_debug_regs(t, regs);
 }
 
@@ -1709,7 +1720,8 @@ static void query_max_bp_wp(Task* t, ssize_t* max_bp, ssize_t* max_wp) {
   *max_wp = wps.dbg_info & 0xff;
 }
 
-template <> bool set_debug_regs_arch<ARM64Arch>(Task* t, const Task::DebugRegs& regs) {
+template <> bool set_debug_regs_arch<ARM64Arch>(Task* t,
+                                                const Task::HardwareWatchpoints& regs) {
   ARM64Arch::user_hwdebug_state bps;
   ARM64Arch::user_hwdebug_state wps;
   memset(&bps, 0, sizeof(bps));
@@ -1778,8 +1790,21 @@ template <> bool set_debug_regs_arch<ARM64Arch>(Task* t, const Task::DebugRegs& 
          t->set_aarch64_debug_regs(NT_ARM_HW_WATCH, &wps, max_wp);
 }
 
-bool Task::set_debug_regs(const DebugRegs& regs) {
-  RR_ARCH_FUNCTION(set_debug_regs_arch, arch(), this, regs);
+static bool set_debug_regs_internal(Task* t, const Task::HardwareWatchpoints& regs) {
+  RR_ARCH_FUNCTION(set_debug_regs_arch, t->arch(), t, regs);
+}
+
+bool Task::set_debug_regs(const HardwareWatchpoints& regs) {
+  if (regs == current_hardware_watchpoints) {
+    return true;
+  }
+  bool ret = set_debug_regs_internal(this, regs);
+  if (ret) {
+    current_hardware_watchpoints = regs;
+  } else {
+    current_hardware_watchpoints.clear();
+  }
+  return ret;
 }
 
 static void set_thread_area(std::vector<X86Arch::user_desc>& thread_areas_,
@@ -2384,6 +2409,16 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   }
 
   t->post_vm_clone(reason, flags, this);
+
+  // Copy debug register values. We avoid any assumptions about
+  // the state of the debug registers in the new task.
+  bool ret = set_debug_regs_internal(t, current_hardware_watchpoints);
+  if (!ret) {
+    LOG(warn) << "Failed to initialize new task's debug registers; "
+              << "this should always work since we were able to set them in the old task, "
+              << "but the new task might have been killed";
+  }
+  t->current_hardware_watchpoints = current_hardware_watchpoints;
 
   return t;
 }

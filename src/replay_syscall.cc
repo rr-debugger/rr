@@ -311,8 +311,6 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
   init_scratch_memory(new_task, km, data);
-
-  new_task->vm()->after_clone();
 }
 
 static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,

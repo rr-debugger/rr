@@ -242,8 +242,6 @@ AddressSpace::~AddressSpace() {
   session_->on_destroy(this);
 }
 
-void AddressSpace::after_clone() { allocate_watchpoints(); }
-
 static uint32_t find_offset_of_syscall_instruction_in(SupportedArch arch,
                                                       uint8_t* vdso_data,
                                                       size_t vdso_len) {
@@ -1886,23 +1884,17 @@ bool AddressSpace::has_exec_watchpoint_fired(remote_code_ptr addr) {
 }
 
 bool AddressSpace::allocate_watchpoints() {
-  Task::DebugRegs regs = get_watchpoints_internal(ALL_WATCHPOINTS, ALIGNED,
+  vector<WatchConfig> regs = get_watchpoints_internal(ALL_WATCHPOINTS, ALIGNED,
       UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
 
-  bool ok = true;
-  for (auto t : task_set()) {
-    if (!t->set_debug_regs(regs)) {
-      ok = false;
-    }
+  if (task_set().empty()) {
+    // We can't validate the watchpoint set in this case
+    FATAL() << "No tasks???";
   }
-  if (ok) {
+  if ((*task_set().begin())->set_debug_regs(regs)) {
     return true;
   }
 
-  regs.clear();
-  for (auto t2 : task_set()) {
-    t2->set_debug_regs(regs);
-  }
   for (auto kv : watchpoints) {
     kv.second.debug_regs_for_exec_read.clear();
   }
