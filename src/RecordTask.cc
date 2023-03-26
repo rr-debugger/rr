@@ -556,6 +556,7 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   switch (syscallno) {
     // These syscalls affect the sigmask even if they fail.
     case Arch::epoll_pwait:
+    case Arch::epoll_pwait2:
     case Arch::pselect6:
     case Arch::pselect6_time64:
     case Arch::ppoll:
@@ -1626,7 +1627,8 @@ bool RecordTask::at_interrupted_non_restartable_signal_modifying_syscall() const
   auto r = regs();
   // XXXkhuey io_uring_enter (not yet supported) can do this too.
   return r.syscall_result_signed() == -EINTR &&
-    is_epoll_pwait_syscall(r.original_syscallno(), arch());
+    (is_epoll_pwait_syscall(r.original_syscallno(), arch()) ||
+     is_epoll_pwait2_syscall(r.original_syscallno(), arch()));
 }
 
 bool RecordTask::is_arm_desched_event_syscall() {
