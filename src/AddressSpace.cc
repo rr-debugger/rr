@@ -1889,16 +1889,14 @@ bool AddressSpace::allocate_watchpoints() {
   Task::DebugRegs regs = get_watchpoints_internal(ALL_WATCHPOINTS, ALIGNED,
       UPDATE_WATCHPOINT_REGISTER_ASSIGNMENTS);
 
-  if (regs.size() <= 0x7f) {
-    bool ok = true;
-    for (auto t : task_set()) {
-      if (!t->set_debug_regs(regs)) {
-        ok = false;
-      }
+  bool ok = true;
+  for (auto t : task_set()) {
+    if (!t->set_debug_regs(regs)) {
+      ok = false;
     }
-    if (ok) {
-      return true;
-    }
+  }
+  if (ok) {
+    return true;
   }
 
   regs.clear();
