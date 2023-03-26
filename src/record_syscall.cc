@@ -4841,6 +4841,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
               sizeof(typename Arch::epoll_event)));
       return ALLOW_SWITCH;
 
+    case Arch::epoll_pwait2:
     case Arch::epoll_pwait: {
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<int>(sizeof(typename Arch::epoll_event) * regs.arg3_signed(),

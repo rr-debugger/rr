@@ -933,6 +933,7 @@ set(BASIC_TESTS
   epoll_edge
   epoll_many
   epoll_pwait_eintr_sigmask
+  epoll_pwait2
   eventfd
   exec_flags
   exec_no_env
