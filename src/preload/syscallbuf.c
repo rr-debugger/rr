@@ -2701,6 +2701,72 @@ static long sys_epoll_wait(struct syscall_info* call) {
   return traced_raw_syscall(call);
 }
 
+#ifdef SYS_epoll_pwait2
+static long sys_epoll_pwait2(struct syscall_info* call) {
+  int epfd = call->args[0];
+  struct epoll_event* events = (struct epoll_event*)call->args[1];
+  int max_events = call->args[2];
+  struct timespec* timeout = (struct timespec*)call->args[3];
+
+  void* ptr;
+  struct epoll_event* events2 = NULL;
+  long ret;
+
+  ptr = prep_syscall();
+
+  assert(SYS_epoll_pwait2 == call->no);
+
+  if (events && max_events > 0) {
+    events2 = ptr;
+    ptr += max_events * sizeof(*events2);
+  }
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  /* Try a no-timeout version of the syscall first. If this doesn't return
+     anything, and we should have blocked, we'll try again with a traced syscall
+     which will be the one that blocks. This usually avoids the
+     need to trigger desched logic, which adds overhead, especially the
+     rrcall_notify_syscall_hook_exit that gets triggered.
+     N.B.: SYS_epoll_wait only has four arguments, but we don't care
+     if the last two arguments are garbage */
+  struct timespec no_timeout = { 0, 0 };
+  ret = untraced_syscall6(call->no, epfd, events2, max_events, &no_timeout,
+    call->args[4], call->args[5]);
+
+  ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
+  ret = commit_raw_syscall(call->no, ptr, ret);
+  if (timeout == 0 || (ret != EINTR && ret != 0)) {
+    /* If we got some real results, or a non-EINTR error, we can just
+       return it directly.
+       If we got no results and the timeout was 0, we can just return 0.
+       If we got EINTR and the timeout was 0, a signal must have
+       interrupted the syscall (not sure if this can happen...). If the signal
+       needs to be handled, we'll handle it as we exit the syscallbuf.
+       Returning EINTR is fine because that's what the syscall would have
+       returned had it run traced. (We didn't enable the desched signal
+       so no extra signals could have affected our untraced syscall that
+       could not have been delivered to a traced syscall.) */
+    return ret;
+  }
+  /* Some timeout was requested and either we got no results or we got
+     EINTR.
+     In the former case we just have to wait, so we do a traced syscall.
+     In the latter case, the syscall must have been interrupted by a
+     signal (which rr will have handled or stashed, and won't deliver until
+     we exit syscallbuf code or do a traced syscall). The kernel doesn't
+     automatically restart the syscall because of a longstanding bug (as of
+     4.17 anyway). Doing a traced syscall will allow a stashed signal to be
+     processed (if necessary) and allow things to proceed normally after that.
+     Note that if rr decides to deliver a signal to the tracee, that will
+     itself interrupt the syscall and cause it to return EINTR just as
+     would happen without rr.
+  */
+  return traced_raw_syscall(call);
+}
+#endif
+
 #define CLONE_SIZE_THRESHOLD 0x10000
 
 static long sys_read(struct syscall_info* call) {
@@ -3964,6 +4030,9 @@ case SYS_epoll_wait:
 #endif
 case SYS_epoll_pwait:
     return sys_epoll_wait(call);
+#if defined(SYS_epoll_pwait2)
+    CASE(epoll_pwait2);
+#endif
     CASE_GENERIC_NONBLOCKING_FD(fadvise64);
     CASE_GENERIC_NONBLOCKING(fchmod);
 #if defined(SYS_fcntl64)
