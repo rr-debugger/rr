@@ -8,7 +8,6 @@ steps:
     agents:
       queue: "juliaecosystem"
       os: "linux"
-      arch: "x86_64"
     commands: |
       echo "--- Instantiate the environment"
       julia --project=.buildkite -e 'import Pkg; Pkg.instantiate()'
