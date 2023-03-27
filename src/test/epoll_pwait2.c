@@ -27,7 +27,7 @@ int main(void) {
   // Make sure something will wake us from the epoll_pwait2.
   alarm(1);
   // But also use the epoll_pwait to modify the signal mask.
-  epoll_pwait2(epfd, &ev, 1, &ts, &sigmask);
+  syscall(RR_epoll_pwait2, epfd, &ev, 1, &ts, &sigmask, 8);
   test_assert(errno == EINTR || errno == ENOSYS);
 
   atomic_puts("EXIT-SUCCESS");
