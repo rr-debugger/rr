@@ -2668,7 +2668,7 @@ static long sys_epoll_wait(struct syscall_info* call) {
      N.B.: SYS_epoll_wait only has four arguments, but we don't care
      if the last two arguments are garbage */
   ret = untraced_syscall6(call->no, epfd, events2, max_events, 0,
-    call->args[4], call->args[5]);
+    call->args[4] /*sigmask*/, call->args[5] /*sizeof(*sigmask)*/);
 
   ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
   ret = commit_raw_syscall(call->no, ptr, ret);
@@ -2701,12 +2701,17 @@ static long sys_epoll_wait(struct syscall_info* call) {
   return traced_raw_syscall(call);
 }
 
+struct timespec64 {
+  uint64_t tv_sec;
+  uint64_t tv_nsec;
+};
+
 #ifdef SYS_epoll_pwait2
 static long sys_epoll_pwait2(struct syscall_info* call) {
   int epfd = call->args[0];
   struct epoll_event* events = (struct epoll_event*)call->args[1];
   int max_events = call->args[2];
-  struct timespec* timeout = (struct timespec*)call->args[3];
+  struct timespec64* timeout = (struct timespec64*)call->args[3];
 
   void* ptr;
   struct epoll_event* events2 = NULL;
@@ -2728,16 +2733,15 @@ static long sys_epoll_pwait2(struct syscall_info* call) {
      anything, and we should have blocked, we'll try again with a traced syscall
      which will be the one that blocks. This usually avoids the
      need to trigger desched logic, which adds overhead, especially the
-     rrcall_notify_syscall_hook_exit that gets triggered.
-     N.B.: SYS_epoll_wait only has four arguments, but we don't care
-     if the last two arguments are garbage */
-  struct timespec no_timeout = { 0, 0 };
+     rrcall_notify_syscall_hook_exit that gets triggered. */
+  struct timespec64 no_timeout = { 0, 0 };
   ret = untraced_syscall6(call->no, epfd, events2, max_events, &no_timeout,
-    call->args[4], call->args[5]);
+    call->args[4] /*sigmask*/, call->args[5] /*sizeof(*sigmask)*/);
 
   ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
   ret = commit_raw_syscall(call->no, ptr, ret);
-  if (timeout == 0 || (ret != EINTR && ret != 0)) {
+  if ((timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0) ||
+      (ret != EINTR && ret != 0)) {
     /* If we got some real results, or a non-EINTR error, we can just
        return it directly.
        If we got no results and the timeout was 0, we can just return 0.
