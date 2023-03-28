@@ -65,6 +65,7 @@ function generate(platform::Platform)
                     ),
                 ],
                 "soft_fail" => "$(platform.allow_fail)",
+                "retry" => Dict("manual" => Dict("permit_on_passed" => true))
             ),
         ],
     )
