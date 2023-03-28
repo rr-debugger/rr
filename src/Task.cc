@@ -2415,15 +2415,20 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
 
   t->post_vm_clone(reason, flags, this);
 
-  // Copy debug register values. We avoid any assumptions about
-  // the state of the debug registers in the new task.
-  bool ret = set_debug_regs_internal(t, current_hardware_watchpoints);
-  if (!ret) {
-    LOG(warn) << "Failed to initialize new task's debug registers; "
-              << "this should always work since we were able to set them in the old task, "
-              << "but the new task might have been killed";
+  // Copy debug register values. We assume the kernel will either copy debug
+  // registers into the new task, or the debug registers will be unset
+  // in the new task. If we have no HW watchpoints then debug registers
+  // will definitely be unset in the new task so there is nothing to do.
+  if (!current_hardware_watchpoints.empty()) {
+    // Copy debug register settings into the new task so we're in a known state.
+    bool ret = set_debug_regs_internal(t, current_hardware_watchpoints);
+    if (!ret) {
+      LOG(warn) << "Failed to initialize new task's debug registers; "
+                << "this should always work since we were able to set them in the old task, "
+                << "but the new task might have been killed";
+    }
+    t->current_hardware_watchpoints = current_hardware_watchpoints;
   }
-  t->current_hardware_watchpoints = current_hardware_watchpoints;
 
   return t;
 }
