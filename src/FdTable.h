@@ -80,8 +80,10 @@ public:
 
 private:
   FdTable() : fd_count_beyond_limit(0), last_free_fd_(0) {}
+  // Does not call the base-class copy constructor because
+  // we don't want to copy the task set; the new FdTable will
+  // be for new tasks.
   FdTable(const FdTable& other) : fds(other.fds),
-    vms(other.vms),
     fd_count_beyond_limit(other.fd_count_beyond_limit),
     last_free_fd_(other.last_free_fd_) {}
 

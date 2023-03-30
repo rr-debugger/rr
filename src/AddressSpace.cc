@@ -1695,6 +1695,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   }
 }
 
+// Does not copy the task set; the new AddressSpace will be for new tasks.
 AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
                            pid_t leader_tid, uint32_t leader_serial,
                            uint32_t exec_count)

@@ -179,9 +179,14 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
   // But tasks with the same VM might have different fd tables...
   for (auto address_space : vms) {
     RecordTask* rt = nullptr;
+    if (address_space.first->task_set().empty()) {
+      FATAL() << "Address space must have at least one task";
+    }
     for (Task* t : address_space.first->task_set()) {
       if (!t->session().is_recording()) {
-        return;
+        // We could return but we want to check that all our
+        // AddressSpaces have tasks (i.e. aren't dead/dangling)
+        break;
       }
       rt = static_cast<RecordTask*>(t);
       if (!rt->already_exited()) {
