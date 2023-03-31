@@ -6811,9 +6811,10 @@ static void rec_process_syscall_arch(RecordTask* t,
             // parent has reaped the proxy, so we're done with this task.
             // This kills the proxy.
             delete tracee;
+            tracee = nullptr;
           }
         }
-        if (tracee->waiting_for_reap || tracee->waiting_for_zombie) {
+        if (tracee && (tracee->waiting_for_reap || tracee->waiting_for_zombie)) {
           // Have another go at reaping the task
           tracee->did_reach_zombie();
         }
