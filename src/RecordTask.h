@@ -501,7 +501,10 @@ public:
      */
     DONT_RESET_SYSCALLBUF
   };
-  void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
+  // Take `ev` by value to avoid bugs where we pass in an event in
+  // `pending_events`, which could lead to dangling references when
+  // flushing the syscallbuf manipulates `pending_events`.
+  void record_event(Event ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
                     AllowSyscallbufReset reset = ALLOW_RESET_SYSCALLBUF,
                     const Registers* registers = nullptr);
 

@@ -1951,7 +1951,7 @@ void RecordTask::maybe_reset_syscallbuf() {
   }
 }
 
-void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
+void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
                               AllowSyscallbufReset reset,
                               const Registers* registers) {
   if (flush == FLUSH_SYSCALLBUF) {
