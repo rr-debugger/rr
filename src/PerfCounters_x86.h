@@ -230,7 +230,7 @@ static void check_for_xen_pmi_bug(const perf_event_attrs &perf_attr) {
         "shll $3, %[accumulator];"
         "sub %%edx, %[accumulator];"
         // Add 2.
-        "add $2, %[accumulator];"
+        "addl $2, %[accumulator];"
         // Mask off bits.
         "andl $0xffffff, %[accumulator];"
         // And loop.
