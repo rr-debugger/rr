@@ -282,7 +282,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   Task* t = remote.task();
   SupportedArch arch = t->arch();
 
-  const char *fname;
+  const char *fname = nullptr;
   switch (t->arch()) {
     case x86_64:
     case aarch64:
