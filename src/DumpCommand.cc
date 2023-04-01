@@ -162,7 +162,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
       if (!(record.prot & PROT_EXEC)) {
         prot_flags[2] = '-';
       }
-      fprintf(out, "  { start:'%p', size:'%lx', prot:%s }\n",
+      fprintf(out, "  { start:'%p', size:'%" PRIx64 "', prot:%s }\n",
               (void*)record.start, record.size, prot_flags);
     }
   }
