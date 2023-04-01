@@ -1191,7 +1191,9 @@ bool Task::set_aarch64_debug_regs(int, ARM64Arch::user_hwdebug_state *, size_t) 
   FATAL() << "Reached aarch64 code path on non-aarch64 system";
   return false;
 }
-bool Task::get_aarch64_debug_regs(int, ARM64Arch::user_hwdebug_state *) {
+bool Task::get_aarch64_debug_regs(int, ARM64Arch::user_hwdebug_state *regs) {
+  // Following memset just to silence a warning about dbg_info may be used uninitialized.
+  memset(regs, 0, sizeof(*regs));
   FATAL() << "Reached aarch64 code path on non-aarch64 system";
   return false;
 }
