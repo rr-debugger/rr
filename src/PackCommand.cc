@@ -192,8 +192,7 @@ static map<string, FileInfo> gather_file_info(const string& trace_dir) {
   vector<vector<pair<TraceReader::MappedData, FileInfo>>> thread_files;
   thread_files.resize(use_cpus);
   for (size_t i = 0; i < files.size(); ++i) {
-    FileInfo info;
-    thread_files[i % use_cpus].push_back(make_pair(files[i], info));
+    thread_files[i % use_cpus].push_back(make_pair(files[i], FileInfo()));
   }
 
   vector<pthread_t> threads;
