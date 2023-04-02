@@ -576,7 +576,7 @@ const AddressSpace::Mapping& Session::steal_mapping(
   // We will include the name of the full path of the original mapping in the
   // name of the shared mapping, replacing slashes by dashes.
   char name[PATH_MAX - 40];
-  strncpy(name, m.map.fsname().c_str(), sizeof(name));
+  strncpy(name, m.map.fsname().c_str(), sizeof(name)-1);
   name[sizeof(name) - 1] = '\0';
   for (char* ptr = name; *ptr != '\0'; ++ptr) {
     if (*ptr == '/') {
