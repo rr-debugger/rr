@@ -104,12 +104,20 @@ static void generic_request_by_name(int sockfd, struct ifreq* req, int nr,
   ret = ioctl(sockfd, nr, req);
   VERIFY_GUARD(req);
   atomic_printf("%s(ret:%d): %s ", nr_str, ret, req->ifr_name);
-  if (ret < 0 && errno == EFAULT && nr == SIOCGIFADDR) {
-    /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
-    atomic_puts("Buggy kernel detected; aborting test");
-    atomic_puts("EXIT-SUCCESS");
-    exit(0);
+  if (ret < 0 && nr == SIOCGIFADDR) {
+    if (errno == EFAULT) {
+      /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
+      atomic_puts("Buggy kernel detected; aborting test");
+      atomic_puts("EXIT-SUCCESS");
+      exit(0);
+    }
+    if (errno == EADDRNOTAVAIL) {
+      // Some devices can return this in some configurations, e.g.
+      // see mac802154_wpan_ioctl
+      return;
+    }
   }
+
   test_assert(0 == ret);
 }
 
