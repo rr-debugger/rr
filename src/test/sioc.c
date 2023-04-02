@@ -97,8 +97,10 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
   }
 }
 
-static void generic_request_by_name(int sockfd, struct ifreq* req, int nr,
-                                    const char* nr_str) {
+// Returns 0 if the request failed. Currently only SIOCGIFADDR
+// can fail non-fatally.
+static int generic_request_by_name(int sockfd, struct ifreq* req, int nr,
+                                   const char* nr_str) {
   int ret;
   memset(&req->ifr_ifru, 0xff, sizeof(req->ifr_ifru));
   ret = ioctl(sockfd, nr, req);
@@ -114,11 +116,12 @@ static void generic_request_by_name(int sockfd, struct ifreq* req, int nr,
     if (errno == EADDRNOTAVAIL) {
       // Some devices can return this in some configurations, e.g.
       // see mac802154_wpan_ioctl
-      return;
+      return 0;
     }
   }
 
   test_assert(0 == ret);
+  return 1;
 }
 
 #define GENERIC_REQUEST_BY_NAME(nr)                                            \
@@ -433,8 +436,9 @@ int main(void) {
   GENERIC_REQUEST_BY_NAME(SIOCGIFFLAGS);
   atomic_printf("flags are %#x\n", req->ifr_flags);
 
-  GENERIC_REQUEST_BY_NAME(SIOCGIFADDR);
-  atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
+  if (GENERIC_REQUEST_BY_NAME(SIOCGIFADDR)) {
+    atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
+  }
 
   GENERIC_REQUEST_BY_NAME(SIOCGIFDSTADDR);
   atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
