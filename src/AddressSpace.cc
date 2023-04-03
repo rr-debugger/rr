@@ -886,11 +886,10 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
              << ")";
 
   MemoryRange last_overlap;
-  auto protector = [this, prot, &last_overlap](const Mapping& mm,
+  auto protector = [this, prot, &last_overlap](const Mapping& m,
                                                const MemoryRange& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
-    Mapping m = std::move(mm);
     remove_from_map(m.map);
 
     // PROT_GROWSDOWN means that if this is a grows-down segment
@@ -1305,10 +1304,9 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
                                   ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
-  auto unmapper = [this](const Mapping& mm, const MemoryRange& rem) {
+  auto unmapper = [this](const Mapping& m, const MemoryRange& rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
 
-    Mapping m = std::move(mm);
     remove_from_map(m.map);
 
     LOG(debug) << "  erased (" << m.map << ") ...";
@@ -1548,12 +1546,11 @@ void AddressSpace::ensure_replay_matches_single_recorded_mapping(Task* t, Memory
   ASSERT(t, range.start() == floor_page_size(range.start()));
   ASSERT(t, range.end() == ceil_page_size(range.end()));
 
-  auto fixer = [this, t, range](const Mapping& mm, const MemoryRange&) {
-    if (mm.map == range) {
+  auto fixer = [this, t, range](const Mapping& mapping, const MemoryRange&) {
+    if (mapping.map == range) {
       // Existing single mapping covers entire range; nothing to do.
       return;
     }
-    Mapping mapping = std::move(mm);
 
     // These should be null during replay
     ASSERT(t, !mapping.mapped_file_stat);
