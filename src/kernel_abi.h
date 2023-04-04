@@ -1282,7 +1282,7 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE_EXPLICIT(struct ::timezone, timezone);
 
-  struct statfs {
+  struct statfs_t {
     __statfs_word f_type;
     __statfs_word f_bsize;
     __statfs_word f_blocks;
@@ -1298,9 +1298,9 @@ struct BaseArch : public wordsize,
     __statfs_word f_flags;
     __statfs_word f_spare[4];
   };
-  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs, statfs);
+  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs, statfs_t);
 
-  struct statfs64 {
+  struct statfs64_t {
     __statfs_word f_type;
     __statfs_word f_bsize;
     uint64_t f_blocks;
@@ -1316,7 +1316,7 @@ struct BaseArch : public wordsize,
     __statfs_word f_flags;
     __statfs_word f_spare[4];
   };
-  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs64, statfs64);
+  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs64, statfs64_t);
 
   struct itimerval {
     timeval it_interval;
@@ -1338,7 +1338,7 @@ struct BaseArch : public wordsize,
   } stack_t;
   RR_VERIFY_TYPE(stack_t);
 
-  struct sysinfo {
+  struct sysinfo_t {
     __kernel_long_t uptime;
     __kernel_ulong_t loads[3];
     __kernel_ulong_t totalram;
@@ -1355,7 +1355,7 @@ struct BaseArch : public wordsize,
     uint32_t mem_unit;
     char _f[20 - 2 * sizeof(__kernel_ulong_t) - sizeof(uint32_t)];
   };
-  RR_VERIFY_TYPE_EXPLICIT(struct ::sysinfo, sysinfo);
+  RR_VERIFY_TYPE_EXPLICIT(struct ::sysinfo, sysinfo_t);
 
   static const ::size_t UTSNAME_LENGTH = 65;
   struct utsname {
@@ -2093,7 +2093,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   // Can't verify this one because glibc leaves out the last two members and the
   // kernel header isn't available to userspace.
 
-  struct stat {
+  struct stat_t {
     dev_t st_dev;
     ino_t st_ino;
     nlink_t st_nlink;
@@ -2110,10 +2110,10 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     struct timespec st_ctim;
     syscall_slong_t __rr_unused[3];
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, struct stat);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, struct stat_t);
 
-  struct stat64 : public stat {};
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64);
+  struct stat64_t : public stat_t {};
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64_t);
 
   struct semid64_ds {
     ipc64_perm sem_perm;
@@ -2291,7 +2291,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   };
   RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86, ::user, user);
 
-  struct stat {
+  struct stat_t {
     dev_t st_dev;
     unsigned_short __pad1;
     ino_t st_ino;
@@ -2310,9 +2310,9 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     unsigned_long __unused4;
     unsigned_long __unused5;
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat_t);
 
-  struct __attribute__((packed)) stat64 {
+  struct __attribute__((packed)) stat64_t {
     dev_t st_dev;
     unsigned_int __pad1;
     ino_t __st_ino;
@@ -2330,7 +2330,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     timespec st_ctim;
     ino64_t st_ino;
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64_t);
 
   struct semid64_ds {
     ipc64_perm sem_perm;
@@ -2377,7 +2377,7 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
   typedef uint32_t legacy_uid_t;
   typedef uint32_t legacy_gid_t;
 
-  struct stat {
+  struct stat_t {
     dev_t st_dev;
     ino_t st_ino;
     mode_t st_mode;
@@ -2405,7 +2405,7 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
     typename BaseArch<arch_, wordsize>::unsigned_long __unused4;
   };
 
-  struct stat64 : public stat {};
+  struct stat64_t : public stat_t {};
 };
 
 struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {

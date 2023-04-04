@@ -544,7 +544,7 @@ profil = InvalidSyscall(x86=98)
 # system.  path is the pathname of any file within the mounted file
 # system.  buf is a pointer to a statfs structure defined
 # approximately as follows:
-statfs = EmulatedSyscall(x86=99, x64=137, generic=43, arg2="struct Arch::statfs")
+statfs = EmulatedSyscall(x86=99, x64=137, generic=43, arg2="struct Arch::statfs_t")
 
 #  int fstatfs(int fd, struct statfs *buf)
 #
@@ -552,7 +552,7 @@ statfs = EmulatedSyscall(x86=99, x64=137, generic=43, arg2="struct Arch::statfs"
 # system.  path is the pathname of any file within the
 # get_time(GET_TID(thread_id));mounted file system.  buf is a pointer
 # to a statfs structure defined approximately as follows:
-fstatfs = EmulatedSyscall(x86=100, x64=138, generic=44, arg2="struct Arch::statfs")
+fstatfs = EmulatedSyscall(x86=100, x64=138, generic=44, arg2="struct Arch::statfs_t")
 
 ioperm = EmulatedSyscall(x86=101, x64=173)
 
@@ -574,9 +574,9 @@ syslog = UnsupportedSyscall(x86=103, x64=103, generic=116)
 # stored there.
 setitimer = EmulatedSyscall(x86=104, x64=38, generic=103, arg3="typename Arch::itimerval")
 getitimer = EmulatedSyscall(x86=105, x64=36, generic=102, arg2="typename Arch::itimerval")
-stat = EmulatedSyscall(x86=106, x64=4, arg2="struct Arch::stat")
-lstat = EmulatedSyscall(x86=107, x64=6, arg2="struct Arch::stat")
-fstat = EmulatedSyscall(x86=108, x64=5, generic=80, arg2="struct Arch::stat")
+stat = EmulatedSyscall(x86=106, x64=4, arg2="struct Arch::stat_t")
+lstat = EmulatedSyscall(x86=107, x64=6, arg2="struct Arch::stat_t")
+fstat = EmulatedSyscall(x86=108, x64=5, generic=80, arg2="struct Arch::stat_t")
 olduname = UnsupportedSyscall(x86=109)
 iopl = EmulatedSyscall(x86=110, x64=172)
 vhangup = UnsupportedSyscall(x86=111, x64=153, generic=58)
@@ -596,7 +596,7 @@ swapoff = UnsupportedSyscall(x86=115, x64=168, generic=225)
 #
 # sysinfo() provides a simple way of getting overall system
 # statistics.
-sysinfo = EmulatedSyscall(x86=116, x64=99, generic=179, arg1="struct Arch::sysinfo")
+sysinfo = EmulatedSyscall(x86=116, x64=99, generic=179, arg1="struct Arch::sysinfo_t")
 #  int ipc(unsigned int call, int first, int second, int third, void *ptr, long
 #fifth);
 #
@@ -992,20 +992,20 @@ ftruncate64 = EmulatedSyscall(x86=194)
 # int stat(const char *path, struct stat *buf);
 #
 # stat() stats the file pointed to by path and fills in buf.
-stat64 = EmulatedSyscall(x86=195, arg2="struct Arch::stat64")
+stat64 = EmulatedSyscall(x86=195, arg2="struct Arch::stat64_t")
 
 #  int lstat(const char *path, struct stat *buf);
 #
 # lstat() is identical to stat(), except that if path is a symbolic
 # link, then the link itself is stat-ed, not the file that it refers
 # to.
-lstat64 = EmulatedSyscall(x86=196, arg2="struct Arch::stat64")
+lstat64 = EmulatedSyscall(x86=196, arg2="struct Arch::stat64_t")
 
 #  int fstat(int fd, struct stat *buf)
 #
 # fstat() is identical to stat(), except that the file to be stat-ed
 # is specified by the file descriptor fd.
-fstat64 = EmulatedSyscall(x86=197, arg2="struct Arch::stat64")
+fstat64 = EmulatedSyscall(x86=197, arg2="struct Arch::stat64_t")
 
 lchown32 = EmulatedSyscall(x86=198)
 
@@ -1342,8 +1342,8 @@ clock_nanosleep = IrregularEmulatedSyscall(x86=267, x64=230, generic=115)
 #
 # FIXME: we use arg3() here, although according to man pages this system
 # call has only 2 parameters. However, strace tells another story...
-statfs64 = EmulatedSyscall(x86=268, arg3="struct Arch::statfs64")
-fstatfs64 = EmulatedSyscall(x86=269, arg3="struct Arch::statfs64")
+statfs64 = EmulatedSyscall(x86=268, arg3="struct Arch::statfs64_t")
+fstatfs64 = EmulatedSyscall(x86=269, arg3="struct Arch::statfs64_t")
 
 #  int tgkill(int tgid, int tid, int sig)
 #
@@ -1443,8 +1443,8 @@ futimesat = UnsupportedSyscall(x86=299, x64=261)
 # The fstatat() system call operates in exactly the same way as
 # stat(2), except for the differences described in this manual
 # page....
-fstatat = EmulatedSyscall(x64=262, generic=79, arg3="struct Arch::stat")
-fstatat64 = EmulatedSyscall(x86=300, arg3="struct Arch::stat64")
+fstatat = EmulatedSyscall(x64=262, generic=79, arg3="struct Arch::stat_t")
+fstatat64 = EmulatedSyscall(x86=300, arg3="struct Arch::stat64_t")
 
 #  int unlinkat(int dirfd, const char *pathname, int flags)
 #
