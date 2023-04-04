@@ -957,11 +957,14 @@ private:
    * Pass |ITERATE_CONTIGUOUS| to stop iterating when the last
    * contiguous mapping after |addr| within the region is seen.
    * Default is to iterate all mappings in the region.
+   *
+   * The callback takes parameters by value to avoid dangling
+   * references if the memory map is modified inside the callback.
    */
   enum { ITERATE_DEFAULT, ITERATE_CONTIGUOUS };
   void for_each_in_range(
       remote_ptr<void> addr, ssize_t num_bytes,
-      std::function<void(const Mapping& m, const MemoryRange& rem)> f,
+      std::function<void(Mapping m, MemoryRange rem)> f,
       int how = ITERATE_DEFAULT);
 
   /**
