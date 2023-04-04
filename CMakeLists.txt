@@ -552,6 +552,7 @@ set(RR_SOURCES
   src/kernel_metadata.cc
   src/log.cc
   src/LsCommand.cc
+  src/main.cc
   src/MagicSaveDataMonitor.cc
   src/MmappedFileMonitor.cc
   src/MonitoredSharedMemory.cc
@@ -633,7 +634,7 @@ else()
   set(CMAKE_INSTALL_INCLUDEDIR "include")
 endif()
 
-add_executable(rr ${RR_SOURCES} src/main.cc)
+add_executable(rr ${RR_SOURCES})
 set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
 post_build_executable(rr)
 set(RR_BIN rr)
