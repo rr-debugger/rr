@@ -2379,6 +2379,15 @@ static int child_SIGSEGV(__attribute__((unused)) void* arg) {
   return 0;
 }
 
+#ifdef __SANITIZE_ADDRESS__
+#include <sanitizer/lsan_interface.h>
+static int rr_lsan_is_turned_off;
+int __lsan_is_turned_off(void)
+{
+  return rr_lsan_is_turned_off;
+}
+#endif
+
 bool coredumping_signal_takes_down_entire_vm() {
   // The kernel behavior here changed in 5.16. Prior to that,
   // a coredumping signal would bring down the entire vm.
@@ -2394,6 +2403,9 @@ bool coredumping_signal_takes_down_entire_vm() {
       signal(SIGSEGV, SIG_DFL);
       // Don't litter the system with core dumps.
       prctl(PR_SET_DUMPABLE, 0);
+#ifdef __SANITIZE_ADDRESS__
+      rr_lsan_is_turned_off = 1;
+#endif
       // Allocate a stack for the child.
       const size_t stack_size = 1 << 20;
       void* stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
