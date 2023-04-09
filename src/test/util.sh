@@ -107,6 +107,10 @@ if [[ "$NO_CHECK_CACHED_MMAP" == "" ]]; then
     GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --check-cached-mmaps"
 fi
 
+if [[ -f "${OBJDIR}/src/test/util_env.sh" ]]; then
+    source "${OBJDIR}/src/test/util_env.sh"
+fi
+
 SRCDIR=`dirname ${BASH_SOURCE[0]}`/../..
 SRCDIR=`realpath $SRCDIR`
 
@@ -135,6 +139,9 @@ OBJDIR=`realpath $OBJDIR`
 TIMEOUT=$4
 if [[ "$TIMEOUT" == "" ]]; then
     TIMEOUT=120
+    if [ "$RR_ASAN" == "true" ]; then
+      TIMEOUT=240
+    fi
 fi
 
 # The temporary directory we create for this test run.

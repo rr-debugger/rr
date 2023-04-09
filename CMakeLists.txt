@@ -629,6 +629,11 @@ if (asan)
   set(RR_FLAGS "${ASAN_FLAGS} ${RR_FLAGS}")
 endif()
 
+file(REMOVE "${CMAKE_BINARY_DIR}/src/test/util_env.sh")
+if (asan)
+  file(WRITE "${CMAKE_BINARY_DIR}/src/test/util_env.sh" "export RR_ASAN=true\n")
+endif()
+
 set_source_files_properties(${RR_SOURCES}
                             PROPERTIES COMPILE_FLAGS ${RR_FLAGS})
 
@@ -1797,6 +1802,8 @@ if(BUILD_TESTS)
   string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
   if(NOT "${CPU_MODEL_PHI}" STREQUAL "")
     set(TEST_MONITOR_DEFAULT_TIMEOUT 480)
+  elseif(asan)
+    set(TEST_MONITOR_DEFAULT_TIMEOUT 240)
   else()
     set(TEST_MONITOR_DEFAULT_TIMEOUT 120)
   endif()
