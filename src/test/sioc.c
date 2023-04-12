@@ -190,13 +190,13 @@ static void ethtool(int sockfd, struct ifreq* req) {
   struct ethtool_cmd* et_set;
   struct ethtool_drvinfo* et_drvinfo;
   struct ethtool_wolinfo* et_wolinfo;
-  struct {
+  union {
     struct ethtool_regs et;
-    uint8_t data[32];
+    char data[sizeof(struct ethtool_regs) + 32];
   }* et_regs;
-  struct {
+  union {
     struct ethtool_eeprom et;
-    uint8_t data[32];
+    char data[sizeof(struct ethtool_eeprom) + 32];
   }* et_eeprom;
   struct ethtool_eee* et_eee;
   struct ethtool_modinfo* et_modinfo;
@@ -204,17 +204,17 @@ static void ethtool(int sockfd, struct ifreq* req) {
   struct ethtool_ringparam* et_ringparam;
   struct ethtool_channels* et_channels;
   struct ethtool_pauseparam* et_pauseparam;
-  struct {
+  union {
     struct ethtool_sset_info et;
-    uint32_t data[8];
+    char data[sizeof(struct ethtool_sset_info) + 8*sizeof(uint32_t)];
   }* et_sset_info;
-  struct {
+  union {
     struct ethtool_gfeatures et;
-    struct ethtool_get_features_block features[20];
+    char data[sizeof(struct ethtool_gfeatures) + 20*sizeof(struct ethtool_get_features_block)];
   }* et_gfeatures;
-  struct {
+  union {
     struct ethtool_perm_addr et;
-    uint8_t data[32];
+    char data[sizeof(struct ethtool_perm_addr) + 32];
   }* et_perm_addr;
   struct ethtool_value* et_glink;
   struct ethtool_rxnfc* et_rxnfc;
@@ -250,36 +250,36 @@ static void ethtool(int sockfd, struct ifreq* req) {
   GENERIC_ETHTOOL_REQUEST_BY_NAME(et_wolinfo, ETHTOOL_GWOL);
 
   ALLOCATE_GUARD(et_regs, 'e');
-  et_regs->et.len = sizeof(et_regs->data);
+  et_regs->et.len = sizeof(*et_regs) - sizeof(et_regs->et);
   GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_regs->et, ETHTOOL_GREGS);
   if (-1 != ret) {
     uint32_t i;
     for (i = 0; i < et_regs->et.len; ++i) {
-      atomic_printf("%02x ", et_regs->data[i]);
+      atomic_printf("%02x ", et_regs->et.data[i]);
     }
     atomic_printf("\n");
   }
 
   ALLOCATE_GUARD(et_eeprom, 'f');
   et_eeprom->et.offset = 0;
-  et_eeprom->et.len = sizeof(et_eeprom->data);
+  et_eeprom->et.len = sizeof(*et_eeprom) - sizeof(et_eeprom->et);
   GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_eeprom->et, ETHTOOL_GEEPROM);
   if (-1 != ret) {
     uint32_t i;
     for (i = 0; i < et_eeprom->et.len; ++i) {
-      atomic_printf("%02x ", et_eeprom->data[i]);
+      atomic_printf("%02x ", et_eeprom->et.data[i]);
     }
     atomic_printf("\n");
   }
 
   ALLOCATE_GUARD(et_eeprom, 'g');
   et_eeprom->et.offset = 0;
-  et_eeprom->et.len = sizeof(et_eeprom->data);
+  et_eeprom->et.len = sizeof(*et_eeprom) - sizeof(et_eeprom->et);
   GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_eeprom->et, ETHTOOL_GMODULEEEPROM);
   if (-1 != ret) {
     uint32_t i;
     for (i = 0; i < et_eeprom->et.len; ++i) {
-      atomic_printf("%02x ", et_eeprom->data[i]);
+      atomic_printf("%02x ", et_eeprom->et.data[i]);
     }
     atomic_printf("\n");
   }
@@ -330,7 +330,7 @@ static void ethtool(int sockfd, struct ifreq* req) {
     int index = 0;
     for (i = 0; i < 8; ++i) {
       if (et_sset_info->et.sset_mask & (1 << i)) {
-        uint32_t len = et_sset_info->data[index++];
+        uint32_t len = et_sset_info->et.data[index++];
         size_t size = sizeof(struct ethtool_gstrings) + len*ETH_GSTRING_LEN;
         char* buf = (char*)allocate_guard(size, 'o');
         struct ethtool_gstrings* et_gstrings = (struct ethtool_gstrings*)buf;
@@ -366,17 +366,17 @@ static void ethtool(int sockfd, struct ifreq* req) {
     }
     for (i = 0; i < n; ++i) {
       atomic_printf("Feature %d available:%x requested:%x\n",
-        i, et_gfeatures->features[i].available, et_gfeatures->features[i].requested);
+        i, et_gfeatures->et.features[i].available, et_gfeatures->et.features[i].requested);
     }
   }
 
   ALLOCATE_GUARD(et_perm_addr, 'q');
-  et_perm_addr->et.size = sizeof(et_perm_addr->data);
+  et_perm_addr->et.size = sizeof(*et_perm_addr) - sizeof(et_perm_addr->et);
   GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_perm_addr->et, ETHTOOL_GPERMADDR);
   if (-1 != ret) {
     uint32_t i;
     for (i = 0; i < et_perm_addr->et.size; ++i) {
-      atomic_printf("%02x ", et_perm_addr->data[i]);
+      atomic_printf("%02x ", et_perm_addr->et.data[i]);
     }
     atomic_printf("\n");
   }
