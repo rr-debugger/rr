@@ -8,6 +8,8 @@ replay
 check_record EXIT-WAITED
 # Replay inner
 cd $workdir/inner
+workdir_orig=$workdir
 workdir=$PWD
 replay
 check_replay_token EXIT-SUCCESS
+workdir=$workdir_orig
