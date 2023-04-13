@@ -2727,6 +2727,18 @@ void Task::open_mem_fd_if_needed() {
   }
 }
 
+ScopedFd& Task::pagemap_fd() {
+  if (!as->pagemap_fd().is_open()) {
+    ScopedFd fd(proc_pagemap_path().c_str(), O_RDONLY);
+    if (fd.is_open()) {
+      as->set_pagemap_fd(std::move(fd));
+    } else {
+      LOG(info) << "Can't retrieve pagemap fd for " << tid;
+    }
+  }
+  return as->pagemap_fd();
+}
+
 KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
                                         remote_ptr<void> map_hint) {
   char name[50];

@@ -5656,7 +5656,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   // The kernel may modify some of the pages in the mapping according to
   // ELF BSS metadata. We use /proc/<pid>/pagemap to observe which pages
   // have been changed and mark them for recording.
-  ScopedFd pagemap(t->proc_pagemap_path().c_str(), O_RDONLY, 0);
+  ScopedFd& pagemap = t->pagemap_fd();
   ASSERT(t, pagemap.is_open());
   vector<remote_ptr<void>> pages_to_record;
 
