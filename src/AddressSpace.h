@@ -674,6 +674,9 @@ public:
   ScopedFd& mem_fd() { return child_mem_fd; }
   void set_mem_fd(ScopedFd&& fd) { child_mem_fd = std::move(fd); }
 
+  ScopedFd& pagemap_fd() { return child_pagemap_fd; }
+  void set_pagemap_fd(ScopedFd&& fd) { child_pagemap_fd = std::move(fd); }
+
   Monkeypatcher& monkeypatcher() {
     DEBUG_ASSERT(monkeypatch_state);
     return *monkeypatch_state;
@@ -1209,6 +1212,8 @@ private:
                                      const struct map_iterator_data* data);
 
   AddressSpace operator=(const AddressSpace&) = delete;
+
+  ScopedFd child_pagemap_fd;
 };
 
 /**

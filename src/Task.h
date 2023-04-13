@@ -821,6 +821,11 @@ public:
   void open_mem_fd_if_needed();
 
   /**
+   * Open /proc/[tid]/pagemap fd for our AddressSpace.
+   */
+  ScopedFd& pagemap_fd();
+
+  /**
    * Perform a PTRACE_INTERRUPT set up the counter for potential spurious stops
    * to be detected in `account_for_potential_ptrace_interrupt_stop`.
    */
