@@ -1096,6 +1096,7 @@ set(BASIC_TESTS
   packet_mmap_disable
   pause
   perf_event
+  perf_event_ioctl
   perf_event_mmap
   personality
   pid_ns_kill_child

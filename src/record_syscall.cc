@@ -2059,6 +2059,10 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
+    case IOCTL_MASK_SIZE(PERF_EVENT_IOC_ID):
+      syscall_state.reg_parameter<uint64_t>(3);
+      return PREVENT_SWITCH;
+
     case IOCTL_MASK_SIZE(USBDEVFS_ALLOC_STREAMS):
     case IOCTL_MASK_SIZE(USBDEVFS_CLAIMINTERFACE):
     case IOCTL_MASK_SIZE(USBDEVFS_CLEAR_HALT):
