@@ -106,7 +106,7 @@ static int generic_request_by_name(int sockfd, struct ifreq* req, int nr,
   ret = ioctl(sockfd, nr, req);
   VERIFY_GUARD(req);
   atomic_printf("%s(ret:%d): %s ", nr_str, ret, req->ifr_name);
-  if (ret < 0 && nr == SIOCGIFADDR) {
+  if (ret < 0 && (nr == SIOCGIFADDR || nr == SIOCGIFDSTADDR)) {
     if (errno == EFAULT) {
       /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
       atomic_puts("Buggy kernel detected; aborting test");
