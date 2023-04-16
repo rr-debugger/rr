@@ -97,7 +97,7 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
   }
 }
 
-// Returns 0 if the request failed. Currently only SIOCGIFADDR
+// Returns 0 if the request failed.
 // can fail non-fatally.
 static int generic_request_by_name(int sockfd, struct ifreq* req, int nr,
                                    const char* nr_str) {
@@ -106,7 +106,7 @@ static int generic_request_by_name(int sockfd, struct ifreq* req, int nr,
   ret = ioctl(sockfd, nr, req);
   VERIFY_GUARD(req);
   atomic_printf("%s(ret:%d): %s ", nr_str, ret, req->ifr_name);
-  if (ret < 0 && (nr == SIOCGIFADDR || nr == SIOCGIFDSTADDR)) {
+  if (ret < 0) {
     if (errno == EFAULT) {
       /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
       atomic_puts("Buggy kernel detected; aborting test");
@@ -116,6 +116,7 @@ static int generic_request_by_name(int sockfd, struct ifreq* req, int nr,
     if (errno == EADDRNOTAVAIL) {
       // Some devices can return this in some configurations, e.g.
       // see mac802154_wpan_ioctl
+      atomic_printf("(errno:%d/%s)\n", errno, strerror(errno));
       return 0;
     }
   }
@@ -326,6 +327,7 @@ static void ethtool(int sockfd, struct ifreq* req) {
   ALLOCATE_GUARD(et_sset_info, 'n');
   et_sset_info->et.sset_mask = 0xff;
   GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_sset_info->et, ETHTOOL_GSSET_INFO);
+  atomic_printf("\n");
   if (-1 != ret) {
     int index = 0;
     for (i = 0; i < 8; ++i) {
@@ -440,14 +442,17 @@ int main(void) {
     atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
   }
 
-  GENERIC_REQUEST_BY_NAME(SIOCGIFDSTADDR);
-  atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
+  if (GENERIC_REQUEST_BY_NAME(SIOCGIFDSTADDR)) {
+    atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
+  }
 
-  GENERIC_REQUEST_BY_NAME(SIOCGIFBRDADDR);
-  atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
+  if (GENERIC_REQUEST_BY_NAME(SIOCGIFBRDADDR)) {
+    atomic_printf("addr is %s\n", sockaddr_name(&req->ifr_addr));
+  }
 
-  GENERIC_REQUEST_BY_NAME(SIOCGIFNETMASK);
-  atomic_printf("netmask is %s\n", sockaddr_name(&req->ifr_addr));
+  if (GENERIC_REQUEST_BY_NAME(SIOCGIFNETMASK)) {
+    atomic_printf("netmask is %s\n", sockaddr_name(&req->ifr_addr));
+  }
   if (ret < 0 && errno == EFAULT) {
     /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
     atomic_puts("Buggy kernel detected; aborting test");
