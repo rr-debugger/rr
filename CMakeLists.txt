@@ -1676,6 +1676,18 @@ set(TESTS_WITHOUT_PROGRAM
   when
 )
 
+if (asan)
+  if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+    list(REMOVE_ITEM TESTS_WITH_PROGRAM "ignore_nested")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "nested_detach")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "nested_detach_kill") # depends on nested_detach_wait
+    list(REMOVE_ITEM TESTS_WITH_PROGRAM "nested_detach_kill_stuck") # depends on nested_detach_wait
+    list(REMOVE_ITEM TESTS_WITH_PROGRAM "nested_detach_wait")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "nested_release")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "record_replay")
+  endif()
+endif()
+
 if(BUILD_TESTS)
   # Part of the installable testsuite (test files).
   if(INSTALL_TESTSUITE)
