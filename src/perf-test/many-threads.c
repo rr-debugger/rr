@@ -1,10 +1,4 @@
-#include <assert.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <sys/mman.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <pthread.h>
 #include <unistd.h>
 
