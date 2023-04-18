@@ -3324,7 +3324,7 @@ static int ptrace_option_for_event(int ptrace_event) {
 }
 
 template <typename Arch>
-static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
+static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   uintptr_t flags;
   CloneParameters params;
   Registers r = t->regs();
@@ -3380,7 +3380,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       r.set_original_syscallno(original_syscall);
       t->set_regs(r);
       t->canonicalize_regs(t->arch());
-      return;
+      return ALLOW_SWITCH;
     }
     // Reenter the syscall. If we try to return an ERESTART* error using the
     // code path above, our set_syscallno(SYS_gettid) fails to take effect and
@@ -3446,6 +3446,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
 
   init_scratch_memory(new_task);
 
+  Switchable switchable = (flags & CLONE_VFORK) ? ALLOW_SWITCH : PREVENT_SWITCH;
   if ((t->emulated_ptrace_options & ptrace_option_for_event(ptrace_event)) &&
       !(flags & CLONE_UNTRACED)) {
     new_task->set_emulated_ptracer(t->emulated_ptracer);
@@ -3456,6 +3457,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     // ptrace(2) man page says that SIGSTOP is used here, but it's really
     // SIGTRAP (in 4.4.4-301.fc23.x86_64 anyway).
     new_task->apply_group_stop(SIGTRAP);
+    switchable = ALLOW_SWITCH;
   }
 
   // Restore our register modifications now, so that the emulated ptracer will
@@ -3470,6 +3472,12 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
 
   // We're in a PTRACE_EVENT_FORK/VFORK/CLONE so the next PTRACE_SYSCALL for
   // |t| will go to the exit of the syscall, as expected.
+
+  // For non-vfork cases, resume the cloning thread, not the new thread.
+  // In some applications the new thread must wait for the cloning thread to
+  // exit a critical section. Allowing the cloning thread to run reduces the
+  // likelihood that the new thread will have to block on that wait.
+  return switchable;
 }
 
 static bool protect_rr_sigs(RecordTask* t, remote_ptr<void> p, void* save) {
@@ -3709,11 +3717,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
-    case Arch::fork:
     case Arch::vfork:
+    case Arch::fork:
     case Arch::clone:
-      prepare_clone<Arch>(t, syscall_state);
-      return ALLOW_SWITCH;
+      return prepare_clone<Arch>(t, syscall_state);
 
     case Arch::exit:
       prepare_exit(t);
