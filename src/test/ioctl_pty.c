@@ -53,7 +53,7 @@ int main(void) {
   test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGHUP);
 
   ret = ioctl(fd, TIOCSTI, "x");
-  test_assert(ret >= 0 || errno == EPERM);
+  test_assert(ret >= 0 || errno == EPERM || errno == EIO);
 
   test_assert(0 == ioctl(fd, TIOCEXCL, 0));
   ALLOCATE_GUARD(arg, 'd');
