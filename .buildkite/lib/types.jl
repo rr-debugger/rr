@@ -6,6 +6,7 @@ Base.@kwdef struct Platform
     commit_status::Bool
     cmake_extra_arg::String
     variant::String
+    timeout::Integer
 end
 
 struct Platforms
@@ -26,6 +27,7 @@ const platforms = Platforms(
             commit_status   = true,
             cmake_extra_arg = "",
             variant         = "",
+            timeout         = 45,
         ),
         Platform(;
             arch            = "x86_64",
@@ -35,6 +37,7 @@ const platforms = Platforms(
             commit_status   = true,
             cmake_extra_arg = "-Dasan=true",
             variant         = "asan",
+            timeout         = 45,
         ),
         Platform(;
             arch            = "aarch64",
@@ -44,6 +47,7 @@ const platforms = Platforms(
             commit_status   = true,
             cmake_extra_arg = "",
             variant         = "",
+            timeout         = 45,
         ),
         Platform(;
             arch            = "aarch64",
@@ -53,6 +57,7 @@ const platforms = Platforms(
             commit_status   = true,
             cmake_extra_arg = "-Dasan=true",
             variant         = "asan",
+            timeout         = 55,
         ),
         Platform(;
             arch            = "x86_64",
@@ -62,6 +67,7 @@ const platforms = Platforms(
             commit_status   = true,
             cmake_extra_arg = "-Dforce32bit=true",
             variant         = "force32bit",
+            timeout         = 55,
         ),
         Platform(;
             arch            = "x86_64",
@@ -71,6 +77,7 @@ const platforms = Platforms(
             commit_status   = true,
             cmake_extra_arg = "-Dforce32bit=true -Dasan=true",
             variant         = "force32bit-asan",
+            timeout         = 55,
         ),
     ]
 )

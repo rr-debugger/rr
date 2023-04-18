@@ -58,7 +58,7 @@ function generate(platform::Platform)
             Dict(
                 "label" => job_label,
                 "key" => job_key,
-                "timeout_in_minutes" => 45,
+                "timeout_in_minutes" => platform.timeout,
                 "agents" => Dict(
                     "sandbox_capable" => "true",
                     "queue" => "juliaecosystem",
