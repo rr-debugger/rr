@@ -671,7 +671,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   vector<ScopedFd> fds = maybe_receive_fds(task()->session().tracee_socket_fd());
   ASSERT(t, !fds.empty()) << "Failed to receive fd";
   ASSERT(t, fds.size() == 1);
-  return move(fds[0]);
+  return std::move(fds[0]);
 }
 
 ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
