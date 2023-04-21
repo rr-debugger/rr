@@ -2319,6 +2319,18 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
           break;
         }
         addr = overlapping_range.end();
+
+#ifdef __i386__
+        // Moving forward and hitting the end
+        if (addr > addr + ceil_page_size(len)) {
+          /*remote_ptr<void> end_ = addr + ceil_page_size(len);
+          if (addr > end_) {
+            fprintf(stderr, "addr[0x%x] > end_[0x%x], ceil_page_size(len)[0x%x], len[0x%x], start[0x%x], sizeof(uintptr_t)[%d], addr_space_start[0x%x], addr_space_end[0x%x], direction[%d]\n",
+                    addr.as_int(), end_.as_int(), ceil_page_size(len), len, start.as_int(), sizeof(uintptr_t), addr_space_start.as_int(), addr_space_end.as_int(), direction);
+          }*/
+          break;
+        }
+#endif
       }
     }
 
