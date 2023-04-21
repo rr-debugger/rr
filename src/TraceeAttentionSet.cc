@@ -68,7 +68,7 @@ unordered_set<pid_t> TraceeAttentionSet::read() {
   if (!attention_set) {
     FATAL() << "TraceeAttentionSet not initialized";
   }
-  result = move(*attention_set);
+  result = std::move(*attention_set);
   pthread_mutex_unlock(&attention_set_lock);
   return result;
 }
