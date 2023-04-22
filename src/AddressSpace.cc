@@ -1529,9 +1529,9 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     err = "inodes differ";
   }
   if (err.size()) {
-    LOG(error) << "cached mmap:";
+    cerr << "cached mmap:" << endl;
     t->vm()->dump();
-    LOG(error) << "/proc/" << t->tid << "/mmaps:";
+    cerr << "/proc/" << t->tid << "/mmaps:" << endl;
     AddressSpace::print_process_maps(t);
     ASSERT(t, false) << "\nCached mapping " << m << " should be " << km << "; "
                      << err;
