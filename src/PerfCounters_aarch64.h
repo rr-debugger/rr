@@ -48,8 +48,10 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
     case 0xd40:
       return ARMNeoverseV1;
     case 0xd41:
+    case 0xd4b: // ARM Cortex A78C
       return ARMCortexA78;
     case 0xd44:
+    case 0xd4c: // ARM Cortex X1C
       return ARMCortexX1;
     case 0xd49:
       return ARMNeoverseN2;
