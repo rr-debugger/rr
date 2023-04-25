@@ -171,9 +171,7 @@ public:
     return maxBytes;
   }
   virtual void skip(size_t bytes) {
-    if (!reader.skip(bytes)) {
-      throw IOException();
-    }
+    reader.skip(bytes);
   }
   virtual kj::ArrayPtr<const capnp::byte> tryGetReadBuffer() {
     const uint8_t* p;

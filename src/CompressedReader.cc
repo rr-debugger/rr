@@ -31,6 +31,7 @@ CompressedReader::CompressedReader(const string& filename)
     eof = pread(*fd, &ch, 1, fd_offset) == 0;
   }
   buffer_read_pos = 0;
+  buffer_skip_bytes = 0;
   have_saved_state = false;
 }
 
@@ -40,6 +41,7 @@ CompressedReader::CompressedReader(const CompressedReader& other) {
   error = other.error;
   eof = other.eof;
   buffer_read_pos = other.buffer_read_pos;
+  buffer_skip_bytes = other.buffer_skip_bytes;
   buffer = other.buffer;
   have_saved_state = false;
   DEBUG_ASSERT(!other.have_saved_state);
@@ -67,6 +69,8 @@ static bool do_decompress(std::vector<uint8_t>& compressed,
 }
 
 bool CompressedReader::get_buffer(const uint8_t** data, size_t* size) {
+  process_skip();
+
   if (error) {
     return false;
   }
@@ -83,27 +87,24 @@ bool CompressedReader::get_buffer(const uint8_t** data, size_t* size) {
   return true;
 }
 
-bool CompressedReader::skip(size_t size) {
-  while (size > 0) {
-    if (error) {
-      return false;
-    }
-
+void CompressedReader::process_skip() {
+  while (buffer_skip_bytes > 0 && !error) {
     if (buffer_read_pos < buffer.size()) {
-      size_t amount = std::min(size, buffer.size() - buffer_read_pos);
-      size -= amount;
+      size_t amount = std::min(buffer_skip_bytes, buffer.size() - buffer_read_pos);
+      buffer_skip_bytes -= amount;
       buffer_read_pos += amount;
       continue;
     }
 
-    if (!refill_buffer()) {
-      return false;
+    if (!refill_buffer(&buffer_skip_bytes)) {
+      return;
     }
   }
-  return true;
 }
 
 bool CompressedReader::read(void* data, size_t size) {
+  process_skip();
+
   while (size > 0) {
     if (error) {
       return false;
@@ -125,44 +126,58 @@ bool CompressedReader::read(void* data, size_t size) {
   return true;
 }
 
-bool CompressedReader::refill_buffer() {
+bool CompressedReader::refill_buffer(size_t* skip_bytes) {
   if (have_saved_state && !have_saved_buffer) {
     std::swap(buffer, saved_buffer);
     have_saved_buffer = true;
   }
 
-  CompressedWriter::BlockHeader header;
-  if (!read_all(*fd, sizeof(header), &header, &fd_offset)) {
-    error = true;
-    return false;
-  }
+  while (true) {
+    CompressedWriter::BlockHeader header;
+    if (!read_all(*fd, sizeof(header), &header, &fd_offset)) {
+      error = true;
+      return false;
+    }
 
-  std::vector<uint8_t> compressed_buf;
-  compressed_buf.resize(header.compressed_length);
-  if (!read_all(*fd, compressed_buf.size(), &compressed_buf[0], &fd_offset)) {
-    error = true;
-    return false;
-  }
+    if (skip_bytes && *skip_bytes >= header.uncompressed_length) {
+      fd_offset += header.compressed_length;
+      *skip_bytes -= header.uncompressed_length;
+      char ch;
+      if (pread(*fd, &ch, 1, fd_offset) == 0) {
+        eof = true;
+        return false;
+      }
+      continue;
+    }
 
-  char ch;
-  if (pread(*fd, &ch, 1, fd_offset) == 0) {
-    eof = true;
-  }
+    std::vector<uint8_t> compressed_buf;
+    compressed_buf.resize(header.compressed_length);
+    if (!read_all(*fd, compressed_buf.size(), &compressed_buf[0], &fd_offset)) {
+      error = true;
+      return false;
+    }
 
-  buffer.resize(header.uncompressed_length);
-  buffer_read_pos = 0;
-  if (!do_decompress(compressed_buf, buffer)) {
-    error = true;
-    return false;
-  }
+    char ch;
+    if (pread(*fd, &ch, 1, fd_offset) == 0) {
+      eof = true;
+    }
 
-  return true;
+    buffer.resize(header.uncompressed_length);
+    buffer_read_pos = 0;
+    if (!do_decompress(compressed_buf, buffer)) {
+      error = true;
+      return false;
+    }
+
+    return true;
+  }
 }
 
 void CompressedReader::rewind() {
   DEBUG_ASSERT(!have_saved_state);
   fd_offset = 0;
   buffer_read_pos = 0;
+  buffer_skip_bytes = 0;
   buffer.clear();
   eof = false;
 }
@@ -171,6 +186,7 @@ void CompressedReader::close() { fd = nullptr; }
 
 void CompressedReader::save_state() {
   DEBUG_ASSERT(!have_saved_state);
+  process_skip();
   have_saved_state = true;
   have_saved_buffer = false;
   saved_fd_offset = fd_offset;
@@ -189,6 +205,7 @@ void CompressedReader::restore_state() {
     saved_buffer.clear();
   }
   buffer_read_pos = saved_buffer_read_pos;
+  buffer_skip_bytes = 0;
 }
 
 void CompressedReader::discard_state() {
