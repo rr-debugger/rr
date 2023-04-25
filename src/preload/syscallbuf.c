@@ -781,6 +781,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_11_01_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_ca_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_e5(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_89_fb(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8d_b3_f0_08_00_00(void);
 
 #define MOV_RDX_VARIANTS \
@@ -990,6 +991,11 @@ static void __attribute__((constructor)) init_process(void) {
       3,
       { 0x48, 0x89, 0xe5 },
       (uintptr_t)_syscall_hook_trampoline_48_89_e5 },
+    /* Some application has 'mov %rdi,%rbx' followed by 'rdtsc' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      3,
+      { 0x48, 0x89, 0xfb },
+      (uintptr_t)_syscall_hook_trampoline_48_89_fb },
   };
 #elif defined(__aarch64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_raw(void);

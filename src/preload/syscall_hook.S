@@ -640,6 +640,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_e5)
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_e5)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_fb)
+        mov %rdi,%rbx
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_fb)
+
 #elif defined(__aarch64__)
         .text
 
