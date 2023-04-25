@@ -530,14 +530,16 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
   tick_time();
 }
 
-TraceFrame TraceReader::read_frame() {
+TraceFrame TraceReader::read_frame(FrameTime skip_before) {
   auto& events = reader(EVENTS);
   word buf[reasonable_frame_message_words];
   CompressedReaderInputStream stream(events);
   PackedMessageReader frame_msg(stream, ReaderOptions(), buf);
-  trace::Frame::Reader frame = frame_msg.getRoot<trace::Frame>();
-
   tick_time();
+  TraceFrame ret;
+  ret.global_time = time();
+
+  trace::Frame::Reader frame = frame_msg.getRoot<trace::Frame>();
 
   auto mem_writes = frame.getMemWrites();
   raw_recs.resize(mem_writes.size());
@@ -554,8 +556,10 @@ TraceFrame TraceReader::read_frame() {
     raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()), h };
   }
 
-  TraceFrame ret;
-  ret.global_time = time();
+  if (ret.global_time < skip_before) {
+    return ret;
+  }
+
   ret.tid_ = i32_to_tid(frame.getTid());
   ret.ticks_ = frame.getTicks();
   if (ret.ticks_ < 0) {

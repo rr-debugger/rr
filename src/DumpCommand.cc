@@ -267,7 +267,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
   bool process_raw_data =
       flags.dump_syscallbuf || flags.dump_recorded_data_metadata;
   while (!trace.at_end()) {
-    auto frame = trace.read_frame();
+    auto frame = trace.read_frame(start);
     if (end < frame.time()) {
       return;
     }

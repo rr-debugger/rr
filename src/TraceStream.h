@@ -353,8 +353,11 @@ public:
    * NB: reading a trace frame has the side effect of ticking
    * the global time to match the time recorded in the trace
    * frame.
+   *
+   * For all frames before `skip_before` we only fill in the `global_time`
+   * field. (Raw data and maps are still accessible.)
    */
-  TraceFrame read_frame();
+  TraceFrame read_frame(FrameTime skip_before = 0);
 
   /**
    * Read the next mapped region descriptor and return it.
