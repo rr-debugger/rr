@@ -115,7 +115,10 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
         }
         fprintf(out, "\n    \"%s\"", json_escape(environ[i]).c_str());
       }
-      fputs("\n  ]\n", out);
+      fputs("\n  ],\n", out);
+
+      fprintf(out, "  \"program\": \"%s\"\n", json_escape(replay_session->vms()[0]->exe_image()).c_str());
+
       break;
     }
     if (result.status == REPLAY_EXITED) {
