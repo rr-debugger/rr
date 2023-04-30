@@ -105,10 +105,8 @@ static inline const char* extract_file_name(const char* s) {
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
-/* Size of table mapping fd numbers to syscallbuf-disabled flag.
- * Most Linux kernels limit fds to 1024 so it probably doesn't make sense
- * to raise this value... */
-#define SYSCALLBUF_FDS_DISABLED_SIZE 1024
+/* Size of table mapping fd numbers to syscallbuf-disabled flag. */
+#define SYSCALLBUF_FDS_DISABLED_SIZE 16384
 
 #define MPROTECT_RECORD_COUNT 1000
 

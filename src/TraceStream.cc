@@ -27,6 +27,7 @@
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "preload/preload_interface.h"
 #include "rr_trace.capnp.h"
 #include "util.h"
 
@@ -1412,6 +1413,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setRequiredForwardCompatibilityVersion(FORWARD_COMPATIBILITY_VERSION);
   header.setPreloadThreadLocalsRecorded(true);
   header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
+  header.setSyscallbufFdsDisabledSize(SYSCALLBUF_FDS_DISABLED_SIZE);
 
   header.setNativeArch(to_trace_arch(NativeArch::arch()));
   if (NativeArch::is_x86ish())
@@ -1597,6 +1599,7 @@ TraceReader::TraceReader(const string& dir)
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   rrcall_base_ = header.getRrcallBase();
+  syscallbuf_fds_disabled_size_ = header.getSyscallbufFdsDisabledSize();
   required_forward_compatibility_version_ = header.getRequiredForwardCompatibilityVersion();
   quirks_ = 0;
   {

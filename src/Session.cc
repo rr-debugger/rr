@@ -47,6 +47,7 @@ Session::Session()
       tracee_socket_fd_number(0),
       next_task_serial_(1),
       rrcall_base_(RR_CALL_BASE),
+      syscallbuf_fds_disabled_size_(SYSCALLBUF_FDS_DISABLED_SIZE),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),

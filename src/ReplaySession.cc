@@ -173,6 +173,7 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
 
   ticks_semantics_ = trace_in.ticks_semantics();
   rrcall_base_ = trace_in.rrcall_base();
+  syscallbuf_fds_disabled_size_ = trace_in.syscallbuf_fds_disabled_size();
 
   if (!flags.redirect_stdio_file.empty()) {
     tracee_output_fd_ = make_shared<ScopedFd>(flags.redirect_stdio_file.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
@@ -294,6 +295,7 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   session->tracee_socket = tracee_socket;
   session->tracee_socket_fd_number = tracee_socket_fd_number;
   session->rrcall_base_ = rrcall_base_;
+  session->syscallbuf_fds_disabled_size_ = syscallbuf_fds_disabled_size_;
   LOG(debug) << "  deepfork session is " << session.get();
 
   copy_state_to(*session, emufs(), session->emufs());

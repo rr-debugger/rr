@@ -402,6 +402,9 @@ public:
   int syscall_number_for_rrcall_rdtsc() const {
     return SYS_rrcall_rdtsc - RR_CALL_BASE + rrcall_base_;
   }
+  uint32_t syscallbuf_fds_disabled_size() const {
+    return syscallbuf_fds_disabled_size_;
+  }
 
   /* Bind the current process to the a CPU as specified in the session options
      or trace */
@@ -457,6 +460,7 @@ protected:
   ScopedFd spawned_task_error_fd_;
 
   int rrcall_base_;
+  uint32_t syscallbuf_fds_disabled_size_;
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
 
   TicksSemantics ticks_semantics_;

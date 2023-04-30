@@ -40,11 +40,7 @@ public:
     return shr_ptr(new FdTable(*this));
   }
 
-  static shr_ptr create(Task* t) {
-    shr_ptr fds(new FdTable());
-    fds->insert_task(t);
-    return fds;
-  }
+  static shr_ptr create(Task* t);
 
   bool is_monitoring(int fd) const { return fds.count(fd) > 0; }
   uint32_t count_beyond_limit() const { return fd_count_beyond_limit; }
@@ -79,11 +75,14 @@ public:
   void erase_task(Task* t) override;
 
 private:
-  FdTable() : fd_count_beyond_limit(0), last_free_fd_(0) {}
+  explicit FdTable(uint32_t syscallbuf_fds_disabled_size)
+    : syscallbuf_fds_disabled_size(syscallbuf_fds_disabled_size),
+      fd_count_beyond_limit(0), last_free_fd_(0) {}
   // Does not call the base-class copy constructor because
   // we don't want to copy the task set; the new FdTable will
   // be for new tasks.
   FdTable(const FdTable& other) : fds(other.fds),
+    syscallbuf_fds_disabled_size(other.syscallbuf_fds_disabled_size),
     fd_count_beyond_limit(other.fd_count_beyond_limit),
     last_free_fd_(other.last_free_fd_) {}
 
@@ -91,7 +90,8 @@ private:
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
   std::unordered_map<AddressSpace*, int> vms;
-  // Number of elements of `fds` that are >= SYSCALLBUF_FDS_DISABLED_SIZE
+  int syscallbuf_fds_disabled_size;
+  // Number of elements of `fds` that are >= syscallbuf_fds_disabled_size
   uint32_t fd_count_beyond_limit;
   int last_free_fd_;
 };
