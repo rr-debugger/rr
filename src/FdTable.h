@@ -90,9 +90,15 @@ private:
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
   std::unordered_map<AddressSpace*, int> vms;
+  // Currently this is only used during recording, so we could use
+  // SYSCALLBUF_FDS_DISABLED_SIZE directly and not bother tracking it in
+  // the trace header, but to make things less fragile in case we ever need to
+  // know it during replay, we track it here.
   int syscallbuf_fds_disabled_size;
-  // Number of elements of `fds` that are >= syscallbuf_fds_disabled_size
+  // Number of elements of `fds` that are >= syscallbuf_fds_disabled_size.
+  // Only used during recording.
   uint32_t fd_count_beyond_limit;
+  // Only used during recording.
   int last_free_fd_;
 };
 
