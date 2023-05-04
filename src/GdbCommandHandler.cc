@@ -152,7 +152,7 @@ RRSetSuppressRunHook()
 #Automatically push an history entry when the program execution stops
 #(signal, breakpoint).This is fired before an interactive prompt is shown.
 #Disabled for now since it's not fully working.
-#gdb.events.stop.connect(history_push)
+gdb.events.stop.connect(history_push)
 
 end
 )Delimiter");
@@ -165,10 +165,12 @@ end
 
   ss << string(R"Delimiter(
 define hookpost-back
+maintenance flush register-cache
 frame
 end
 
 define hookpost-forward
+maintenance flush register-cache
 frame
 end
 )Delimiter");
