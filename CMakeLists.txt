@@ -1101,6 +1101,7 @@ set(BASIC_TESTS
   x86/old_fork
   orphan_process
   packet_mmap_disable
+  x86/patch_syscall_restart
   pause
   perf_event
   perf_event_ioctl

@@ -965,7 +965,7 @@ static void __attribute__((constructor)) init_process(void) {
       3,
       { 0x4c, 0x89, 0xff },
       (uintptr_t)_syscall_hook_trampoline_4c_89_ff },
-    /* Some application has 'mov $0xffffffff,%r9' followed by 'syscall' */
+    /* Some application has 'mov $0xffffffffffffffff,%r9' followed by 'syscall' */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
       7,
       { 0x49, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff },

@@ -1048,7 +1048,12 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       remote_code_ptr start_range, end_range;
       if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
         start_range = ip - hook.patch_region_length;
-        end_range = ip + instruction_length;
+        // if a thread has its RIP at the end of our range,
+        // it could be immediately after a syscall instruction that
+        // will need to be restarted. Patching out that instruction will
+        // prevent the kernel from restarting it. So, extend our range by
+        // one byte to detect such threads.
+        end_range = ip + instruction_length + 1;
       } else {
         start_range = ip;
         end_range = ip + instruction_length + hook.patch_region_length;
