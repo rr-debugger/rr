@@ -2153,9 +2153,8 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
       // rendezvous structures.
       // Use our old hack for ld from before we read PT_INTERP for backwards
       // compat with older traces.
-      if (m.recorded_map.fsname().compare(0,
-            normalized_file_name.length(),
-            normalized_file_name) == 0
+      if (m.recorded_map.fsname().compare(0, normalized_file_name.length(), normalized_file_name) == 0
+          || m.map.fsname().compare(0, normalized_file_name.length(), normalized_file_name) == 0
           || (is_ld_mapping(m.recorded_map.fsname()) &&
               is_likely_interp(normalized_file_name)))
       {
