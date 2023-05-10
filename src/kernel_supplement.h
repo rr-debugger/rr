@@ -494,6 +494,10 @@ enum {
 #define ELFCOMPRESS_ZLIB 1
 #endif
 
+// O_LARGEFILE is defined to 0 for 64-bit builds. We need to know the
+// value that is used for 32-bit processes.
+#define RR_LARGEFILE_32 0x8000
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.

@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+
+exe=simple$bitness
+cp ${OBJDIR}/bin/$exe $exe-$nonce
+truncate -s 2G $exe-$nonce
+PATH="${PATH}:." just_record $exe-$nonce
+replay
+check 'EXIT-SUCCESS'

@@ -813,7 +813,7 @@ void AutoRemoteSyscalls::finish_direct_mmap(
     AutoRestoreMem child_str(*this, backing_file_name.c_str());
     fd = infallible_syscall(syscall_number_for_openat(arch()), -1,
                             child_str.get().as_int(),
-                            backing_file_open_flags);
+                            backing_file_open_flags | RR_LARGEFILE_32);
   }
   /* And mmap that file. */
   infallible_mmap_syscall_if_alive(rec_addr, length,

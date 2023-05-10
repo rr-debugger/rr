@@ -1580,6 +1580,7 @@ set(TESTS_WITHOUT_PROGRAM
   get_thread_list
   hardlink_mmapped_files
   hbreak
+  large_file
   mprotect_step
   nested_detach
   nested_detach_kill
