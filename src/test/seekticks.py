@@ -57,4 +57,19 @@ ticks6 = eval(last_match().group(1));
 if ticks6 != ticks2:
     failed('ERROR: Failed to seek forwards to ticks2')
 
+if ticks2 < 4:
+    failed('ERROR: ticks2 too small to test nearby ticks')
+
+tests = [ticks2, ticks2, ticks2-2, 1, 1, 0, 0, 2, 0, 2, ticks2-2, ticks2-1, ticks2-2, ticks2]
+
+for i in range(len(tests)):
+    ticks7 = tests[i]
+    send_gdb("seek-ticks %d" % ticks7)
+    expect_gdb("Program stopped.")
+    send_gdb('when-ticks')
+    expect_gdb(re.compile(r'Current tick: (\d+)'))
+    ticks8 = eval(last_match().group(1));
+    if ticks8 != ticks7:
+        failed("ERROR: seek-ticks didn't go to correct tick on test %d" % i)
+
 ok()

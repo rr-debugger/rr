@@ -1588,7 +1588,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
         }
       }
       // Forward the frame reader to the current event
-      last_time = ticks_start_time;
+      last_time = ticks_start_time + 1;
       while (true) {
         TraceFrame frame = tmp_reader.read_frame();
         if (frame.time() >= ticks_start_time) {
@@ -1598,7 +1598,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
     }
     while (true) {
       if (tmp_reader.at_end()) {
-        cout << "No event found matching specified ticks target.";
+        cout << "No event found matching specified ticks target.\n";
         dbg->notify_restart_failed();
         return;
       }
@@ -1606,9 +1606,9 @@ void GdbServer::restart_session(const GdbRequest& req) {
       if (frame.tid() == task->tuid().tid() && frame.ticks() >= target) {
         break;
       }
-      last_time = frame.time();
+      last_time = frame.time() + 1;
     }
-    timeline.seek_to_ticks(last_time + 1, target);
+    timeline.seek_to_ticks(last_time, target);
   }
 
   interrupt_pending = true;
