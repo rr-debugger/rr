@@ -103,14 +103,19 @@ private:
 
 /**
  * returns a remote_ptr pointing to field f of the struct pointed to by
- * remote_ptr p
+ * remote_ptr p, with an additional value subtracted
  */
-#define REMOTE_PTR_FIELD(p, f)                                                 \
+#define REMOTE_PTR_FIELD_MINUS_OFFSET(p, f, o)                                 \
   ((p).field(                                                                  \
       ((typename std::remove_reference<decltype(                               \
             (p).dummy()->f)>::type*)nullptr),                                  \
       offsetof(typename std::remove_reference<decltype(*(p).dummy())>::type,   \
-               f)))
+               f) - (o)))
+/**
+ * returns a remote_ptr pointing to field f of the struct pointed to by
+ * remote_ptr p
+ */
+#define REMOTE_PTR_FIELD(p, f) REMOTE_PTR_FIELD_MINUS_OFFSET(p, f, 0)
 
 template <typename T>
 std::ostream& operator<<(std::ostream& stream, remote_ptr<T> p) {

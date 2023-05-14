@@ -1287,6 +1287,10 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t, Ticks ticks) {
              << " bytes of syscall records";
 }
 
+#define PRELOAD_GLOBALS_FIELD_AFTER_SYSCALLBUF_FDS_DISABLED(t, f) \
+    REMOTE_PTR_FIELD_MINUS_OFFSET(t->preload_globals, f,          \
+      SYSCALLBUF_FDS_DISABLED_SIZE - t->session().syscallbuf_fds_disabled_size())
+
 /**
  * Returns mprotect_record_count
  */
@@ -1295,9 +1299,10 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
   uint32_t final_mprotect_record_count =
       t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count));
   if (skip_mprotect_records < final_mprotect_record_count) {
+    auto mprotect_records_ptr =
+        PRELOAD_GLOBALS_FIELD_AFTER_SYSCALLBUF_FDS_DISABLED(t, mprotect_records[0]);
     auto records =
-        t->read_mem(REMOTE_PTR_FIELD(t->preload_globals, mprotect_records[0]) +
-                        skip_mprotect_records,
+        t->read_mem(mprotect_records_ptr + skip_mprotect_records,
                     final_mprotect_record_count - skip_mprotect_records);
     for (size_t i = 0; i < records.size(); ++i) {
       auto& r = records[i];
@@ -1323,7 +1328,8 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
 static void write_breakpoint_value(ReplayTask *t, uint64_t breakpoint_value, uint32_t flags = 0)
 {
   if (t->session().has_trace_quirk(TraceReader::UsesGlobalsInReplay)) {
-    t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_breakpoint_value),
+    t->write_mem(
+      PRELOAD_GLOBALS_FIELD_AFTER_SYSCALLBUF_FDS_DISABLED(t, reserved_legacy_breakpoint_value),
       breakpoint_value, nullptr, flags);
   } else {
     t->write_mem(remote_ptr<uint64_t>(RR_PAGE_BREAKPOINT_VALUE),
