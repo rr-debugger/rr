@@ -69,6 +69,7 @@ Session::Session(const Session& other) {
   next_task_serial_ = other.next_task_serial_;
   done_initial_exec_ = other.done_initial_exec_;
   rrcall_base_ = other.rrcall_base_;
+  syscallbuf_fds_disabled_size_ = other.syscallbuf_fds_disabled_size_;
   visible_execution_ = other.visible_execution_;
   tracee_socket = other.tracee_socket;
   tracee_socket_receiver = other.tracee_socket_receiver;
