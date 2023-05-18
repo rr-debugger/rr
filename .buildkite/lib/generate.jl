@@ -31,7 +31,13 @@ function generate(platform::Platform)
     echo "--- Test"
     mkdir -p Testing/Temporary
     mv ../.buildkite/CTestCostData.txt Testing/Temporary
-    julia ../.buildkite/capture_tmpdir.jl ctest --output-on-failure -j\$\$(expr \$\${JULIA_CPU_THREADS:?} - 2)
+    if bin/rr record bin/simple; then
+      julia ../.buildkite/capture_tmpdir.jl ctest --output-on-failure -j\$\$(expr \$\${JULIA_CPU_THREADS:?} - 2)
+    else
+      echo -n -e "rr seems not able to run, skipping running test suite.\nhostname: "
+      hostname
+      exit 1
+    fi
     """
     job_label = "Test $(platform.arch)"
     job_key = "test-$(platform.arch)"
