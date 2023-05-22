@@ -490,6 +490,9 @@ bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip);
  */
 enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
 
+/* Get the path of the cpu lock file */
+std::string get_cpu_lock_file();
+
 /* Convert a BindCPU to a specific CPU number. If possible, the cpu_lock_fd_out
    will be set to an fd that holds an advisory fcntl lock for the chosen CPU
    for coordination with other rr processes */

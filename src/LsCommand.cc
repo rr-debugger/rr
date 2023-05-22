@@ -160,9 +160,14 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
     return 1;
   }
 
+  const string cpu_lock = real_path(get_cpu_lock_file());
+  const string full_traces_dir = real_path(traces_dir) + "/";
   vector<TraceInfo> traces;
 
   while (struct dirent* trace_dir = readdir(dir)) {
+    if (full_traces_dir + trace_dir->d_name == cpu_lock) {
+      continue;
+    }
     if (!is_valid_trace(trace_dir->d_name)) {
       continue;
     }

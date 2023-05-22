@@ -1987,7 +1987,7 @@ bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip) {
   return false;
 }
 
-static string get_cpu_lock_file() {
+string get_cpu_lock_file() {
   const char* lock_file = getenv("_RR_CPU_LOCK_FILE");
   return lock_file ? lock_file : trace_save_dir() + "/cpu_lock";
 }
