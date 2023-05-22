@@ -77,9 +77,9 @@ static ssize_t find_cmd_line(pid_t pid, const vector<TraceTaskEvent>& events,
   return -1;
 }
 
-static string find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
-                             size_t current_event,
-                             const map<pid_t, pid_t> current_tid_to_pid) {
+string find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
+                      size_t current_event,
+                      const map<pid_t, pid_t> current_tid_to_pid) {
   map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
   for (size_t i = current_event; i < events.size(); ++i) {
     const TraceTaskEvent& e = events[i];
