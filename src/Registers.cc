@@ -175,7 +175,11 @@ RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
   // Mask out the single-step flag from the pstate. During replay, we may
   // single-step to an execution point, which could set the single-step bit
   // when it wasn't set during record.
-  RV_AARCH64_WITH_MASK(CPSR, pstate, 0xffffffffLL & ~AARCH64_DBG_SPSR_SS, 4),
+  //
+  // In Apple Air M2 SPSR bit 11 seems to be sometimes set leading to record/replay register
+  // comparison errors. This seems to be a unused/undocumented bit in SPSR as per aarch64
+  // documentation anyways so ignore it.
+  RV_AARCH64_WITH_MASK(CPSR, pstate, 0xffffffffLL & ~AARCH64_DBG_SPSR_SS & ~AARCH64_DBG_SPSR_11, 4),
 };
 
 #undef RV_X64
