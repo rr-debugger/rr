@@ -105,7 +105,9 @@ enum CpuMicroarch {
   ARMCortexX1,
   AppleM1Icestorm,
   AppleM1Firestorm,
-  LastARM = AppleM1Firestorm,
+  AppleM2Blizzard,
+  AppleM2Avalanche,
+  LastARM = AppleM2Avalanche,
 };
 
 /*
@@ -216,6 +218,10 @@ static const PmuConfig pmu_configs[] = {
     "apple_icestorm_pmu", 0x8c, -1, -1 },
   { AppleM1Firestorm, "Apple M1 Firestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "apple_firestorm_pmu", 0x8c, -1, -1 },
+  { AppleM2Blizzard, "Apple M2 Blizzard", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "apple_blizzard_pmu", 0x8c, -1, -1 },
+  { AppleM2Avalanche, "Apple M2 Avalanche", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "apple_avalanche_pmu", 0x8c, -1, -1 },
 };
 
 #define RR_SKID_MAX 10000
