@@ -37,6 +37,7 @@ const uintptr_t X86_RF_FLAG = 1 << 16;
 const uintptr_t X86_ID_FLAG = 1 << 21;
 
 const uintptr_t AARCH64_DBG_SPSR_SS = 1 << 21;
+const uintptr_t AARCH64_DBG_SPSR_11 = 1 << 11;
 
 /**
  * A Registers object contains values for all general-purpose registers.
