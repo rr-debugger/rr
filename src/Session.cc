@@ -572,7 +572,7 @@ const AddressSpace::Mapping Session::recreate_shared_mmap(
   return new_map;
 }
 
-const AddressSpace::Mapping& Session::steal_mapping(
+AddressSpace::Mapping Session::steal_mapping(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
     MonitoredSharedMemory::shr_ptr monitored) {
   // We will include the name of the full path of the original mapping in the
@@ -617,7 +617,7 @@ void Session::make_private_shared(AutoRemoteSyscalls& remote,
   // segment as it's scratch space, reevaluate that choice
   AutoRemoteSyscalls remote2(remote.task());
 
-  const AddressSpace::Mapping& new_m = steal_mapping(remote2, m);
+  AddressSpace::Mapping new_m = steal_mapping(remote2, m);
 
   if (!new_m.local_addr) {
     return;

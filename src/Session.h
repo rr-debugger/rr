@@ -349,7 +349,7 @@ public:
       new mapping.
       Returns an empty mapping if the tracee unexpectedly died.
    */
-  static const AddressSpace::Mapping& steal_mapping(
+  static AddressSpace::Mapping steal_mapping(
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
       MonitoredSharedMemory::shr_ptr monitored = nullptr);
 
