@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+export NONTMP_WORKDIR=$nontmp_workdir
+compare_test EXIT-SUCCESS

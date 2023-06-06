@@ -311,6 +311,16 @@ inline static void free_guard(size_t size, void* p) {
 
 inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
 
+inline static void chdir_nontmp_workdir(void) {
+  const char* nontmp_workdir = getenv("NONTMP_WORKDIR");
+  test_assert(nontmp_workdir && "NONTMP_WORKDIR environment variable not set");
+  /* Could be the empty string if the original directory from which tests were run
+     is a read-only directory */
+  if (*nontmp_workdir) {
+    test_assert(chdir(nontmp_workdir) == 0);
+  }
+}
+
 static char* trim_leading_blanks(char* str) {
   char* trimmed = str;
   while (isblank(*trimmed)) {

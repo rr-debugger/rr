@@ -25,10 +25,13 @@ static const char file_name2[] = "tmp2.bin";
 int main(void) {
   char buf[BUF_SIZE];
   int fd2;
-  int fd = open(file_name, O_RDWR | O_CREAT | O_EXCL, 0600);
+  int fd;
   struct btrfs_ioctl_clone_range_args args;
   int ret;
 
+  chdir_nontmp_workdir();
+
+  fd = open(file_name, O_RDWR | O_CREAT | O_EXCL, 0600);
   test_assert(fd >= 0);
   test_assert(0 == unlink(file_name));
   memset(buf, 1, sizeof(buf));

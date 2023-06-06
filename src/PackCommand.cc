@@ -2,8 +2,11 @@
 
 #include <dirent.h>
 #include <limits.h>
+#include <linux/fs.h>
+#include <linux/fiemap.h>
 #include <pthread.h>
 #include <string.h>
+#include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -77,11 +80,24 @@ bool operator<(const FileHash& h1, const FileHash& h2) {
   return memcmp(h1.bytes, h2.bytes, sizeof(h1)) < 0;
 }
 
-struct FileInfo {
-  FileHash hash;
-  uint64_t size;
-  bool is_hardlink;
+// Allocate a fresh FileHash different from every other
+// FileHash. Not thread-safe!
+static FileHash allocate_unique_file_hash() {
+  static uint32_t hash = 0;
+  FileHash result;
+  memcpy(&result.bytes[0], &hash, sizeof(hash));
+  ++hash;
+  memset(&result.bytes[4], 0, sizeof(result.bytes) - sizeof(hash));
+  return result;
+}
+
+struct FsExtentsHash {
+  uint8_t bytes[32];
 };
+
+bool operator<(const FsExtentsHash& h1, const FsExtentsHash& h2) {
+  return memcmp(h1.bytes, h2.bytes, sizeof(h1)) < 0;
+}
 
 static bool name_comparator(const TraceReader::MappedData& d1,
                             const TraceReader::MappedData d2) {
@@ -93,38 +109,29 @@ static bool names_equal(const TraceReader::MappedData& d1,
   return d1.file_name == d2.file_name;
 }
 
-static bool size_comparator(const TraceReader::MappedData& d1,
-                            const TraceReader::MappedData d2) {
-  return d1.data_offset_bytes > d2.data_offset_bytes;
+static bool decreasing_size_comparator(const TraceReader::MappedData* d1,
+                                       const TraceReader::MappedData* d2) {
+  return d1->file_size_bytes > d2->file_size_bytes;
+}
+
+static bool is_hardlink(const string& file_name) {
+  const char* name = file_name.c_str();
+  const char* right_slash = strrchr(name, '/');
+  return right_slash && strncmp(right_slash + 1, "mmap_hardlink_", 14) == 0;
 }
 
 static void* process_files_thread(void* p) {
   // Don't use log.h macros here since they're not necessarily thread-safe
-  auto data = static_cast<vector<pair<TraceReader::MappedData, FileInfo>>*>(p);
+  auto data = static_cast<vector<pair<const std::string*, FileHash>>*>(p);
   for (auto& pair : *data) {
-    const char* name = pair.first.file_name.c_str();
-    const char* right_slash = strrchr(name, '/');
-    pair.second.is_hardlink =
-        right_slash && strncmp(right_slash + 1, "mmap_hardlink_", 14) == 0;
-
+    const char* name = pair.first->c_str();
     ScopedFd fd(name, O_RDONLY);
     if (!fd.is_open()) {
       fprintf(stderr, "Failed to open %s\n", name);
       exit(1);
     }
-    struct stat stat_buf;
-    if (fstat(fd, &stat_buf) < 0) {
-      fprintf(stderr, "Failed to stat %s\n", name);
-      exit(1);
-    }
-    if (uint64_t(stat_buf.st_size) != pair.first.file_size_bytes) {
-      fprintf(stderr, "File size mismatch for %s\n", name);
-      exit(1);
-    }
-    pair.second.size = stat_buf.st_size;
-
     blake2b_state b2_state;
-    if (blake2b_init(&b2_state, sizeof(pair.second.hash.bytes))) {
+    if (blake2b_init(&b2_state, sizeof(pair.second.bytes))) {
       fprintf(stderr, "blake2b_init failed");
       exit(1);
     }
@@ -143,8 +150,8 @@ static void* process_files_thread(void* p) {
         exit(1);
       }
     }
-    if (blake2b_final(&b2_state, pair.second.hash.bytes,
-                      sizeof(pair.second.hash.bytes))) {
+    if (blake2b_final(&b2_state, pair.second.bytes,
+                      sizeof(pair.second.bytes))) {
       fprintf(stderr, "blake2b_final failed");
       exit(1);
     }
@@ -169,32 +176,191 @@ static vector<TraceReader::MappedData> gather_files(const string& trace_dir) {
     }
   }
 
-  // First, eliminate duplicates
+  // Eliminate duplicates
   stable_sort(files.begin(), files.end(), name_comparator);
   auto last = unique(files.begin(), files.end(), names_equal);
   files.erase(last, files.end());
 
-  // Then sort by decreasing size
-  stable_sort(files.begin(), files.end(), size_comparator);
-
   return files;
 }
 
-// Take a list of all mmapped files and compute their BLAKE2b hashes.
+// Returns true if FS_IOC_FIEMAP was supported and no extents are
+// UNKNOWN, storing a BLAKE2b hash of the extents metadata, file
+// size and filesystem ID in `result`. Otherwise returns false and
+// `result` is not initialized. `size` is always initialized.
+// If two files have the same FsExtentsHash then they have the same extents
+// and therefore the same contents.
+// If FS_IOC_FIEMAP is supported and the extents are known then this
+// deduplicates reflinked, hardlinked and symlinked files.
+static bool get_file_extents_hash(const string& file_name, FsExtentsHash* result,
+                                  uint64_t* size) {
+  const char* name = file_name.c_str();
+  ScopedFd fd(name, O_RDONLY);
+  if (!fd.is_open()) {
+    fprintf(stderr, "Failed to open %s\n", name);
+    exit(1);
+  }
+  off_t seek_end = lseek(fd, 0, SEEK_END);
+  if (seek_end < 0) {
+    fprintf(stderr, "Failed to SEEK_END %s\n", name);
+    exit(1);
+  }
+  *size = seek_end;
+
+  blake2b_state b2_state;
+  if (blake2b_init(&b2_state, sizeof(result->bytes))) {
+    fprintf(stderr, "blake2b_init failed\n");
+    exit(1);
+  }
+  uint64_t offset = 0;
+  bool saw_last = false;
+  do {
+    union {
+      struct fiemap request;
+      char bytes[16384];
+    } buffer;
+    memset(&buffer.request, 0, sizeof(buffer.request));
+    buffer.request.fm_start = offset;
+    buffer.request.fm_length = FIEMAP_MAX_OFFSET;
+    buffer.request.fm_extent_count = ((char*)&buffer.bytes[sizeof(buffer.bytes)] -
+      (char*)&buffer.request.fm_extents[0])/sizeof(buffer.request.fm_extents[0]);
+    int ret = ioctl(fd, FS_IOC_FIEMAP, &buffer.request);
+    if (ret < 0) {
+      if (errno == ENOTTY || errno == EOPNOTSUPP) {
+        return false;
+      }
+      fprintf(stderr, "FIEMAP ioctl failed\n");
+      exit(1);
+    }
+    if (!buffer.request.fm_mapped_extents) {
+      break;
+    }
+    for (size_t i = 0; i < buffer.request.fm_mapped_extents; ++i) {
+      const struct fiemap_extent& extent = buffer.request.fm_extents[i];
+      // Be super paranoid here. In btrfs at least, we see file extents where
+      // fe_physical is 0 and FIEMAP_EXTENT_DATA_INLINE|FIEMAP_EXTENT_NOT_ALIGNED
+      // are set; these are not real extents and the file contents are different
+      // even though the extent records are the same.
+      if ((extent.fe_flags & (FIEMAP_EXTENT_UNKNOWN | FIEMAP_EXTENT_DATA_INLINE |
+                              FIEMAP_EXTENT_DATA_TAIL | FIEMAP_EXTENT_NOT_ALIGNED))
+          || !extent.fe_physical) {
+        return false;
+      }
+      // It's not clear if file holes appear in the extents list or not.
+      // To be on the safe side, we hash the logical offsets so any holes
+      // will change the hash.
+      struct {
+        uint64_t fe_logical;
+        uint64_t fe_physical;
+        uint64_t fe_length;
+        uint32_t fe_flags;
+        uint32_t padding;
+      } buf = {
+        extent.fe_logical,
+        extent.fe_physical,
+        extent.fe_length,
+        extent.fe_flags,
+        0
+      };
+      if (blake2b_update(&b2_state, &buf, sizeof(buf))) {
+        fprintf(stderr, "blake2b_update failed\n");
+        exit(1);
+      }
+      if (extent.fe_flags & FIEMAP_EXTENT_LAST) {
+        saw_last = true;
+        break;
+      }
+      offset = extent.fe_logical + extent.fe_length;
+    }
+  } while (!saw_last);
+
+  struct statvfs vfs_buf;
+  int ret = fstatvfs(fd, &vfs_buf);
+  if (ret < 0) {
+    fprintf(stderr, "fstatvfs failed\n");
+    exit(1);
+  }
+  struct {
+    uint64_t size;
+    uint64_t fsid;
+  } buf = { *size, vfs_buf.f_fsid };
+  // Make sure the file size is hashed just in case it doesn't
+  // show up in the extents. We also need to hash the filesystem
+  // ID because the physical extents are local to the filesystem.
+  if (blake2b_update(&b2_state, &buf, sizeof(buf))) {
+    fprintf(stderr, "blake2b_update failed\n");
+    exit(1);
+  }
+  if (blake2b_final(&b2_state, result->bytes, sizeof(result->bytes))) {
+    fprintf(stderr, "blake2b_final failed\n");
+    exit(1);
+  }
+  return true;
+}
+
+// Makes a list of all mmapped files and computes their BLAKE2b hashes.
 // BLAKE2b was chosen because it's fast and cryptographically strong (we don't
 // compare the actual file contents, we're relying on hash collision avoidance).
-static map<string, FileInfo> gather_file_info(const string& trace_dir) {
+// Files with the same FileHash have the same contents.
+// The keys of the returned map are the full file names of the mapped files.
+static map<string, FileHash> gather_file_info(const string& trace_dir) {
   vector<TraceReader::MappedData> files = gather_files(trace_dir);
   int use_cpus = min(20, get_num_cpus());
   use_cpus = min((int)files.size(), use_cpus);
 
-  // Assign files round-robin to threads
-  vector<vector<pair<TraceReader::MappedData, FileInfo>>> thread_files;
-  thread_files.resize(use_cpus);
-  for (size_t i = 0; i < files.size(); ++i) {
-    thread_files[i % use_cpus].push_back(make_pair(files[i], FileInfo()));
+  // List of files indexed by their extents hash. All files
+  // with the same FsExtentsHash have the same contents.
+  map<FsExtentsHash, vector<const TraceReader::MappedData*>> extents_to_file;
+  // All files for which we failed to get extents. We know nothing
+  // about their contents.
+  vector<const TraceReader::MappedData*> files_with_no_extents;
+  for (const auto& file : files) {
+    FsExtentsHash extents_hash;
+    uint64_t size;
+    if (get_file_extents_hash(file.file_name, &extents_hash, &size)) {
+      extents_to_file[extents_hash].push_back(&file);
+    } else {
+      files_with_no_extents.push_back(&file);
+    }
+    if (size != file.file_size_bytes) {
+      fprintf(stderr, "File size mismatch for %s\n", file.file_name.c_str());
+      exit(1);
+    }
   }
 
+  // Make a list of files with possibly unique contents (i.e. excluding
+  // duplicates with the same FsExtentsHash).
+  vector<const TraceReader::MappedData*> files_to_hash = files_with_no_extents;
+  for (const auto& entry : extents_to_file) {
+    files_to_hash.push_back(entry.second[0]);
+  }
+  // We'll assign files to threads in round-robin order, ordered by decreasing size.
+  stable_sort(files_to_hash.begin(), files_to_hash.end(),
+              decreasing_size_comparator);
+
+  map<uint64_t, int32_t> file_size_to_file_count;
+  for (auto file : files_to_hash) {
+    ++file_size_to_file_count[file->file_size_bytes];
+  }
+
+  map<string, FileHash> result;
+  vector<vector<pair<const std::string*, FileHash>>> thread_files;
+  thread_files.resize(use_cpus);
+  int num_files_to_hash = 0;
+  for (auto file : files_to_hash) {
+    if (file_size_to_file_count[file->file_size_bytes] == 1) {
+      // There is only one file with this size, so it can't be a duplicate
+      // of any other files in `files_to_hash` and there is no need to hash
+      // its contents. We'll just make up a fake, unique hash value for it.
+      result[file->file_name] = allocate_unique_file_hash();
+      continue;
+    }
+    thread_files[num_files_to_hash % use_cpus].push_back(
+        make_pair(&file->file_name, FileHash()));
+    ++num_files_to_hash;
+  }
+
+  // Use multiple threads to actually hash the files we need to hash.
   vector<pthread_t> threads;
   for (size_t i = 0; i < thread_files.size(); ++i) {
     pthread_t thread;
@@ -204,15 +370,24 @@ static map<string, FileInfo> gather_file_info(const string& trace_dir) {
   for (pthread_t t : threads) {
     pthread_join(t, nullptr);
   }
-
-  map<string, FileInfo> file_info;
   for (auto& f : thread_files) {
     for (auto& ff : f) {
-      file_info[ff.first.file_name] = ff.second;
+      result[*ff.first] = ff.second;
     }
   }
 
-  return file_info;
+  // Populate results for files we skipped because they had duplicate
+  // FsExtentsHashes.
+  for (const auto& entry : extents_to_file) {
+    for (size_t i = 1; i < entry.second.size(); ++i) {
+      // Taking a reference into `result` while we potentially
+      // rehash it could be bad.
+      FileHash h = result[entry.second[0]->file_name];
+      result[entry.second[i]->file_name] = h;
+    }
+  }
+
+  return result;
 }
 
 static bool is_in_trace_dir(const string& file_name, const string& trace_dir) {
@@ -354,34 +529,32 @@ static map<string, string> compute_canonical_symlink_map(
  */
 static map<string, string> compute_canonical_mmapped_files(
     const string& trace_dir) {
-  map<string, FileInfo> file_info = gather_file_info(trace_dir);
+  map<string, FileHash> file_info = gather_file_info(trace_dir);
 
   map<FileHash, string> hash_to_name;
   for (auto& p : file_info) {
-    const auto& existing = hash_to_name.find(p.second.hash);
+    const auto& existing = hash_to_name.find(p.second);
     if (existing != hash_to_name.end()) {
-      auto& info_existing = file_info[existing->second];
-      if (!info_existing.is_hardlink &&
+      if (!is_hardlink(existing->second) &&
           is_in_trace_dir(existing->second, trace_dir)) {
         continue;
       }
     }
-    hash_to_name[p.second.hash] = p.first;
+    hash_to_name[p.second] = p.first;
   }
 
   int name_index = 0;
   for (auto& p : hash_to_name) {
     // Copy hardlinked files into the trace to avoid the possibility of someone
     // overwriting the original file.
-    auto& info = file_info[p.second];
-    if (info.is_hardlink || !is_in_trace_dir(p.second, trace_dir)) {
+    if (is_hardlink(p.second) || !is_in_trace_dir(p.second, trace_dir)) {
       p.second = copy_into_trace(p.second, trace_dir, &name_index);
     }
   }
 
   map<string, string> file_map;
   for (auto& p : file_info) {
-    string name = hash_to_name[p.second.hash];
+    string name = hash_to_name[p.second];
     if (!is_in_trace_dir(name, trace_dir)) {
       FATAL() << "Internal error; file is not in trace dir";
     }

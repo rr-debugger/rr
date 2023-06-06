@@ -6,7 +6,7 @@ cp $OBJDIR/lib/rr/libtest_lib$bitness.so .
 
 RECORD_ARGS="--env=LD_LIBRARY_PATH=$PWD --no-file-cloning"
 record constructor$bitness
-rr pack $workdir/latest-trace
+rr pack $workdir/latest-trace || failed "'rr pack' failed"
 # Make sure rr pack really copied the file
 truncate --size 0 libtest_lib$bitness.so
 rm libtest_lib$bitness.so

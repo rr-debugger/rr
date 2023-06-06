@@ -80,9 +80,14 @@ function fatal { #...
 function onexit {
     cd
     if [[ "$test_passed" == "y" ]]; then
-        rm -rf $workdir
+        if [[ "$tmp_workdir" != "" ]]; then
+            rm -rf $tmp_workdir
+        fi
+        if [[ "$nontmp_workdir" != "" ]]; then
+            rm -rf $nontmp_workdir
+        fi
     else
-        echo Test $TESTNAME failed, leaving behind $workdir
+        echo Test $TESTNAME failed, leaving behind $tmp_workdir and $nontmp_workdir
         echo To replay the failed test, run
         echo " " _RR_TRACE_DIR="$workdir" rr replay
         exit 1
@@ -134,6 +139,11 @@ fi
 
 # The temporary directory we create for this test run.
 workdir=
+# A temporary directory likely to be in a tmpfs. Usually same as 'workdir'.
+tmp_workdir=
+# Another temporary directory that we created for this test run, in a real
+# (non-tmpfs) filesystem if possible. It might be empty or still in a tmpfs.
+nontmp_workdir=
 # Did the test pass?  If not, then we'll leave the recording and
 # output around for developers to debug, and exit with a nonzero
 # exit code.
@@ -192,6 +202,8 @@ ulimit -c 0
 # NB: must set up the trap handler *before* mktemp
 trap onexit EXIT
 workdir=`mktemp -dt rr-test-$TESTNAME-XXXXXXXXX`
+tmp_workdir=$workdir
+nontmp_workdir=`mktemp -p $PWD -dt rr-test-$TESTNAME-XXXXXXXXX`
 cd $workdir
 
 # XXX technically the trailing -XXXXXXXXXX isn't unique, since there
@@ -267,6 +279,13 @@ function save_exe { exe=$1;
     cp "${EXE_PATH}" "$exe-$nonce"
 }
 
+function switch_to_nontmp_workdir_if_possible {
+    if [[ "$nontmp_workdir" != "" ]]; then
+        workdir=$nontmp_workdir
+        cd $workdir
+    fi
+}
+
 # Record $exe with $exeargs.
 function record { exe=$1;
     save_exe "$exe"
@@ -292,6 +311,11 @@ function replay { replayflags=$1
 function rerun { rerunflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT rerun.err \
         $RR_EXE $GLOBAL_OPTIONS rerun $rerunflags 1> rerun.out 2> rerun.err
+}
+
+function pack { packflags=$1
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT pack.err \
+        $RR_EXE $GLOBAL_OPTIONS pack $packflags 1> pack.out 2> pack.err
 }
 
 function do_ps { psflags=$1

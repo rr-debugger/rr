@@ -918,7 +918,6 @@ set(BASIC_TESTS
   clone_bad_tls
   clone_cleartid_coredump
   clone_fail
-  clone_file_range
   clone_immediate_exit
   clone_newflags
   clone_parent
@@ -1377,6 +1376,7 @@ set(TESTS_WITH_PROGRAM
   checkpoint_mixed_mode
   checksum_sanity
   check_lost_interrupts
+  clone_file_range
   clone_interruption
   # Disabled because it fails
   # clone_share_vm
@@ -1448,6 +1448,7 @@ set(TESTS_WITH_PROGRAM
   nested_detach_wait
   nested_detach_kill_stuck
   overflow_branch_counter
+  pack
   patch_page_end
   x86/patch_40_80_f6_81
   priority
