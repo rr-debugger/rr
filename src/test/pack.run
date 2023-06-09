@@ -8,6 +8,7 @@ dd bs=1 count=1800 if=/dev/urandom of=mapped_file4 >& /dev/null
 record pack$bitness
 
 pack || failed "'rr pack' failed"
+ls -al `realpath latest-trace`
 if [[ `ls latest-trace/*_pack-* | wc -l` != "1" ]]; then
     failed "Failed to coalesce all instances of 'pack'"
 fi
