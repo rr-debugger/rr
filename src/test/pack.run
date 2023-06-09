@@ -5,23 +5,29 @@ dd bs=1 count=65539 if=/dev/urandom of=mapped_file >& /dev/null
 dd bs=1 count=65539 if=/dev/urandom of=mapped_file2 >& /dev/null
 dd bs=1 count=1800 if=/dev/urandom of=mapped_file3 >& /dev/null
 dd bs=1 count=1800 if=/dev/urandom of=mapped_file4 >& /dev/null
+chmod u+x mapped_file*
 record pack$bitness
 
 pack || failed "'rr pack' failed"
 if [[ `ls latest-trace/*_pack-* | wc -l` != "1" ]]; then
     failed "Failed to coalesce all instances of 'pack'"
 fi
-if [[ `ls latest-trace/*_mapped_file | wc -l` != "1" ]]; then
-    failed "Failed to pack 'mapped_file'"
-fi
-if [[ `ls latest-trace/*_mapped_file2 | wc -l` != "1" ]]; then
-    failed "Failed to pack 'mapped_file2'"
-fi
-if [[ `ls latest-trace/*_mapped_file3 | wc -l` != "1" ]]; then
-    failed "Failed to pack 'mapped_file3'"
-fi
-if [[ `ls latest-trace/*_mapped_file4 | wc -l` != "1" ]]; then
-    failed "Failed to pack 'mapped_file4'"
+# If there are no copies of _mapped_file it was probably copied
+# into the trace data, for one of various reasons, so don't fail
+# the test in that case.
+if [[ `ls latest-trace/*_mapped_file | wc -l` != "0" ]]; then
+    if [[ `ls latest-trace/*_mapped_file | wc -l` != "1" ]]; then
+        failed "Failed to pack 'mapped_file'"
+    fi
+    if [[ `ls latest-trace/*_mapped_file2 | wc -l` != "1" ]]; then
+        failed "Failed to pack 'mapped_file2'"
+    fi
+    if [[ `ls latest-trace/*_mapped_file3 | wc -l` != "1" ]]; then
+        failed "Failed to pack 'mapped_file3'"
+    fi
+    if [[ `ls latest-trace/*_mapped_file4 | wc -l` != "1" ]]; then
+        failed "Failed to pack 'mapped_file4'"
+    fi
 fi
 
 replay

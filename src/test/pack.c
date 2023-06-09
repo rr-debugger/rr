@@ -7,7 +7,7 @@ static void map_file(const char* name) {
   void* p;
 
   test_assert(fd >= 0);
-  p = mmap(NULL, 65536, PROT_READ, MAP_PRIVATE, fd, 0);
+  p = mmap(NULL, 65536, PROT_READ | PROT_EXEC, MAP_PRIVATE, fd, 0);
   test_assert(p != MAP_FAILED);
 }
 
