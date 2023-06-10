@@ -9,7 +9,7 @@ chmod u+x mapped_file*
 record pack$bitness
 
 pack || failed "'rr pack' failed"
-if [[ `ls latest-trace/*_pack-* | wc -l` != "1" ]]; then
+if [[ `ls latest-trace/*_pack$bitness-* | wc -l` != "1" ]]; then
     failed "Failed to coalesce all instances of 'pack'"
 fi
 # If there are no copies of _mapped_file it was probably copied
