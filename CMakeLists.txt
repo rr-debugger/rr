@@ -58,6 +58,8 @@ configure_file(
   ${CMAKE_BINARY_DIR}/extra_version_string.h
 )
 
+# Custom flags that we'll put in front to allow override from ENV
+set(PREFIX_FLAGS_COMMON "")
 set(FLAGS_COMMON "-D__USE_LARGEFILE64 -pthread")
 set(supports32bit true)
 set(x86ish false)
@@ -80,18 +82,18 @@ configure_file(src/preload/rr_page.ld.in src/preload/rr_page.ld @ONLY)
 include(CheckCCompilerFlag)
 CHECK_C_COMPILER_FLAG("-fmacro-prefix-map=foo=bar" SUPPORTS_MACRO_PREFIX_MAP)
 if (SUPPORTS_MACRO_PREFIX_MAP)
-  set(FLAGS_COMMON "${FLAGS_COMMON} -fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
+  set(PREFIX_FLAGS_COMMON "${PREFIX_FLAGS_COMMON} -fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
 endif()
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
+set(CMAKE_C_FLAGS "${PREFIX_FLAGS_COMMON} ${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++14" SUPPORTS_CXX14)
 if (SUPPORTS_CXX14)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++14")
+  set(CMAKE_CXX_FLAGS "${PREFIX_FLAGS_COMMON} ${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++14")
 else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++11")
+  set(CMAKE_CXX_FLAGS "${PREFIX_FLAGS_COMMON} ${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++11")
 endif()
 
 # We support three build types:

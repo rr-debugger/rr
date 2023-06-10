@@ -27,6 +27,7 @@ function generate(platform::Platform)
 
     echo "--- Build"
     make --output-sync -j\$\${JULIA_CPU_THREADS:?}
+    bin/rr --log all:info bin/simple
 
     echo "--- Test"
     mkdir -p Testing/Temporary
