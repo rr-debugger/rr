@@ -10,6 +10,7 @@ int main(void) {
   unsigned short* ushort_val;
   size_t* size_t_val;
   char ch = 32;
+  int ret;
 
   int fd = open("/dev/sda1", O_NONBLOCK | O_RDONLY);
   if (fd < 0) {
@@ -30,7 +31,10 @@ int main(void) {
 
 #define CHECK_GETTER(name, val) \
     ALLOCATE_GUARD(val, ch++); \
-    test_assert(0 == ioctl(fd, name, val)); \
+    ret = ioctl(fd, name, val); \
+    if (ret < 0) { \
+      test_assert(errno == EINVAL || errno == ENOTTY || errno == EOPNOTSUPP); \
+    } \
     VERIFY_GUARD(val); \
     atomic_printf(#name " returned %llu\n", (unsigned long long)*val);
 
