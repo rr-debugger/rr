@@ -121,6 +121,7 @@ struct KernelConstants {
   static const int PTRACE_O_TRACEVFORK = 1 << PTRACE_EVENT_VFORK;
   static const int PTRACE_O_TRACECLONE = 1 << PTRACE_EVENT_CLONE;
   static const int PTRACE_O_TRACEEXEC = 1 << PTRACE_EVENT_EXEC;
+  static const int PTRACE_O_TRACEVFORKDONE = 1 << PTRACE_EVENT_VFORK_DONE;
   static const int PTRACE_O_TRACEEXIT = 1 << PTRACE_EVENT_EXIT;
   static const int PTRACE_O_TRACESECCOMP = 1 << PTRACE_EVENT_SECCOMP;
   static const int PTRACE_O_EXITKILL = 1 << 20;
