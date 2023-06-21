@@ -43,24 +43,23 @@ import re
 
 def gdb_unescape(string):
     str_len = len(string)
-    if str_len % 2:
+    if str_len % 2: # check for unexpected string length
         return ""
-    result = "" # check for unexpected string length
+    result = bytearray()
     try:
         pos = 0
         while pos < str_len:
             hex_char = string[pos:pos+2]
-            result += chr(int(hex_char, 16))
+            result.append(int(hex_char, 16))
             pos += 2
     except: # check for unexpected string value
         return ""
-    return result
+    return result.decode('utf-8')
 
 def gdb_escape(string):
     result = ""
-    pos = 0
-    for curr_char in string:
-        result += format(ord(curr_char), '02x')
+    for curr_char in string.encode('utf-8'):
+        result += format(curr_char, '02x')
     return result
 
 class RRWhere(gdb.Command):
@@ -205,7 +204,7 @@ static string gdb_escape(const string& str) {
   const size_t len = str.size();
   const char *data = str.data();
   for (size_t i = 0; i < len; i++) {
-    int chr = data[i];
+    int chr = (uint8_t)data[i];
     if (chr < 16) {
       ss << "0";
     }
