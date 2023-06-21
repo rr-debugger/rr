@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-static void breakpoint(void) {}
+static char* breakpoint(char* arg) { return arg; }
 
 int main(void) {
   char* page;
@@ -16,7 +16,7 @@ int main(void) {
 
   test_assert(0 == madvise(page, page_size, MADV_DONTFORK));
 
-  breakpoint();
+  breakpoint("\xf0\x9d\x95\xa8\xc4\x81\xe2\x89\xa5\x33");
 
   page[0] = 1;
 
