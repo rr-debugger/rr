@@ -21,10 +21,9 @@ int main(void) {
     default:
       attach(fork_child);
       test_assert(1 == write(EXECUTION_FENCE_PIPES[1], "1", 1));
-      // at this point, we can now set otps, because ATTACH ptrace stop event
-      // has been delivered While the tracee is suspended by the blocking read,
-      // the SIGSTOP is not delivered.
       int ws;
+      // PTRACE_ATTACH SIGSTOP delivered only after suspension of blocked read
+      // has ended. We can now ptrace SET_OPTIONS.
       test_assert(fork_child == waitpid(fork_child, &ws, 0));
       test_assert(WIFSTOPPED(ws) && WSTOPSIG(ws) == SIGSTOP);
       const int opts =

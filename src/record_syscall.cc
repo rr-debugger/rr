@@ -6398,13 +6398,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         t->emulate_ptrace_stop(
             WaitStatus::for_ptrace_event(PTRACE_EVENT_VFORK_DONE));
       }
-      // see Arch::clone, Arch::vfork used to fall-through there.
-      if (Arch::is_x86ish()) {
-        Registers r = t->regs();
-        r.set_flags(syscall_state.syscall_entry_registers.flags());
-        t->set_regs(r);
-      }
-      break;
+      RR_FALLTHROUGH;
     }
     case Arch::fork:
     case Arch::clone: {
