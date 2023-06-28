@@ -2384,7 +2384,7 @@ static bool verify_ptrace_options(RecordTask* t,
   // We "support" PTRACE_O_SYSGOOD because we don't support PTRACE_SYSCALL yet
   static const int supported_ptrace_options =
       PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT | PTRACE_O_TRACEFORK |
-      PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEEXEC;
+      PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE;
 
   if ((int)t->regs().arg4() & ~supported_ptrace_options) {
     LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
@@ -6393,8 +6393,14 @@ static void rec_process_syscall_arch(RecordTask* t,
   // syscall completes --- and that our TaskSyscallState infrastructure can't
   // handle.
   switch (syscallno) {
+    case Arch::vfork: {
+      if (t->emulated_ptrace_options & PTRACE_O_TRACEVFORKDONE) {
+        t->emulate_ptrace_stop(
+            WaitStatus::for_ptrace_event(PTRACE_EVENT_VFORK_DONE));
+      }
+      RR_FALLTHROUGH;
+    }
     case Arch::fork:
-    case Arch::vfork:
     case Arch::clone: {
       if (Arch::is_x86ish()) {
         // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()

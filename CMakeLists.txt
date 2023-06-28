@@ -1303,7 +1303,9 @@ set(BASIC_TESTS
   userfaultfd
   utimes
   vdso_parts
+  vfork_done
   vfork_flush
+  vfork_setopts
   vfork_shared
   video_capture
   vm_readv_writev
