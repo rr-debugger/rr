@@ -7,6 +7,16 @@ function generate(platform::Platform)
     echo "--- Print kernel information"
     uname -a
 
+    echo "--- Print locale information"
+    echo "locale -a:"
+    locale -a
+    echo "/usr/lib/locale:"
+    ls -lisah /usr/lib/locale
+    echo "LANG=\$LANG"
+    echo "LANGUAGE=\$LANGUAGE"
+    echo "LC_ALL=\$LC_ALL"
+    echo "LCTYPE=\$LCTYPE"
+
     echo "--- Print CPU information"
     # These machines have multiple cores. However, it should be sufficient to
     # just print the information for one of the cores.
@@ -32,7 +42,7 @@ function generate(platform::Platform)
     mkdir -p Testing/Temporary
     mv ../.buildkite/CTestCostData.txt Testing/Temporary
     if bin/rr record bin/simple; then
-      julia ../.buildkite/capture_tmpdir.jl ctest --output-on-failure -j\$\$(expr \$\${JULIA_CPU_THREADS:?} - 2)
+      julia ../.buildkite/capture_tmpdir.jl ctest -R madvise_dontfork --output-on-failure -j\$\$(expr \$\${JULIA_CPU_THREADS:?} - 2)
     else
       echo -n -e "rr seems not able to run, skipping running test suite.\nhostname: "
       hostname
