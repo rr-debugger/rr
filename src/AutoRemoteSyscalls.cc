@@ -650,7 +650,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
         << "Error in pidfd_open errno=" << errno_name(errno);
     }
   }
-  if (pid_fd.is_open() && !running_under_rr()) {
+  if (pid_fd.is_open()) {
     ret = ScopedFd(::syscall(NativeArch::pidfd_getfd, pid_fd.get(), fd, 0));
     if (ret.is_open()) {
       return ret;

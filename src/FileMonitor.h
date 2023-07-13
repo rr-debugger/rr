@@ -40,6 +40,7 @@ public:
     RRPage,
     ODirect,
     BpfMap,
+    PidFd,
   };
 
   virtual Type type() { return Base; }

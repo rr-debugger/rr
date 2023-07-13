@@ -128,12 +128,12 @@ void FdTable::did_write(Task* t, int fd,
   }
 }
 
-void FdTable::did_dup(int from, int to) {
-  if (fds.count(from)) {
+void FdTable::did_dup(FdTable* table, int from, int to) {
+  if (table->fds.count(from)) {
     if (to >= syscallbuf_fds_disabled_size && fds.count(to) == 0) {
       fd_count_beyond_limit++;
     }
-    fds[to] = fds[from];
+    fds[to] = table->fds[from];
   } else {
     if (to >= syscallbuf_fds_disabled_size && fds.count(to) > 0) {
       fd_count_beyond_limit--;
