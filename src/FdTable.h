@@ -33,7 +33,10 @@ public:
   Switchable will_write(Task* t, int fd);
   void did_write(Task* t, int fd, const std::vector<FileMonitor::Range>& ranges,
                  FileMonitor::LazyOffset& offset);
-  void did_dup(int from, int to);
+  void did_dup(int from, int to) {
+    did_dup(this, from, to);
+  }
+  void did_dup(FdTable* table, int from, int to);
   void did_close(int fd);
 
   shr_ptr clone() const {

@@ -563,6 +563,7 @@ set(RR_SOURCES
   src/Monkeypatcher.cc
   src/PackCommand.cc
   src/PerfCounters.cc
+  src/PidFdMonitor.cc
   src/ProcFdDirMonitor.cc
   src/ProcMemMonitor.cc
   src/ProcStatMonitor.cc
@@ -1115,6 +1116,7 @@ set(BASIC_TESTS
   pid_ns_segv
   pid_ns_shutdown
   pidfd
+  pidfd_getfd
   x86/pkeys
   poll_sig_race
   ppoll

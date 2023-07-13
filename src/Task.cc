@@ -37,6 +37,7 @@
 #include "CPUIDBugDetector.h"
 #include "Flags.h"
 #include "MagicSaveDataMonitor.h"
+#include "PidFdMonitor.h"
 #include "PreserveFileMonitor.h"
 #include "ProcMemMonitor.h"
 #include "RecordSession.h"
@@ -827,6 +828,30 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
         case Arch::PTRACE_POKEUSR: {
           ptrace_syscall_exit_legacy_arch<Arch>(this, tracee, regs);
         }
+      }
+      return;
+    }
+    case Arch::pidfd_open: {
+      int fd = regs.syscall_result();
+      pid_t pid = (pid_t)regs.orig_arg1();
+      TaskUid tuid;
+      if (Task* t = session().find_task(pid)) {
+        tuid = t->tuid();
+      }
+      fd_table()->add_monitor(this, fd, new PidFdMonitor(tuid));
+      return;
+    }
+    case Arch::pidfd_getfd: {
+      int pidfd = regs.orig_arg1();
+      int fd = regs.arg2();
+      if (PidFdMonitor* monitor = PidFdMonitor::get(fd_table().get(), pidfd)) {
+        // NB: This can return NULL if the pidfd is for a process outside of
+        // the rr trace.
+        if (auto source = monitor->fd_table(session())) {
+          fd_table()->did_dup(source.get(), fd, regs.syscall_result());
+        }
+      } else {
+        LOG(warn) << "pidfd_getfd succeeded but we lost track of the pidfd " << pidfd;
       }
       return;
     }
