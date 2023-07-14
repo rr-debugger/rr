@@ -120,10 +120,14 @@ class RRCmd(gdb.Command):
             gdb.write("Response error: " + rv)
             return
         response = gdb_unescape(rv_match.group(1))
-        gdb.write(response)
+        if response != '\n':
+            gdb.write(response)
 
 def history_push(p):
-    gdb.execute("rr-history-push", to_string=True)
+    # ensure any output (e.g. produced by breakpoint commands running during our
+    # processing, that were triggered by the stop we've been notified for)
+    # is echoed as normal.
+    gdb.execute("rr-history-push")
 
 rr_suppress_run_hook = False
 

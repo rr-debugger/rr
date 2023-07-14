@@ -1554,6 +1554,7 @@ set(TESTS_WITHOUT_PROGRAM
   break_thread
   break_time_slice
   breakpoint_consistent
+  breakpoint_print
   call_exit
   check_patched_pthread
   checkpoint_async_signal_syscalls_1000
