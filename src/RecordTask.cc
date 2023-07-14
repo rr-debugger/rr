@@ -1685,8 +1685,6 @@ int RecordTask::get_ptrace_eventmsg_seccomp_data() {
 
 void RecordTask::record_local(remote_ptr<void> addr, ssize_t num_bytes,
                               const void* data) {
-  maybe_flush_syscallbuf();
-
   ASSERT(this, num_bytes >= 0);
 
   if (!addr) {
@@ -1706,8 +1704,6 @@ bool RecordTask::record_remote_by_local_map(remote_ptr<void> addr,
 }
 
 void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
-  maybe_flush_syscallbuf();
-
   ASSERT(this, num_bytes >= 0);
 
   if (!addr) {
@@ -1790,8 +1786,6 @@ ssize_t RecordTask::record_remote_fallible(remote_ptr<void> addr,
 
 void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,
                                             ssize_t num_bytes) {
-  maybe_flush_syscallbuf();
-
   DEBUG_ASSERT(num_bytes >= 0);
 
   if (!addr) {
