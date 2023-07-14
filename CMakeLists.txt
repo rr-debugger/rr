@@ -1511,6 +1511,7 @@ set(TESTS_WITH_PROGRAM
   tls
   ttyname
   unexpected_stack_growth
+  unicode
   user_ignore_sig
   vdso_clock_gettime_stack
   vdso_gettimeofday_stack
