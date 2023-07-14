@@ -32,6 +32,7 @@
 #include <numeric>
 #include <random>
 #include <sstream>
+#include <experimental/filesystem>
 
 #include "preload/preload_interface.h"
 
@@ -53,6 +54,7 @@
 void good_random(uint8_t* out, size_t out_len);
 
 using namespace std;
+namespace fs = std::experimental::filesystem;
 
 namespace rr {
 
@@ -2190,6 +2192,60 @@ bool is_directory(const char* path) {
     return false;
   }
   return (buf.st_mode & S_IFDIR) != 0;
+}
+
+bool is_trace(const fs::path& trace) {
+  return fs::exists(trace / "version") || fs::exists(trace / "incomplete");
+}
+
+bool is_latest_trace(const fs::path& trace) {
+  if (!fs::exists(latest_trace_symlink())) {
+    return false;
+  }
+  const fs::path latest = fs::canonical(latest_trace_symlink());
+  return latest == trace; 
+}
+
+bool remove_latest_trace_symlink() {
+  const fs::path latest = latest_trace_symlink();
+  error_code ec;
+  fs::remove(latest, ec);
+  if (ec) {
+    const string msg = ec.message();
+    fprintf(
+      stderr,
+      "\n"
+      "rr: Failed to remove latest_trace symlink: %s\n"
+      "\n",
+      msg.c_str()
+    );
+    return false;
+  }
+  return true;
+}
+
+bool ensure_valid_trace_name(const fs::path& entry) {
+  // filename corresponds to dirname
+  const string name = entry.filename();
+
+  if (*entry.string().rbegin() == '/') {
+    // filename() will resolve name as '.' which might be a confusing error message
+    fprintf(stderr, "\nrr: Trace name cannot be empty\n\n");
+    return false;
+  }
+  if (name[0] == '.' || name[0] == '#') {
+    fprintf(stderr, "\nrr: Trace name cannot start with . or #.\n\n");
+    return false;
+  }
+  if (name[name.length() - 1] == '~') {
+    fprintf(stderr, "\nrr: Trace name cannot end with ~.\n\n");
+    return false;
+  }
+  if (name == "cpu_lock") {
+    fprintf(stderr, "\nrr: Trace name cannot be cpu_lock.\n\n");
+    return false;
+  }
+  return true;
 }
 
 ssize_t read_to_end(const ScopedFd& fd, size_t offset, void* buf, size_t size) {

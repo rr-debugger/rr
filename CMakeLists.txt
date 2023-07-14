@@ -555,6 +555,7 @@ set(RR_SOURCES
   src/MmappedFileMonitor.cc
   src/MonitoredSharedMemory.cc
   src/Monkeypatcher.cc
+  src/MvCommand.cc
   src/PackCommand.cc
   src/PerfCounters.cc
   src/PidFdMonitor.cc
@@ -576,6 +577,7 @@ set(RR_SOURCES
   src/ReplayTimeline.cc
   src/RerunCommand.cc
   src/ReturnAddressList.cc
+  src/RmCommand.cc
   src/Scheduler.cc
   src/SeccompFilterRewriter.cc
   src/Session.cc
@@ -667,6 +669,7 @@ target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   ${ZLIB_LDFLAGS}
   brotli
+  stdc++fs
 )
 
 if(staticlibs)

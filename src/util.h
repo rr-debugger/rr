@@ -12,6 +12,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <experimental/filesystem>
 
 #if defined(__i386__) || defined(__x86_64__)
 #include <x86intrin.h>
@@ -514,6 +515,14 @@ ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset
  * was an error.
  */
 bool is_directory(const char* path);
+
+bool is_trace(const std::experimental::filesystem::path& trace);
+
+bool is_latest_trace(const std::experimental::filesystem::path& trace);
+
+bool remove_latest_trace_symlink();
+
+bool ensure_valid_trace_name(const std::experimental::filesystem::path& entry);
 
 /**
  * Read bytes from `fd` into `buf` from `offset` until the read returns an
