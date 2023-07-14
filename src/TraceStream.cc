@@ -118,7 +118,7 @@ string trace_save_dir() {
   return output_dir ? output_dir : default_rr_trace_dir();
 }
 
-static string latest_trace_symlink() {
+string latest_trace_symlink() {
   return trace_save_dir() + "/latest-trace";
 }
 

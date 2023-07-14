@@ -131,16 +131,6 @@ static bool get_folder_size(string dir_name, string& size_str) {
   return true;
 }
 
-static bool is_valid_trace(const string& entry) {
-  if (entry[0] == '.' || entry[0] == '#') {
-    return false;
-  }
-  if (entry[entry.length() - 1] == '~') {
-    return false;
-  }
-  return true;
-}
-
 static string get_exec_path(TraceReader& reader) {
   while (true) {
     TraceTaskEvent r = reader.read_task_event();
@@ -173,7 +163,7 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
     if (full_traces_dir + trace_dir->d_name == cpu_lock) {
       continue;
     }
-    if (!is_valid_trace(trace_dir->d_name)) {
+    if (!is_valid_trace_name(trace_dir->d_name)) {
       continue;
     }
     traces.emplace_back(TraceInfo(string(trace_dir->d_name)));
