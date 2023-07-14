@@ -645,6 +645,12 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   if (!pid_fd.is_open()) {
     Task* tg_leader_for_fds = thread_group_leader_for_fds(t);
     if (tg_leader_for_fds) {
+      auto state = read_proc_status_fields(tg_leader_for_fds->tid, "State");
+      ASSERT(t, !state.empty()) << "Failed to read proc state";
+      if (state[0] == "Z (zombie)") {
+        return ret;
+      }
+
       pid_fd = ScopedFd(::syscall(NativeArch::pidfd_open, tg_leader_for_fds->tid, 0));
       ASSERT(t, pid_fd.is_open() || errno == ENOSYS)
         << "Error in pidfd_open errno=" << errno_name(errno);
