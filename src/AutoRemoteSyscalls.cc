@@ -632,7 +632,7 @@ static void sendmsg_socket(ScopedFd& sock, int fd_to_send)
 
 static Task* thread_group_leader_for_fds(Task* t) {
   for (Task* tt : t->fd_table()->task_set()) {
-    if (tt->tgid() == tt->rec_tid) {
+    if (tt->tgid() == tt->rec_tid && !tt->is_dying()) {
       return tt;
     }
   }
@@ -641,8 +641,9 @@ static Task* thread_group_leader_for_fds(Task* t) {
 
 template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   ScopedFd ret;
-  // Try to use pidfd_getfd to get the fd without round-tripping to the tracee
   if (!pid_fd.is_open()) {
+    // Try to use pidfd_getfd to get the fd without round-tripping to the tracee.
+    // pidfd_getfd requires a threadgroup leader, so find one if we can.
     Task* tg_leader_for_fds = thread_group_leader_for_fds(t);
     if (tg_leader_for_fds) {
       pid_fd = ScopedFd(::syscall(NativeArch::pidfd_open, tg_leader_for_fds->tid, 0));
