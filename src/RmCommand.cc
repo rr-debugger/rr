@@ -2,12 +2,12 @@
 
 #include <stdio.h>
 
-#include <vector>
 #include <experimental/filesystem>
+#include <vector>
 
 #include "Command.h"
-#include "main.h"
 #include "TraceStream.h"
+#include "main.h"
 #include "util.h"
 
 using namespace std;
@@ -64,13 +64,11 @@ static int rm(const string& trace, const RmFlags& flags, FILE* out) {
   fs::path trace_path = resolve_trace_name(trace);
 
   if (!fs::exists(trace_path)) {
-    fprintf(
-      stderr,
-      "\n"
-      "rr: Cannot remove non-existent trace '%s'\n"
-      "\n",
-      trace_path.c_str()
-    );
+    fprintf(stderr,
+            "\n"
+            "rr: Cannot remove non-existent trace '%s'\n"
+            "\n",
+            trace_path.c_str());
     return 1;
   }
 
@@ -78,12 +76,11 @@ static int rm(const string& trace, const RmFlags& flags, FILE* out) {
   trace_path = fs::canonical(trace_path);
 
   if (!flags.force && !is_trace(trace_path)) {
-    fprintf(
-        stderr,
-        "\n"
-        "rr: Could not idenfity '%s' as a trace, use -f to remove anyway.\n"
-        "\n",
-        trace_path.c_str());
+    fprintf(stderr,
+            "\n"
+            "rr: Could not idenfity '%s' as a trace, use -f to remove anyway.\n"
+            "\n",
+            trace_path.c_str());
     return 1;
   }
 
@@ -99,13 +96,11 @@ static int rm(const string& trace, const RmFlags& flags, FILE* out) {
   remove_all(trace_path, ec);
   if (ec) {
     const string msg = ec.message();
-    fprintf(
-        stderr,
-        "\n"
-        "rr: Could not remove trace '%s': %s\n"
-        "\n",
-        trace_path.c_str(),
-        msg.c_str());
+    fprintf(stderr,
+            "\n"
+            "rr: Could not remove trace '%s': %s\n"
+            "\n",
+            trace_path.c_str(), msg.c_str());
     return 1;
   } else {
     fprintf(out, "rr: Removed trace '%s'\n", trace_path.c_str());
@@ -140,13 +135,11 @@ int RmCommand::run(vector<string>& args) {
     return rm(trace, flags, stdout);
   } catch (const fs::filesystem_error& e) {
     const string msg = e.what();
-    fprintf(
-      stderr,
-      "\n"
-      "rr: Unexpected filesystem error: %s\n"
-      "\n",
-      msg.c_str()
-    );
+    fprintf(stderr,
+            "\n"
+            "rr: Unexpected filesystem error: %s\n"
+            "\n",
+            msg.c_str());
     return 1;
   }
 };

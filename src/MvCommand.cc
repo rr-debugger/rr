@@ -2,12 +2,12 @@
 
 #include <stdio.h>
 
-#include <vector>
 #include <experimental/filesystem>
+#include <vector>
 
 #include "Command.h"
-#include "main.h"
 #include "TraceStream.h"
+#include "main.h"
 #include "util.h"
 
 using namespace std;
@@ -25,25 +25,22 @@ protected:
   static MvCommand singleton;
 };
 
-MvCommand MvCommand::singleton(
-    "mv", " rr mv <trace> <new-trace>\n");
+MvCommand MvCommand::singleton("mv", " rr mv <trace> <new-trace>\n");
 
 static int mv(const string& from, const string& to, FILE* out) {
-  if (!ensure_valid_trace_name(from) ||
-      !ensure_valid_trace_name(to)) {
+  if (!ensure_valid_trace_name(from) || !ensure_valid_trace_name(to)) {
     return 1;
   }
-  
+
   fs::path from_path = resolve_trace_name(from);
 
   if (!is_trace(from_path)) {
-    fprintf(
-      stderr,
-      "\n"
-      "rr: Could not idenfity '%s' as a trace.\n"
-      "\n",
-      from_path.c_str());
-      return 1;
+    fprintf(stderr,
+            "\n"
+            "rr: Could not idenfity '%s' as a trace.\n"
+            "\n",
+            from_path.c_str());
+    return 1;
   }
 
   // canonical will resolve latest_trace
@@ -70,13 +67,12 @@ static int mv(const string& from, const string& to, FILE* out) {
   }
 
   if (fs::exists(to_path)) {
-    fprintf(
-      stderr,
-      "\n"
-      "rr: New trace '%s' already exists.\n"
-      "\n",
-      to_path.c_str());
-      return 1;
+    fprintf(stderr,
+            "\n"
+            "rr: New trace '%s' already exists.\n"
+            "\n",
+            to_path.c_str());
+    return 1;
   }
 
   // remove symlink before removing trace in case the former fails
@@ -89,24 +85,18 @@ static int mv(const string& from, const string& to, FILE* out) {
 
   error_code ec;
   fs::rename(from_path, to_path, ec);
-  
+
   if (ec) {
     const string msg = ec.message();
-    fprintf(
-      stderr,
-      "\n"
-      "rr: Cannot move '%s' to '%s': %s\n"
-      "\n",
-      from_path.c_str(),
-      to_path.c_str(),
-      msg.c_str());
+    fprintf(stderr,
+            "\n"
+            "rr: Cannot move '%s' to '%s': %s\n"
+            "\n",
+            from_path.c_str(), to_path.c_str(), msg.c_str());
     return 1;
   } else {
-    fprintf(
-      out,
-      "rr: Moved '%s' to '%s'\n",
-      from_path.c_str(),
-      to_path.c_str());
+    fprintf(out, "rr: Moved '%s' to '%s'\n", from_path.c_str(),
+            to_path.c_str());
     return 0;
   }
 }
@@ -121,13 +111,11 @@ int MvCommand::run(vector<string>& args) {
         return mv(from, to, stdout);
       } catch (const fs::filesystem_error& e) {
         const string msg = e.what();
-        fprintf(
-          stderr,
-          "\n"
-          "rr: Unexpected filesystem error: %s\n"
-          "\n",
-          msg.c_str()
-        );
+        fprintf(stderr,
+                "\n"
+                "rr: Unexpected filesystem error: %s\n"
+                "\n",
+                msg.c_str());
         return 1;
       }
     }

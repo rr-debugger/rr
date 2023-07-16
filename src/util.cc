@@ -27,12 +27,12 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <experimental/filesystem>
 #include <fstream>
 #include <string>
 #include <numeric>
 #include <random>
 #include <sstream>
-#include <experimental/filesystem>
 
 #include "preload/preload_interface.h"
 
@@ -2212,13 +2212,11 @@ bool remove_latest_trace_symlink() {
   fs::remove(latest, ec);
   if (ec) {
     const string msg = ec.message();
-    fprintf(
-      stderr,
-      "\n"
-      "rr: Failed to remove latest_trace symlink: %s\n"
-      "\n",
-      msg.c_str()
-    );
+    fprintf(stderr,
+            "\n"
+            "rr: Failed to remove latest_trace symlink: %s\n"
+            "\n",
+            msg.c_str());
     return false;
   }
   return true;
@@ -2229,7 +2227,8 @@ bool ensure_valid_trace_name(const fs::path& entry) {
   const string name = entry.filename();
 
   if (*entry.string().rbegin() == '/') {
-    // filename() will resolve name as '.' which might be a confusing error message
+    // filename() will resolve name as '.' which might be a confusing error
+    // message
     fprintf(stderr, "\nrr: Trace name cannot be empty\n\n");
     return false;
   }

@@ -8,11 +8,11 @@
 #include <math.h>
 
 #include <array>
+#include <experimental/filesystem>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
-#include <experimental/filesystem>
 
 #if defined(__i386__) || defined(__x86_64__)
 #include <x86intrin.h>
