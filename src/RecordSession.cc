@@ -166,6 +166,17 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     return false;
   }
 
+  if (t->waiting_for_pid_namespace_tasks_to_exit()) {
+    // We could be waiting for other processes in the pid namespace to exit,
+    // which causes ptrace to report ESRCH, triggering our synthetic-PTRACE_EVENT_EXIT
+    // cleanup path. Check if we're in a real ptrace stop.
+    siginfo_t dummy_siginfo;
+    if (!t->ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &dummy_siginfo)) {
+      t->waiting_for_ptrace_exit = true;
+      return true;
+    }
+  }
+
   if (t->stable_exit) {
     LOG(debug) << "stable exit";
   } else {
