@@ -76,6 +76,7 @@ int main(void) {
       test_assert(0 == ptrace(PTRACE_CONT, fork_child, NULL, NULL));
       test_assert(fork_child == waitpid(fork_child, &ws, 0));
       // Verify that fork-child (vfork-parent), received VFORK_DONE
+      atomic_printf("fork_child status = %d\n", ws);
       test_assert(ws >> 8 == (SIGTRAP | (PTRACE_EVENT_VFORK_DONE << 8)));
 
       // Check that vfork-child exited with correct exit code
