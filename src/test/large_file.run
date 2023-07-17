@@ -1,5 +1,6 @@
 source `dirname $0`/util.sh
 
+skip_if_rr_32_bit
 exe=simple$bitness
 cp ${OBJDIR}/bin/$exe $exe-$nonce
 truncate -s 2G $exe-$nonce
