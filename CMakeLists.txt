@@ -1638,6 +1638,7 @@ set(TESTS_WITHOUT_PROGRAM
   tty
   unmap_vdso
   unwind_on_signal
+  vfork_done_clone
   vfork_exec
   vfork_break_parent
   vsyscall_singlestep

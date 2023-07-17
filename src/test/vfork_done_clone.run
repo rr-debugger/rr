@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+save_exe vfork_done$bitness
+just_record vfork_done$bitness-$nonce clone
+replay
+check EXIT-SUCCESS

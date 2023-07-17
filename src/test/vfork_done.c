@@ -5,6 +5,8 @@
 #include <signal.h>
 
 static int EXECUTION_FENCE_PIPES[2];
+static char force_clone;
+static char stack[65536];
 
 static void seize(const pid_t pid) {
   const int opts =
@@ -12,35 +14,47 @@ static void seize(const pid_t pid) {
   test_assert(0 == ptrace(PTRACE_SEIZE, pid, 0, opts));
 }
 
-static int tracees(void) {
-  switch (vfork()) {
-    case -1:
-      exit(EXIT_FAILURE);
-      break;
-    // vfork-child
-    case 0: {
-      long res = 0;
-      for(int i = 1; i < 1000000; i++) {
-        for(int j = 1; j < 100; j++) {
-          res = (res / 3) + 14*i;
-          if(res /= res > 2) {
-            res = 3;
-          }
-        }
+static int vfork_child(__attribute__((unused)) void* p) {
+  long res = 0;
+  for (int i = 1; i < 1000000; i++) {
+    for (int j = 1; j < 100; j++) {
+      res = (res / 3) + 14*i;
+      if (res /= res > 2) {
+        res = 3;
       }
-      exit(99);
-      break;
     }
-    // vfork-parent (fork-child)
-    default:
-      exit(66);
-      break;
+  }
+  exit(99);
+  return 0;
+}
+
+static int tracees(void) {
+  pid_t child;
+  if (force_clone) {
+    child = clone(vfork_child, stack + sizeof(stack),
+                  CLONE_VFORK | CLONE_VM | SIGCHLD, NULL);
+  } else {
+    child = vfork();
+    if (!child) {
+      vfork_child(NULL);
+      return 0;
+    }
+  }
+  if (child < 0) {
+    exit(EXIT_FAILURE);
+  } else {
+    exit(66);
   }
 }
 
-int main(void) {
+int main(int argc, char** argv) {
   char notify;
   assert(0 == pipe(EXECUTION_FENCE_PIPES));
+
+  if (argc > 1 && !strcmp(argv[1], "clone")) {
+    force_clone = 1;
+  }
+
   pid_t fork_child = fork();
 
   switch (fork_child) {

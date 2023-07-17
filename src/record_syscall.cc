@@ -6393,15 +6393,15 @@ static void rec_process_syscall_arch(RecordTask* t,
   // syscall completes --- and that our TaskSyscallState infrastructure can't
   // handle.
   switch (syscallno) {
-    case Arch::vfork: {
-      if (t->emulated_ptrace_options & PTRACE_O_TRACEVFORKDONE) {
+    case Arch::vfork:
+    case Arch::fork:
+    case Arch::clone:
+      if ((syscallno == Arch::vfork ||
+           (syscallno == Arch::clone && (t->regs().arg1() & CLONE_VFORK))) &&
+          (t->emulated_ptrace_options & PTRACE_O_TRACEVFORKDONE)) {
         t->emulate_ptrace_stop(
             WaitStatus::for_ptrace_event(PTRACE_EVENT_VFORK_DONE));
       }
-      RR_FALLTHROUGH;
-    }
-    case Arch::fork:
-    case Arch::clone: {
       if (Arch::is_x86ish()) {
         // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
         // clearing the parity flag internally.
@@ -6410,7 +6410,6 @@ static void rec_process_syscall_arch(RecordTask* t,
         t->set_regs(r);
       }
       break;
-    }
 
     case Arch::execve:
     case Arch::execveat:
