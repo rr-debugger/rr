@@ -3781,7 +3781,23 @@ static bool copy_mem_mapping_just_used(Task* from, Task* to, const KernelMapping
 
 static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &km) {
   for (const auto& m : remote.task()->vm()->maps()) {
-    if  (m.map.is_vdso() && m.map.start() != km.start()) {
+    if (m.map.is_vdso() && m.map.start() != km.start()) {
+      size_t size = m.map.size();
+      ASSERT(remote.task(), size == km.size()) << "Inconsistent VDSO sizes";
+      // Handle case where old and new addresses overlap by finding a free range early in the
+      // address space we can use as a temporary buffer. VDSOs are always at fairly high
+      // addresses so this shouldn't introduce any new overlap issues.
+      remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(remote.task(), size,
+            remote_ptr<void>(65536), AddressSpace::FindFreeMemoryPolicy::STRICT_SEARCH);
+      if (!free_mem) {
+        FATAL() << "Can't find free memory for VDSO " << m.map;
+      }
+      if (MemoryRange(free_mem, size).intersects(MemoryRange(m.map.start(), size))) {
+        FATAL() << "Free memory found overlaps current VDSO address";
+      }
+      if (MemoryRange(free_mem, size).intersects(MemoryRange(km.start(), size))) {
+        FATAL() << "Free memory found overlaps new VDSO address";
+      }
       LOG(debug) << "Moving VDSO for " << remote.task()->tid;
       /* Remap VDSO to the address that is used in the target process,
          before it gets unmapped.
@@ -3789,9 +3805,11 @@ static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &k
          VDSO __kernel_rt_sigreturn function as return address on the stack.
          This might not affect x86_64 because there __restore_rt
          located in libpthread.so.0 is used. */
-      remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), m.map.start(), m.map.size(),
-                                m.map.size(), MREMAP_MAYMOVE | MREMAP_FIXED, km.start());
-      remote.task()->vm()->remap(remote.task(), m.map.start(), m.map.size(), km.start(), m.map.size(),
+      remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), m.map.start(), size,
+                                size, MREMAP_MAYMOVE | MREMAP_FIXED, free_mem);
+      remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), free_mem, size,
+                                size, MREMAP_MAYMOVE | MREMAP_FIXED, km.start());
+      remote.task()->vm()->remap(remote.task(), m.map.start(), size, km.start(), size,
                                  MREMAP_MAYMOVE | MREMAP_FIXED);
     }
   }
