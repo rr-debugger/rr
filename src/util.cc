@@ -2232,19 +2232,23 @@ bool is_valid_trace_name(const string& entry, bool log_error) {
   const string name = filename(entry.c_str());
 
   if (name.empty()) {
-    if (log_error) fprintf(stderr, "\nrr: Trace name cannot be empty\n\n");
+    if (log_error)
+      fprintf(stderr, "\nrr: Trace name cannot be empty\n\n");
     return false;
   }
   if (name[0] == '.' || name[0] == '#') {
-    if (log_error) fprintf(stderr, "\nrr: Trace name cannot start with . or #.\n\n");
+    if (log_error)
+      fprintf(stderr, "\nrr: Trace name cannot start with . or #.\n\n");
     return false;
   }
   if (name[name.length() - 1] == '~') {
-    if (log_error) fprintf(stderr, "\nrr: Trace name cannot end with ~.\n\n");
+    if (log_error)
+      fprintf(stderr, "\nrr: Trace name cannot end with ~.\n\n");
     return false;
   }
   if (name == "cpu_lock") {
-    if (log_error) fprintf(stderr, "\nrr: Trace name cannot be cpu_lock.\n\n");
+    if (log_error)
+      fprintf(stderr, "\nrr: Trace name cannot be cpu_lock.\n\n");
     return false;
   }
   return true;

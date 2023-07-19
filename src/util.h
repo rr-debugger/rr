@@ -543,7 +543,7 @@ bool remove_latest_trace_symlink();
  * I.e. does not start with . or #, does not end with ~, is neither cpu_lock
  * nor latest_trace.
  */
-bool is_valid_trace_name(const std::string& entry, bool log_error=false);
+bool is_valid_trace_name(const std::string& entry, bool log_error = false);
 
 /**
  * Read bytes from `fd` into `buf` from `offset` until the read returns an
