@@ -669,7 +669,6 @@ target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   ${ZLIB_LDFLAGS}
   brotli
-  stdc++fs
 )
 
 if(staticlibs)
