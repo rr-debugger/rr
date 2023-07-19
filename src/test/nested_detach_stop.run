@@ -19,18 +19,20 @@ until grep -q $SYNC_TOKEN record.out; do
     if ! kill -0 "$SUB_ID" >/dev/null 2>&1; then failed "subshell died, no need to longer wait for '$SYNC_TOKEN'"; exit; fi
 done
 
-rrpid=$(parent_pid_of $(pidof $NEST_EXE-$nonce))
-echo "  done.  Delivering SIGTERM to $rrpid ..."
-kill -TERM $rrpid
+sleep_pid=$(pidof $SLEEP_EXE-$nonce)
+nested_rr_pid=$(parent_pid_of $sleep_pid)
+echo "  done.  Delivering SIGSTOP to nested rr $nested_rr_pid ..."
+kill -STOP $nested_rr_pid
+# Sleep a bit because if we issue the CONT immediately rr doesn't even notice
+sleep 1
+echo "  done.  Delivering SIGCONT to nested rr $nested_rr_pid ..."
+kill -CONT $nested_rr_pid
 
-echo "  done."
+echo "  done.  Delivering SIGTERM to sleeping $sleep_pid ..."
+kill -TERM $sleep_pid
 
 # Wait for 'record' to actually terminate.
-wait $SUB_ID
-EXIT_CODE=$?
-if [[ $EXIT_CODE != 143 ]]; then
-  failed "Unexpected exit $EXIT_CODE"
-fi
+wait $SUB_ID || failed "Recording failed: $?"
 
 # Replay outer
 replay

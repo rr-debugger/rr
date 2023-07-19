@@ -15,9 +15,15 @@ int main(int argc, char *argv[]) {
     test_assert(0);
   }
 
-  int status;
-  wait(&status);
-  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
-  atomic_puts("EXIT-WAITED");
-  return 0;
+  while (1) {
+    int status;
+    wait(&status);
+    if (WIFSTOPPED(status) &&
+        (WSTOPSIG(status) == SIGSTOP || WSTOPSIG(status) == SIGCONT)) {
+      continue;
+    }
+    test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    atomic_puts("EXIT-WAITED");
+    return 0;
+  }
 }

@@ -2064,6 +2064,12 @@ void Task::set_aarch64_tls_register(uintptr_t val) {
 }
 
 void Task::did_waitpid(WaitStatus status) {
+  if (is_detached_proxy() &&
+      (status.stop_sig() == SIGSTOP || status.stop_sig() == SIGCONT)) {
+    LOG(debug) << "Task " << tid << " is a detached proxy, ignoring status " << status;
+    return;
+  }
+
   LOG(debug) << "  Task " << tid << " changed status to " << status;
 
   // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by

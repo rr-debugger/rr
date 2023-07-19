@@ -483,6 +483,8 @@ public:
    */
   virtual bool already_exited() const { return false; }
 
+  virtual bool is_detached_proxy() const { return false; }
+
   /**
    * Read |N| bytes from |child_addr| into |buf|, or don't
    * return.

@@ -186,8 +186,12 @@ public:
    */
   bool is_waiting_for(RecordTask* t);
 
-  virtual bool already_exited() const override {
+  bool already_exited() const override {
     return waiting_for_reap || waiting_for_zombie;
+  }
+
+  bool is_detached_proxy() const override {
+    return detached_proxy;
   }
 
   /**
