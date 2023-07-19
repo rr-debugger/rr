@@ -48,11 +48,14 @@ int main(void) {
 
   // Phase 1: Wait for all readers to become ready.
   char chs[NUM_READERS];
-  int sum = 0;
-  while (sum < NUM_READERS) {
-    ret = read(child_to_parent[0], &chs, NUM_READERS);
+  int bytes_read = 0;
+  while (bytes_read < NUM_READERS) {
+    ret = read(child_to_parent[0], &chs[bytes_read], NUM_READERS - bytes_read);
     test_assert(ret > 0);
-    sum += ret;
+    for (int i = 0; i < ret; ++i) {
+      test_assert(chs[bytes_read + i] == 'x');
+    }
+    bytes_read += ret;
   }
 
   // Phase 2: Release readers from `read` syscall.
