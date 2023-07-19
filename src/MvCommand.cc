@@ -27,8 +27,7 @@ protected:
 MvCommand MvCommand::singleton("mv", " rr mv <trace> <new-trace>\n");
 
 static int mv(const string& from, const string& to, FILE* out) {
-  if (!is_valid_trace_name(from, true) ||
-      !is_valid_trace_name(to, true)) {
+  if (!is_valid_trace_name(from, true) || !is_valid_trace_name(to, true)) {
     return 1;
   }
 
@@ -39,8 +38,7 @@ static int mv(const string& from, const string& to, FILE* out) {
             "\n"
             "rr: Could not access / identify '%s' as a trace (errno %d).\n"
             "\n",
-            from_path.c_str(),
-            errno);
+            from_path.c_str(), errno);
     return 1;
   }
 
@@ -80,8 +78,7 @@ static int mv(const string& from, const string& to, FILE* out) {
             "\n"
             "rr: Cannot access new trace path '%s': errno %d\n"
             "\n",
-            to_path.c_str(),
-            errno);
+            to_path.c_str(), errno);
     return 1;
   }
 

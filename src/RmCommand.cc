@@ -81,10 +81,10 @@ static int rm(const string& trace, const RmFlags& flags, FILE* out) {
   if (access(trace_path.c_str(), F_OK) != 0) {
     fprintf(stderr,
             "\n"
-            "rr: Cannot remove non-existent / unaccessible trace '%s': errno %d\n"
+            "rr: Cannot remove non-existent / unaccessible trace '%s':"
+            " errno %d\n"
             "\n",
-            trace_path.c_str(),
-            errno);
+            trace_path.c_str(), errno);
     return 1;
   }
 
@@ -94,10 +94,10 @@ static int rm(const string& trace, const RmFlags& flags, FILE* out) {
   if (!flags.force && !is_trace(trace_path)) {
     fprintf(stderr,
             "\n"
-            "rr: Could not idenfity '%s' as a trace, use -f to remove anyway (errno %d).\n"
+            "rr: Could not idenfity '%s' as a trace, use -f to remove anyway"
+            " (errno %d).\n"
             "\n",
-            trace_path.c_str(),
-            errno);
+            trace_path.c_str(), errno);
     return 1;
   }
 
