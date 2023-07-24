@@ -521,9 +521,9 @@ private:
   int quirks_;
 };
 
-extern std::string trace_save_dir();
-extern std::string resolve_trace_name(const std::string& trace_name);
-extern std::string latest_trace_symlink();
+std::string trace_save_dir();
+std::string resolve_trace_name(const std::string& trace_name);
+std::string latest_trace_symlink();
 
 } // namespace rr
 

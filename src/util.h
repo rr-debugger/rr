@@ -539,11 +539,13 @@ bool is_latest_trace(const std::string& trace);
 bool remove_latest_trace_symlink();
 
 /*
- * Returns whether |entry| is a valid trace name and optionally logs why not.
+ * Returns whether |entry| is a valid trace name.
+ * If invalid, optional out-param |reason| will be set to the reason.
  * I.e. does not start with . or #, does not end with ~, is neither cpu_lock
  * nor latest_trace.
  */
-bool is_valid_trace_name(const std::string& entry, bool log_error = false);
+bool is_valid_trace_name(const std::string& entry,
+                         std::string* reason = nullptr);
 
 /**
  * Read bytes from `fd` into `buf` from `offset` until the read returns an
