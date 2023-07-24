@@ -14,5 +14,6 @@ int main(void) {
   atomic_puts("sleeping");
 
   nanosleep(&ts, NULL);
+  atomic_puts("FAILED");
   return 1;
 }

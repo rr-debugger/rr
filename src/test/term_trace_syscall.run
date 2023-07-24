@@ -23,7 +23,7 @@ echo "  done."
 # fail to see the tracee write EXIT-SUCCESS.
 wait
 
-if [[ "record.out" == $(grep -l "EXIT-SUCCESS" record.out) ]]; then
+if [[ "record.out" == $(grep -l "FAILED" record.out) ]]; then
     echo "Test '$TESTNAME' FAILED: error during recording: tracer not interrupted in time."
 fi
 
