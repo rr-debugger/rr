@@ -2227,30 +2227,35 @@ bool remove_latest_trace_symlink() {
   return true;
 }
 
-bool is_valid_trace_name(const string& entry, bool log_error) {
+bool is_valid_trace_name(const string& entry, std::string* reason) {
   // filename corresponds to dirname
   const string name = filename(entry.c_str());
 
   if (name.empty()) {
-    if (log_error)
-      fprintf(stderr, "\nrr: Trace name cannot be empty\n\n");
+    if (reason) {
+      *reason = "Empty";
+    }
     return false;
   }
   if (name[0] == '.' || name[0] == '#') {
-    if (log_error)
-      fprintf(stderr, "\nrr: Trace name cannot start with . or #.\n\n");
+    if (reason) {
+      *reason = "Cannot start with . or #";
+    }
     return false;
   }
   if (name[name.length() - 1] == '~') {
-    if (log_error)
-      fprintf(stderr, "\nrr: Trace name cannot end with ~.\n\n");
+    if (reason) {
+      *reason = "Cannot end with ~";
+    }
     return false;
   }
   if (name == "cpu_lock") {
-    if (log_error)
-      fprintf(stderr, "\nrr: Trace name cannot be cpu_lock.\n\n");
+    if (reason) {
+      *reason = "Name cpu_lock is reserved";
+    }
     return false;
   }
+
   return true;
 }
 

@@ -57,8 +57,9 @@ static bool parse_rm_arg(vector<string>& args, RmFlags& flags) {
 
 static int _rm_cb(const char* path, const struct stat*, int, struct FTW*) {
   int ret = remove(path);
-  if (ret)
+  if (ret) {
     perror(path);
+  }
   return ret;
 }
 
@@ -72,7 +73,13 @@ static bool remove_all(const string& path) {
 }
 
 static int rm(const string& trace, const RmFlags& flags, FILE* out) {
-  if (!is_valid_trace_name(trace, true)) {
+  string reason;
+  if (!is_valid_trace_name(trace, &reason)) {
+    fprintf(stderr,
+            "\n"
+            "rr: Trace name is invalid: %s\n"
+            "\n",
+            reason.c_str());
     return 1;
   }
 

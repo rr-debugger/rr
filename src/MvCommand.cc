@@ -1,8 +1,8 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include <stdio.h>
-
 #include <sysexits.h>
+
 #include <vector>
 
 #include "Command.h"
@@ -27,7 +27,14 @@ protected:
 MvCommand MvCommand::singleton("mv", " rr mv <trace> <new-trace>\n");
 
 static int mv(const string& from, const string& to, FILE* out) {
-  if (!is_valid_trace_name(from, true) || !is_valid_trace_name(to, true)) {
+  string reason;
+  if (!is_valid_trace_name(from, &reason) ||
+      !is_valid_trace_name(to, &reason)) {
+    fprintf(stderr,
+            "\n"
+            "rr: Trace name is invalid: %s\n"
+            "\n",
+            reason.c_str());
     return 1;
   }
 
@@ -42,7 +49,7 @@ static int mv(const string& from, const string& to, FILE* out) {
     return 1;
   }
 
-  // resolve symlinks like latest_trace and make comparable
+  // resolve symlinks like latest_trace
   from_path = real_path(from_path);
 
   string to_path = to;
@@ -54,15 +61,6 @@ static int mv(const string& from, const string& to, FILE* out) {
   string to_fname = filename(to_path.c_str());
   if (to_fname == "latest-trace") {
     fprintf(stderr, "\nrr: Cannot rename to latest-trace.\n\n");
-    return 1;
-  }
-
-  if (from_path == to_path) {
-    fprintf(stderr,
-            "\n"
-            "rr: Old and new trace dir cannot be the same ('%s').\n"
-            "\n",
-            to_path.c_str());
     return 1;
   }
 
@@ -90,9 +88,7 @@ static int mv(const string& from, const string& to, FILE* out) {
     }
   }
 
-  int ret = rename(from_path.c_str(), to_path.c_str());
-
-  if (ret) {
+  if (int ret = rename(from_path.c_str(), to_path.c_str())) {
     const string err = strerror(errno);
     fprintf(stderr,
             "\n"
@@ -100,11 +96,13 @@ static int mv(const string& from, const string& to, FILE* out) {
             "\n",
             from_path.c_str(), to_path.c_str(), err.c_str());
     return 1;
-  } else {
-    fprintf(out, "rr: Moved '%s' to '%s'\n", from_path.c_str(),
-            to_path.c_str());
-    return 0;
   }
+
+  fprintf(out,
+          "rr: Moved '%s' to '%s'\n",
+          from_path.c_str(),
+          to_path.c_str());
+  return 0;
 }
 
 int MvCommand::run(vector<string>& args) {
