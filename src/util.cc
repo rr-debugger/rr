@@ -50,6 +50,8 @@
 #include "log.h"
 #include "seccomp-bpf.h"
 
+#include "crc32c.h"
+
 void good_random(uint8_t* out, size_t out_len);
 
 using namespace std;
@@ -392,14 +394,111 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   return may_diverge;
 }
 
-static uint32_t compute_checksum(void* data, size_t len) {
-  uint32_t checksum = len;
-  size_t words = len / sizeof(uint32_t);
-  uint32_t* buf = static_cast<uint32_t*>(data);
-  for (size_t i = 0; i < words; ++i) {
-    checksum = (checksum << 4) + checksum + buf[i];
+static void read_bytes_for_crc(std::vector<uint8_t> &buf, Task *t, uintptr_t addr, size_t len)
+{
+  if (buf.size() < len) {
+    buf.resize(len);
   }
-  return checksum;
+  memset(buf.data(), 0, len);
+  /* Areas not read are left as zero. We have to do this because
+      mappings not backed by valid file data are not readable during
+      recording but are read as 0 during replay */
+  ssize_t valid_mem_len =
+      t->read_bytes_fallible(addr, len, buf.data());
+  if (valid_mem_len < 0) {
+    /* It is possible for whole mappings to be beyond the extent of the
+    * backing file, in which case read_bytes_fallible will return -1.
+    */
+    ASSERT(t, valid_mem_len == -1 && errno == EIO);
+  }
+}
+
+#define NBYTES1M 1024ULL*1024ULL
+#define NBYTES1G NBYTES1M*1024ULL
+#define NBYTES1T NBYTES1G*1024ULL
+static inline uint32_t accum_zero_bytes(uint32_t crc, size_t nbytes) {
+  if (nbytes == 0) return crc;
+  crc = crc ^ 0xffffffff;
+  while (nbytes >= NBYTES1T) {
+    crc = crc32c_shift(crc32c_1T, crc);
+    nbytes -= NBYTES1T;
+  }
+  while (nbytes >= NBYTES1G) {
+    crc = crc32c_shift(crc32c_1G, crc);
+    nbytes -= NBYTES1G;
+  }
+  while (nbytes >= NBYTES1M) {
+    crc = crc32c_shift(crc32c_1M, crc);
+    nbytes -= NBYTES1M;
+  }
+  while (nbytes && nbytes > 0) {
+    crc = crc32c_shift(crc32c_4k, crc);
+    nbytes -= 4096;
+  }
+  assert(nbytes == 0);
+  return crc ^ 0xffffffff;
+}
+
+#define MAXBUF 256*1024*1024 // 256MiB
+#define NPAGES ((uint32_t)1) << 17       // The number of 4k pages in 256MiB
+static uint32_t compute_checksum_streaming(Task *t, ScopedFd &pagemap_fd,
+                                           uintptr_t pg_start, size_t len)
+{
+  uint64_t pagemap[NPAGES];
+  ssize_t pagesize = sysconf(_SC_PAGESIZE);
+  size_t maxbufpages = MAXBUF / pagesize;
+  uint32_t crc = len;
+  uintptr_t off = 0;
+  std::vector<uint8_t> buf;
+  size_t non_zero_pages = 0;
+  size_t zero_pages = 0;
+  while (off < len) {
+    size_t pages_to_read = std::min((len - off) / pagesize, (size_t)NPAGES);
+    if (!pages_to_read)
+      break;
+    size_t pagemap_size = pages_to_read * sizeof(pagemap[0]);
+    size_t npagemap_read = pread64(pagemap_fd, pagemap, pagemap_size,
+            ((pg_start + off) / pagesize) * sizeof(pagemap[0]));
+    ASSERT(t, pagemap_size == npagemap_read);
+    size_t i = 0;
+    while (i < pages_to_read) {
+      while (i < pages_to_read && non_zero_pages < maxbufpages) {
+        uint64_t pm = pagemap[i];
+        bool is_zero_page = pm == 0x80000000000000;
+        if (!is_zero_page) {
+          crc = accum_zero_bytes(crc, zero_pages * pagesize);
+          zero_pages = 0;
+          non_zero_pages++;
+          i += 1;
+          continue;
+        }
+        break;
+      }
+      if (non_zero_pages > 0) {
+        size_t non_zero_size = non_zero_pages * pagesize;
+        if (non_zero_size > buf.size()) {
+          buf.resize(non_zero_size);
+        }
+        read_bytes_for_crc(buf, t, pg_start + off, non_zero_size);
+        crc = crc32c(crc, (uint8_t*)buf.data(), non_zero_size);
+        non_zero_pages = 0;
+        off += non_zero_size;
+      }   
+      if (i < pages_to_read) {
+        zero_pages += 1;
+        off += pagesize;
+        i += 1;
+      }
+    }
+  }
+  crc = accum_zero_bytes(crc, zero_pages * pagesize);
+  if (len > off) {
+    // Read any trailing non-page-aligned bytes.
+    size_t bytes_to_read = len - off;
+    read_bytes_for_crc(buf, t, pg_start + off, bytes_to_read);
+    crc = crc32c(crc, buf.data(), bytes_to_read);
+  }
+  return crc;
 }
 
 static const uint32_t ignored_checksum = 0x98765432;
@@ -477,6 +576,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   }
 
   auto checksum_iter = checksums.begin();
+  char pagemap_path[PATH_MAX];
+  sprintf(pagemap_path, "/proc/%d/pagemap", t->tid);
+  ScopedFd pagemap_fd(pagemap_path, O_RDONLY);
   for (auto it = as.maps().begin(); it != as.maps().end(); ++it) {
     AddressSpace::Mapping m = *it;
     string raw_map_line = m.map.str();
@@ -511,7 +613,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
         continue;
       }
       if (parsed.checksum == ignored_checksum) {
-        LOG(debug) << "Checksum not computed during recording";
+        LOG(debug) << "Checksum not computed during recording at " << parsed.start;
         continue;
       } else if (parsed.checksum == sigbus_checksum) {
         continue;
@@ -526,21 +628,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       }
     }
 
-    vector<uint8_t> mem;
-    mem.resize(m.map.size());
-    memset(mem.data(), 0, mem.size());
-    ssize_t valid_mem_len =
-        t->read_bytes_fallible(m.map.start(), mem.size(), mem.data());
-    /* Areas not read are treated as zero. We have to do this because
-       mappings not backed by valid file data are not readable during
-       recording but are read as 0 during replay. */
-    if (valid_mem_len < 0) {
-      /* It is possible for whole mappings to be beyond the extent of the
-       * backing file, in which case read_bytes_fallible will return -1.
-       */
-      ASSERT(t, valid_mem_len == -1 && errno == EIO);
-    }
-
+    size_t map_size = m.map.size();
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a
@@ -556,11 +644,11 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       * the deterministic region. */
       auto child_hdr = m.map.start().cast<struct syscallbuf_hdr>();
       auto hdr = t->read_mem(child_hdr);
-      mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
-                 sizeof(struct syscallbuf_record));
+      map_size = sizeof(hdr) + hdr.num_rec_bytes +
+                 sizeof(struct syscallbuf_record);
     }
 
-    uint32_t checksum = compute_checksum(mem.data(), mem.size());
+    uint32_t checksum = compute_checksum_streaming(t, pagemap_fd, m.map.start().as_int(), map_size);
 
     if (STORE_CHECKSUMS == mode) {
       fprintf(c.checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());

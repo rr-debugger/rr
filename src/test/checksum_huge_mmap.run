@@ -1,0 +1,25 @@
+source `dirname $0`/util.sh
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS --checksum=on-all-events -M"
+
+record $TESTNAME
+
+TARGET_PID=$(grep 'Info: ' record.out | awk '{print $4}')
+TARGET_MAP=$(grep 'Info: ' record.out | awk '{print $5}')
+TARGET_EVENT1=$(grep 'Info: ' record.out | tr ']' ' ' | awk '{print $3}')
+TARGET_EVENT2=$(grep 'Test 1' record.out | tr ']' ' ' | awk '{print $3}')
+TARGET_EVENT3=$(grep 'Test 2' record.out | tr ']' ' ' | awk '{print $3}')
+
+CHKSUM1=$(grep $TARGET_MAP $workdir/latest-trace/$(($TARGET_EVENT1+1))_$TARGET_PID | cut -d ' ' -f1)
+CHKSUM2=$(grep $TARGET_MAP $workdir/latest-trace/$(($TARGET_EVENT2+1))_$TARGET_PID | cut -d ' ' -f1)
+CHKSUM3=$(grep $TARGET_MAP $workdir/latest-trace/$(($TARGET_EVENT3+1))_$TARGET_PID | cut -d ' ' -f1)
+
+if [[ $CHKSUM1 == $CHKSUM2 ]]; then
+    failed "Expected modification to affect checksum"
+fi
+
+if [[ $CHKSUM1 != $CHKSUM3 ]]; then
+    failed "Expected checksums to match"
+fi
+
+replay
+check EXIT-SUCCESS
