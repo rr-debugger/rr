@@ -88,7 +88,8 @@ static int mv(const string& from, const string& to, FILE* out) {
     }
   }
 
-  if (int ret = rename(from_path.c_str(), to_path.c_str())) {
+  int ret = rename(from_path.c_str(), to_path.c_str());
+  if (ret != 0) {
     const string err = strerror(errno);
     fprintf(stderr,
             "\n"
