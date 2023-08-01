@@ -231,6 +231,16 @@ function skip_if_no_syscall_buf {
     fi
 }
 
+# If the systemd version doesn't allow disabling RDRAND, skip the test,
+# because it might trigger systemd code.
+function skip_if_old_systemd {
+    systemd_version=`systemctl --version | head -n1 | cut -d' ' -f2`
+    if [[ $systemd_version != "" && $systemd_version < 247 ]]; then
+        echo "can't disable RDRAND for systemd, skipping test"
+        exit 0
+    fi
+}
+
 function skip_if_test_32_bit {
     if [[ "_32" == $bitness ]]; then
         echo NOTE: Skipping "'$TESTNAME'" because 32-bit test

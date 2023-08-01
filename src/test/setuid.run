@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+skip_if_old_systemd
+compare_test EXIT-SUCCESS
+

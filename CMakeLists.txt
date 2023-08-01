@@ -1207,7 +1207,6 @@ set(BASIC_TESTS
   setgid
   setgroups
   setsid
-  setuid
   shared_exec
   shared_monitor
   shared_offset
@@ -1475,6 +1474,7 @@ set(TESTS_WITH_PROGRAM
   seccomp_open
   seccomp_signals
   segfault
+  setuid
   shared_map
   shared_persistent_file
   signal_numbers
