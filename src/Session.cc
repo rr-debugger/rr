@@ -487,14 +487,10 @@ KernelMapping Session::create_shared_mmap(
   if (!required_child_addr.is_null()) {
     flags |= MAP_FIXED;
   }
-  KernelMapping km = t->vm()->map(
-      t, child_map_addr, size, tracee_prot, flags | tracee_flags, 0,
-      path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
-      std::move(monitored));
 
   int child_shmem_fd = remote.infallible_send_fd_if_alive(shmem_fd);
   if (child_shmem_fd < 0) {
-    return km;
+    return KernelMapping();
   }
   LOG(debug) << "created shmem segment " << path;
 
@@ -502,9 +498,18 @@ KernelMapping Session::create_shared_mmap(
   remote.infallible_mmap_syscall_if_alive(
       child_map_addr, size, tracee_prot, flags | MAP_FIXED, child_shmem_fd, 0);
   if (!child_map_addr) {
-    // tracee unexpectedly died
-    return km;
+    // tracee unexpectedly died.
+    // We leak the fd; cleaning it up is probably impossible/unnecessary.
+    return KernelMapping();
   }
+
+  // Note the mapping after we successfully created it in the child.
+  // If the child mapping fails for some reason (e.g. SIGKILL) we still
+  // want our cache to be correct.
+  KernelMapping km = t->vm()->map(
+      t, child_map_addr, size, tracee_prot, flags | tracee_flags, 0,
+      path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
+      std::move(monitored));
 
   remote.infallible_close_syscall_if_alive(child_shmem_fd);
   return km;

@@ -488,6 +488,13 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   args.cloned_file_data_fd = -1;
   args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
   KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
+  if (!syscallbuf_km.size()) {
+    // Syscallbuf allocation failed. This should mean the child is dead,
+    // but just in case, return an error.
+    remote.regs().set_syscall_result(-ENOMEM);
+    return;
+  }
+
   args.syscallbuf_ptr = syscallbuf_child;
   if (syscallbuf_child != nullptr) {
     // This needs to be skipped if we couldn't allocate the buffer
