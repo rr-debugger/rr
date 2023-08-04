@@ -26,4 +26,13 @@ Task* HasTaskSet::first_running_task() const {
   return nullptr;
 }
 
+Task* HasTaskSet::find_other_thread_group(Task* t) const {
+  for (Task* tt : task_set()) {
+    if (tt->thread_group() != t->thread_group()) {
+      return tt;
+    }
+  }
+  return nullptr;
+}
+
 } // namespace rr

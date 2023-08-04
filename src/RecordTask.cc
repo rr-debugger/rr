@@ -1721,7 +1721,21 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
     return;
   }
 
-  auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
+  bool ok = true;
+  auto buf = read_mem(addr.cast<uint8_t>(), num_bytes, &ok);
+  if (!ok) {
+    // Tracee probably died unexpectely. This should only happen
+    // due to SIGKILL racing with our PTRACE_CONT.
+    if (!vm()->find_other_thread_group(this) &&
+        vm()->range_is_private_mapping(MemoryRange(addr, num_bytes))) {
+      // The recording range is mapped private and no other threadgroup shares the
+      // address space, so the new memory contents should be unobservable, and we can
+      // just not record the data.
+      return;
+    }
+    ASSERT(this, false) << "Should have recorded " << num_bytes << " bytes from "
+                        << addr << ", but failed";
+  }
   trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr);
 }
 

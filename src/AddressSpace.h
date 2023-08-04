@@ -889,6 +889,9 @@ public:
   // suitable for hardware watchpoint registers.
   enum WatchpointAlignment { UNALIGNED, ALIGNED };
 
+  // Returns true if the range is completely covered by private mappings
+  bool range_is_private_mapping(const MemoryRange& range) const;
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;

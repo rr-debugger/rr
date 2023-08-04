@@ -21,6 +21,7 @@ public:
   virtual void insert_task(Task* t);
   virtual void erase_task(Task* t);
   bool has_task(Task* t) const { return tasks.find(t) != tasks.end(); }
+  Task* find_other_thread_group(Task* t) const;
   Task* first_running_task() const;
 
 protected:

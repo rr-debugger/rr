@@ -2418,4 +2418,22 @@ void AddressSpace::fd_tables_changed() {
   }
 }
 
+bool AddressSpace::range_is_private_mapping(const MemoryRange& range) const {
+  MemoryRange r = range;
+  while (r.size() > 0) {
+    if (!has_mapping(r.start())) {
+      return false;
+    }
+    const AddressSpace::Mapping& m = mapping_of(r.start());
+    if (!(m.map.flags() & MAP_PRIVATE)) {
+      return false;
+    }
+    if (m.map.end() >= r.end()) {
+      return true;
+    }
+    r = MemoryRange(m.map.end(), r.end());
+  }
+  return true;
+}
+
 } // namespace rr
