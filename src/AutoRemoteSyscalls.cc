@@ -784,6 +784,9 @@ void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allo
       extra_msg = " opening " + t->read_c_str(t->regs().arg1());
     } else if (is_openat_syscall(syscallno, arch())) {
       extra_msg = " opening " + t->read_c_str(t->regs().arg2());
+    } else if (is_mremap_syscall(syscallno, arch()) ||
+               is_mmap_syscall(syscallno, arch())) {
+      AddressSpace::print_process_maps(t);
     }
     ASSERT(t, false) << "Syscall " << syscall_name(syscallno, arch())
                      << " failed with errno " << errno_name(-ret) << extra_msg
