@@ -2515,6 +2515,17 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     uint32_t rule_locs[0];
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::ethtool_rxnfc, struct ethtool_rxnfc);
+
+  struct user_pac_address_keys {
+    __uint128_t apiakey;
+    __uint128_t apibkey;
+    __uint128_t	apdakey;
+    __uint128_t apdbkey;
+  };
+
+  struct user_pac_generic_keys {
+    __uint128_t apgakey;
+  };
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \

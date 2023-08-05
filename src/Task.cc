@@ -1211,7 +1211,50 @@ bool Task::get_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs
   fallible_ptrace(PTRACE_GETREGSET, which, (void*)&iov);
   return errno == 0;
 }
+std::vector<uint8_t> Task::pac_keys(bool *ok)
+{
+  std::vector<uint8_t> pac_data(
+      sizeof(ARM64Arch::user_pac_address_keys) +
+      sizeof(ARM64Arch::user_pac_generic_keys));
+  struct iovec vec = { pac_data.data(), sizeof(ARM64Arch::user_pac_address_keys) };
+  if (fallible_ptrace(PTRACE_GETREGSET, NT_ARM_PACA_KEYS, &vec)) {
+    if (ok) {
+      *ok = false;
+    }
+    return std::vector<uint8_t>{};
+  }
+  vec = { pac_data.data() + sizeof(ARM64Arch::user_pac_address_keys),
+          sizeof(ARM64Arch::user_pac_generic_keys) };
+  if (fallible_ptrace(PTRACE_GETREGSET, NT_ARM_PACG_KEYS, &vec)) {
+    if (ok) {
+      *ok = false;
+    }
+    return std::vector<uint8_t>{};
+  }
+  return pac_data;
+}
+bool Task::set_pac_keys(const std::vector<uint8_t> &pac_data)
+{
+  if (pac_data.empty()) {
+    return true;
+  }
+  struct iovec vec = { (void*)pac_data.data(), sizeof(ARM64Arch::user_pac_address_keys) };
+  if (fallible_ptrace(PTRACE_SETREGSET, NT_ARM_PACA_KEYS, &vec)) {
+    return false;
+  }
+  vec = { (void*)(pac_data.data() + sizeof(ARM64Arch::user_pac_address_keys)),
+          sizeof(ARM64Arch::user_pac_generic_keys) };
+  return !fallible_ptrace(PTRACE_SETREGSET, NT_ARM_PACG_KEYS, &vec);
+}
 #else
+std::vector<uint8_t> Task::pac_keys(bool *ok)
+{
+  return std::vector<uint8_t>{};
+}
+bool Task::set_pac_keys(const std::vector<uint8_t> &pac_data)
+{
+  return true;
+}
 bool Task::set_aarch64_debug_regs(int, ARM64Arch::user_hwdebug_state *, size_t) {
   FATAL() << "Reached aarch64 code path on non-aarch64 system";
   return false;

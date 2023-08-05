@@ -523,6 +523,16 @@ public:
   void set_x86_debug_status(uintptr_t status);
 
   /**
+   * Read the (architecture-specific) pointer authentication keys of the current task
+   */
+  std::vector<uint8_t> pac_keys(bool *ok = nullptr);
+
+  /**
+   * Set the (architecture-specific) pointer authentication keys for the current task
+   */
+  bool set_pac_keys(const std::vector<uint8_t> &data);
+
+  /**
    * Determine why a SIGTRAP occurred. On x86, uses x86_debug_status() but doesn't
    * consume it.
    */
