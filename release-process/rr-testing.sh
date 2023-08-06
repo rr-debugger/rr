@@ -26,7 +26,10 @@ ninja
 # Make sure that install has finished before running tests
 wait_for_test_deps
 
+# Enable perf events for rr
 echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
+# Enable ptrace-attach to any process. This lets us get more data when tests fail.
+echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 rm -rf /tmp/rr-* || true
 ctest -j`nproc` --verbose $ctest_options
 
@@ -36,14 +39,27 @@ function xvnc-runner { CMD=$1 EXPECT=$2
   rm -f /tmp/xvnc /tmp/xvnc-client /tmp/xvnc-wininfo /tmp/xvnc-client-replay || true
 
   Xvnc :9 > /tmp/xvnc 2>&1 &
-  until grep -q "Listening" /tmp/xvnc; do
+  for retries in `seq 1 60`; do
+    if grep -q "Listening" /tmp/xvnc; then
+      break
+    fi
+    if [[ $retries == 60 ]]; then
+      echo FAILED: too many retries of $CMD
+      exit 1
+    fi
     sleep 1
   done
   DISPLAY=:9 ~/obj/bin/rr $CMD > /tmp/xvnc-client 2>&1 &
-  DISPLAY=:9 xwininfo -tree -root > /tmp/xvnc-wininfo 2>&1
-  until grep -q "$EXPECT" /tmp/xvnc-wininfo; do
-    sleep 1
+  for retries in `seq 1 60`; do
     DISPLAY=:9 xwininfo -tree -root > /tmp/xvnc-wininfo 2>&1
+    if grep -q "$EXPECT" /tmp/xvnc-wininfo; then
+      break
+    fi
+    if [[ $retries == 60 ]]; then
+      echo FAILED: too many retries of $CMD
+      exit 1
+    fi
+    sleep 1
   done
   kill %1
   wait %2
@@ -54,10 +70,10 @@ function xvnc-runner { CMD=$1 EXPECT=$2
 
 rm -rf /tmp/firefox-profile || true
 mkdir /tmp/firefox-profile
-xvnc-runner "firefox --profile /tmp/firefox-profile $HOME/rr/release-process/data/test.html" "rr Test Page"
+xvnc-runner "firefox --profile /tmp/firefox-profile $HOME/rr/release-process/test-data/test.html" "rr Test Page"
 
 rm -rf ~/.config/libreoffice || true
-xvnc-runner "libreoffice $HOME/rr/release-process/data/rr-test-doc.odt" "rr-test-doc.odt"
+xvnc-runner "libreoffice $HOME/rr/release-process/test-data/rr-test-doc.odt" "rr-test-doc.odt"
 
 if [[ $build_dist != 0 ]]; then
   make -j`nproc` dist
