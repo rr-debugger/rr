@@ -422,9 +422,7 @@ sudo dpkg -i rr-<span class=ver>5.6.0</span>-Linux-$(uname -m).deb</pre>
         outside the recording tree. This is an inherent feature of the
         design. rr automatically disables features such as X shared
         memory for recorded processes to avoid this problem.
-      <li>requires a reasonably modern x86 CPU. It depends on certain
-        performance counter features that are not available in older
-        CPUs.
+      <li>requires a reasonably modern x86 CPU or certain ARM CPUs (Apple M1+).
       <li>requires knowledge of every system call executed by the
         recorded processes. It already supports a wide range of
         syscalls &mdash; those needed by Firefox and other applications people
