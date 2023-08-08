@@ -32,6 +32,8 @@ echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 rm -rf /tmp/rr-* || true
 ctest -j`nproc` --verbose $ctest_options
+# For some reason I can't figure out, bash drops the first token from the next line
+echo "Tests passed" || true
 
 rm -rf ~/.local/share/rr/* || true
 
@@ -61,8 +63,11 @@ function xvnc-runner { CMD=$1 EXPECT=$2
     fi
     sleep 1
   done
-  kill %1
-  wait %2
+  # kill Xvnc
+  kill -9 %1
+  # wait for $CMD to exit. Since we killed the X server it may
+  # exit with a failure code.
+  wait %2 || true
   ~/obj/bin/rr replay -a > /tmp/xvnc-client-replay 2>&1 || (echo "FAILED: replay failed"; exit 1)
   diff /tmp/xvnc-client /tmp/xvnc-client-replay || (echo "FAILED: replay differs"; exit 1)
   echo PASSED: $CMD
