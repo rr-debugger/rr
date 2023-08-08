@@ -258,6 +258,9 @@ RecordTask::~RecordTask() {
     }
     did_kill();
   }
+
+  // If this was stopped, notify the scheduler.
+  set_stopped(false);
 }
 
 void RecordTask::record_exit_event(WriteChildTid write_child_tid) {
@@ -851,6 +854,18 @@ void RecordTask::did_reach_zombie() {
   }
   if ((already_reaped() || !waiting_for_reap) && !emulated_stop_pending) {
     delete this;
+  }
+}
+
+void RecordTask::set_stopped(bool stopped) {
+  if (is_stopped == stopped) {
+    return;
+  }
+  is_stopped = stopped;
+  if (stopped) {
+    session().scheduler().stopped_task(this);
+  } else {
+    session().scheduler().started_task(this);
   }
 }
 

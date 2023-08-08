@@ -629,6 +629,8 @@ public:
     robust_futex_list_len = len;
   }
 
+  void set_stopped(bool stopped) override;
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();

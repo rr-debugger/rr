@@ -154,6 +154,8 @@ public:
 
   /**
    * Advance the task to its exit state if it's not already there.
+   * If `wait` is false, then during recording Scheduler::start() must be
+   * called.
    */
   void proceed_to_exit(bool wait = true);
 
@@ -644,6 +646,11 @@ public:
    * Return true when the task is running, false if it's stopped.
    */
   bool is_running() const { return !is_stopped; }
+
+  /**
+   * Setter for `is_stopped` to update `Scheduler::ntasks_stopped`.
+   */
+  virtual void set_stopped(bool stopped) { is_stopped = stopped; }
 
   /**
    * Return the status of this as of the last successful wait()/try_wait() call.

@@ -292,7 +292,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // If we died because of a coredumping signal, that is a barrier event, and
   // every task in the address space needs to pass its PTRACE_EXIT_EVENT before
   // they proceed to (potentially hidden) zombie state, so we can't wait for
-  // that to happen/
+  // that to happen.
   // Similarly we can't wait for this task to exit if there are other
   // tasks in its pid namespace that need to exit and this is the last thread
   // of pid-1 in that namespace, because the kernel must reap them before
@@ -924,9 +924,6 @@ void RecordSession::task_continue(const StepState& step_state) {
     }
   }
   t->resume_execution(resume, RESUME_NONBLOCKING, ticks_request);
-  if (t->is_running()) {
-    scheduler().started(t);
-  }
 }
 
 /**
@@ -2515,6 +2512,11 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
   RecordTask* t = scheduler().current();
+  if (!t) {
+    // No child to schedule. Yield to our caller to give it a chance
+    // to do something (e.g. terminate the recording).
+    return result;
+  }
   if (t->waiting_for_reap) {
     // Give it another chance to be reaped
     t->did_reach_zombie();

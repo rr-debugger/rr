@@ -153,7 +153,7 @@ void Task::wait_exit() {
         // case we're only now catching up to the real process exit. In that
         // case, just ask the process to actually exit. (TODO: We may want to
         // catch this earlier).
-        return proceed_to_exit(true);
+        return proceed_to_exit();
       }
       ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXEC)
         << "Expected PTRACE_EVENT_EXEC, got " << result.status;
@@ -1525,7 +1525,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   } else {
     ASSERT(this, setup_succeeded);
     ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
-    is_stopped = false;
+    set_stopped(false);
     extra_registers_known = false;
     if (RESUME_WAIT == wait_how) {
       wait();
@@ -2108,7 +2108,7 @@ void Task::did_waitpid(WaitStatus status) {
   // Mark as stopped now. If we fail one of the ticks assertions below,
   // the test-monitor (or user) might want to attach the emergency debugger,
   // which needs to know that the tracee is stopped.
-  is_stopped = true;
+  set_stopped(true);
 
   if (status.reaped()) {
     was_reaped = true;

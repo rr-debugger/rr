@@ -164,14 +164,16 @@ public:
   bool may_use_unlimited_ticks();
 
   /**
-   * Let the scheduler know that the passed task has started running
+   * Let the scheduler know that the previously stopped task has resumed.
    */
-  void started(RecordTask*) {
-    if (may_use_unlimited_ticks()) {
-      unlimited_ticks_mode = true;
-    }
-    ntasks_running++;
-  }
+  void started_task(RecordTask* t);
+
+  /**
+   * Let the scheduler know that the previously running task has reached a kernel stop
+   * (typically a ptrace stop). Tasks that are blocked but not in a stop
+   * are still "running" for our purposes here.
+   */
+  void stopped_task(RecordTask* t);
 
   /**
    * Let the scheduler know that the task has entered an execve.
@@ -285,6 +287,11 @@ private:
   pid_t in_exec_tgid;
 
   /**
+   * The number of tasks that have is_stopped set.
+   */
+  int ntasks_stopped;
+
+  /**
    * When true, context switch at every possible point.
    */
   bool always_switch;
@@ -298,7 +305,6 @@ private:
   bool last_reschedule_in_high_priority_only_interval;
 
   bool unlimited_ticks_mode;
-  size_t ntasks_running;
 };
 
 } // namespace rr
