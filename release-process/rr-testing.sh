@@ -32,8 +32,7 @@ echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 rm -rf /tmp/rr-* || true
 ctest -j`nproc` --verbose $ctest_options
-# For some reason I can't figure out, bash drops the first token from the next line
-echo "Tests passed" || true
+# echo "For some reason I cannot figure out, bash drops the first token from the line following ctest"
 
 rm -rf ~/.local/share/rr/* || true
 
