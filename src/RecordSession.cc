@@ -309,7 +309,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   if (may_wait_exit) {
     t->did_reach_zombie();
   } else {
-    t->waiting_for_zombie = true;
+    t->waiting_for_reap = true;
   }
   return true;
 }

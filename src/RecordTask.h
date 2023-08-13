@@ -187,7 +187,7 @@ public:
   bool is_waiting_for(RecordTask* t);
 
   bool already_exited() const override {
-    return waiting_for_reap || waiting_for_zombie;
+    return waiting_for_reap;
   }
 
   bool is_detached_proxy() const override {
@@ -798,9 +798,6 @@ public:
 
   // This task is just waiting to be reaped.
   bool waiting_for_reap;
-
-  // This task is waiting to reach zombie state
-  bool waiting_for_zombie;
 
   // This task is waiting for a ptrace exit event. It should not
   // be manually run.

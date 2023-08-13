@@ -6830,7 +6830,7 @@ static void rec_process_syscall_arch(RecordTask* t,
             tracee = nullptr;
           }
         }
-        if (tracee && (tracee->waiting_for_reap || tracee->waiting_for_zombie)) {
+        if (tracee && tracee->already_exited()) {
           // Have another go at reaping the task
           tracee->did_reach_zombie();
         }

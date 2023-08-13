@@ -60,7 +60,15 @@ int main(void) {
   test_assert(child_tid == waitpid(child_tid, &status, __WALL));
   if (WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV) {
     atomic_puts("Old (<5.16) kernel behavior");
-    test_assert(*(pid_t*)shared_page == 0);
+    // In this case the value of *shared_page is nondeterministic.
+    // If the child_SIGKILL task exits first, it's sharding address space
+    // with the fork() child so the kernel will clear *shared_page.
+    // But the fork() child can exit first, in which case when the
+    // child_SIGKILL task exits, it's not sharing its address space with
+    // any other task, and the kernel doesn't clear *shared_page.
+    // This is observable if you run this test under `strace -f` on
+    // a < 5.16 kernel; for me, it causes the test to fail if we check
+    // *shared_page == 0 here.
   } else if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
     atomic_puts("New (5.16+) kernel behavior");
     test_assert(*(pid_t*)shared_page == 0);

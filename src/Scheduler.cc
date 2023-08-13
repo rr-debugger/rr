@@ -300,11 +300,6 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
     return true;
   }
 
-  if (t->waiting_for_zombie) {
-    LOGM(debug) << "  " << t->tid << " is waiting to become a zombie";
-    return false;
-  }
-
   if (t->emulated_stop_type != NOT_STOPPED) {
     if (t->is_signal_pending(SIGCONT)) {
       // We have to do this here. RecordTask::signal_delivered can't always

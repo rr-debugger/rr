@@ -198,7 +198,6 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       next_pmc_interrupt_is_for_user(false),
       did_record_robust_futex_changes(false),
       waiting_for_reap(false),
-      waiting_for_zombie(false),
       waiting_for_ptrace_exit(false),
       retry_syscall_patching(false),
       sent_shutdown_kill(false),
@@ -838,7 +837,6 @@ void RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
 }
 
 void RecordTask::did_reach_zombie() {
-  waiting_for_zombie = false;
   // Remove from address-space and fds list since we really aren't associated
   // with them anymore (and we can't be used to operate on them)
   as->erase_task(this);
@@ -1653,7 +1651,6 @@ bool RecordTask::may_be_blocked() const {
          emulated_stop_type != NOT_STOPPED ||
          (EV_SIGNAL_DELIVERY == ev().type() &&
           DISPOSITION_FATAL == ev().Signal().disposition) ||
-         waiting_for_zombie ||
          waiting_for_ptrace_exit;
 }
 
