@@ -20,14 +20,13 @@ static void* child_thread_running(__attribute__((unused)) void* p) {
 }
 
 static void run_child(void) {
-  struct timespec ts = { 0, 1000000000 };
   pthread_t t;
 
   pthread_create(&t, NULL, child_thread, NULL);
   /* try to get the kernel to deliver signals sent to our pid to some
      other thread */
   pthread_create(&t, NULL, child_thread_running, NULL);
-  nanosleep(&ts, NULL);
+  pause();
 }
 
 int main(void) {
