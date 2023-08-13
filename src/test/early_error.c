@@ -55,7 +55,9 @@ int main(int argc, char *argv[]) {
   }
   ret = close(fd_pair[1]);
 
-  wait(&status);
+  ret = wait(&status);
+  test_assert(ret >= 0);
+  atomic_printf("Got status 0x%x\n", status);
   test_assert(WIFSIGNALED(status));
   test_assert(WTERMSIG(status) == SIGABRT);
 
