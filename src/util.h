@@ -630,6 +630,13 @@ inline unsigned long long dczid_el0_block_size(void) {
 #endif
 }
 
+struct TraceOutputPath {
+  std::string output_trace_dir;
+  std::string name;
+  bool usr_provided_outdir;
+  bool usr_provided_name;
+};
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
