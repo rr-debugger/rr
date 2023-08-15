@@ -19,6 +19,7 @@
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
 #include "remote_ptr.h"
+#include "util.h"
 
 namespace rr {
 
@@ -262,8 +263,7 @@ public:
    * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set)
    * or by setting -o=<OUTPUT_TRACE_DIR>.
    */
-  TraceWriter(const std::string& file_name,
-              const string& output_trace_dir, TicksSemantics ticks_semantics);
+  TraceWriter(const TraceOutputPath& path, TicksSemantics ticks_semantics);
 
   /**
    * Called after the calling thread is actually bound to |bind_to_cpu|.

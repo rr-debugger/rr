@@ -696,6 +696,12 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
 
 // Strip any directory part from the filename `s`
 void base_name(std::string& s);
+struct TraceOutputPath {
+  std::string output_trace_dir;
+  std::string name;
+  bool usr_provided_outdir;
+  bool usr_provided_name;
+};
 
 std::optional<int> read_perf_event_paranoid();
 
