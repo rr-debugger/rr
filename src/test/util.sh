@@ -205,6 +205,9 @@ workdir=`mktemp -dt rr-test-$TESTNAME-XXXXXXXXX`
 tmp_workdir=$workdir
 nontmp_workdir=`mktemp -p $PWD -dt rr-test-$TESTNAME-XXXXXXXXX`
 cd $workdir
+# NB: the testsuite should run on any system with different settings,
+#     so create a reasonable default for all tests
+export LC_ALL=en_US.UTF-8
 
 # XXX technically the trailing -XXXXXXXXXX isn't unique, since there
 # could be "foo-123456789" and "bar-123456789", but if that happens,
