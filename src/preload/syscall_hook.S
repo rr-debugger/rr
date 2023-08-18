@@ -650,6 +650,10 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_fb)
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_fb)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_nops)
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_nops)
+
 #elif defined(__aarch64__)
         .text
 

@@ -492,6 +492,11 @@ remote_code_ptr Monkeypatcher::get_jump_stub_exit_breakpoint(remote_code_ptr ip,
   return nullptr;
 }
 
+static bool hook_can_ignore_interfering_branches(const syscall_patch_hook& hook, size_t jump_patch_size) {
+  return hook.patch_region_length >= jump_patch_size &&
+    (hook.flags & (PATCH_IS_MULTIPLE_INSTRUCTIONS | PATCH_IS_NOP_INSTRUCTIONS)) == PATCH_IS_NOP_INSTRUCTIONS;
+}
+
 /**
  * Some functions make system calls while storing local variables in memory
  * below the stack pointer. We need to decrement the stack pointer by
@@ -522,7 +527,8 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                            remote_code_ptr ip_of_instruction,
                                            size_t instruction_length,
                                            uint32_t fake_syscall_number) {
-  uint8_t jump_patch[instruction_length + hook.patch_region_length];
+  size_t patch_region_size = instruction_length + hook.patch_region_length;
+  uint8_t jump_patch[patch_region_size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
   remote_ptr<uint8_t> jump_patch_start = ip_of_instruction.to_data_ptr<uint8_t>();
@@ -531,7 +537,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   }
   remote_ptr<uint8_t> jump_patch_end = jump_patch_start + JumpPatch::size;
   remote_ptr<uint8_t> return_addr =
-    jump_patch_start + instruction_length + hook.patch_region_length;
+    jump_patch_start + patch_region_size;
 
   remote_ptr<uint8_t> extended_jump_start;
   if (fake_syscall_number) {
@@ -575,6 +581,15 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
   memset(jump_patch, NOP, sizeof(jump_patch));
+  if (hook_can_ignore_interfering_branches(hook, JumpPatch::size)) {
+    // If the preceding instruction is long enough to contain the entire jump,
+    // and is a nop, replace the original instruction by a jump back to the
+    // start of the patch region. This allows us to ignore (likely spurious,
+    // but nevertheless), interfering branches, because whether we jump to the
+    // instruction or the start of the patch region, the effect is the same.
+    jump_patch[patch_region_size-2] = 0xeb; // jmp rel
+    jump_patch[patch_region_size-1] = (int8_t)-patch_region_size;
+  }
   JumpPatch::substitute(jump_patch, jump_offset32);
   bool ok = true;
   write_and_record_bytes(t, jump_patch_start, sizeof(jump_patch), jump_patch, &ok);
@@ -951,6 +966,18 @@ bool Monkeypatcher::try_patch_vsyscall_caller(RecordTask* t, remote_code_ptr ret
   return true;
 }
 
+static uint64_t jump_patch_size(SupportedArch arch)
+{
+  switch (arch) {
+    case x86: return X86SysenterVsyscallSyscallHook::size;
+    case x86_64: return X64JumpMonkeypatch::size;
+    case aarch64: return 2*rr::syscall_instruction_length(arch);
+    default:
+      FATAL() << "Unimplemented for this architecture";
+      return 0;
+  }
+}
+
 const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                                                            remote_code_ptr ip,
                                                            bool entering_syscall,
@@ -1020,69 +1047,73 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       continue;
     }
 
-    // Search for a following short-jump instruction that targets an
-    // instruction
-    // after the syscall. False positives are OK.
-    // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
-    bool found_potential_interfering_branch = false;
-    for (size_t i = buf_valid_start_offset; i + 2 <= buf_valid_end_offset; ++i) {
-      uint8_t b = bytes[i];
-      // Check for short conditional or unconditional jump
-      if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
-        int offset_from_instruction_end = (int)i + 2 + (int8_t)bytes[i + 1] -
-            (LOOK_BACK + instruction_length);
-        if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
-          if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
-            found_potential_interfering_branch =
-              offset_from_instruction_end <= -(ssize_t)instruction_length &&
-              offset_from_instruction_end > -(ssize_t)(instruction_length + hook.patch_region_length);
+    if (!hook_can_ignore_interfering_branches(hook, jump_patch_size(t->arch()))) {
+      // Search for a following short-jump instruction that targets an
+      // instruction
+      // after the syscall. False positives are OK.
+      // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
+      bool found_potential_interfering_branch = false;
+      for (size_t i = buf_valid_start_offset; i + 2 <= buf_valid_end_offset; ++i) {
+        uint8_t b = bytes[i];
+        // Check for short conditional or unconditional jump
+        if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
+          int offset_from_instruction_end = (int)i + 2 + (int8_t)bytes[i + 1] -
+              (LOOK_BACK + instruction_length);
+          if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+            if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
+              found_potential_interfering_branch =
+                offset_from_instruction_end <= -(ssize_t)instruction_length &&
+                offset_from_instruction_end > -(ssize_t)(instruction_length + hook.patch_region_length);
+            } else {
+              found_potential_interfering_branch = offset_from_instruction_end == -(ssize_t)instruction_length;
+            }
           } else {
-            found_potential_interfering_branch = offset_from_instruction_end == -(ssize_t)instruction_length;
+            if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
+              found_potential_interfering_branch =
+                offset_from_instruction_end >= 0 && offset_from_instruction_end < hook.patch_region_length;
+            } else {
+              found_potential_interfering_branch = offset_from_instruction_end == 0;
+            }
           }
-        } else {
-          if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
-            found_potential_interfering_branch =
-              offset_from_instruction_end >= 0 && offset_from_instruction_end < hook.patch_region_length;
-          } else {
-            found_potential_interfering_branch = offset_from_instruction_end == 0;
+          if (found_potential_interfering_branch) {
+            LOG(debug) << "Found potential interfering branch at "
+                        << ip.to_data_ptr<uint8_t>() - LOOK_BACK + i;
+            break;
           }
         }
-      }
-      if (found_potential_interfering_branch) {
-        LOG(debug) << "Found potential interfering branch at "
-                    << ip.to_data_ptr<uint8_t>() - LOOK_BACK + i;
-        break;
+
+        if (found_potential_interfering_branch) {
+          continue;
+        }
       }
     }
 
-    if (!found_potential_interfering_branch) {
-      remote_code_ptr start_range, end_range;
-      if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
-        start_range = ip - hook.patch_region_length;
-        // if a thread has its RIP at the end of our range,
-        // it could be immediately after a syscall instruction that
-        // will need to be restarted. Patching out that instruction will
-        // prevent the kernel from restarting it. So, extend our range by
-        // one byte to detect such threads.
-        end_range = ip + instruction_length + 1;
-      } else {
-        start_range = ip;
-        end_range = ip + instruction_length + hook.patch_region_length;
-      }
-      if (!safe_for_syscall_patching(start_range, end_range, t)) {
-        LOG(debug)
-            << "Temporarily declining to patch syscall at " << ip
-            << " because a different task has its ip in the patched range";
-        return nullptr;
-      }
-      LOG(debug) << "Trying to patch bytes "
-                 << bytes_to_string(
-                      following_bytes,
-                      min<size_t>(following_bytes_count,
-                          sizeof(syscall_patch_hook::patch_region_bytes)));
-
-      return &hook;
+    remote_code_ptr start_range, end_range;
+    if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+      start_range = ip - hook.patch_region_length;
+      // if a thread has its RIP at the end of our range,
+      // it could be immediately after a syscall instruction that
+      // will need to be restarted. Patching out that instruction will
+      // prevent the kernel from restarting it. So, extend our range by
+      // one byte to detect such threads.
+      end_range = ip + instruction_length + 1;
+    } else {
+      start_range = ip;
+      end_range = ip + instruction_length + hook.patch_region_length;
     }
+    if (!safe_for_syscall_patching(start_range, end_range, t)) {
+      LOG(debug)
+          << "Temporarily declining to patch syscall at " << ip
+          << " because a different task has its ip in the patched range";
+      return nullptr;
+    }
+    LOG(debug) << "Trying to patch bytes "
+              << bytes_to_string(
+                    following_bytes,
+                    min<size_t>(following_bytes_count,
+                        sizeof(syscall_patch_hook::patch_region_bytes)));
+
+    return &hook;
   }
 
   LOG(debug) << "Failed to find a syscall hook for bytes "
