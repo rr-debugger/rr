@@ -1031,16 +1031,27 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
         int offset_from_instruction_end = (int)i + 2 + (int8_t)bytes[i + 1] -
             (LOOK_BACK + instruction_length);
-        if ((hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS)
-                ? (offset_from_instruction_end >= 0 && offset_from_instruction_end < hook.patch_region_length)
-                : offset_from_instruction_end == 0) {
-          LOG(debug) << "Found potential interfering branch at "
-                      << ip.to_data_ptr<uint8_t>() - LOOK_BACK + i;
-          // We can't patch this because it would jump straight back into
-          // the middle of our patch code.
-          found_potential_interfering_branch = true;
-          break;
+        if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+          if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
+            found_potential_interfering_branch =
+              offset_from_instruction_end <= -(ssize_t)instruction_length &&
+              offset_from_instruction_end > -(ssize_t)(instruction_length + hook.patch_region_length);
+          } else {
+            found_potential_interfering_branch = offset_from_instruction_end == -(ssize_t)instruction_length;
+          }
+        } else {
+          if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
+            found_potential_interfering_branch =
+              offset_from_instruction_end >= 0 && offset_from_instruction_end < hook.patch_region_length;
+          } else {
+            found_potential_interfering_branch = offset_from_instruction_end == 0;
+          }
         }
+      }
+      if (found_potential_interfering_branch) {
+        LOG(debug) << "Found potential interfering branch at "
+                    << ip.to_data_ptr<uint8_t>() - LOOK_BACK + i;
+        break;
       }
     }
 

@@ -1454,6 +1454,7 @@ set(TESTS_WITH_PROGRAM
   ptrace_remote_unmap
   x86/rdtsc_loop
   x86/rdtsc_loop2
+  x86/rdtsc_interfering
   read_big_struct
   remove_latest_trace
   restart_abnormal_exit
