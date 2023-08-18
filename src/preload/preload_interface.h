@@ -183,6 +183,11 @@ static inline const char* extract_file_name(const char* s) {
  * (rather than the first), which requires special handling.
  */
 #define PATCH_SYSCALL_INSTRUCTION_IS_LAST (1 << 1)
+/* All instructions in the patch are nop and their execution is thus not
+ * observable. This may allow more aggressive handling of interfering branches.
+ */
+#define PATCH_IS_NOP_INSTRUCTIONS (1 << 2)
+
 
 /**
  * To support syscall buffering, we replace syscall instructions with a "call"
