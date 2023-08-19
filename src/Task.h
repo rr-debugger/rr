@@ -996,6 +996,10 @@ public:
   /**
    * Executes a ptrace() call that expects the task to be in a ptrace-stop.
    * Errors other than ESRCH are treated as fatal (those are rr bugs).
+   * Only call this when `Task::is_stopped`.
+   * Even when `is_stopped` is true, this can return false because the kernel
+   * could have pushed the task out of the ptrace-stop due to SIGKILL or
+   * equivalent (such as `zap_pid_ns_processes`).
    */
   bool ptrace_if_stopped(int request, remote_ptr<void> addr, void* data);
 
@@ -1247,8 +1251,11 @@ protected:
   // We need this in addition to `singlestepping_instruction` because that
   // might be CPUID but we failed to set the breakpoint.
   bool did_set_breakpoint_after_cpuid;
-  // True when we know via waitpid() that the task is stopped and we haven't
-  // resumed it.
+  // True when we know via waitpid() that the task was stopped in
+  // a ptrace-stop and we haven't resumed it.
+  // It is possible that the task has been pushed out of the ptrace-stop
+  // without our knowledge, due to a SIGKILL or equivalent such as
+  // zap_pid_ns_processes.
   bool is_stopped;
   /* True when the seccomp filter has been enabled via prctl(). This happens
    * in the first system call issued by the initial tracee (after it returns

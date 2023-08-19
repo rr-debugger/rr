@@ -2109,13 +2109,6 @@ void Task::did_waitpid(WaitStatus status) {
     siginfo_overridden = true;
   }
 
-  if (!siginfo_overridden && status.stop_sig()) {
-    if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
-      LOG(debug) << "Unexpected process death getting siginfo for " << tid;
-      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-    }
-  }
-
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
   Ticks more_ticks = 0;
@@ -2146,6 +2139,13 @@ void Task::did_waitpid(WaitStatus status) {
     // the test-monitor (or user) might want to attach the emergency debugger,
     // which needs to know that the tracee is stopped.
     set_stopped(true);
+
+    if (!siginfo_overridden && status.stop_sig()) {
+      if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
+        LOG(debug) << "Unexpected process death getting siginfo for " << tid;
+        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+      }
+    }
 
     // An unstable exit can cause a task to exit without us having run it, in
     // which case we might have pending register changes for it that are now
@@ -3158,6 +3158,8 @@ const TraceStream* Task::trace_stream() const {
 }
 
 bool Task::ptrace_if_stopped(int request, remote_ptr<void> addr, void* data) {
+  ASSERT(this, is_stopped);
+
   errno = 0;
   fallible_ptrace(request, addr, data);
   if (errno == ESRCH) {
