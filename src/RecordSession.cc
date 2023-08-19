@@ -279,8 +279,8 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
 
   WaitStatus exit_status;
   unsigned long msg = 0;
-  // We can get ESRCH here if the child was killed by SIGKILL and
-  // we made a synthetic PTRACE_EVENT_EXIT to handle it.
+  // If ptrace_if_stopped fails, then the task has been killed by SIGKILL
+  // or equivalent.
   if (t->ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &msg)) {
     exit_status = WaitStatus(msg);
   } else {

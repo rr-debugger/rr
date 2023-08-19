@@ -748,6 +748,7 @@ void RecordTask::did_wait() {
     // state, because we do not allow stashed_signals_blocking_more_signals
     // to hold across syscalls (traced or untraced) that change the signal mask.
     ASSERT(this, !blocked_sigs_dirty);
+    // If this fails the tracee is on the exit path and its sigmask is irrelevant.
     ptrace_if_stopped(PTRACE_SETSIGMASK, remote_ptr<void>(8), &blocked_sigs);
   } else if (syscallbuf_child) {
     // The syscallbuf struct is only 32 bytes currently so read the whole thing
@@ -1260,6 +1261,8 @@ SignalResolvedDisposition RecordTask::sig_resolved_disposition(
 
 void RecordTask::set_siginfo(const siginfo_t& si) {
   pending_siginfo = si;
+  // If this fails, the tracee is on the exit path and its siginfo
+  // is irrelevant.
   ptrace_if_stopped(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 

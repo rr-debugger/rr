@@ -1000,6 +1000,21 @@ public:
    * Even when `is_stopped` is true, this can return false because the kernel
    * could have pushed the task out of the ptrace-stop due to SIGKILL or
    * equivalent (such as `zap_pid_ns_processes`).
+   *
+   * So when this returns false, one of the following is true:
+   * * The tracee is executing towards its PTRACE_EVENT_EXIT stop. This
+   * happens concurrently with rr so it may enter that stop at any time.
+   * But it can also be indefinitely delayed before reaching the exit stop,
+   * e.g. waiting in`zap_pid_ns_processes`.
+   * * In older kernels (before 9a95f78eab70deeb5a4c879c19b841a6af5b66e7)
+   * it is possible for a tracee stopped in PTRACE_EVENT_EXIT to be kicked
+   * out of that stop by another SIGKILL. In that case it is executing towards
+   * or has actually reached the zombie state. In old kernels it can be
+   * blocked indefinitely from reaching the zombie state due to coredumping.
+   *
+   * In either of these cases, the tracee has been killed via SIGKILL or equivalent
+   * and will not execute user code or system calls again. We can assume
+   * its registers won't change again. It won't handle any more signals.
    */
   bool ptrace_if_stopped(int request, remote_ptr<void> addr, void* data);
 
