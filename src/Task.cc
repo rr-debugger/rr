@@ -395,6 +395,14 @@ string Task::file_name_of_fd(int fd) {
   return path;
 }
 
+pid_t Task::get_ptrace_eventmsg_pid() {
+  unsigned long msg = 0;
+  if (!ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &msg)) {
+    return -1;
+  }
+  return msg;
+}
+
 const siginfo_t& Task::get_siginfo() {
   DEBUG_ASSERT(stop_sig());
   return pending_siginfo;
@@ -3177,6 +3185,7 @@ bool Task::clone_syscall_is_complete(pid_t* new_pid,
   if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event ||
       PTRACE_EVENT_VFORK == event) {
     *new_pid = get_ptrace_eventmsg_pid();
+    ASSERT(this, *new_pid >= 0) << "Task is not in a ptrace-stop!";
     return true;
   }
   ASSERT(this, !event) << "Unexpected ptrace event "

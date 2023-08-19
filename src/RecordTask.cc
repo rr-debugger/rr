@@ -2094,12 +2094,14 @@ pid_t RecordTask::find_newborn_thread() {
 
   pid_t hint = get_ptrace_eventmsg_pid();
   char path[PATH_MAX];
-  sprintf(path, "/proc/%d/task/%d", tid, hint);
-  struct stat stat_buf;
-  // This should always succeed, but may fail in old kernels due to
-  // a kernel bug. See RecordSession::handle_ptrace_event.
-  if (!session().find_task(hint) && 0 == stat(path, &stat_buf)) {
-    return hint;
+  if (hint >= 0) {
+    sprintf(path, "/proc/%d/task/%d", tid, hint);
+    struct stat stat_buf;
+    // This should always succeed, but may fail in old kernels due to
+    // a kernel bug. See RecordSession::handle_ptrace_event.
+    if (!session().find_task(hint) && 0 == stat(path, &stat_buf)) {
+      return hint;
+    }
   }
 
   sprintf(path, "/proc/%d/task", tid);
@@ -2127,7 +2129,7 @@ pid_t RecordTask::find_newborn_process(pid_t child_parent) {
   pid_t hint = get_ptrace_eventmsg_pid();
   // This should always succeed, but may fail in old kernels due to
   // a kernel bug. See RecordSession::handle_ptrace_event.
-  if (!session().find_task(hint) && get_ppid(hint) == child_parent) {
+  if (hint >= 0 && !session().find_task(hint) && get_ppid(hint) == child_parent) {
     return hint;
   }
 
