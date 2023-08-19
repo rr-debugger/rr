@@ -1503,7 +1503,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
      * which means we don't get a chance to clean up robust futexes etc.
      * Avoid that by doing a waitpid() here to see if it has exited.
      * This doesn't fully close the race since in theory we could be preempted
-     * between the waitpid and the ptrace_if_alive, giving another task
+     * between the waitpid and the ptrace_if_stopped, giving another task
      * a chance to SIGKILL our tracee and advance it to the PTRACE_EXIT_EVENT,
      * or just letting the tracee be scheduled to process its pending SIGKILL.
      */
@@ -1566,7 +1566,7 @@ void Task::flush_regs() {
       orig_syscallno_dirty = false;
     }
 #elif defined(__aarch64__)
-    if (ptrace_if_alive(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
+    if (ptrace_if_stopped(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
       registers_dirty = false;
     }
 #else
@@ -1583,7 +1583,7 @@ void Task::flush_regs() {
     struct iovec vec = { &syscall,
                           sizeof(syscall) };
     LOG(debug) << "Changing syscall to " << syscall;
-    if (ptrace_if_alive(PTRACE_SETREGSET, NT_ARM_SYSTEM_CALL, &vec)) {
+    if (ptrace_if_stopped(PTRACE_SETREGSET, NT_ARM_SYSTEM_CALL, &vec)) {
       orig_syscallno_dirty = false;
     }
   }
@@ -1607,8 +1607,8 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
 #if defined(__i386__)
         ASSERT(this,
                extra_registers.data_.size() == sizeof(user_fpxregs_struct));
-        ptrace_if_alive(X86Arch::PTRACE_SETFPXREGS, nullptr,
-                        extra_registers.data_.data());
+        ptrace_if_stopped(X86Arch::PTRACE_SETFPXREGS, nullptr,
+                          extra_registers.data_.data());
 #elif defined(__x86_64__)
         ASSERT(this,
                extra_registers.data_.size() == sizeof(user_fpregs_struct));
@@ -2181,7 +2181,7 @@ void Task::did_waitpid(WaitStatus status) {
 #elif defined(__aarch64__)
       struct iovec vec = { &ptrace_regs,
                           sizeof(ptrace_regs) };
-      if (ptrace_if_alive(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
+      if (ptrace_if_stopped(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
         registers.set_from_ptrace(ptrace_regs);
         more_ticks = hpc.read_ticks(this);
       }
@@ -3153,7 +3153,7 @@ bool Task::ptrace_if_stopped(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
   if (errno == ESRCH) {
-    LOG(debug) << "ptrace_if_alive tid " << tid << " was not alive";
+    LOG(debug) << "ptrace_if_stopped tid " << tid << " was not stopped";
     return false;
   }
   ASSERT(this, !errno) << "ptrace(" << ptrace_req_name<NativeArch>(request) << ", " << tid
