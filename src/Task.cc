@@ -219,7 +219,7 @@ WaitStatus Task::kill() {
       * which implicitly detached.
       */
     unsigned long long_status;
-    if (ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &long_status)) {
+    if (ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &long_status)) {
       status = WaitStatus(long_status);
     } else {
       status = WaitStatus::for_fatal_sig(SIGKILL);
@@ -397,7 +397,7 @@ string Task::file_name_of_fd(int fd) {
 
 pid_t Task::get_ptrace_eventmsg_pid() {
   unsigned long msg = 0;
-  if (!ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &msg)) {
+  if (!ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &msg)) {
     return -1;
   }
   return msg;
@@ -814,7 +814,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               if (regs.arg3() == 0) {
                 // Work around a kernel bug in pre-4.7 kernels, where setting
                 // the gs/fs base to 0 via PTRACE_REGSET did not work correctly.
-                tracee->ptrace_if_alive(Arch::PTRACE_ARCH_PRCTL, regs.arg3(),
+                tracee->ptrace_if_stopped(Arch::PTRACE_ARCH_PRCTL, regs.arg3(),
                                         (void*)(uintptr_t)regs.arg4());
               }
               if (code == ARCH_SET_FS) {
@@ -1532,7 +1532,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     detected_unexpected_exit = true;
   } else {
     ASSERT(this, setup_succeeded);
-    ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
+    ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
     set_stopped(false);
     extra_registers_known = false;
     if (RESUME_WAIT == wait_how) {
@@ -1558,7 +1558,7 @@ void Task::flush_regs() {
     LOG(debug) << "Flushing registers for tid " << tid << " " << registers;
     auto ptrace_regs = registers.get_ptrace_iovec();
 #if defined(__i386__) || defined(__x86_64__)
-    if (ptrace_if_alive(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
+    if (ptrace_if_stopped(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
       /* It's ok for flush regs to fail, e.g. if the task got killed underneath
        * us - we just need to remember not to trust any value we would load
        * from ptrace otherwise */
@@ -1602,7 +1602,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
       if (xsave_area_size() > 512) {
         struct iovec vec = { extra_registers.data_.data(),
                              extra_registers.data_.size() };
-        ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
+        ptrace_if_stopped(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
       } else {
 #if defined(__i386__)
         ASSERT(this,
@@ -1612,7 +1612,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
 #elif defined(__x86_64__)
         ASSERT(this,
                extra_registers.data_.size() == sizeof(user_fpregs_struct));
-        ptrace_if_alive(PTRACE_SETFPREGS, nullptr,
+        ptrace_if_stopped(PTRACE_SETFPREGS, nullptr,
                         extra_registers.data_.data());
 #endif
       }
@@ -1621,7 +1621,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
     case ExtraRegisters::NT_FPR: {
       struct iovec vec = { extra_registers.data_.data(),
                             extra_registers.data_.size() };
-      ptrace_if_alive(PTRACE_SETREGSET, NT_PRFPREG, &vec);
+      ptrace_if_stopped(PTRACE_SETREGSET, NT_PRFPREG, &vec);
       break;
     }
     default:
@@ -1930,7 +1930,7 @@ bool Task::wait_unexpected_exit() {
 }
 
 void Task::do_ptrace_interrupt() {
-  ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+  ptrace_if_stopped(PTRACE_INTERRUPT, nullptr, nullptr);
   expecting_ptrace_interrupt_stop = 2;
 }
 
@@ -2062,12 +2062,12 @@ void Task::canonicalize_regs(SupportedArch syscall_arch) {
 
 bool Task::read_aarch64_tls_register(uintptr_t *result) {
   struct iovec vec = { result, sizeof(*result) };
-  return ptrace_if_alive(PTRACE_GETREGSET, NT_ARM_TLS, &vec);
+  return ptrace_if_stopped(PTRACE_GETREGSET, NT_ARM_TLS, &vec);
 }
 
 void Task::set_aarch64_tls_register(uintptr_t val) {
   struct iovec vec = { &val, sizeof(val) };
-  bool ok = ptrace_if_alive(PTRACE_SETREGSET, NT_ARM_TLS, &vec);
+  bool ok = ptrace_if_stopped(PTRACE_SETREGSET, NT_ARM_TLS, &vec);
   ASSERT(this, ok);
 }
 
@@ -2102,7 +2102,7 @@ void Task::did_waitpid(WaitStatus status) {
   }
 
   if (!siginfo_overridden && status.stop_sig()) {
-    if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
+    if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
       LOG(debug) << "Unexpected process death getting siginfo for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     }
@@ -2155,7 +2155,7 @@ void Task::did_waitpid(WaitStatus status) {
       NativeArch::user_regs_struct ptrace_regs;
 
 #if defined(__i386__) || defined(__x86_64__)
-      if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
+      if (ptrace_if_stopped(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
         registers.set_from_ptrace(ptrace_regs);
         // Check the architecture of the task by looking at the
         // cs segment register and checking if that segment is a long mode segment
@@ -3149,7 +3149,7 @@ const TraceStream* Task::trace_stream() const {
   return nullptr;
 }
 
-bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
+bool Task::ptrace_if_stopped(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
   if (errno == ESRCH) {

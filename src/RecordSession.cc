@@ -171,7 +171,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     // which causes ptrace to report ESRCH, triggering our synthetic-PTRACE_EVENT_EXIT
     // cleanup path. Check if we're in a real ptrace stop.
     siginfo_t dummy_siginfo;
-    if (!t->ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &dummy_siginfo)) {
+    if (!t->ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &dummy_siginfo)) {
       t->waiting_for_ptrace_exit = true;
       return true;
     }
@@ -281,7 +281,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   unsigned long msg = 0;
   // We can get ESRCH here if the child was killed by SIGKILL and
   // we made a synthetic PTRACE_EVENT_EXIT to handle it.
-  if (t->ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &msg)) {
+  if (t->ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &msg)) {
     exit_status = WaitStatus(msg);
   } else {
     exit_status = WaitStatus::for_fatal_sig(SIGKILL);

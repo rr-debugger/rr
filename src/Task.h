@@ -993,10 +993,10 @@ public:
   /**
    * Like |fallible_ptrace()| but infallible for most purposes.
    * Errors other than ESRCH are treated as fatal. Returns false if
-   * we got ESRCH. This can happen any time during recording when the
-   * task gets a SIGKILL from outside.
+   * we got ESRCH. This means we're not in a ptrace-stop, i.e. it's running,
+   * or a zombie, or blocked in the kernel but not at a ptrace-stop.
    */
-  bool ptrace_if_alive(int request, remote_ptr<void> addr, void* data);
+  bool ptrace_if_stopped(int request, remote_ptr<void> addr, void* data);
 
   bool is_dying() const {
     return seen_ptrace_exit_event || detected_unexpected_exit;
