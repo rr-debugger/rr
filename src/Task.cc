@@ -3176,7 +3176,7 @@ bool Task::clone_syscall_is_complete(pid_t* new_pid,
   int event = ptrace_event();
   if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event ||
       PTRACE_EVENT_VFORK == event) {
-    *new_pid = get_ptrace_eventmsg<pid_t>();
+    *new_pid = get_ptrace_eventmsg_pid();
     return true;
   }
   ASSERT(this, !event) << "Unexpected ptrace event "

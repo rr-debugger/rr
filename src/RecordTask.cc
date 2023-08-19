@@ -2092,7 +2092,7 @@ pid_t RecordTask::find_newborn_thread() {
   ASSERT(this, session().is_recording());
   ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE);
 
-  pid_t hint = get_ptrace_eventmsg<pid_t>();
+  pid_t hint = get_ptrace_eventmsg_pid();
   char path[PATH_MAX];
   sprintf(path, "/proc/%d/task/%d", tid, hint);
   struct stat stat_buf;
@@ -2124,7 +2124,7 @@ pid_t RecordTask::find_newborn_process(pid_t child_parent) {
              ptrace_event() == PTRACE_EVENT_VFORK ||
              ptrace_event() == PTRACE_EVENT_FORK);
 
-  pid_t hint = get_ptrace_eventmsg<pid_t>();
+  pid_t hint = get_ptrace_eventmsg_pid();
   // This should always succeed, but may fail in old kernels due to
   // a kernel bug. See RecordSession::handle_ptrace_event.
   if (!session().find_task(hint) && get_ppid(hint) == child_parent) {

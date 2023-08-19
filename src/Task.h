@@ -271,10 +271,10 @@ public:
    * Return the ptrace message pid associated with the current ptrace
    * event, f.e. the new child's pid at PTRACE_EVENT_CLONE.
    */
-  template <typename T> T get_ptrace_eventmsg() {
+  pid_t get_ptrace_eventmsg_pid() {
     unsigned long msg = 0;
     xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
-    return T(msg);
+    return msg;
   }
 
   /**
