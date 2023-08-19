@@ -1142,12 +1142,6 @@ protected:
   long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
   /**
-   * Like |fallible_ptrace()| but completely infallible.
-   * All errors are treated as fatal.
-   */
-  void xptrace(int request, remote_ptr<void> addr, void* data);
-
-  /**
    * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
    * as fallback. Returns number of bytes actually read.
    */

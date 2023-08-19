@@ -3149,14 +3149,6 @@ const TraceStream* Task::trace_stream() const {
   return nullptr;
 }
 
-void Task::xptrace(int request, remote_ptr<void> addr, void* data) {
-  errno = 0;
-  fallible_ptrace(request, addr, data);
-  ASSERT(this, !errno) << "ptrace(" << ptrace_req_name<NativeArch>(request) << ", " << tid
-                       << ", addr=" << addr << ", data=" << data
-                       << ") failed with errno " << errno;
-}
-
 bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
