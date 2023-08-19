@@ -32,7 +32,7 @@ echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 rm -rf /tmp/rr-* || true
 ctest -j`nproc` --verbose $ctest_options
-# echo "For some reason I cannot figure out, bash drops the first token from the line following ctest"
+    echo "For some reason I cannot figure out, bash drops the first four characters from the line following ctest"
 
 rm -rf ~/.local/share/rr/* || true
 
