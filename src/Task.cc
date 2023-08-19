@@ -1929,9 +1929,15 @@ bool Task::wait_unexpected_exit() {
   return false;
 }
 
-void Task::do_ptrace_interrupt() {
-  ptrace_if_stopped(PTRACE_INTERRUPT, nullptr, nullptr);
+bool Task::do_ptrace_interrupt() {
+  errno = 0;
+  fallible_ptrace(PTRACE_INTERRUPT, nullptr, nullptr);
+  if (errno) {
+    ASSERT(this, errno == ESRCH) << "Unexpected PTRACE_INTERRUPT error " << errno;
+    return false;
+  }
   expecting_ptrace_interrupt_stop = 2;
+  return true;
 }
 
 bool Task::account_for_potential_ptrace_interrupt_stop(WaitStatus status) {
@@ -1957,6 +1963,8 @@ void Task::wait(double interrupt_after_elapsed) {
   WaitResult result;
   while (true) {
     if (interrupt_after_elapsed == 0 && !sent_wait_interrupt) {
+      // If this fails, the tracee must be a zombie or altogether gone,
+      // in which case we should detect that status change later.
       do_ptrace_interrupt();
       if (session().is_recording()) {
         // Force this timeslice to end

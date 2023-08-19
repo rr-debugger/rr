@@ -306,6 +306,8 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     // needs to be able to interrupt re-startable system calls, it is required
     // to set TIF_SIGPENDING, but the fact that this works is of course a very
     // deep implementation detail.
+    // If this fails then the tracee must be dead or no longer traced, in which
+    // case we no longer care about its TIF_SIGPENDING status.
     t->do_ptrace_interrupt();
   }
 }

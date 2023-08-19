@@ -833,10 +833,13 @@ public:
   ScopedFd& pagemap_fd();
 
   /**
-   * Perform a PTRACE_INTERRUPT set up the counter for potential spurious stops
+   * Perform a PTRACE_INTERRUPT and set up the counter for potential spurious stops
    * to be detected in `account_for_potential_ptrace_interrupt_stop`.
+   * Returns true if it succeeded, false if we got ESRCH (i.e. the tracee has
+   * disappeared or is not being ptraced; PTRACE_INTERRUPT doesn't require the
+   * tracee to be stopped).
    */
-  void do_ptrace_interrupt();
+  bool do_ptrace_interrupt();
 
   /**
    * Sometimes we use PTRACE_INTERRUPT to kick the tracee out of various
