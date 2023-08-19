@@ -2097,7 +2097,9 @@ void ReplaySession::detach_tasks(pid_t new_ptracer, ScopedFd& new_tracee_socket_
   for (auto& entry : task_map) {
     Task* t = entry.second;
     t->flush_regs();
-    t->xptrace(PTRACE_DETACH, nullptr, (void*)SIGSTOP);
+    errno = 0;
+    t->fallible_ptrace(PTRACE_DETACH, nullptr, (void*)SIGSTOP);
+    ASSERT(t, !errno) << "failed to detach, with errno " << errno;
   }
   forget_tasks();
 }
