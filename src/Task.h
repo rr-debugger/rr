@@ -599,6 +599,8 @@ public:
   /**
    * Read the aarch64 TLS register via ptrace. Returns true on success, false
    * on failure. On success `result` is set to the tracee's TLS register.
+   * This can only fail when ptrace_if_stopped fails, i.e. the tracee
+   * is on the exit path due to a SIGKILL or equivalent.
    */
   bool read_aarch64_tls_register(uintptr_t *result);
   void set_aarch64_tls_register(uintptr_t val);

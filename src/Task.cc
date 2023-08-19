@@ -222,6 +222,7 @@ WaitStatus Task::kill() {
     if (ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &long_status)) {
       status = WaitStatus(long_status);
     } else {
+      // The task has been killed due to SIGKILL or equivalent.
       status = WaitStatus::for_fatal_sig(SIGKILL);
     }
     int ret = fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
@@ -814,6 +815,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               if (regs.arg3() == 0) {
                 // Work around a kernel bug in pre-4.7 kernels, where setting
                 // the gs/fs base to 0 via PTRACE_REGSET did not work correctly.
+                // If this fails the tracee is on the exit path and it
+                // doesn't matter what its fs/gs base is.
                 tracee->ptrace_if_stopped(Arch::PTRACE_ARCH_PRCTL, regs.arg3(),
                                         (void*)(uintptr_t)regs.arg4());
               }
@@ -1533,6 +1536,9 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   } else {
     ASSERT(this, setup_succeeded);
     ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
+    // If ptrace_if_stopped failed, it means we're running along the
+    // exit path due to a SIGKILL or equivalent, so just like if it
+    // succeeded, we are stopped and will receive a wait notification.
     set_stopped(false);
     extra_registers_known = false;
     if (RESUME_WAIT == wait_how) {
@@ -1559,14 +1565,15 @@ void Task::flush_regs() {
     auto ptrace_regs = registers.get_ptrace_iovec();
 #if defined(__i386__) || defined(__x86_64__)
     if (ptrace_if_stopped(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
-      /* It's ok for flush regs to fail, e.g. if the task got killed underneath
-       * us - we just need to remember not to trust any value we would load
-       * from ptrace otherwise */
+      /* If that failed, the task was killed and it should not matter what
+         we tried to set. But we will remember that our registers are dirty. */
       registers_dirty = false;
       orig_syscallno_dirty = false;
     }
 #elif defined(__aarch64__)
     if (ptrace_if_stopped(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
+      /* If that failed, the task was killed and it should not matter what
+         we tried to set. But we will remember that our registers are dirty. */
       registers_dirty = false;
     }
 #else
@@ -1584,6 +1591,8 @@ void Task::flush_regs() {
                           sizeof(syscall) };
     LOG(debug) << "Changing syscall to " << syscall;
     if (ptrace_if_stopped(PTRACE_SETREGSET, NT_ARM_SYSTEM_CALL, &vec)) {
+      /* If that failed, the task was killed and it should not matter what
+         we tried to set. But we will remember that our registers are dirty. */
       orig_syscallno_dirty = false;
     }
   }
@@ -1595,25 +1604,36 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
   ASSERT(this, regs.arch() == arch())
       << "Trying to set wrong arch ExtraRegisters";
   extra_registers = regs;
-  extra_registers_known = true;
 
   switch (extra_registers.format()) {
     case ExtraRegisters::XSAVE: {
       if (xsave_area_size() > 512) {
         struct iovec vec = { extra_registers.data_.data(),
                              extra_registers.data_.size() };
-        ptrace_if_stopped(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
+        if (ptrace_if_stopped(PTRACE_SETREGSET, NT_X86_XSTATE, &vec)) {
+          /* If that failed, the task was killed and it should not matter what
+             we tried to set. But we will remember that our registers are dirty. */
+          extra_registers_known = true;
+        }
       } else {
 #if defined(__i386__)
         ASSERT(this,
                extra_registers.data_.size() == sizeof(user_fpxregs_struct));
-        ptrace_if_stopped(X86Arch::PTRACE_SETFPXREGS, nullptr,
-                          extra_registers.data_.data());
+        if (ptrace_if_stopped(X86Arch::PTRACE_SETFPXREGS, nullptr,
+                              extra_registers.data_.data())) {
+          /* If that failed, the task was killed and it should not matter what
+             we tried to set. But we will remember that our registers are dirty. */
+          extra_registers_known = true;
+        }
 #elif defined(__x86_64__)
         ASSERT(this,
                extra_registers.data_.size() == sizeof(user_fpregs_struct));
-        ptrace_if_stopped(PTRACE_SETFPREGS, nullptr,
-                        extra_registers.data_.data());
+        if (ptrace_if_stopped(PTRACE_SETFPREGS, nullptr,
+                              extra_registers.data_.data())) {
+          /* If that failed, the task was killed and it should not matter what
+             we tried to set. But we will remember that our registers are dirty. */
+          extra_registers_known = true;
+        }
 #endif
       }
       break;
@@ -1621,7 +1641,11 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
     case ExtraRegisters::NT_FPR: {
       struct iovec vec = { extra_registers.data_.data(),
                             extra_registers.data_.size() };
-      ptrace_if_stopped(PTRACE_SETREGSET, NT_PRFPREG, &vec);
+      if (ptrace_if_stopped(PTRACE_SETREGSET, NT_PRFPREG, &vec)) {
+        /* If that failed, the task was killed and it should not matter what
+           we tried to set. But we will remember that our registers are dirty. */
+        extra_registers_known = true;
+      }
       break;
     }
     default:
@@ -2075,8 +2099,9 @@ bool Task::read_aarch64_tls_register(uintptr_t *result) {
 
 void Task::set_aarch64_tls_register(uintptr_t val) {
   struct iovec vec = { &val, sizeof(val) };
-  bool ok = ptrace_if_stopped(PTRACE_SETREGSET, NT_ARM_TLS, &vec);
-  ASSERT(this, ok);
+  ptrace_if_stopped(PTRACE_SETREGSET, NT_ARM_TLS, &vec);
+  /* If that failed, the task was killed and it should not matter what
+     we tried to set. */
 }
 
 void Task::did_waitpid(WaitStatus status) {
@@ -2621,7 +2646,7 @@ Task::CapturedState Task::capture_state() {
   state.prname = name();
   if (arch() == aarch64) {
     bool ok = read_aarch64_tls_register(&state.tls_register);
-    ASSERT(this, ok);
+    ASSERT(this, ok) << "Tracee died; this shouldn't happen in replay";
   }
   if (rseq_state) {
     state.rseq_state = make_unique<RseqState>(*rseq_state);
@@ -3187,7 +3212,8 @@ bool Task::clone_syscall_is_complete(pid_t* new_pid,
   if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event ||
       PTRACE_EVENT_VFORK == event) {
     *new_pid = get_ptrace_eventmsg_pid();
-    ASSERT(this, *new_pid >= 0) << "Task is not in a ptrace-stop!";
+    ASSERT(this, *new_pid >= 0)
+      << "Task was killed just after clone/fork/vfork and before we could get the new pid; giving up";
     return true;
   }
   ASSERT(this, !event) << "Unexpected ptrace event "
