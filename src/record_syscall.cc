@@ -2922,8 +2922,9 @@ static Switchable prepare_ptrace(RecordTask* t,
         if (tracee->is_running()) {
           // Running in a blocked syscall. Forward the PTRACE_INTERRUPT.
           // Regular syscall exit handling will take over from here.
-          bool alive = tracee->ptrace_if_stopped(PTRACE_INTERRUPT, nullptr, nullptr);
-          syscall_state.emulate_result(alive ? 0 : -ESRCH);
+          errno = 0;
+          tracee->fallible_ptrace(PTRACE_INTERRUPT, nullptr, nullptr);
+          syscall_state.emulate_result(-errno);
         } else if (tracee->status().is_syscall()) {
           tracee->emulate_ptrace_stop(tracee->status(), SYSCALL_EXIT_STOP);
         } else if (tracee->emulated_stop_pending == NOT_STOPPED) {

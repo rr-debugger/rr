@@ -991,12 +991,16 @@ public:
   }
 
   /**
-   * Like |fallible_ptrace()| but infallible for most purposes.
-   * Errors other than ESRCH are treated as fatal. Returns false if
-   * we got ESRCH. This means we're not in a ptrace-stop, i.e. it's running,
-   * or a zombie, or blocked in the kernel but not at a ptrace-stop.
+   * Executes a ptrace() call that expects the task to be in a ptrace-stop.
+   * Errors other than ESRCH are treated as fatal (those are rr bugs).
    */
   bool ptrace_if_stopped(int request, remote_ptr<void> addr, void* data);
+
+  /**
+   * Make the ptrace |request| with |addr| and |data|, return
+   * the ptrace return value. Just a very thin wrapper around the syscall.
+   */
+  long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
   bool is_dying() const {
     return seen_ptrace_exit_event || detected_unexpected_exit;
@@ -1134,12 +1138,6 @@ protected:
    * that can simply be copied over in local memory.
    */
   void copy_state(const CapturedState& state);
-
-  /**
-   * Make the ptrace |request| with |addr| and |data|, return
-   * the ptrace return value.
-   */
-  long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
   /**
    * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
