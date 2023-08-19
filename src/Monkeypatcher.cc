@@ -1081,10 +1081,9 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
             break;
           }
         }
-
-        if (found_potential_interfering_branch) {
-          continue;
-        }
+      }
+      if (found_potential_interfering_branch) {
+        continue;
       }
     }
 
