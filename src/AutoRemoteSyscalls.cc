@@ -329,10 +329,12 @@ static bool ignore_signal(Task* t) {
     return true;
   }
   siginfo_t siginfo;
-  if (t->ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &siginfo)) {
-    ASSERT(t, false) << "Unexpected signal " << siginfo;
-  } else {
+  errno = 0;
+  t->fallible_ptrace(PTRACE_GETSIGINFO, nullptr, &siginfo);
+  if (errno) {
     ASSERT(t, false) << "Unexpected signal " << signal_name(sig);
+  } else {
+    ASSERT(t, false) << "Unexpected signal " << siginfo;
   }
   return false;
 }
