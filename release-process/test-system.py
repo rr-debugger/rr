@@ -132,6 +132,8 @@ try:
     vm.wait_for_ssh()
     exclude_tests = distro_config['exclude_tests'] if 'exclude_tests' in distro_config else []
     full_script = b'\n'.join(
+        [b"set -x # echo commands",
+         b"set -e # default to exiting on error"] +
         list(map(lambda c: c.encode('utf-8'), distro_config['setup_commands'])) +
         [
             distro_config['install_build_deps'].encode('utf-8'),

@@ -4,9 +4,6 @@
 # $git_revision : git revision to check out, build and test
 # $build_dist : 1 if we should build dist packages, 0 otherwise
 
-set -e # default to exiting on error
-set -x # echo commands
-
 uname -a
 
 # Free up space before we (re)start
