@@ -2138,12 +2138,6 @@ void Task::did_waitpid(WaitStatus status) {
   LOG(debug) << "  (refreshing register cache)";
   Ticks more_ticks = 0;
 
-  bool was_stopped = is_stopped;
-  // Mark as stopped now. If we fail one of the ticks assertions below,
-  // the test-monitor (or user) might want to attach the emergency debugger,
-  // which needs to know that the tracee is stopped.
-  set_stopped(true);
-
   if (status.reaped()) {
     was_reaped = true;
     if (handled_ptrace_exit_event) {
@@ -2165,6 +2159,12 @@ void Task::did_waitpid(WaitStatus status) {
     destroy_buffers(nullptr, nullptr);
     status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   } else {
+    bool was_stopped = is_stopped;
+    // Mark as stopped now. If we fail one of the ticks assertions below,
+    // the test-monitor (or user) might want to attach the emergency debugger,
+    // which needs to know that the tracee is stopped.
+    set_stopped(true);
+
     if (!siginfo_overridden && status.stop_sig()) {
       if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;

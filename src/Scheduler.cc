@@ -329,7 +329,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
 
   if (t->waiting_for_ptrace_exit) {
     LOGM(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
-  } else if (!t->is_running()) {
+  } else if (!t->is_running() || t->already_reaped()) {
     LOGM(debug) << "  " << t->tid << "  was already stopped with status " << t->status();
     if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
       LOGM(debug) << "   but is frozen";

@@ -2517,6 +2517,9 @@ RecordSession::RecordResult RecordSession::record_step() {
     // to do something (e.g. terminate the recording).
     return result;
   }
+  // If the task has been reaped prematurely then it's not running
+  // and we can't get registers etc, so minimize what we do between here
+  // to handle_ptrace_exit_event().
   if (t->waiting_for_reap) {
     // Give it another chance to be reaped
     t->did_reach_zombie();
@@ -2530,10 +2533,6 @@ RecordSession::RecordResult RecordSession::record_step() {
       prev_task->record_current_event();
     }
     prev_task->pop_event(EV_SCHED);
-  }
-  if (rescheduled.started_new_timeslice) {
-    t->registers_at_start_of_last_timeslice = t->regs();
-    t->time_at_start_of_last_timeslice = trace_writer().time();
   }
 
   // Have to disable context-switching until we know it's safe
@@ -2550,6 +2549,11 @@ RecordSession::RecordResult RecordSession::record_step() {
     // t may have been deleted.
     last_task_switchable = ALLOW_SWITCH;
     return result;
+  }
+
+  if (rescheduled.started_new_timeslice) {
+    t->registers_at_start_of_last_timeslice = t->regs();
+    t->time_at_start_of_last_timeslice = trace_writer().time();
   }
 
   StepState step_state(CONTINUE);
