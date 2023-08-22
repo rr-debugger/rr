@@ -250,8 +250,7 @@ bool WaitAggregator::try_wait_exit(RecordTask* t) {
   WaitResult result = WaitManager::wait_exit(options);
   switch (result.code) {
     case WAIT_OK:
-      LOGM(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << t->tid;
-      t->did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
+      t->did_waitpid(result.status);
       return true;
     case WAIT_NO_STATUS:
       // This can happen when the task is in zap_pid_ns_processes waiting for all tasks
