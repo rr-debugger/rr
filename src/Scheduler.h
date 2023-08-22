@@ -287,7 +287,7 @@ private:
   pid_t in_exec_tgid;
 
   /**
-   * The number of tasks that have is_stopped set.
+   * The number of tasks that have is_stopped_ set.
    */
   int ntasks_stopped;
 

@@ -645,12 +645,12 @@ public:
   /**
    * Return true when the task is running, false if it's stopped.
    */
-  bool is_running() const { return !is_stopped; }
+  bool is_running() const { return !is_stopped_; }
 
   /**
-   * Setter for `is_stopped` to update `Scheduler::ntasks_stopped`.
+   * Setter for `is_stopped_` to update `Scheduler::ntasks_stopped`.
    */
-  virtual void set_stopped(bool stopped) { is_stopped = stopped; }
+  virtual void set_stopped(bool stopped) { is_stopped_ = stopped; }
 
   /**
    * Return the status of this as of the last successful wait()/try_wait() call.
@@ -998,8 +998,8 @@ public:
   /**
    * Executes a ptrace() call that expects the task to be in a ptrace-stop.
    * Errors other than ESRCH are treated as fatal (those are rr bugs).
-   * Only call this when `Task::is_stopped`.
-   * Even when `is_stopped` is true, this can return false because the kernel
+   * Only call this when `Task::is_stopped_`.
+   * Even when `is_stopped_` is true, this can return false because the kernel
    * could have pushed the task out of the ptrace-stop due to SIGKILL or
    * equivalent (such as `zap_pid_ns_processes`).
    *
@@ -1251,7 +1251,7 @@ protected:
   // Count of all ticks seen by this task since tracees became
   // consistent and the task last wait()ed.
   Ticks ticks;
-  // When |is_stopped|, these are our child registers.
+  // When |is_stopped_|, these are our child registers.
   Registers registers;
   // Where we last resumed execution
   remote_code_ptr address_of_last_execution_resume;
@@ -1273,7 +1273,7 @@ protected:
   // It is possible that the task has been pushed out of the ptrace-stop
   // without our knowledge, due to a SIGKILL or equivalent such as
   // zap_pid_ns_processes.
-  bool is_stopped;
+  bool is_stopped_;
   /* True when the seccomp filter has been enabled via prctl(). This happens
    * in the first system call issued by the initial tracee (after it returns
    * from kill(SIGSTOP) to synchronize with the tracer). */

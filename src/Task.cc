@@ -89,7 +89,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       how_last_execution_resumed(RESUME_CONT),
       last_resume_orig_cx(0),
       did_set_breakpoint_after_cpuid(false),
-      is_stopped(false),
+      is_stopped_(false),
       seccomp_bpf_enabled(false),
       detected_unexpected_exit(false),
       registers_dirty(false),
@@ -1002,7 +1002,7 @@ void Task::post_exec(const string& exe_file) {
   for (Task* t : as->task_set()) {
     if (t != this) {
       other_task_in_address_space = true;
-      if (t->is_stopped) {
+      if (t->is_stopped_) {
         stopped_task_in_address_space = t;
         break;
       }
@@ -1097,7 +1097,7 @@ string Task::read_c_str(remote_ptr<char> child_addr, bool *ok) {
 }
 
 const Registers& Task::regs() const {
-  ASSERT(this, is_stopped);
+  ASSERT(this, is_stopped_);
   return registers;
 }
 
@@ -1548,7 +1548,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 }
 
 void Task::set_regs(const Registers& regs) {
-  ASSERT(this, is_stopped);
+  ASSERT(this, is_stopped_);
   if (registers.original_syscallno() != regs.original_syscallno()) {
     orig_syscallno_dirty = true;
   }
@@ -2031,7 +2031,7 @@ void Task::wait(double interrupt_after_elapsed) {
 }
 
 void Task::canonicalize_regs(SupportedArch syscall_arch) {
-  ASSERT(this, is_stopped);
+  ASSERT(this, is_stopped_);
 
   if (registers.arch() == x86_64) {
     if (syscall_arch == x86) {
@@ -2159,7 +2159,7 @@ void Task::did_waitpid(WaitStatus status) {
     destroy_buffers(nullptr, nullptr);
     status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   } else {
-    bool was_stopped = is_stopped;
+    bool was_stopped = is_stopped_;
     // Mark as stopped now. If we fail one of the ticks assertions below,
     // the test-monitor (or user) might want to attach the emergency debugger,
     // which needs to know that the tracee is stopped.
@@ -2740,7 +2740,7 @@ bool Task::open_mem_fd() {
   // Use ptrace to read/write during open_mem_fd
   as->set_mem_fd(ScopedFd());
 
-  if (!is_stopped) {
+  if (!is_stopped_) {
     LOG(warn) << "Can't retrieve mem fd for " << tid <<
       "; process not stopped, racing with exec?";
     return false;
@@ -3183,7 +3183,7 @@ const TraceStream* Task::trace_stream() const {
 }
 
 bool Task::ptrace_if_stopped(int request, remote_ptr<void> addr, void* data) {
-  ASSERT(this, is_stopped);
+  ASSERT(this, is_stopped_);
 
   errno = 0;
   fallible_ptrace(request, addr, data);

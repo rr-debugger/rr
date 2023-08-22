@@ -859,10 +859,10 @@ void RecordTask::did_reach_zombie() {
 }
 
 void RecordTask::set_stopped(bool stopped) {
-  if (is_stopped == stopped) {
+  if (is_stopped_ == stopped) {
     return;
   }
-  is_stopped = stopped;
+  is_stopped_ = stopped;
   if (stopped) {
     session().scheduler().stopped_task(this);
   } else {
