@@ -643,9 +643,10 @@ public:
   void set_status(WaitStatus status) { wait_status = status; }
 
   /**
-   * Return true when the task is running, false if it's stopped.
+   * Return true when the task stopped for a ptrace-stop and we
+   * haven't resumed it yet.
    */
-  bool is_running() const { return !is_stopped_; }
+  bool is_stopped() const { return is_stopped_; }
 
   /**
    * Setter for `is_stopped_` to update `Scheduler::ntasks_stopped`.

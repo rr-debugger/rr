@@ -1942,15 +1942,15 @@ void RecordTask::maybe_flush_syscallbuf() {
 
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
-  if (is_running()) {
+  if (is_stopped()) {
+    record_remote(syscallbuf_child, syscallbuf_data_size());
+  } else {
     vector<uint8_t> buf;
     buf.resize(sizeof(hdr) + hdr.num_rec_bytes);
     memcpy(buf.data(), &hdr, sizeof(hdr));
     read_bytes_helper(syscallbuf_child + 1, hdr.num_rec_bytes,
                       buf.data() + sizeof(hdr));
     record_local(syscallbuf_child, buf.size(), buf.data());
-  } else {
-    record_remote(syscallbuf_child, syscallbuf_data_size());
   }
   maybe_handle_rseq(this);
   maybe_handle_set_robust_list(this);

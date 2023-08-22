@@ -2919,7 +2919,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_INTERRUPT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid, false);
       if (tracee) {
-        if (tracee->is_running()) {
+        if (!tracee->is_stopped()) {
           // Running in a blocked syscall. Forward the PTRACE_INTERRUPT.
           // Regular syscall exit handling will take over from here.
           errno = 0;

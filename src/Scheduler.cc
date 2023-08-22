@@ -329,7 +329,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
 
   if (t->waiting_for_ptrace_exit) {
     LOGM(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
-  } else if (!t->is_running() || t->already_reaped()) {
+  } else if (t->is_stopped() || t->already_reaped()) {
     LOGM(debug) << "  " << t->tid << "  was already stopped with status " << t->status();
     if (t->schedule_frozen && t->status().ptrace_event() != PTRACE_EVENT_SECCOMP) {
       LOGM(debug) << "   but is frozen";
@@ -675,7 +675,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   if (current_ && switchable == PREVENT_SWITCH) {
     LOGM(debug) << "  (" << current_->tid << " is un-switchable at "
                << current_->ev() << ")";
-    if (current_->is_running()) {
+    if (!current_->is_stopped()) {
       /* |current| is un-switchable, but already running. Wait for it to change
       * state before "scheduling it", so avoid busy-waiting with our client. */
       LOGM(debug) << "  and running; waiting for state change";

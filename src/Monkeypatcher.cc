@@ -899,7 +899,7 @@ static string bytes_to_string(uint8_t* bytes, size_t size) {
 
 static bool task_safe_for_syscall_patching(RecordTask* t, remote_code_ptr start,
                                            remote_code_ptr end) {
-  if (!t->is_running()) {
+  if (t->is_stopped()) {
     remote_code_ptr ip = t->ip();
     if (start <= ip && ip < end) {
       return false;
