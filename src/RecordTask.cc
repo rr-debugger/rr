@@ -2201,12 +2201,12 @@ bool RecordTask::may_reap() {
 }
 
 void RecordTask::reap() {
-  ASSERT(this, !was_reaped);
+  ASSERT(this, !was_reaped_);
   LOG(debug) << "Reaping " << tid;
   WaitOptions options(tid);
   options.block_seconds = 0;
   WaitManager::wait_exit(options);
-  was_reaped = true;
+  was_reaped_ = true;
 }
 
 static uint64_t read_pid_ns(const RecordTask* t) {

@@ -101,7 +101,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       seen_ptrace_exit_event(false),
       handled_ptrace_exit_event(false),
       expecting_ptrace_interrupt_stop(0),
-      was_reaped(false),
+      was_reaped_(false),
       forgotten(false) {
   memset(&thread_locals, 0, sizeof(thread_locals));
 }
@@ -113,7 +113,7 @@ void Task::detach() {
 
   // Not really, but there's also no reason to actually try to reap it,
   // since we detached.
-  was_reaped = true;
+  was_reaped_ = true;
 }
 
 void Task::reenable_cpuid_tsc() {
@@ -158,7 +158,7 @@ void Task::wait_exit() {
       ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXEC)
         << "Expected PTRACE_EVENT_EXEC, got " << result.status;
       // The kernel will do the reaping for us in this case
-      was_reaped = true;
+      was_reaped_ = true;
     } else if (result.code == WAIT_NO_STATUS) {
       // Wait was EINTR'd most likely - retry.
       continue;
@@ -242,7 +242,7 @@ WaitStatus Task::kill() {
       status = result.status;
     }
   } else {
-    was_reaped = true;
+    was_reaped_ = true;
   }
   return status;
 }
@@ -2139,7 +2139,7 @@ void Task::did_waitpid(WaitStatus status) {
   Ticks more_ticks = 0;
 
   if (status.reaped()) {
-    was_reaped = true;
+    was_reaped_ = true;
     if (handled_ptrace_exit_event) {
       LOG(debug) << "Reaped task late " << tid;
       // We did not reap this task when it exited, likely because it was a
@@ -2234,7 +2234,7 @@ void Task::did_waitpid(WaitStatus status) {
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 
-  if (was_reaped) {
+  if (was_reaped_) {
     ASSERT(this, !handled_ptrace_exit_event);
     seen_ptrace_exit_event = true;
     // NB: It's possible for us to have already reaped in the

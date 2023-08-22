@@ -1038,7 +1038,7 @@ public:
   }
 
   bool already_reaped() const {
-    return was_reaped;
+    return was_reaped_;
   }
 
   void os_exec(SupportedArch arch, std::string filename);
@@ -1325,7 +1325,7 @@ protected:
   // by PTRACE_INTERRUPT. See description in do_waitpid
   int expecting_ptrace_interrupt_stop;
 
-  bool was_reaped;
+  bool was_reaped_;
   // Let this Task object be destroyed with no consequences.
   bool forgotten;
 
