@@ -229,8 +229,10 @@ bool WaitAggregator::try_wait(RecordTask* t) {
     return false;
   }
   LOGM(debug) << "wait on " << t->tid << " returns " << result.status;
-  t->did_waitpid(result.status);
-  return true;
+  // If did_waitpid fails then the task left the stop prematurely
+  // due to SIGKILL or equivalent, and we should report that we did not get
+  // a stop.
+  return t->did_waitpid(result.status);
 }
 
 bool WaitAggregator::try_wait_exit(RecordTask* t) {
@@ -245,9 +247,11 @@ bool WaitAggregator::try_wait_exit(RecordTask* t) {
   options.consume = false;
   WaitResult result = WaitManager::wait_exit(options);
   switch (result.code) {
-    case WAIT_OK:
-      t->did_waitpid(result.status);
+    case WAIT_OK: {
+      bool ok = t->did_waitpid(result.status);
+      ASSERT(t, ok) << "did_waitpid shouldn't fail for exit statuses";
       return true;
+    }
     case WAIT_NO_STATUS:
       // This can happen when the task is in zap_pid_ns_processes waiting for all tasks
       // in the pid-namespace to exit. It's not in a signal stop, but it's also not
@@ -286,7 +290,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
   }
 
   LOGM(debug) << "Task event is " << t->ev();
-  if (!t->may_be_blocked()) {
+  if (!t->may_be_blocked() && (t->is_stopped() || t->was_reaped())) {
     LOGM(debug) << "  " << t->tid << " isn't blocked";
     if (t->schedule_frozen) {
       LOGM(debug) << "  " << t->tid << "  but is frozen";
@@ -303,12 +307,17 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
       t->emulate_SIGCONT();
       // We shouldn't run any user code since there is at least one signal
       // pending.
-      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-      *by_waitpid = true;
-      must_run_task = t;
-      LOGM(debug) << "  Got " << t->tid
-                 << " out of emulated stop due to pending SIGCONT";
-      return true;
+      if (t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        *by_waitpid = true;
+        must_run_task = t;
+        LOGM(debug) << "  Got " << t->tid
+                   << " out of emulated stop due to pending SIGCONT";
+        return true;
+      }
+      // Tracee exited unexpectedly. Reexamine it now in case it has a new
+      // status we can use. Note that we cleared `t->emulated_stop_type`
+      // so we won't end up here again.
+      return is_task_runnable(t, wait_aggregator, by_waitpid);
     } else {
       LOGM(debug) << "  " << t->tid << " is stopped by ptrace or signal";
       // We have no way to detect a SIGCONT coming from outside the tracees.
@@ -346,7 +355,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
     // These syscalls never really block but the kernel may report that
     // the task is not stopped yet if we pass WNOHANG. To make them
     // behave predictably, do a blocking wait.
-    t->wait();
+    if (!t->wait()) {
+      // Task got SIGKILL or equivalent while trying to process the stop.
+      // Ignore this event and we'll process the new status later.
+      return false;
+    }
     *by_waitpid = true;
     must_run_task = t;
     LOGM(debug) << "  " << syscall_name(t->ev().Syscall().number, t->arch())
@@ -602,7 +615,11 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
   }
 
   if (waited->detached_proxy) {
-    waited->did_waitpid(status);
+    if (!waited->did_waitpid(status)) {
+      // Proxy died unexpectedly during the waitpid, just ignore
+      // the stop.
+      return nullptr;
+    }
     pid_t parent_rec_tid = waited->get_parent_pid();
     LOGM(debug) << "    ... but it's a detached process.";
     RecordTask *parent = session.find_task(parent_rec_tid);
@@ -696,7 +713,13 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           if (!waited) {
             continue;
           }
-          waited->did_waitpid(status);
+          if (!waited->did_waitpid(status)) {
+            // Tracee exited stop prematurely due to SIGKILL or equivalent.
+            // Pretend the stop didn't happen.
+            continue;
+          }
+          result.by_waitpid = true;
+          LOGM(debug) << "  new status is " << current_->status();
           // Another task just became runnable, we're no longer in unlimited
           // ticks mode
           unlimited_ticks_mode = false;
@@ -714,7 +737,15 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           timeout = elapsed > 0.05 ? 0.0 : 0.05 - elapsed;
           LOGM(debug) << "  But that's not our current task...";
         } else {
-          current_->wait(timeout);
+          if (current_->wait(timeout)) {
+            result.by_waitpid = true;
+            LOGM(debug) << "  new status is " << current_->status();
+          } else {
+            // A SIGKILL or equivalent kicked the task out of the stop.
+            // We are now running towards PTRACE_EVENT_EXIT or zombie status.
+            // Even though we're PREVENT_SWITCH, we still have to switch.
+            // The task won't be stopped so this is handled below.
+          }
           break;
         }
       }
@@ -725,11 +756,11 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
                  strevent(current_->event), 1000.0 * wait_duration);
       }
 #endif
-      result.by_waitpid = true;
-      LOGM(debug) << "  new status is " << current_->status();
     }
-    validate_scheduled_task();
-    return result;
+    if (current_->is_stopped() || current_->was_reaped()) {
+      validate_scheduled_task();
+      return result;
+    }
   }
 
   unlimited_ticks_mode = false;
@@ -891,8 +922,9 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
                    status.ptrace_event() == PTRACE_EVENT_EXIT ||
                    status.reaped())
             << "Scheduled task should have been blocked";
-        next->did_waitpid(status);
-        if (in_exec_tgid && next->tgid() != in_exec_tgid) {
+        if (!next->did_waitpid(status)) {
+          next = nullptr;
+        } else if (in_exec_tgid && next->tgid() != in_exec_tgid) {
           // Some threadgroup is doing execve and this task isn't in
           // that threadgroup. Don't schedule this task until the execve
           // is complete.

@@ -168,7 +168,8 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
 
   remote_code_ptr ip = t->ip();
 
-  t->resume_execution(how, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+  bool ok = t->resume_execution(how, RESUME_WAIT_NO_EXIT, RESUME_UNLIMITED_TICKS);
+  ASSERT(t, ok) << "Tracee was killed";
   if (t->stop_sig() != SIGTRAP) {
     // we might have stepped into a system call...
     return result;
@@ -310,7 +311,8 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
     // So, disable watchpoints temporarily.
     t->vm()->save_watchpoints();
     t->vm()->remove_all_watchpoints();
-    t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    ok = t->resume_execution(RESUME_CONT, RESUME_WAIT_NO_EXIT, RESUME_UNLIMITED_TICKS);
+    ASSERT(t, ok) << "Tracee was killed";
     t->vm()->restore_watchpoints();
     t->vm()->remove_breakpoint(limit_ip, BKPT_INTERNAL);
     result.did_fast_forward = true;

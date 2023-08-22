@@ -708,4 +708,19 @@ ostream& operator<<(ostream& stream, const Registers& r) {
   return stream;
 }
 
+void Registers::emulate_syscall_entry() {
+  set_original_syscallno(syscallno());
+  set_orig_arg1(arg1());
+  /**
+   * The aarch64 kernel has a quirk where if the syscallno is -1 (and only -1),
+   * it will apply the -ENOSYS result before any ptrace entry stop.
+   * On x86, this happens unconditionally for every syscall, but there the
+   * result isn't shared with arg1, and we usually don't care because we have
+   * access to original_syscallno.
+   */
+  if (is_x86ish(arch()) || (arch() == aarch64 && syscallno() == -1)) {
+    set_syscall_result(-ENOSYS);
+  }
+}
+
 } // namespace rr

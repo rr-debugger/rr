@@ -218,7 +218,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   Registers entry_regs = r;
 
   // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
-  t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
+  bool ok = t->resume_execution(RESUME_CONT, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS);
+  ASSERT(t, ok) << "Tracee was killed";
 
   pid_t new_tid;
   while (!t->clone_syscall_is_complete(&new_tid, Arch::arch())) {
@@ -227,7 +228,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // state to try the syscall again.
     ASSERT(t, t->regs().syscall_result_signed() == -EAGAIN);
     t->set_regs(entry_regs);
-    t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
+    bool ok = t->resume_execution(RESUME_CONT, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS);
+    ASSERT(t, ok) << "Tracee was killed";
   }
 
   // Get out of the syscall

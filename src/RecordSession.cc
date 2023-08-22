@@ -381,8 +381,8 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     t->set_regs(regs);
     t->vm()->add_breakpoint(ret_addr, BKPT_INTERNAL);
     while (true) {
-      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-      if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        // Tracee exited unexpectedly
         return;
       }
       ASSERT(t, !t->ptrace_event());
@@ -439,7 +439,12 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       Registers r = orig_regs;
       r.set_original_syscallno(syscall_number_for_gettid(t->arch()));
       t->set_regs(r);
-      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        // Tracee died unexpectedly. We did not enter a syscall.
+        // We shouldn't try to resume it now.
+        step_state->continue_type = RecordSession::DONT_CONTINUE;
+        return;
+      }
       t->set_regs(orig_regs);
     }
 
@@ -602,7 +607,8 @@ static void handle_seccomp_trap(RecordTask* t,
     // The tracee is currently in the seccomp ptrace-stop. Advance it to the
     // syscall-exit stop so that when we try to deliver the SIGSYS via
     // PTRACE_SINGLESTEP, that doesn't trigger a SIGTRAP stop.
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    // If this fails, that's fine, we're not going to deliver the SIGSYS.
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS);
   }
 
   // Don't continue yet. At the next iteration of record_step, if we
@@ -719,6 +725,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
             // to the PTRACE_EVENT_EXIT. This avoids the race where our
             // PTRACE_CONT might kick us out of the PTRACE_EVENT_EXIT before
             // we can process it.
+            // If this fails because of *another* SIGKILL that's fine.
             t->wait();
             break;
           default:
@@ -761,7 +768,13 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         *t_ptr = t;
         // Tell t that it is actually stopped, because the stop we got is really
         // for this task, not the old dead task.
-        t->did_waitpid(status);
+        if (!t->did_waitpid(status)) {
+          // This is totally untested and almost certainly broken, but if the
+          // task was SIGKILLed out of the EXEC stop then we should probably
+          // just pretend the exec never happened.
+          step_state->continue_type = CONTINUE_SYSCALL;
+          break;
+        }
       }
       t->post_exec();
       t->session().scheduler().did_exit_execve(t);
@@ -929,8 +942,7 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
   /* TODO: send this through main loop. */
   /* TODO: mask off signals and avoid this loop. */
   do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
-    if (t->seen_ptrace_exit_event()) {
+    if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_UNLIMITED_TICKS)) {
       return;
     }
     if (t->status().is_syscall()) {
@@ -968,8 +980,8 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
     }
   } while (!t->is_disarm_desched_event_syscall());
 
-  // Exit the syscall.
-  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+  // Exit the syscall. If this fails, that's fine, we can ignore it.
+  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS);
 }
 
 /**
@@ -1127,10 +1139,13 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         Registers orig_regs = r;
         r.set_original_syscallno(-1);
         t->set_regs(r);
-        t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-        ASSERT(t, t->ip() == r.ip());
-        t->set_regs(orig_regs);
-        maybe_trigger_emulated_ptrace_syscall_exit_stop(t);
+        // If this fails because of premature exit, don't mess with the
+        // task anymore.
+        if (t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+          ASSERT(t, t->ip() == r.ip());
+          t->set_regs(orig_regs);
+          maybe_trigger_emulated_ptrace_syscall_exit_stop(t);
+        }
         return;
       }
       last_task_switchable = PREVENT_SWITCH;
@@ -1465,9 +1480,7 @@ static bool preinject_signal(RecordTask* t) {
      */
     LOG(debug) << "    maybe not in signal-stop (status " << t->status()
                << "); doing tgkill(SYSCALLBUF_DESCHED_SIGNAL)";
-    t->move_to_signal_stop();
-
-    if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
+    if (!t->move_to_signal_stop()) {
       /* We raced with an exit (e.g. due to a pending SIGKILL). */
       return false;
     }
@@ -1488,7 +1501,7 @@ static bool preinject_signal(RecordTask* t) {
 /**
  * Returns true if the signal should be delivered.
  * Returns false if this signal should not be delivered because another signal
- * occurred during delivery.
+ * occurred during delivery or there was a premature exit.
  * Must call t->stashed_signal_processed() once we're ready to unmask signals.
  */
 static bool inject_handled_signal(RecordTask* t) {
@@ -1506,7 +1519,9 @@ static bool inject_handled_signal(RecordTask* t) {
     // XXX we assume the kernel won't respond by notifying us of a different
     // signal. We don't want to do this with signals blocked because that will
     // save a bogus signal mask in the signal frame.
-    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
+    if (!t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS, sig)) {
+      return false;
+    }
     // Signal injection can change the sigmask due to sa_mask effects, lack of
     // SA_NODEFER, and signal frame construction triggering a synchronous
     // SIGSEGV.
@@ -1957,13 +1972,12 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
         t->record_event(Event::patch_syscall());
         return true;
       }
-    }
-
-    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
-      // task exited while we were trying to patch it.
-      // Make sure that this exit event gets processed
-      step_state->continue_type = DONT_CONTINUE;
-      return false;
+      if (!t->is_stopped()) {
+        // task exited while we were trying to patch it.
+        // Make sure that this exit event gets processed
+        step_state->continue_type = DONT_CONTINUE;
+        return false;
+      }
     }
 
     t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
@@ -2549,6 +2563,8 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   StepState step_state(CONTINUE);
 
+  ASSERT(t, t->is_stopped()) << "Somehow we're not stopped here; status="
+    << t->status();
   bool did_enter_syscall;
   if (rescheduled.by_waitpid &&
       handle_ptrace_event(&t, &step_state, &result, &did_enter_syscall)) {
@@ -2561,37 +2577,41 @@ RecordSession::RecordResult RecordSession::record_step() {
     if (did_enter_syscall && t->ev().type() == EV_SYSCALL) {
       syscall_state_changed(t, &step_state);
     }
-  } else if (rescheduled.by_waitpid && handle_signal_event(t, &step_state)) {
-    // Tracee may have exited while processing descheds; handle that.
-    if (handle_ptrace_exit_event(t)) {
-      // t may have been deleted.
-      last_task_switchable = ALLOW_SWITCH;
-      return result;
-    }
   } else {
-    runnable_state_changed(t, &step_state, &result, rescheduled.by_waitpid);
+    ASSERT(t, t->is_stopped()) << "handle_ptrace_event left us in a not-stopped state";
+    if (rescheduled.by_waitpid && handle_signal_event(t, &step_state)) {
+      // Tracee may have exited while processing descheds; handle that.
+      if (handle_ptrace_exit_event(t)) {
+        // t may have been deleted.
+        last_task_switchable = ALLOW_SWITCH;
+        return result;
+      }
+    } else {
+      ASSERT(t, t->is_stopped()) << "handle_signal_event left us in a not-stopped state";
+      runnable_state_changed(t, &step_state, &result, rescheduled.by_waitpid);
 
-    if (result.status != STEP_CONTINUE ||
-        step_state.continue_type == DONT_CONTINUE) {
-      return result;
-    }
+      if (result.status != STEP_CONTINUE ||
+          step_state.continue_type == DONT_CONTINUE) {
+        return result;
+      }
 
-    switch (t->ev().type()) {
-      case EV_DESCHED:
-        desched_state_changed(t);
-        break;
-      case EV_SYSCALL:
-        syscall_state_changed(t, &step_state);
-        break;
-      case EV_SIGNAL:
-      case EV_SIGNAL_DELIVERY:
-        if (signal_state_changed(t, &step_state)) {
-          // t may have been deleted
-          return result;
-        }
-        break;
-      default:
-        break;
+      switch (t->ev().type()) {
+        case EV_DESCHED:
+          desched_state_changed(t);
+          break;
+        case EV_SYSCALL:
+          syscall_state_changed(t, &step_state);
+          break;
+        case EV_SIGNAL:
+        case EV_SIGNAL_DELIVERY:
+          if (signal_state_changed(t, &step_state)) {
+            // t may have been deleted
+            return result;
+          }
+          break;
+        default:
+          break;
+      }
     }
   }
 

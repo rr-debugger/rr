@@ -241,8 +241,12 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
+  // Check if the task was unexpectedly killed via SIGKILL or equivalent.
+  bool is_exiting = !t->is_stopped() || t->ptrace_event() == PTRACE_EVENT_EXIT ||
+    t->was_reaped();
+
   // Unmap our scatch region if required
-  if (scratch_mem_was_mapped) {
+  if (scratch_mem_was_mapped && !is_exiting) {
     AutoRemoteSyscalls remote(t, DISABLE_MEMORY_PARAMS);
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               fixed_sp - 4096, 4096);
@@ -255,6 +259,14 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   auto regs = initial_regs;
   regs.set_ip(initial_ip);
   regs.set_sp(initial_sp);
+  if (is_exiting) {
+    // Don't restore status; callers need to see the task is exiting.
+    // And the other stuff we don't below won't work.
+    // But do restore registers so it looks like the exit happened in a clean state.
+    t->override_regs_during_exit(regs);
+    return;
+  }
+
   if (t->arch() == aarch64 && regs.syscall_may_restart()) {
     // On AArch64, the kernel restarts aborted syscalls using an internal `orig_x0`.
     // This gets overwritten everytime we make a syscall so we need to restore it
@@ -270,7 +282,11 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     regs.set_arg1(regs.orig_arg1());
     t->set_regs(regs);
     if (t->enter_syscall(true)) {
-      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        // Tracee died unexpectedly, there is nothing more we can do.
+        // Do not restore the status, we want callers to see that the task died.
+        return;
+      }
     }
     regs.set_ip(initial_ip);
     regs.set_syscallno(regs.original_syscallno());
@@ -286,7 +302,11 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     t->set_regs(regs);
     RecordTask* rt = static_cast<RecordTask*>(t);
     while (true) {
-      rt->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
+      if (!rt->resume_execution(RESUME_CONT, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        // Tracee died unexpectedly, there is nothing more we can do.
+        // Do not restore the status, we want callers to see that the task died.
+        return;
+      }
       if (rt->ptrace_event())
         break;
       rt->stash_sig();
@@ -365,15 +385,14 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   bool from_seccomp = initial_at_seccomp && t->ptrace_event() == PTRACE_EVENT_SECCOMP;
   if (use_singlestep_path && !from_seccomp) {
     while (true) {
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+      if (!t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        // Tracee was killed, there is nothing more we can do.
+        return -ESRCH;
+      }
       LOG(debug) << "Used singlestep path; status=" << t->status();
       // When a PTRACE_EVENT_EXIT is returned we don't update registers
       if (t->ip() != callregs.ip()) {
         // We entered the syscall, so stop now
-        break;
-      }
-      if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
-        // We died, just let it be
         break;
       }
       if (t->stop_sig() == SIGTRAP && t->get_siginfo().si_code == TRAP_TRACE) {
@@ -389,26 +408,24 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       ASSERT(t, false) << "Unexpected status " << t->status();
     }
   } else {
-    bool exited = false;
     if (from_seccomp) {
       LOG(debug) << "Skipping enter_syscall - already at seccomp stop";
     } else {
-      exited = !t->enter_syscall(true);
+      if (!t->enter_syscall(true)) {
+        // Tracee was killed, there is nothing more we can do.
+        // Ensure callers see the task death status.
+        return -ESRCH;
+      }
       LOG(debug) << "Used enter_syscall; status=" << t->status();
     }
-    // proceed to syscall exit
-    if (!exited) {
-      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-      LOG(debug) << "syscall exit status=" << t->status();
-    }
-  }
-  while (true) {
-    // If the syscall caused the task to exit, just stop now with that status.
-    if (t->seen_ptrace_exit_event() || t->status().reaped()) {
-      restore_wait_status = t->status();
-      LOG(debug) << "Task is dying, no status result";
+    if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+      // Tracee was killed, there is nothing more we can do.
+      // Ensure callers see the task death status.
       return -ESRCH;
     }
+    LOG(debug) << "syscall exit status=" << t->status();
+  }
+  while (true) {
     if (t->status().is_syscall() ||
         (t->stop_sig() == SIGTRAP &&
          is_kernel_trap(t->get_siginfo().si_code))) {
@@ -418,19 +435,25 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     }
     if (is_clone_syscall(syscallno, t->arch()) &&
         t->clone_syscall_is_complete(&new_tid_, t->arch())) {
-      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+        // Tracee was killed, there is nothing more we can do.
+        return -ESRCH;
+      }
       LOG(debug) << "got clone event; new status=" << t->status();
       continue;
     }
     if (ignore_signal(t)) {
       if (t->regs().syscall_may_restart()) {
         if (!t->enter_syscall(true)) {
-          // We died, just let it be
-          break;
+          // Tracee was killed, there is nothing more we can do.
+          return -ESRCH;
         }
         LOG(debug) << "signal ignored; restarting syscall, status="
                    << t->status();
-        t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+        if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+          // Tracee was killed, there is nothing more we can do.
+          return -ESRCH;
+        }
         LOG(debug) << "syscall exit status=" << t->status();
         continue;
       }

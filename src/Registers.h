@@ -548,6 +548,8 @@ public:
     return !(*this == other);
   }
 
+  void emulate_syscall_entry();
+
 private:
   template <typename Arch>
   void print_register_file_arch(FILE* f, const char* formats[]) const;

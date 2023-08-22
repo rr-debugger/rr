@@ -277,7 +277,8 @@ void Task::finish_emulated_syscall() {
   // Passing RESUME_NO_TICKS here is not only a small performance optimization,
   // but also avoids counting an event if the instruction immediately following
   // a syscall instruction is a conditional branch.
-  resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+  bool ok = resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS);
+  ASSERT(this, ok) << "Tracee exited unexpectedly";
 
   set_regs(r);
   wait_status = WaitStatus();
@@ -888,8 +889,10 @@ bool Task::enter_syscall(bool allow_exit) {
                                        Session::SECCOMP_BEFORE_PTRACE_SYSCALL;
   bool need_seccomp_event = seccomp_bpf_enabled;
   while (need_ptrace_syscall_event || need_seccomp_event) {
-    resume_execution(need_ptrace_syscall_event ? RESUME_SYSCALL : RESUME_CONT,
-                     RESUME_WAIT, RESUME_NO_TICKS);
+    if (!resume_execution(need_ptrace_syscall_event ? RESUME_SYSCALL : RESUME_CONT,
+                          RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+      return false;
+    }
     if (is_ptrace_seccomp_event()) {
       ASSERT(this, need_seccomp_event);
       need_seccomp_event = false;
@@ -934,7 +937,9 @@ bool Task::exit_syscall() {
                            Session::PTRACE_SYSCALL_BEFORE_SECCOMP) &&
                           !is_ptrace_seccomp_event();
   while (true) {
-    resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    if (!resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+      return false;
+    }
     if (will_see_seccomp && is_ptrace_seccomp_event()) {
       will_see_seccomp = false;
       continue;
@@ -967,12 +972,11 @@ bool Task::exit_syscall_and_prepare_restart() {
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
   if (!exit_syscall()) {
-    // The tracee suddenly exited. To get this to replay correctly, we need to
+    // The tracee unexpectedly exited. To get this to replay correctly, we need to
     // make it look like we really entered the syscall. Then
     // handle_ptrace_exit_event will record something appropriate.
-    r.set_original_syscallno(syscallno);
-    r.set_syscall_result(-ENOSYS);
-    set_regs(r);
+    r.emulate_syscall_entry();
+    override_regs_during_exit(r);
     return false;
   }
   LOG(debug) << "exit_syscall_and_prepare_restart done";
@@ -1437,7 +1441,7 @@ void Task::work_around_KNL_string_singlestep_bug() {
   }
 }
 
-void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
+bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   // Ensure our HW debug registers are up to date before we execute any code.
   // If this fails because the task died, the code below will detect it.
@@ -1497,7 +1501,6 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     flush_regs();
   }
 
-  bool detected_exit = false;
   if (session().is_recording() && !seen_ptrace_exit_event()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
      * and advances to the PTRACE_EXIT_EVENT ptrace-stop just before we
@@ -1524,24 +1527,42 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
              result.status.ptrace_event() == PTRACE_EVENT_EXIT ||
                  result.status.reaped())
           << "got " << result.status;
-      did_waitpid(result.status);
-      detected_exit = true;
+      LOG(debug) << "Task " << tid << " exited unexpectedly with status "
+          << result.status;
+      if (did_waitpid(result.status)) {
+        // We reached a new stop (or actually reaped the task).
+        // Consider this "resume execution" to be done.
+        return wait_how != RESUME_WAIT_NO_EXIT;
+      }
+      ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXIT)
+        << "did_waitpid should always succeed for reaped() statuses";
+      // The tracee must have been kicked out of PTRACE_EVENT_EXIT
+      // by a SIGKILL (only possible on older kernels).
+      // If we were supposed to wait, we've failed.
+      // We can't wait now because on old kernels tasks can block
+      // indefinitely even after PTRACE_EVENT_EXIT (e.g. due to coredumping).
+      // We don't know what state it's in exactly, but registers haven't changed
+      // since nothing has really happened since the last stop.
+      set_stopped(false);
+      return RESUME_NONBLOCKING == wait_how;
     }
   }
-  if (detected_exit) {
-    LOG(debug) << "Task " << tid << " exited unexpectedly";
-  } else {
-    ASSERT(this, setup_succeeded);
-    ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
-    // If ptrace_if_stopped failed, it means we're running along the
-    // exit path due to a SIGKILL or equivalent, so just like if it
-    // succeeded, we are stopped and will receive a wait notification.
-    set_stopped(false);
-    extra_registers_known = false;
-    if (RESUME_WAIT == wait_how) {
-      wait();
+  ASSERT(this, setup_succeeded);
+  ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
+  // If ptrace_if_stopped failed, it means we're running along the
+  // exit path due to a SIGKILL or equivalent, so just like if it
+  // succeeded, we will eventually receive a wait notification.
+  set_stopped(false);
+  extra_registers_known = false;
+  if (RESUME_NONBLOCKING != wait_how) {
+    if (!wait()) {
+      return false;
+    }
+    if (wait_how == RESUME_WAIT_NO_EXIT) {
+      return ptrace_event() != PTRACE_EVENT_EXIT && !was_reaped();
     }
   }
+  return true;
 }
 
 void Task::set_regs(const Registers& regs) {
@@ -1554,6 +1575,12 @@ void Task::set_regs(const Registers& regs) {
     registers_dirty = true;
     registers = regs;
   }
+}
+
+void Task::override_regs_during_exit(const Registers& regs) {
+  orig_syscallno_dirty = true;
+  registers_dirty = true;
+  registers = regs;
 }
 
 void Task::flush_regs() {
@@ -1962,7 +1989,7 @@ bool Task::account_for_potential_ptrace_interrupt_stop(WaitStatus status) {
   return false;
 }
 
-void Task::wait(double interrupt_after_elapsed) {
+bool Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking wait for " << tid << " ...";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == -1);
 
@@ -1994,12 +2021,8 @@ void Task::wait(double interrupt_after_elapsed) {
       /* The process died without us getting a PTRACE_EXIT_EVENT notification.
        * This is possible if the process receives a SIGKILL while in the exit
        * event stop, but before we were able to read the event notification.
-       * We handle this situation by synthesizing an exit event, but otherwise
-       * going about our regular business.
        */
-      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
-      result.status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-      break;
+      return false;
     }
     ASSERT(this, result.code == WAIT_NO_STATUS);
   }
@@ -2010,7 +2033,7 @@ void Task::wait(double interrupt_after_elapsed) {
       LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << result.status;
     }
   }
-  did_waitpid(result.status);
+  return did_waitpid(result.status);
 }
 
 void Task::canonicalize_regs(SupportedArch syscall_arch) {
@@ -2087,11 +2110,11 @@ void Task::set_aarch64_tls_register(uintptr_t val) {
      we tried to set. */
 }
 
-void Task::did_waitpid(WaitStatus status) {
+bool Task::did_waitpid(WaitStatus status) {
   if (is_detached_proxy() &&
       (status.stop_sig() == SIGSTOP || status.stop_sig() == SIGCONT)) {
     LOG(debug) << "Task " << tid << " is a detached proxy, ignoring status " << status;
-    return;
+    return true;
   }
 
   LOG(debug) << "  Task " << tid << " changed status to " << status;
@@ -2110,7 +2133,7 @@ void Task::did_waitpid(WaitStatus status) {
       // here is get out quickly and the higher-level function should go ahead
       // and delete us.
       wait_status = status;
-      return;
+      return true;
     }
     LOG(debug) << "Unexpected process reap for " << tid;
     /* Mark buffers as having been destroyed. We missed our chance
@@ -2146,11 +2169,13 @@ void Task::did_waitpid(WaitStatus status) {
     } else if (status.stop_sig()) {
       if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;
-        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+        // Let's pretend this stop never happened.
+        set_stopped(false);
+        return false;
       }
     }
 
-    // An unstable exit can cause a task to exit without us having run it, in
+    // A SIGKILL or equivalent can cause a task to exit without us having run it, in
     // which case we might have pending register changes for it that are now
     // irrelevant. In that case we just throw away our register changes and use
     // whatever the kernel now has.
@@ -2201,7 +2226,12 @@ void Task::did_waitpid(WaitStatus status) {
 #endif
       else {
         LOG(debug) << "Unexpected process death for " << tid;
-        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+        // Let's pretend this stop never happened.
+        // Note that pending_siginfo may have been overwritten above,
+        // but in that case we're going to ignore this signal-stop
+        // so it doesn't matter.
+        set_stopped(false);
+        return false;
       }
     }
   }
@@ -2297,6 +2327,7 @@ void Task::did_waitpid(WaitStatus status) {
   }
 
   did_wait();
+  return true;
 }
 
 template <typename Arch>
@@ -2398,7 +2429,8 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
 
   // wait() before trying to do anything that might need to
   // use ptrace to access memory
-  t->wait();
+  bool ok = t->wait();
+  ASSERT(t, ok) << "Task " << t->tid << " killed unexpectedly; not sure how to handle this";
 
   t->post_wait_clone(this, flags);
   if (CLONE_SHARE_THREAD_GROUP & flags) {
@@ -3618,7 +3650,9 @@ long Task::ptrace_seize(pid_t tid, Session& session) {
   sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
   sigaction(SIGALRM, &sa, nullptr);
 
-  t->wait();
+  if (!t->wait()) {
+    FATAL() << "Tracee died before reaching SIGSTOP";
+  }
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
     t->proceed_to_exit();
     FATAL() << "Tracee died before reaching SIGSTOP\n"
@@ -4020,8 +4054,10 @@ void Task::dup_from(Task *other) {
 
 /**
  * Proceeds until the next system call, which is being executed.
+ * Returns false if did_waitpid failed because the task got SIGKILL
+ * or equivalent.
  */
-static void __ptrace_cont(Task* t, ResumeRequest resume_how,
+static bool __ptrace_cont(Task* t, ResumeRequest resume_how,
                           SupportedArch syscall_arch, int expect_syscallno,
                           int expect_syscallno2 = -1, pid_t new_tid = -1) {
   t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
@@ -4044,7 +4080,9 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
       t->hpc.set_tid(new_tid);
       t->tid = new_tid;
     }
-    t->did_waitpid(result.status);
+    if (!t->did_waitpid(result.status)) {
+      return false;
+    }
 
     if (ReplaySession::is_ignored_signal(t->status().stop_sig())) {
       t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
@@ -4063,6 +4101,7 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
              current_syscall == expect_syscallno2)
       << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
       << ", but instead at " << syscall_name(current_syscall, syscall_arch);
+  return true;
 }
 
 void Task::did_handle_ptrace_exit_event() {
@@ -4126,9 +4165,10 @@ void Task::os_exec(SupportedArch exec_arch, std::string filename)
    * tid, no matter what tid it was before.
    */
   pid_t tgid = real_tgid();
-  __ptrace_cont(this, RESUME_SYSCALL, arch(), expect_syscallno,
-                syscall_number_for_execve(exec_arch),
-                tgid == tid ? -1 : tgid);
+  bool ok = __ptrace_cont(this, RESUME_SYSCALL, arch(), expect_syscallno,
+                          syscall_number_for_execve(exec_arch),
+                          tgid == tid ? -1 : tgid);
+  ASSERT(this, ok) << "Task " << tid << " got killed while trying to exec";
   LOG(debug) << this->status() << " " << this->regs();
   if (this->regs().syscall_result()) {
     errno = -this->regs().syscall_result();
@@ -4169,7 +4209,7 @@ void Task::tgkill(int sig) {
   ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
 }
 
-void Task::move_to_signal_stop()
+bool Task::move_to_signal_stop()
 {
   LOG(debug) << "    maybe not in signal-stop (status " << status()
              << "); doing tgkill(SYSCALLBUF_DESCHED_SIGNAL)";
@@ -4197,7 +4237,9 @@ void Task::move_to_signal_stop()
     old_ip = old_ip.decrement_by_syscall_insn_length(arch());
   }
   do {
-    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+    if (!resume_execution(RESUME_SINGLESTEP, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+      return false;
+    }
     ASSERT(this, old_ip == ip())
         << "Singlestep actually advanced when we "
         << "just expected a signal; was at " << old_ip << " now at "
@@ -4205,6 +4247,7 @@ void Task::move_to_signal_stop()
     // Ignore any pending TIME_SLICE_SIGNALs and continue until we get our
     // SYSCALLBUF_DESCHED_SIGNAL.
   } while (stop_sig() == PerfCounters::TIME_SLICE_SIGNAL);
+  return true;
 }
 
 bool Task::should_apply_rseq_abort(EventType event_type, remote_code_ptr* new_ip,

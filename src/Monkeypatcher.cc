@@ -1218,7 +1218,9 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
   auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], ip, 4, 0);
   if (!success && entering_syscall) {
     // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
-    t->enter_syscall();
+    if (!t->enter_syscall()) {
+      return false;
+    }
   }
 
   if (!success) {
@@ -1284,6 +1286,11 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   // We want our mmap records to be associated with the next (PATCH_SYSCALL)
   // event, not a FLUSH_SYSCALLBUF event.
   t->maybe_flush_syscallbuf();
+  if (!t->is_stopped()) {
+    // Tracee was unexpectedly kicked out of a ptrace-stop by SIGKILL or
+    // equivalent. Abort trying to patch.
+    return false;
+  }
 
   if (arch == aarch64) {
     return try_patch_syscall_aarch64(t, entering_syscall);

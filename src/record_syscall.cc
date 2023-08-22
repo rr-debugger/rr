@@ -3355,7 +3355,10 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
   }
 
   while (true) {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
+      // Tracee died unexpectedly during clone.
+      return ALLOW_SWITCH;
+    }
     // XXX handle stray signals?
     if (t->ptrace_event()) {
       break;
@@ -3366,7 +3369,7 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
       LOG(debug) << "clone failed, returning "
                  << errno_name(-t->regs().syscall_result_signed());
       syscall_state.emulate_result(t->regs().syscall_result());
-      // clone failed and we're existing the syscall with an error. Reenter
+      // clone failed and we're exiting the syscall with an error. Reenter
       // the syscall so that we're in the same state as the normal execution
       // path.
       t->ev().Syscall().failed_during_preparation = true;

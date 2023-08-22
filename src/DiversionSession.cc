@@ -157,18 +157,14 @@ static void process_syscall(Task* t, int syscallno){
   RR_ARCH_FUNCTION(process_syscall_arch, t->arch(), t, syscallno)
 }
 
-static void handle_ptrace_exit_event(Task *t) {
+static bool maybe_handle_task_exit(Task* t, TaskContext* context,
+                                   DiversionSession::DiversionResult* result) {
+  if (t->ptrace_event() != PTRACE_EVENT_EXIT && !t->was_reaped()) {
+    return false;
+  }
   t->did_kill();
   t->detach();
   delete t;
-}
-
-static bool maybe_handle_task_exit(Task* t, TaskContext* context,
-                                   DiversionSession::DiversionResult* result) {
-  if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
-    return false;
-  }
-  handle_ptrace_exit_event(t);
   // This is now a dangling pointer, so clear it.
   context->task = nullptr;
   result->status = DiversionSession::DIVERSION_EXITED;
@@ -198,16 +194,20 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
 
   while (true) {
     switch (command) {
-      case RUN_CONTINUE:
+      case RUN_CONTINUE: {
         LOG(debug) << "Continuing to next syscall";
-        t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
-                            signal_to_deliver);
+        bool ok = t->resume_execution(RESUME_SYSEMU, RESUME_WAIT,
+                                      RESUME_UNLIMITED_TICKS, signal_to_deliver);
+        ASSERT(t, ok) << "Tracee was killed unexpectedly";
         break;
-      case RUN_SINGLESTEP:
+      }
+      case RUN_SINGLESTEP: {
         LOG(debug) << "Stepping to next insn/syscall";
-        t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
-                           RESUME_UNLIMITED_TICKS, signal_to_deliver);
+        bool ok = t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
+                                      RESUME_UNLIMITED_TICKS, signal_to_deliver);
+        ASSERT(t, ok) << "Tracee was killed unexpectedly";
         break;
+      }
       default:
         FATAL() << "Illegal run command " << command;
     }

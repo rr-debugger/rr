@@ -106,6 +106,10 @@ public:
    * The new current() task is guaranteed to either have already been
    * runnable, or have been made runnable by a waitpid status change (in
    * which case, result.by_waitpid will be true.
+   * 
+   * After this, if Rescheduled::interrupted_by_signal is false,
+   * and there is a new current task, its is_stopped() must
+   * be true.
    */
   struct Rescheduled {
     bool interrupted_by_signal;
