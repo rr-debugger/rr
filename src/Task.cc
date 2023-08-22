@@ -2157,7 +2157,6 @@ void Task::did_waitpid(WaitStatus status) {
      *      seems hardly worth it.
      */
     destroy_buffers(nullptr, nullptr);
-    status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   } else {
     bool was_stopped = is_stopped_;
     // Mark as stopped now. If we fail one of the ticks assertions below,
@@ -2235,15 +2234,16 @@ void Task::did_waitpid(WaitStatus status) {
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 
-  if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
+  if (was_reaped) {
     ASSERT(this, !handled_ptrace_exit_event);
     seen_ptrace_exit_event = true;
-    if (already_reaped()) {
-      // NB: It's possible for us to have already reaped in the
-      // "Unexpected process reap" case above. If that's happened, there's
-      // nothing more to do here.
-      handled_ptrace_exit_event = true;
-    }
+    // NB: It's possible for us to have already reaped in the
+    // "Unexpected process reap" case above. If that's happened, there's
+    // nothing more to do here.
+    handled_ptrace_exit_event = true;
+  } else if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
+    ASSERT(this, !handled_ptrace_exit_event);
+    seen_ptrace_exit_event = true;
   } else {
     if (arch() == x86 || arch() == x86_64) {
       // Clear the single step flag in case we got here by taking a signal
