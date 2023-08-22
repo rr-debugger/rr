@@ -2113,27 +2113,6 @@ void Task::did_waitpid(WaitStatus status) {
 
   LOG(debug) << "  Task " << tid << " changed status to " << status;
 
-  // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
-  // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT
-  // generally lets other stops win (and thus doesn't inject it's own stop), but
-  // if the other stop was already done processing, even we didn't see it yet,
-  // the stop will still be queued, so we could see the other stop and then the
-  // PTRACE_INTERRUPT group stop.
-  // When we issue PTRACE_INTERRUPT, we this set this counter to 2, and here
-  // we decrement it on every stop such that while this counter is positive,
-  // any group-stop could be one induced by PTRACE_INTERRUPT
-  bool siginfo_overridden = false;
-  if (account_for_potential_ptrace_interrupt_stop(status)) {
-    // Assume this was PTRACE_INTERRUPT and thus treat this as
-    // TIME_SLICE_SIGNAL instead.
-    status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
-    memset(&pending_siginfo, 0, sizeof(pending_siginfo));
-    pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
-    pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
-    pending_siginfo.si_code = POLL_IN;
-    siginfo_overridden = true;
-  }
-
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
   Ticks more_ticks = 0;
@@ -2164,7 +2143,24 @@ void Task::did_waitpid(WaitStatus status) {
     // which needs to know that the tracee is stopped.
     set_stopped(true);
 
-    if (!siginfo_overridden && status.stop_sig()) {
+    // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
+    // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT
+    // generally lets other stops win (and thus doesn't inject it's own stop), but
+    // if the other stop was already done processing, even we didn't see it yet,
+    // the stop will still be queued, so we could see the other stop and then the
+    // PTRACE_INTERRUPT group stop.
+    // When we issue PTRACE_INTERRUPT, we this set this counter to 2, and here
+    // we decrement it on every stop such that while this counter is positive,
+    // any group-stop could be one induced by PTRACE_INTERRUPT
+    if (account_for_potential_ptrace_interrupt_stop(status)) {
+      // Assume this was PTRACE_INTERRUPT and thus treat this as
+      // TIME_SLICE_SIGNAL instead.
+      status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
+      memset(&pending_siginfo, 0, sizeof(pending_siginfo));
+      pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
+      pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
+      pending_siginfo.si_code = POLL_IN;
+    } else if (status.stop_sig()) {
       if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;
         status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
