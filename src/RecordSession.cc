@@ -157,7 +157,7 @@ static bool looks_like_syscall_entry(RecordTask* t) {
  * true, t has been deleted and cannot be referenced again.
  */
 static bool handle_ptrace_exit_event(RecordTask* t) {
-  if (t->already_reaped()) {
+  if (t->was_reaped()) {
     t->did_reach_zombie();
     return true;
   }
@@ -301,8 +301,8 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     !t->waiting_for_pid_namespace_tasks_to_exit();
   record_exit_trace_event(t, exit_status);
   t->record_exit_event(
-    (!t->already_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
-  if (!t->already_reaped()) {
+    (!t->was_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
+  if (!t->was_reaped()) {
     t->proceed_to_exit(may_wait_exit);
   }
   t->do_ptrace_exit_stop(exit_status);

@@ -253,7 +253,7 @@ RecordTask::~RecordTask() {
     // We kept the zombie of the original task around to prevent its pid from
     // being re-used. Reap that now.
     proceed_to_exit();
-    if (!already_reaped() && may_reap()) {
+    if (!was_reaped() && may_reap()) {
       reap();
     }
     did_kill();
@@ -846,14 +846,14 @@ void RecordTask::did_reach_zombie() {
   as->erase_task(this);
   fds->erase_task(this);
 
-  if (!already_reaped()) {
+  if (!was_reaped()) {
     if (may_reap()) {
       reap();
     } else {
       waiting_for_reap = true;
     }
   }
-  if ((already_reaped() || !waiting_for_reap) && !emulated_stop_pending) {
+  if ((was_reaped() || !waiting_for_reap) && !emulated_stop_pending) {
     delete this;
   }
 }

@@ -179,7 +179,7 @@ void Task::proceed_to_exit(bool wait) {
 }
 
 WaitStatus Task::kill() {
-  if (already_reaped()) {
+  if (was_reaped()) {
     return this->status();
   }
   /* This call is racy. There is basically three situations:
@@ -253,7 +253,7 @@ Task::~Task() {
     ASSERT(this, handled_ptrace_exit_event);
     ASSERT(this, syscallbuf_child.is_null());
 
-    if (!session().is_recording() && !already_reaped()) {
+    if (!session().is_recording() && !was_reaped()) {
       // Reap the zombie.
       WaitResult result = WaitManager::wait_exit(WaitOptions(tid));
       ASSERT(this, result.code == WAIT_OK || result.code == WAIT_NO_CHILD);

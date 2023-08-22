@@ -1037,7 +1037,7 @@ public:
     return address_of_last_execution_resume;
   }
 
-  bool already_reaped() const {
+  bool was_reaped() const {
     return was_reaped_;
   }
 
