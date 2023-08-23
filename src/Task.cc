@@ -436,16 +436,17 @@ done:
 void Task::unmap_buffers_for(
     AutoRemoteSyscalls& remote, Task* other,
     remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child) {
-  auto arch = remote.task()->arch();
   if (other->scratch_ptr) {
-    remote.infallible_syscall(syscall_number_for_munmap(arch),
-                              other->scratch_ptr, other->scratch_size);
-    vm()->unmap(this, other->scratch_ptr, other->scratch_size);
+    if (remote.infallible_munmap_syscall_if_alive(
+          other->scratch_ptr, other->scratch_size)) {
+      vm()->unmap(this, other->scratch_ptr, other->scratch_size);
+    }
   }
   if (!saved_syscallbuf_child.is_null()) {
-    remote.infallible_syscall(syscall_number_for_munmap(arch),
-                              saved_syscallbuf_child, other->syscallbuf_size);
-    vm()->unmap(this, saved_syscallbuf_child, other->syscallbuf_size);
+    if (remote.infallible_munmap_syscall_if_alive(
+          saved_syscallbuf_child, other->syscallbuf_size)) {
+      vm()->unmap(this, saved_syscallbuf_child, other->syscallbuf_size);
+    }
   }
 }
 

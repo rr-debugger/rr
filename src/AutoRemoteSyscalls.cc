@@ -745,10 +745,38 @@ remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
           : infallible_syscall_ptr_if_alive(syscall_number_for_mmap(arch()), addr,
                                             length, prot, flags, child_fd,
                                             offset_bytes);
-  if (ret && (flags & MAP_FIXED)) {
-    ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
+  if (flags & MAP_FIXED) {
+    if (ret) {
+      ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
+    } else {
+      if (!t->vm()->has_mapping(addr)) {
+        KernelMapping km = t->vm()->read_kernel_mapping(t, addr);
+        if (km.size()) {
+          ASSERT(t, km.start() == addr && km.size() == ceil_page_size(length));
+          // The mapping was created. Pretend this call succeeded.
+          ret = addr;
+        }
+      }
+    }
   }
   return ret;
+}
+
+bool AutoRemoteSyscalls::infallible_munmap_syscall_if_alive(
+    remote_ptr<void> addr, size_t length) {
+  long ret = infallible_syscall_if_alive(syscall_number_for_munmap(arch()),
+                                         addr, length);
+  if (ret) {
+    if (t->vm()->has_mapping(addr)) {
+      KernelMapping km = t->vm()->read_kernel_mapping(t, addr);
+      if (!km.size()) {
+        // The unmap happened but the task must have died before
+        // reporting the status.
+        ret = 0;
+      }
+    }
+  }
+  return !ret;
 }
 
 int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
