@@ -2223,7 +2223,8 @@ static uint64_t read_pid_ns(const RecordTask* t) {
 }
 
 bool RecordTask::waiting_for_pid_namespace_tasks_to_exit() const {
-  if (tg->tgid_own_namespace != 1) {
+  // read_pid_ns() will fail if we're reaped
+  if (tg->tgid_own_namespace != 1 || was_reaped()) {
     return false;
   }
   // This might be the last live thread for pid-1 in the pid namespace.
