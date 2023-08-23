@@ -248,7 +248,6 @@ WaitStatus Task::kill() {
 
 Task::~Task() {
   if (!forgotten) {
-    ASSERT(this, seen_ptrace_exit_event);
     ASSERT(this, handled_ptrace_exit_event_);
     ASSERT(this, syscallbuf_child.is_null());
 
@@ -1096,7 +1095,7 @@ string Task::read_c_str(remote_ptr<char> child_addr, bool *ok) {
 }
 
 const Registers& Task::regs() const {
-  ASSERT(this, is_stopped_);
+  ASSERT(this, is_stopped_ || was_reaped_);
   return registers;
 }
 
@@ -2215,11 +2214,6 @@ void Task::did_waitpid(WaitStatus status) {
 
   if (was_reaped_) {
     ASSERT(this, !handled_ptrace_exit_event_);
-    seen_ptrace_exit_event = true;
-    // NB: It's possible for us to have already reaped in the
-    // "Unexpected process reap" case above. If that's happened, there's
-    // nothing more to do here.
-    handled_ptrace_exit_event_ = true;
   } else if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
     ASSERT(this, !handled_ptrace_exit_event_);
     seen_ptrace_exit_event = true;
@@ -4055,7 +4049,6 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
 }
 
 void Task::did_handle_ptrace_exit_event() {
-  ASSERT(this, seen_ptrace_exit_event);
   ASSERT(this, !handled_ptrace_exit_event_);
   handled_ptrace_exit_event_ = true;
 }

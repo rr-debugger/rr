@@ -1035,6 +1035,9 @@ public:
   bool was_reaped() const {
     return was_reaped_;
   }
+  bool handled_ptrace_exit_event() const {
+    return handled_ptrace_exit_event_;
+  }
 
   void os_exec(SupportedArch arch, std::string filename);
   void os_exec_stub(SupportedArch arch) {

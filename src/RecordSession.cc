@@ -158,26 +158,15 @@ static bool looks_like_syscall_entry(RecordTask* t) {
  */
 static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->was_reaped()) {
-    t->did_reach_zombie();
-    return true;
-  }
-
-  if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
+    if (t->handled_ptrace_exit_event()) {
+      t->did_reach_zombie();
+      return true;
+    }
+  } else if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
     return false;
   }
 
-  if (t->waiting_for_pid_namespace_tasks_to_exit()) {
-    // We could be waiting for other processes in the pid namespace to exit,
-    // which causes ptrace to report ESRCH, triggering our synthetic-PTRACE_EVENT_EXIT
-    // cleanup path. Check if we're in a real ptrace stop.
-    siginfo_t dummy_siginfo;
-    if (!t->ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &dummy_siginfo)) {
-      t->waiting_for_ptrace_exit = true;
-      return true;
-    }
-  }
-
-  if (t->stable_exit) {
+  if (t->stable_exit || t->was_reaped()) {
     LOG(debug) << "stable exit";
   } else {
     if (!t->may_be_blocked()) {
@@ -275,16 +264,20 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     t->destroy_buffers(nullptr, nullptr);
   }
 
-  record_robust_futex_changes(t);
-
   WaitStatus exit_status;
-  unsigned long msg = 0;
-  // If ptrace_if_stopped fails, then the task has been killed by SIGKILL
-  // or equivalent.
-  if (t->ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &msg)) {
-    exit_status = WaitStatus(msg);
+  if (t->was_reaped()) {
+    exit_status = t->status();
   } else {
-    exit_status = WaitStatus::for_fatal_sig(SIGKILL);
+    record_robust_futex_changes(t);
+
+    unsigned long msg = 0;
+    // If ptrace_if_stopped fails, then the task has been killed by SIGKILL
+    // or equivalent.
+    if (t->ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &msg)) {
+      exit_status = WaitStatus(msg);
+    } else {
+      exit_status = WaitStatus::for_fatal_sig(SIGKILL);
+    }
   }
 
   t->did_handle_ptrace_exit_event();
@@ -297,7 +290,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // tasks in its pid namespace that need to exit and this is the last thread
   // of pid-1 in that namespace, because the kernel must reap them before
   // letting this task complete its exit.
-  bool may_wait_exit = !is_coredumping_signal(exit_status.fatal_sig()) &&
+  bool may_wait_exit = !t->was_reaped() && !is_coredumping_signal(exit_status.fatal_sig()) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
   record_exit_trace_event(t, exit_status);
   t->record_exit_event(
@@ -308,7 +301,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   t->do_ptrace_exit_stop(exit_status);
   if (may_wait_exit) {
     t->did_reach_zombie();
-  } else {
+  } else if (!t->was_reaped()) {
     t->waiting_for_reap = true;
   }
   return true;
