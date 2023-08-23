@@ -154,7 +154,7 @@ static bool looks_like_syscall_entry(RecordTask* t) {
 
 /**
  * Return true if we handle a ptrace exit event for task t. When this returns
- * true, t has been deleted and cannot be referenced again.
+ * true, t may have been deleted.
  */
 static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->was_reaped()) {
