@@ -1311,7 +1311,7 @@ protected:
   // or anything like that in an already deceased task.
   // We might defer handling the exit (e.g. if there's an ongoing execve).
   // If this is true, `seen_ptrace_exit_event` must be true.
-  bool handled_ptrace_exit_event;
+  bool handled_ptrace_exit_event_;
 
   // A counter for the number of stops for which the stop may have been caused
   // by PTRACE_INTERRUPT. See description in do_waitpid

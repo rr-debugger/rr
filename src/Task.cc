@@ -98,7 +98,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       session_(&session),
       top_of_stack(),
       seen_ptrace_exit_event(false),
-      handled_ptrace_exit_event(false),
+      handled_ptrace_exit_event_(false),
       expecting_ptrace_interrupt_stop(0),
       was_reaped_(false),
       forgotten(false) {
@@ -249,7 +249,7 @@ WaitStatus Task::kill() {
 Task::~Task() {
   if (!forgotten) {
     ASSERT(this, seen_ptrace_exit_event);
-    ASSERT(this, handled_ptrace_exit_event);
+    ASSERT(this, handled_ptrace_exit_event_);
     ASSERT(this, syscallbuf_child.is_null());
 
     if (!session().is_recording() && !was_reaped()) {
@@ -457,7 +457,7 @@ void Task::did_kill()
    * other that we didn't kill ourselves
    */
   seen_ptrace_exit_event = true;
-  handled_ptrace_exit_event = true;
+  handled_ptrace_exit_event_ = true;
   syscallbuf_child = nullptr;
   /* No need to unmap/close things in the child here - the kernel did that for
    * us when the child died. */
@@ -2102,7 +2102,7 @@ void Task::did_waitpid(WaitStatus status) {
 
   if (status.reaped()) {
     was_reaped_ = true;
-    if (handled_ptrace_exit_event) {
+    if (handled_ptrace_exit_event_) {
       LOG(debug) << "Reaped task late " << tid;
       // We did not reap this task when it exited, likely because it was a
       // thread group leader blocked on the exit of the other members of
@@ -2214,14 +2214,14 @@ void Task::did_waitpid(WaitStatus status) {
   ticks += more_ticks;
 
   if (was_reaped_) {
-    ASSERT(this, !handled_ptrace_exit_event);
+    ASSERT(this, !handled_ptrace_exit_event_);
     seen_ptrace_exit_event = true;
     // NB: It's possible for us to have already reaped in the
     // "Unexpected process reap" case above. If that's happened, there's
     // nothing more to do here.
-    handled_ptrace_exit_event = true;
+    handled_ptrace_exit_event_ = true;
   } else if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
-    ASSERT(this, !handled_ptrace_exit_event);
+    ASSERT(this, !handled_ptrace_exit_event_);
     seen_ptrace_exit_event = true;
   } else {
     if (arch() == x86 || arch() == x86_64) {
@@ -4056,8 +4056,8 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
 
 void Task::did_handle_ptrace_exit_event() {
   ASSERT(this, seen_ptrace_exit_event);
-  ASSERT(this, !handled_ptrace_exit_event);
-  handled_ptrace_exit_event = true;
+  ASSERT(this, !handled_ptrace_exit_event_);
+  handled_ptrace_exit_event_ = true;
 }
 
 void Task::os_exec(SupportedArch exec_arch, std::string filename)
