@@ -91,7 +91,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       did_set_breakpoint_after_cpuid(false),
       is_stopped_(false),
       seccomp_bpf_enabled(false),
-      detected_unexpected_exit(false),
       registers_dirty(false),
       orig_syscallno_dirty(false),
       extra_registers(a),
@@ -1531,8 +1530,6 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   }
   if (detected_exit || is_dying()) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
-    // wait() will see this and report the ptrace-exit event.
-    detected_unexpected_exit = true;
   } else {
     ASSERT(this, setup_succeeded);
     ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
@@ -1943,16 +1940,6 @@ static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {
 // waitpid to return EINTR and that's all we need.
 static void handle_alarm_signal(__attribute__((unused)) int sig) {}
 
-bool Task::wait_unexpected_exit() {
-  if (detected_unexpected_exit) {
-    LOG(debug) << "Unexpected (SIGKILL) exit was detected; reporting it now";
-    did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
-    detected_unexpected_exit = false;
-    return true;
-  }
-  return false;
-}
-
 bool Task::do_ptrace_interrupt() {
   errno = 0;
   fallible_ptrace(PTRACE_INTERRUPT, nullptr, nullptr);
@@ -1978,10 +1965,6 @@ bool Task::account_for_potential_ptrace_interrupt_stop(WaitStatus status) {
 void Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking wait for " << tid << " ...";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == -1);
-
-  if (wait_unexpected_exit()) {
-    return;
-  }
 
   bool sent_wait_interrupt = false;
   WaitResult result;
@@ -4032,9 +4015,6 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
                           int expect_syscallno2 = -1, pid_t new_tid = -1) {
   t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
   while (true) {
-    if (t->wait_unexpected_exit()) {
-      break;
-    }
     // Do our own waiting instead of calling Task::wait() so we can detect and
     // handle tid changes due to off-main-thread execve.
     WaitOptions options(t->tid);

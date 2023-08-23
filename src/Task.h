@@ -714,11 +714,6 @@ public:
    * interrupt_after_elapsed == 0.0, the interrupt will happen immediately.
    */
   void wait(double interrupt_after_elapsed = -1);
-  /**
-   * Return true if an unexpected exit was already detected for this task and
-   * it is ready to be reported.
-   */
-  bool wait_unexpected_exit();
 
   /**
    * Currently we don't allow recording across uid changes, so we can
@@ -1028,7 +1023,7 @@ public:
   long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
   bool is_dying() const {
-    return seen_ptrace_exit_event || detected_unexpected_exit;
+    return seen_ptrace_exit_event;
   }
 
   void did_handle_ptrace_exit_event();
@@ -1279,9 +1274,6 @@ protected:
    * in the first system call issued by the initial tracee (after it returns
    * from kill(SIGSTOP) to synchronize with the tracer). */
   bool seccomp_bpf_enabled;
-  // True when we consumed a PTRACE_EVENT_EXIT that was about to race with
-  // a resume_execution, that was issued while stopped (i.e. SIGKILL).
-  bool detected_unexpected_exit;
   // True when 'registers' has changes that haven't been flushed back to the
   // task yet.
   bool registers_dirty;

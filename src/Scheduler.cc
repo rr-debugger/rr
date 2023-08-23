@@ -209,10 +209,6 @@ private:
 };
 
 bool WaitAggregator::try_wait(RecordTask* t) {
-  if (t->wait_unexpected_exit()) {
-    return true;
-  }
-
   if (!did_poll_stops) {
     if (num_waits_before_polling_stops > 0) {
       --num_waits_before_polling_stops;
