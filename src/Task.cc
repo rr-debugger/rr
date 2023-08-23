@@ -2215,11 +2215,6 @@ void Task::did_waitpid(WaitStatus status) {
 
   if (was_reaped_) {
     ASSERT(this, !handled_ptrace_exit_event_);
-    seen_ptrace_exit_event = true;
-    // NB: It's possible for us to have already reaped in the
-    // "Unexpected process reap" case above. If that's happened, there's
-    // nothing more to do here.
-    handled_ptrace_exit_event_ = true;
   } else if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
     ASSERT(this, !handled_ptrace_exit_event_);
     seen_ptrace_exit_event = true;
