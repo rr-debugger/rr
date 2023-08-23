@@ -404,9 +404,10 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   }
   while (true) {
     // If the syscall caused the task to exit, just stop now with that status.
-    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    if (t->is_dying() || t->status().reaped()) {
       restore_wait_status = t->status();
-      break;
+      LOG(debug) << "Task is dying, no status result";
+      return -ESRCH;
     }
     if (t->status().is_syscall() ||
         (t->stop_sig() == SIGTRAP &&
@@ -442,13 +443,8 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     break;
   }
 
-  if (t->is_dying()) {
-    LOG(debug) << "Task is dying, no status result";
-    return -ESRCH;
-  } else {
-    LOG(debug) << "done, result=" << t->regs().syscall_result();
-    return t->regs().syscall_result();
-  }
+  LOG(debug) << "done, result=" << t->regs().syscall_result();
+  return t->regs().syscall_result();
 }
 
 SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }
