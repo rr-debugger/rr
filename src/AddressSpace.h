@@ -867,7 +867,12 @@ public:
   };
 
   void map_rr_page(AutoRemoteSyscalls& remote);
-  void unmap_all_but_rr_page(AutoRemoteSyscalls& remote);
+  struct UnmapOptions {
+    bool exclude_vdso_vvar;
+    UnmapOptions() : exclude_vdso_vvar(false) {}
+  };
+  void unmap_all_but_rr_mappings(AutoRemoteSyscalls& remote,
+                                 UnmapOptions options = UnmapOptions());
 
   void erase_task(Task* t) {
     this->HasTaskSet::erase_task(t);

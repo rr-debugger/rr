@@ -361,13 +361,15 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
       TRACED, PRIVILEGED, RECORDING_AND_REPLAY, t->arch());
 }
 
-void AddressSpace::unmap_all_but_rr_page(AutoRemoteSyscalls& remote) {
+void AddressSpace::unmap_all_but_rr_mappings(AutoRemoteSyscalls& remote,
+    UnmapOptions options) {
   vector<MemoryRange> unmaps;
   for (const auto& m : maps()) {
     // Do not attempt to unmap [vsyscall] --- it doesn't work.
     if (m.map.start() != AddressSpace::rr_page_start() &&
         m.map.start() != AddressSpace::preload_thread_locals_start() &&
-        !m.map.is_vsyscall()) {
+        !m.map.is_vsyscall() &&
+        (!options.exclude_vdso_vvar || (!m.map.is_vdso() && m.map.is_vvar()))) {
       unmaps.push_back(m.map);
     }
   }

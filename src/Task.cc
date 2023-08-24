@@ -3901,11 +3901,12 @@ void Task::dup_from(Task *other) {
       stack_mapping = km;
       found_stack = true;
     } else {
-      mappings.push_back(km);
       if (km.is_vdso()) {
         vdso_mapping = km;
       } else if (km.is_vvar()) {
         vvar_mapping = km;
+      } else if (!km.is_vsyscall()) {
+        mappings.push_back(km);
       }
     }
   }
@@ -3921,7 +3922,9 @@ void Task::dup_from(Task *other) {
     move_vdso_and_vvar_mappings(remote, vdso_mapping, vvar_mapping);
     LOG(debug) << "Unmapping memory for " << tid;
     // TODO: Only do this if the rr page isn't already mapped
-    this->vm()->unmap_all_but_rr_page(remote);
+    AddressSpace::UnmapOptions options;
+    options.exclude_vdso_vvar = true;
+    this->vm()->unmap_all_but_rr_mappings(remote, options);
     LOG(debug) << "Creating stack mapping " << stack_mapping << " for " << tid;
     create_mapping(this, remote, stack_mapping);
     LOG(debug) << "Copying stack into " << tid;
@@ -3930,9 +3933,6 @@ void Task::dup_from(Task *other) {
   {
     AutoRemoteSyscalls remote_this(this);
     for (auto &km : mappings) {
-      if (km.is_vsyscall()) {
-        continue;
-      }
       LOG(debug) << "Creating mapping " << km << " for " << tid;
       create_mapping(this, remote_this, km);
       LOG(debug) << "Copying mapping into " << tid;

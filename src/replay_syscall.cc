@@ -460,7 +460,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
     // Now fix up the address space. First unmap all the mappings other than
     // our rr page.
-    t->vm()->unmap_all_but_rr_page(remote);
+    t->vm()->unmap_all_but_rr_mappings(remote);
     // We will have unmapped the stack memory that |remote| would have used for
     // memory parameters. Fortunately process_mapped_region below doesn't
     // need any memory parameters for its remote syscalls.
