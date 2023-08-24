@@ -3796,15 +3796,44 @@ static bool copy_mem_mapping_just_used(Task* from, Task* to, const KernelMapping
   return true;
 }
 
+static void mremap_move(AutoRemoteSyscalls& remote, remote_ptr<void> src,
+    remote_ptr<void> dest, size_t size, const char* message) {
+  if (!size) {
+    return;
+  }
+  long ret = remote.syscall(syscall_number_for_mremap(remote.arch()),
+                            src, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, dest);
+  ASSERT(remote.task(), remote_ptr<void>(ret) == dest)
+    << "Failed to move from " << src << " to " << dest << " "
+    << HEX(size) << " bytes, ret=" << ret << ", " << message;
+  remote.task()->vm()->remap(remote.task(), src, size, dest, size,
+                             MREMAP_MAYMOVE | MREMAP_FIXED);
+}
+
+/* Remap VDSO and VVAR to the addresses is used in the target process,
+   before they get unmapped.
+   Otherwise the kernel seems to put the address of the original
+   VDSO __kernel_rt_sigreturn function as return address on the stack.
+   This might not affect x86_64 because there __restore_rt
+   located in libpthread.so.0 is used.
+*/
 static void move_vdso_and_vvar_mappings(AutoRemoteSyscalls& remote,
-    const KernelMapping& vdso, const KernelMapping& vvar) {
-  /* Remap VDSO and VVAR to the addresses is used in the target process,
-     before they get unmapped.
-     Otherwise the kernel seems to put the address of the original
-     VDSO __kernel_rt_sigreturn function as return address on the stack.
-     This might not affect x86_64 because there __restore_rt
-     located in libpthread.so.0 is used.
-  */
+    const KernelMapping& vdso_new, const KernelMapping& vvar_new) {
+  KernelMapping vdso_current;
+  KernelMapping vvar_current;
+  Task* t = remote.task();
+  for (const auto& m : t->vm()->maps()) {
+    if (m.map.is_vdso()) {
+      vdso_current = m.map;
+    } else if (m.map.is_vvar()) {
+      vvar_current = m.map;
+    }
+  }
+
+  ASSERT(t, vdso_current.size() == vdso_new.size())
+    << "VDSO size mismatch";
+  ASSERT(t, vvar_current.size() == vvar_new.size() || !vvar_new.size())
+    << "VVAR size mismatch";
 
   // Handle case where old and new addresses overlap by finding a free range early in the
   // address space we can use as a temporary buffer. VDSOs are always at fairly high
@@ -3812,48 +3841,32 @@ static void move_vdso_and_vvar_mappings(AutoRemoteSyscalls& remote,
   // We move VDSO and VVAR to their temp addresses first, then move both of them to their
   // final address, to avoid situations where current's VDSO overlaps target's VVAR or
   // vice versa.
-  remote_ptr<void> vdso_temp_address = remote.task()->vm()->find_free_memory(remote.task(),
-        vdso.size() + vvar.size(),
+  size_t temp_size = vdso_new.size() + vvar_new.size();
+  remote_ptr<void> vdso_temp_address = t->vm()->find_free_memory(t,
+        temp_size,
         remote_ptr<void>(65536), AddressSpace::FindFreeMemoryPolicy::STRICT_SEARCH);
-  remote_ptr<void> vvar_temp_address = vdso_temp_address + vdso.size();
+  remote_ptr<void> vvar_temp_address = vdso_temp_address + vdso_new.size();
+  MemoryRange temp_range(vdso_temp_address, temp_size);
+  ASSERT(t, !temp_range.intersects(vdso_new))
+    << "Free memory found overlaps new VDSO address";
+  ASSERT(t, !temp_range.intersects(vvar_new))
+    << "Free memory found overlaps new VVAR address";
 
-  for (int phase = 0; phase < 2; ++phase) {
-    for (const auto& m : remote.task()->vm()->maps()) {
-      const KernelMapping* move_to = nullptr;
-      remote_ptr<void> temp_address;
-      if (m.map.is_vdso() && vdso.size()) {
-        move_to = &vdso;
-        temp_address = vdso_temp_address;
-      } else if (m.map.is_vvar() && vvar.size()) {
-        move_to = &vvar;
-        temp_address = vvar_temp_address;
-      }
-      if (!move_to || m.map.start() == move_to->start()) {
-        continue;
-      }
-
-      size_t size = m.map.size();
-      ASSERT(remote.task(), size == move_to->size()) << "Inconsistent VDSO sizes";
-      ASSERT(remote.task(), !temp_address.is_null()) << "Can't find free memory for VDSO " << m.map;
-      ASSERT(remote.task(),
-             !MemoryRange(temp_address, size).intersects(MemoryRange(m.map.start(), size)))
-        << "Free memory found overlaps current VDSO address";
-      ASSERT(remote.task(),
-             !MemoryRange(temp_address, size).intersects(MemoryRange(move_to->start(), size)))
-        << "Free memory found overlaps new VDSO address";
-
-      if (phase == 0) {
-        LOG(debug) << "Moving VDSO for " << remote.task()->tid << " to temp " << temp_address;
-        remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), m.map.start(), size,
-                                  size, MREMAP_MAYMOVE | MREMAP_FIXED, temp_address);
-      } else {
-        remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), temp_address, size,
-                                  size, MREMAP_MAYMOVE | MREMAP_FIXED, move_to->start());
-        remote.task()->vm()->remap(remote.task(), m.map.start(), size, move_to->start(), size,
-                                   MREMAP_MAYMOVE | MREMAP_FIXED);
-      }
-    }
+  mremap_move(remote, vdso_current.start(), vdso_temp_address, vdso_new.size(),
+              "vdso_current.start() -> vdso_temp_address");
+  if (vvar_new.size()) {
+    mremap_move(remote, vvar_current.start(), vvar_temp_address, vvar_current.size(),
+                "vvar_current.start() -> vvar_temp_address");
+  } else {
+    bool ok = remote.infallible_munmap_syscall_if_alive(vvar_current.start(),
+        vvar_current.size());
+    ASSERT(t, ok) << "Duped task got killed?";
+    t->vm()->unmap(t, vvar_current.start(), vvar_current.size());
   }
+  mremap_move(remote, vdso_temp_address, vdso_new.start(), vdso_new.size(),
+              "vdso_temp_address -> vdso_new.start()");
+  mremap_move(remote, vvar_temp_address, vvar_new.start(), vvar_new.size(),
+              "vvar_temp_address -> vvar_new.start()");
 }
 
 const int all_rlimits[] = {
