@@ -318,7 +318,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
       WaitAggregator::try_wait_exit(t);
       // N.B.: If we supported ptrace exit notifications for killed tracee's
       // that would need handling here, but we don't at the moment.
-      return t->is_dying();
+      return t->seen_ptrace_exit_event();
     }
   }
 

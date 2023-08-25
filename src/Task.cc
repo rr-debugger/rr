@@ -1498,7 +1498,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   }
 
   bool detected_exit = false;
-  if (session().is_recording() && !is_dying()) {
+  if (session().is_recording() && !seen_ptrace_exit_event()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
      * and advances to the PTRACE_EXIT_EVENT ptrace-stop just before we
      * send a PTRACE_CONT. Our PTRACE_CONT will cause it to continue and exit,
@@ -1528,7 +1528,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       detected_exit = true;
     }
   }
-  if (detected_exit || is_dying()) {
+  if (detected_exit || seen_ptrace_exit_event()) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
   } else {
     ASSERT(this, setup_succeeded);

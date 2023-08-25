@@ -2164,7 +2164,7 @@ void RecordTask::update_own_namespace_tid() {
 }
 
 void RecordTask::kill_if_alive() {
-  if (!is_dying()) {
+  if (!seen_ptrace_exit_event()) {
     tgkill(SIGKILL);
   }
 }

@@ -1022,7 +1022,7 @@ public:
    */
   long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
-  bool is_dying() const {
+  bool seen_ptrace_exit_event() const {
     return seen_ptrace_exit_event_;
   }
 

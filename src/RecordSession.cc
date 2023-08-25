@@ -934,7 +934,7 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
   /* TODO: mask off signals and avoid this loop. */
   do {
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
-    if (t->is_dying()) {
+    if (t->seen_ptrace_exit_event()) {
       return;
     }
     if (t->status().is_syscall()) {

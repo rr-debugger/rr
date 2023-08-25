@@ -342,7 +342,7 @@ static bool ignore_signal(Task* t) {
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   LOG(debug) << "syscall " << syscall_name(syscallno, t->arch()) << " " << callregs;
 
-  if (t->is_dying()) {
+  if (t->seen_ptrace_exit_event()) {
     LOG(debug) << "Task is dying, don't try anything.";
     return -ESRCH;
   }
@@ -404,7 +404,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   }
   while (true) {
     // If the syscall caused the task to exit, just stop now with that status.
-    if (t->is_dying() || t->status().reaped()) {
+    if (t->seen_ptrace_exit_event() || t->status().reaped()) {
       restore_wait_status = t->status();
       LOG(debug) << "Task is dying, no status result";
       return -ESRCH;
@@ -632,7 +632,7 @@ static void sendmsg_socket(ScopedFd& sock, int fd_to_send)
 
 static Task* thread_group_leader_for_fds(Task* t) {
   for (Task* tt : t->fd_table()->task_set()) {
-    if (tt->tgid() == tt->rec_tid && !tt->is_dying()) {
+    if (tt->tgid() == tt->rec_tid && !tt->seen_ptrace_exit_event()) {
       return tt;
     }
   }
