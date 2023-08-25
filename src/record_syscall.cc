@@ -6229,7 +6229,7 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
 
   // This must be kept in sync with replay_syscall's handle_opened_files.
   FileMonitor* file_monitor = nullptr;
-  if (is_mapped_shared(t, st) && is_writable(t, fd)) {
+  if (is_writable(t, fd) && is_mapped_shared(t, st)) {
     // This is quite subtle. Because open(2) is ALLOW_SWITCH, we could have been
     // descheduled after entering the syscall we're now exiting. If that happened,
     // and another task did a shared mapping of this file while we were suspended,
