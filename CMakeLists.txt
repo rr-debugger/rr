@@ -977,6 +977,7 @@ set(BASIC_TESTS
   fork_brk
   fork_child_crash
   fork_many
+  fstatat
   futex_exit_race
   futex_exit_race_sigsegv
   futex_invalid_op
