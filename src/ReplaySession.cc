@@ -1684,7 +1684,7 @@ static void end_task(ReplayTask* t) {
 }
 
 Completion ReplaySession::exit_task(ReplayTask* t) {
-  ASSERT(t, !t->seen_ptrace_exit_event);
+  ASSERT(t, !t->seen_ptrace_exit_event_);
   // Apply robust-futex updates captured during recording.
   t->apply_all_data_records_from_trace();
   end_task(t);

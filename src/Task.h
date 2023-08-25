@@ -1023,7 +1023,7 @@ public:
   long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
   bool is_dying() const {
-    return seen_ptrace_exit_event;
+    return seen_ptrace_exit_event_;
   }
 
   void did_handle_ptrace_exit_event();
@@ -1306,7 +1306,7 @@ protected:
   siginfo_t pending_siginfo;
   // True when a PTRACE_EXIT_EVENT has been observed in the wait_status
   // for this task.
-  bool seen_ptrace_exit_event;
+  bool seen_ptrace_exit_event_;
   // True when a PTRACE_EXIT_EVENT has been handled for this task.
   // By handled we mean either RecordSession's handle_ptrace_exit_event was
   // run (or the replay equivalent) or we recognized that the task is already

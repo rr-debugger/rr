@@ -97,7 +97,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       extra_registers_known(false),
       session_(&session),
       top_of_stack(),
-      seen_ptrace_exit_event(false),
+      seen_ptrace_exit_event_(false),
       handled_ptrace_exit_event_(false),
       expecting_ptrace_interrupt_stop(0),
       was_reaped_(false),
@@ -456,7 +456,7 @@ void Task::did_kill()
    * in Session.cc), but let's pretend that we did to make this task look like
    * other that we didn't kill ourselves
    */
-  seen_ptrace_exit_event = true;
+  seen_ptrace_exit_event_ = true;
   handled_ptrace_exit_event_ = true;
   syscallbuf_child = nullptr;
   /* No need to unmap/close things in the child here - the kernel did that for
@@ -2217,7 +2217,7 @@ void Task::did_waitpid(WaitStatus status) {
     ASSERT(this, !handled_ptrace_exit_event_);
   } else if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
     ASSERT(this, !handled_ptrace_exit_event_);
-    seen_ptrace_exit_event = true;
+    seen_ptrace_exit_event_ = true;
   } else {
     if (arch() == x86 || arch() == x86_64) {
       // Clear the single step flag in case we got here by taking a signal
