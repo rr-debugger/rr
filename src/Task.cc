@@ -1528,7 +1528,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       detected_exit = true;
     }
   }
-  if (detected_exit || seen_ptrace_exit_event()) {
+  if (detected_exit) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
   } else {
     ASSERT(this, setup_succeeded);
