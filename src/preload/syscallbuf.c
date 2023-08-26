@@ -3594,6 +3594,33 @@ static long sys_statx(struct syscall_info* call) {
 }
 #endif
 
+static long sys_fstatat(struct syscall_info* call) {
+  const int syscallno = call->no;
+  stat64_t* buf = (stat64_t*)call->args[2];
+
+  /* Like stat(), not arming the desched event because it's not
+   * needed for correctness, and there are no data to suggest
+   * whether it's a good idea perf-wise. */
+  void* ptr = prep_syscall();
+  stat64_t* buf2 = NULL;
+  long ret;
+
+  if (buf) {
+    buf2 = ptr;
+    ptr += sizeof(*buf2);
+  }
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall4(syscallno,
+    call->args[0], call->args[1], buf2, call->args[3]);
+  if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(buf, buf2, sizeof(*buf));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_quotactl(struct syscall_info* call) {
   const int syscallno = call->no;
   int cmd = call->args[0];
@@ -4200,6 +4227,12 @@ case SYS_epoll_pwait:
     case SYS_statfs:
     case SYS_fstatfs:
       return sys_statfs(call);
+#if defined(SYS_newfstatat)
+    case SYS_newfstatat:
+#elif defined(SYS_fstatat64)
+    case SYS_fstatat64:
+#endif
+      return sys_fstatat(call);
 #undef CASE
 #undef CASE_GENERIC_NONBLOCKING
 #undef CASE_GENERIC_NONBLOCKING_FD
