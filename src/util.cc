@@ -552,10 +552,18 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       * the "extra data" for the possibly one pending
       * record.
       *
+      * The deterministic region excludes the notify_on_syscall_hook_exit
+      * flag. This flag is written by is_safe_to_deliver_signal and
+      * that write can occur at a different event to where ReplaySession
+      * eventually sets it.
+      *
       * So here, we set things up so that we only checksum
       * the deterministic region. */
-      auto child_hdr = m.map.start().cast<struct syscallbuf_hdr>();
-      auto hdr = t->read_mem(child_hdr);
+      struct syscallbuf_hdr hdr;
+      ASSERT(t, mem.size() >= sizeof(hdr));
+      memcpy(&hdr, mem.data(), sizeof(hdr));
+      hdr.notify_on_syscall_hook_exit = 0;
+      memcpy(mem.data(), &hdr, sizeof(hdr));
       mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
                  sizeof(struct syscallbuf_record));
     }

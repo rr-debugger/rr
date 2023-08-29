@@ -491,12 +491,8 @@ static void seccomp_trap_done(RecordTask* t) {
   // It's safe to reset the syscall buffer now.
   t->delay_syscallbuf_reset_for_seccomp_trap = false;
 
-  t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, failed_during_preparation),
-               (uint8_t)1);
-  uint8_t one = 1;
-  t->record_local(
-      REMOTE_PTR_FIELD(t->syscallbuf_child, failed_during_preparation), &one);
-
+  t->write_and_record(REMOTE_PTR_FIELD(t->syscallbuf_child, failed_during_preparation),
+                      (uint8_t)1);
   if (EV_DESCHED == t->ev().type()) {
     // Desched processing will do the rest for us
     return;
@@ -1100,8 +1096,10 @@ static void save_interrupted_syscall_ret_in_syscallbuf(RecordTask* t,
   // Record storing the return value in the syscallbuf record, where
   // we expect to find it during replay.
   auto child_rec = t->next_syscallbuf_record();
-  int64_t ret = retval;
-  t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
+  // Also store it there now so that our memory checksums are correct.
+  // It will be overwritten by the tracee's syscallbuf code.
+  t->write_and_record(REMOTE_PTR_FIELD(child_rec, ret),
+                      static_cast<int64_t>(retval));
 }
 
 static bool is_in_privileged_syscall(RecordTask* t) {

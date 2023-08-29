@@ -423,6 +423,13 @@ public:
   // exists
   bool record_remote_by_local_map(remote_ptr<void> addr, size_t num_bytes);
 
+  template <typename T>
+  void write_and_record(remote_ptr<T> addr, const T& value, bool* ok = nullptr,
+                        uint32_t flags = 0) {
+    write_mem(addr, value, ok, flags);
+    record_local(addr, &value, 1);
+  }
+
   /**
    * Save tracee data to the trace.  |addr| is the address in
    * the address space of this task.

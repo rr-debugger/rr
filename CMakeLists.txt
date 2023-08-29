@@ -1565,6 +1565,7 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_mmap_shared
   checkpoint_prctl_name
   checkpoint_simple
+  checksum_block_open
   checksum_sanity_noclone
   comm
   cont_signal
