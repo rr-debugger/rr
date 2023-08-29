@@ -134,7 +134,11 @@ endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-command-line-argument")
 endif()
-if (CMAKE_ASM_COMPILER_ID STREQUAL "Clang")
+# -fno-integrated-as tells Clang to use whatever "as" happens to be. For an
+# Android build that will end up being whatever /usr/bin/as is, and whatever it
+# is, it's the wrong assembler for Android, because Android only supports the
+# Clang assembler.
+if (CMAKE_ASM_COMPILER_ID STREQUAL "Clang" AND NOT ANDROID)
   set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -fno-integrated-as")
 endif()
 
