@@ -9,44 +9,36 @@
 #ifndef BROTLI_ENC_FIND_MATCH_LENGTH_H_
 #define BROTLI_ENC_FIND_MATCH_LENGTH_H_
 
-#include "../common/platform.h"
 #include <brotli/types.h>
+
+#include "../common/platform.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
 #endif
 
 /* Separate implementation for little-endian 64-bit targets, for speed. */
-#if defined(__GNUC__) && defined(_LP64) && defined(BROTLI_LITTLE_ENDIAN)
-
+#if defined(BROTLI_TZCNT64) && BROTLI_64_BITS && BROTLI_LITTLE_ENDIAN
 static BROTLI_INLINE size_t FindMatchLengthWithLimit(const uint8_t* s1,
                                                      const uint8_t* s2,
                                                      size_t limit) {
-  size_t matched = 0;
-  size_t limit2 = (limit >> 3) + 1;  /* + 1 is for pre-decrement in while */
-  while (BROTLI_PREDICT_TRUE(--limit2)) {
-    if (BROTLI_PREDICT_FALSE(BROTLI_UNALIGNED_LOAD64LE(s2) ==
-                      BROTLI_UNALIGNED_LOAD64LE(s1 + matched))) {
-      s2 += 8;
-      matched += 8;
-    } else {
-      uint64_t x = BROTLI_UNALIGNED_LOAD64LE(s2) ^
-          BROTLI_UNALIGNED_LOAD64LE(s1 + matched);
-      size_t matching_bits = (size_t)__builtin_ctzll(x);
-      matched += matching_bits >> 3;
-      return matched;
+  const uint8_t *s1_orig = s1;
+  for (; limit >= 8; limit -= 8) {
+    uint64_t x = BROTLI_UNALIGNED_LOAD64LE(s2) ^
+                 BROTLI_UNALIGNED_LOAD64LE(s1);
+    s2 += 8;
+    if (x != 0) {
+      size_t matching_bits = (size_t)BROTLI_TZCNT64(x);
+      return (size_t)(s1 - s1_orig) + (matching_bits >> 3);
     }
+    s1 += 8;
   }
-  limit = (limit & 7) + 1;  /* + 1 is for pre-decrement in while */
-  while (--limit) {
-    if (BROTLI_PREDICT_TRUE(s1[matched] == *s2)) {
-      ++s2;
-      ++matched;
-    } else {
-      return matched;
-    }
+  while (limit && *s1 == *s2) {
+    limit--;
+    ++s2;
+    ++s1;
   }
-  return matched;
+  return (size_t)(s1 - s1_orig);
 }
 #else
 static BROTLI_INLINE size_t FindMatchLengthWithLimit(const uint8_t* s1,

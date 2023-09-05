@@ -13,6 +13,7 @@
 #define BROTLI_ENC_ENCODE_H_
 
 #include <brotli/port.h>
+#include <brotli/shared_dictionary.h>
 #include <brotli/types.h>
 
 #if defined(__cplusplus) || defined(c_plusplus)
@@ -201,7 +202,23 @@ typedef enum BrotliEncoderParameter {
    *
    * Range is from 0 to (15 << NPOSTFIX) in steps of (1 << NPOSTFIX).
    */
-  BROTLI_PARAM_NDIRECT = 8
+  BROTLI_PARAM_NDIRECT = 8,
+  /**
+   * Number of bytes of input stream already processed by a different instance.
+   *
+   * @note It is important to configure all the encoder instances with same
+   *       parameters (except this one) in order to allow all the encoded parts
+   *       obey the same restrictions implied by header.
+   *
+   * If offset is not 0, then stream header is omitted.
+   * In any case output start is byte aligned, so for proper streams stitching
+   * "predecessor" stream must be flushed.
+   *
+   * Range is not artificially limited, but all the values greater or equal to
+   * maximal window size have the same effect. Values greater than 2**30 are not
+   * allowed.
+   */
+  BROTLI_PARAM_STREAM_OFFSET = 9
 } BrotliEncoderParameter;
 
 /**
@@ -253,6 +270,51 @@ BROTLI_ENC_API BrotliEncoderState* BrotliEncoderCreateInstance(
  */
 BROTLI_ENC_API void BrotliEncoderDestroyInstance(BrotliEncoderState* state);
 
+/* Opaque type for pointer to different possible internal structures containing
+   dictionary prepared for the encoder */
+typedef struct BrotliEncoderPreparedDictionaryStruct
+    BrotliEncoderPreparedDictionary;
+
+/**
+ * Prepares a shared dictionary from the given file format for the encoder.
+ *
+ * @p alloc_func and @p free_func @b MUST be both zero or both non-zero. In the
+ * case they are both zero, default memory allocators are used. @p opaque is
+ * passed to @p alloc_func and @p free_func when they are called. @p free_func
+ * has to return without doing anything when asked to free a NULL pointer.
+ *
+ * @param type type of dictionary stored in data
+ * @param data_size size of @p data buffer
+ * @param data pointer to the dictionary data
+ * @param quality the maximum Brotli quality to prepare the dictionary for,
+ *        use BROTLI_MAX_QUALITY by default
+ * @param alloc_func custom memory allocation function
+ * @param free_func custom memory free function
+ * @param opaque custom memory manager handle
+ */
+BROTLI_ENC_API BrotliEncoderPreparedDictionary*
+BrotliEncoderPrepareDictionary(BrotliSharedDictionaryType type,
+    size_t data_size, const uint8_t data[BROTLI_ARRAY_PARAM(data_size)],
+    int quality,
+    brotli_alloc_func alloc_func, brotli_free_func free_func, void* opaque);
+
+BROTLI_ENC_API void BrotliEncoderDestroyPreparedDictionary(
+    BrotliEncoderPreparedDictionary* dictionary);
+
+/**
+ * Attaches a prepared dictionary of any type to the encoder. Can be used
+ * multiple times to attach multiple dictionaries. The dictionary type was
+ * determined by BrotliEncoderPrepareDictionary. Multiple raw prefix
+ * dictionaries and/or max 1 serialized dictionary with custom words can be
+ * attached.
+ *
+ * @returns ::BROTLI_FALSE in case of error
+ * @returns ::BROTLI_TRUE otherwise
+ */
+BROTLI_ENC_API BROTLI_BOOL BrotliEncoderAttachPreparedDictionary(
+    BrotliEncoderState* state,
+    const BrotliEncoderPreparedDictionary* dictionary);
+
 /**
  * Calculates the output size bound for the given @p input_size.
  *
@@ -273,6 +335,11 @@ BROTLI_ENC_API size_t BrotliEncoderMaxCompressedSize(size_t input_size);
  *
  * @note If ::BrotliEncoderMaxCompressedSize(@p input_size) returns non-zero
  *       value, then output is guaranteed to be no longer than that.
+ *
+ * @note If @p lgwin is greater than ::BROTLI_MAX_WINDOW_BITS then resulting
+ *       stream might be incompatible with RFC 7932; to decode such streams,
+ *       decoder should be configured with
+ *       ::BROTLI_DECODER_PARAM_LARGE_WINDOW = @c 1
  *
  * @param quality quality parameter value, e.g. ::BROTLI_DEFAULT_QUALITY
  * @param lgwin lgwin parameter value, e.g. ::BROTLI_DEFAULT_WINDOW
@@ -386,7 +453,7 @@ BROTLI_ENC_API BROTLI_BOOL BrotliEncoderHasMoreOutput(
  *
  * This method is used to make language bindings easier and more efficient:
  *  -# push data to ::BrotliEncoderCompressStream,
- *     until ::BrotliEncoderHasMoreOutput returns BROTL_TRUE
+ *     until ::BrotliEncoderHasMoreOutput returns BROTLI_TRUE
  *  -# use ::BrotliEncoderTakeOutput to peek bytes and copy to language-specific
  *     entity
  *
@@ -412,11 +479,18 @@ BROTLI_ENC_API BROTLI_BOOL BrotliEncoderHasMoreOutput(
 BROTLI_ENC_API const uint8_t* BrotliEncoderTakeOutput(
     BrotliEncoderState* state, size_t* size);
 
+/* Returns the estimated peak memory usage (in bytes) of the BrotliCompress()
+   function, not counting the memory needed for the input and output. */
+BROTLI_ENC_EXTRA_API size_t BrotliEncoderEstimatePeakMemoryUsage(
+    int quality, int lgwin, size_t input_size);
+/* Returns 0 if dictionary is not valid; otherwise returns allocation size. */
+BROTLI_ENC_EXTRA_API size_t BrotliEncoderGetPreparedDictionarySize(
+    const BrotliEncoderPreparedDictionary* dictionary);
 
 /**
  * Gets an encoder library version.
  *
- * Look at BROTLI_VERSION for more information.
+ * Look at BROTLI_MAKE_HEX_VERSION for more information.
  */
 BROTLI_ENC_API uint32_t BrotliEncoderVersion(void);
 

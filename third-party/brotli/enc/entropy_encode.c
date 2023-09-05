@@ -6,17 +6,20 @@
 
 /* Entropy encoding (Huffman) utilities. */
 
-#include "./entropy_encode.h"
+#include "entropy_encode.h"
 
 #include <string.h>  /* memset */
 
+#include <brotli/types.h>
+
 #include "../common/constants.h"
 #include "../common/platform.h"
-#include <brotli/types.h>
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
 #endif
+
+const size_t kBrotliShellGaps[] = {132, 57, 23, 10, 4, 1};
 
 BROTLI_BOOL BrotliSetDepth(
     int p0, HuffmanTree* pool, uint8_t* depth, int max_depth) {

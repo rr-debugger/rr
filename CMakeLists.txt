@@ -235,7 +235,12 @@ endforeach(required_lib)
 
 # ==== brotli ====
 set(BROTLI_FILES
+  third-party/brotli/common/constants.c
+  third-party/brotli/common/context.c
   third-party/brotli/common/dictionary.c
+  third-party/brotli/common/platform.c
+  third-party/brotli/common/shared_dictionary_internal.h
+  third-party/brotli/common/shared_dictionary.c
   third-party/brotli/common/transform.c
   third-party/brotli/dec/bit_reader.c
   third-party/brotli/dec/decode.c
@@ -255,15 +260,17 @@ set(BROTLI_FILES
   third-party/brotli/enc/block_splitter_inc.h
   third-party/brotli/enc/brotli_bit_stream.c
   third-party/brotli/enc/brotli_bit_stream.h
+  third-party/brotli/enc/command.c
   third-party/brotli/enc/cluster.c
   third-party/brotli/enc/cluster.h
   third-party/brotli/enc/cluster_inc.h
   third-party/brotli/enc/command.h
   third-party/brotli/enc/compress_fragment.c
   third-party/brotli/enc/compress_fragment.h
+  third-party/brotli/enc/compound_dictionary.c
+  third-party/brotli/enc/compound_dictionary.h
   third-party/brotli/enc/compress_fragment_two_pass.c
   third-party/brotli/enc/compress_fragment_two_pass.h
-  third-party/brotli/enc/context.h
   third-party/brotli/enc/dictionary_hash.c
   third-party/brotli/enc/dictionary_hash.h
   third-party/brotli/enc/encode.c
@@ -271,6 +278,7 @@ set(BROTLI_FILES
   third-party/brotli/enc/entropy_encode.c
   third-party/brotli/enc/entropy_encode.h
   third-party/brotli/enc/entropy_encode_static.h
+  third-party/brotli/enc/fast_log.c
   third-party/brotli/enc/fast_log.h
   third-party/brotli/enc/find_match_length.h
   third-party/brotli/enc/hash_forgetful_chain_inc.h
@@ -289,16 +297,20 @@ set(BROTLI_FILES
   third-party/brotli/enc/metablock.c
   third-party/brotli/enc/metablock.h
   third-party/brotli/enc/metablock_inc.h
-  third-party/brotli/enc/port.h
   third-party/brotli/enc/prefix.h
   third-party/brotli/enc/quality.h
   third-party/brotli/enc/ringbuffer.h
+  third-party/brotli/enc/state.h
   third-party/brotli/enc/static_dict.c
   third-party/brotli/enc/static_dict.h
   third-party/brotli/enc/static_dict_lut.h
   third-party/brotli/enc/utf8_util.c
   third-party/brotli/enc/utf8_util.h
   third-party/brotli/enc/write_bits.h
+  third-party/brotli/include/brotli/decode.h
+  third-party/brotli/include/brotli/encode.h
+  third-party/brotli/include/brotli/port.h
+  third-party/brotli/include/brotli/shared_dictionary.h
 )
 add_library(brotli STATIC ${BROTLI_FILES})
 set_source_files_properties(${BROTLI_FILES}

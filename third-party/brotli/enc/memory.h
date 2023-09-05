@@ -11,8 +11,9 @@
 
 #include <string.h>  /* memcpy */
 
-#include "../common/platform.h"
 #include <brotli/types.h>
+
+#include "../common/platform.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -23,6 +24,14 @@ extern "C" {
 #define BROTLI_ENCODER_EXIT_ON_OOM
 #endif
 
+#if !defined(BROTLI_ENCODER_EXIT_ON_OOM)
+#if defined(BROTLI_EXPERIMENTAL)
+#define BROTLI_ENCODER_MEMORY_MANAGER_SLOTS 32768
+#else  /* BROTLI_EXPERIMENTAL */
+#define BROTLI_ENCODER_MEMORY_MANAGER_SLOTS 256
+#endif  /* BROTLI_EXPERIMENTAL */
+#endif  /* BROTLI_ENCODER_EXIT_ON_OOM */
+
 typedef struct MemoryManager {
   brotli_alloc_func alloc_func;
   brotli_free_func free_func;
@@ -32,7 +41,7 @@ typedef struct MemoryManager {
   size_t perm_allocated;
   size_t new_allocated;
   size_t new_freed;
-  void* pointers[256];
+  void* pointers[BROTLI_ENCODER_MEMORY_MANAGER_SLOTS];
 #endif  /* BROTLI_ENCODER_EXIT_ON_OOM */
 } MemoryManager;
 
@@ -56,6 +65,18 @@ BROTLI_INTERNAL void BrotliFree(MemoryManager* m, void* p);
 #define BROTLI_IS_OOM(M) (!!(M)->is_oom)
 #endif  /* BROTLI_ENCODER_EXIT_ON_OOM */
 
+/*
+BROTLI_IS_NULL is a fake check, BROTLI_IS_OOM does the heavy lifting.
+The only purpose of it is to explain static analyzers the state of things.
+NB: use ONLY together with BROTLI_IS_OOM
+    AND ONLY for allocations in the current scope.
+ */
+#if defined(__clang_analyzer__) && !defined(BROTLI_ENCODER_EXIT_ON_OOM)
+#define BROTLI_IS_NULL(A) ((A) == nullptr)
+#else  /* defined(__clang_analyzer__) */
+#define BROTLI_IS_NULL(A) (!!0)
+#endif  /* defined(__clang_analyzer__) */
+
 BROTLI_INTERNAL void BrotliWipeOutMemoryManager(MemoryManager* m);
 
 /*
@@ -66,18 +87,18 @@ A: array
 C: capacity
 R: requested size
 */
-#define BROTLI_ENSURE_CAPACITY(M, T, A, C, R) {  \
-  if (C < (R)) {                                 \
-    size_t _new_size = (C == 0) ? (R) : C;       \
-    T* new_array;                                \
-    while (_new_size < (R)) _new_size *= 2;      \
-    new_array = BROTLI_ALLOC((M), T, _new_size); \
-    if (!BROTLI_IS_OOM(M) && C != 0)             \
-      memcpy(new_array, A, C * sizeof(T));       \
-    BROTLI_FREE((M), A);                         \
-    A = new_array;                               \
-    C = _new_size;                               \
-  }                                              \
+#define BROTLI_ENSURE_CAPACITY(M, T, A, C, R) {                    \
+  if (C < (R)) {                                                   \
+    size_t _new_size = (C == 0) ? (R) : C;                         \
+    T* new_array;                                                  \
+    while (_new_size < (R)) _new_size *= 2;                        \
+    new_array = BROTLI_ALLOC((M), T, _new_size);                   \
+    if (!BROTLI_IS_OOM(M) && !BROTLI_IS_NULL(new_array) && C != 0) \
+      memcpy(new_array, A, C * sizeof(T));                         \
+    BROTLI_FREE((M), A);                                           \
+    A = new_array;                                                 \
+    C = _new_size;                                                 \
+  }                                                                \
 }
 
 /*
@@ -94,6 +115,12 @@ V: value to append
   BROTLI_ENSURE_CAPACITY(M, T, A, C, S);                  \
   A[(S) - 1] = (V);                                       \
 }
+
+/* "Bootstrap" allocations are not tracked by memory manager; should be used
+   only to allocate MemoryManager itself (or structure containing it). */
+BROTLI_INTERNAL void* BrotliBootstrapAlloc(size_t size,
+    brotli_alloc_func alloc_func, brotli_free_func free_func, void* opaque);
+BROTLI_INTERNAL void BrotliBootstrapFree(void* address, MemoryManager* m);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }  /* extern "C" */
