@@ -70,7 +70,6 @@ function xvnc-runner { CMD=$1 EXPECT=$2
 }
 
 rm -rf /tmp/firefox-profile || true
-mkdir /tmp/firefox-profile
 xvnc-runner "firefox --profile /tmp/firefox-profile $HOME/rr/release-process/test-data/test.html" "rr Test Page"
 
 rm -rf ~/.config/libreoffice || true
