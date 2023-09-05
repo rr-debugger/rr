@@ -3,7 +3,6 @@
 #include "util_internal.h"
 
 static int parent_to_child[2];
-static int child_to_parent[2];
 
 int main(__attribute__((unused)) int argc,
          __attribute__((unused)) char **argv) {
@@ -13,7 +12,6 @@ int main(__attribute__((unused)) int argc,
     siginfo_t sig;
 
     test_assert(0 == pipe(parent_to_child));
-    test_assert(0 == pipe(child_to_parent));
 
     if (0 == (pid = fork())) {
         if (running_under_rr()) {
