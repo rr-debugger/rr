@@ -25,6 +25,7 @@
 #include "TaskishUid.h"
 #include "core.h"
 #include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
 #include "preload/preload_interface.h"
@@ -336,18 +337,15 @@ static void to_trace_signal(trace::Signal::Builder signal, const Event& ev) {
 }
 
 static Event from_trace_signal(EventType type, trace::Signal::Reader signal) {
-  if (signal.getSiginfoArch() != to_trace_arch(NativeArch::arch())) {
-    // XXX if we want to handle consumption of rr traces created on a different
-    // architecture rr build than we're running now, we should convert siginfo
-    // formats here.
-    FATAL() << "Unsupported siginfo arch";
-  }
+  union {
+    NativeArch::siginfo_t native_siginfo;
+    siginfo_t system_siginfo;
+  } si;
   auto siginfo = signal.getSiginfo();
-  if (siginfo.size() != sizeof(siginfo_t)) {
-    FATAL() << "Bad siginfo";
-  }
+  si.native_siginfo = convert_to_native_siginfo(from_trace_arch(signal.getSiginfoArch()),
+      siginfo.begin(), siginfo.size());
   return Event(type,
-               SignalEvent(*reinterpret_cast<const siginfo_t*>(siginfo.begin()),
+               SignalEvent(si.system_siginfo,
                            signal.getDeterministic() ? DETERMINISTIC_SIG
                                                      : NONDETERMINISTIC_SIG,
                            from_trace_disposition(signal.getDisposition())));

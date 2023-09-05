@@ -672,6 +672,13 @@ struct BaseArch : public wordsize,
       struct {
         ptr<void> si_addr_;
         signed_short si_addr_lsb_;
+        union {
+          struct {
+            ptr<void> _lower;
+            ptr<void> _upper;
+          } _addr_bnds;
+          uint32_t _pkey;
+        } _bounds;
       } _sigfault;
       struct {
         signed_long si_band_;

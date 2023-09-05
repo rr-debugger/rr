@@ -73,6 +73,12 @@ std::string xsave_feature_string(uint64_t xsave_features);
  */
 bool is_coredumping_signal(int signo);
 
+/**
+ * Convert a raw native siginfo_t to our arch siginfo_t.
+ */
+NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
+    const void* data, size_t size);
+
 } // namespace rr
 
 #endif

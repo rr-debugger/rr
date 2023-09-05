@@ -477,4 +477,87 @@ bool is_coredumping_signal(int signo) {
   }
 }
 
+#define SI_COPY(f) result._sifields.f = si._sifields.f
+
+template <typename Arch>
+NativeArch::siginfo_t convert_to_native_siginfo_arch(const void* data,
+    size_t size) {
+  typename Arch::siginfo_t si;
+  if (size != sizeof(si)) {
+    FATAL() << "Siginfo has wrong size";
+  }
+
+  NativeArch::siginfo_t result;
+  if (Arch::arch() == NativeArch::arch()) {
+    // Do the simple correct thing to make sure there are no bugs in this all-important case.
+    memcpy(&result, data, sizeof(result));
+    return result;
+  }
+
+  // We need to translate formats :-(.
+  memcpy(&si, data, sizeof(si));
+
+  result.si_signo = si.si_signo;
+  result.si_errno = si.si_errno;
+  result.si_code = si.si_code;
+  memset(result._sifields.padding, 0, sizeof(result._sifields.padding));
+  if (result.si_code <= 0) {
+    switch (result.si_code) {
+      case SI_USER:
+        SI_COPY(_kill.si_pid_);
+        SI_COPY(_kill.si_uid_);
+        break;
+      case SI_QUEUE:
+      case SI_MESGQ:
+        SI_COPY(_rt.si_pid_);
+        SI_COPY(_rt.si_uid_);
+        SI_COPY(_rt.si_sigval_.sival_ptr.val);
+        break;
+      case SI_TIMER:
+        SI_COPY(_timer.si_tid_);
+        SI_COPY(_timer.si_overrun_);
+        SI_COPY(_timer.si_sigval_.sival_ptr.val);
+        break;
+      default:
+        break;
+    }
+  } else {
+    switch (result.si_signo) {
+      case SIGCHLD:
+        SI_COPY(_sigchld.si_pid_);
+        SI_COPY(_sigchld.si_uid_);
+        SI_COPY(_sigchld.si_status_);
+        SI_COPY(_sigchld.si_stime_);
+        SI_COPY(_sigchld.si_utime_);
+        break;
+      case SIGILL:
+      case SIGFPE:
+      case SIGSEGV:
+      case SIGBUS:
+      case SIGTRAP:
+        SI_COPY(_sigfault.si_addr_.val);
+        SI_COPY(_sigfault.si_addr_lsb_);
+        SI_COPY(_sigfault._bounds._addr_bnds._lower.val);
+        SI_COPY(_sigfault._bounds._addr_bnds._upper.val);
+        break;
+      case SIGPOLL:
+        SI_COPY(_sigpoll.si_band_);
+        SI_COPY(_sigpoll.si_fd_);
+        break;
+      case SIGSYS:
+        SI_COPY(_sigsys._call_addr.val);
+        SI_COPY(_sigsys._syscall);
+        SI_COPY(_sigsys._arch);
+        break;
+    }
+  }
+
+  return result;
+}
+
+NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
+    const void* data, size_t size) {
+  RR_ARCH_FUNCTION(convert_to_native_siginfo_arch, arch, data, size);
+}
+
 } // namespace rr
