@@ -1,4 +1,5 @@
 *~
+.cache
 .cproject
 CMakeCache.txt
 CMakeFiles/
@@ -7,6 +8,7 @@ CPackConfig.cmake
 CPackSourceConfig.cmake
 _CPack_Packages/
 CTestTestfile.cmake
+compile_commands.json
 Debug
 dist/
 install_manifest.txt
@@ -25,4 +27,11 @@ obj/
 Testing/
 .idea/
 .*.swp
+*generated
 build/
+bin/
+lib/
+share/
+libbrotli*
+extra_version_string.h
+git_revision.h
