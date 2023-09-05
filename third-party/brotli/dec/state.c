@@ -4,12 +4,14 @@
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-#include "./state.h"
+#include "state.h"
 
 #include <stdlib.h>  /* free, malloc */
 
 #include <brotli/types.h>
-#include "./huffman.h"
+
+#include "../common/dictionary.h"
+#include "huffman.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -33,10 +35,7 @@ BROTLI_BOOL BrotliDecoderStateInit(BrotliDecoderState* s,
   s->state = BROTLI_STATE_UNINITED;
   s->large_window = 0;
   s->substate_metablock_header = BROTLI_STATE_METABLOCK_HEADER_NONE;
-  s->substate_tree_group = BROTLI_STATE_TREE_GROUP_NONE;
-  s->substate_context_map = BROTLI_STATE_CONTEXT_MAP_NONE;
   s->substate_uncompressed = BROTLI_STATE_UNCOMPRESSED_NONE;
-  s->substate_huffman = BROTLI_STATE_HUFFMAN_NONE;
   s->substate_decode_uint8 = BROTLI_STATE_DECODE_UINT8_NONE;
   s->substate_read_block_length = BROTLI_STATE_READ_BLOCK_LENGTH_NONE;
 
@@ -45,6 +44,7 @@ BROTLI_BOOL BrotliDecoderStateInit(BrotliDecoderState* s,
   s->pos = 0;
   s->rb_roundtrips = 0;
   s->partial_pos_out = 0;
+  s->used_input = 0;
 
   s->block_type_trees = NULL;
   s->block_len_trees = NULL;
@@ -58,8 +58,6 @@ BROTLI_BOOL BrotliDecoderStateInit(BrotliDecoderState* s,
   s->dist_context_map = NULL;
   s->context_map_slice = NULL;
   s->dist_context_map_slice = NULL;
-
-  s->sub_loop_counter = 0;
 
   s->literal_hgroup.codes = NULL;
   s->literal_hgroup.htrees = NULL;
@@ -84,22 +82,25 @@ BROTLI_BOOL BrotliDecoderStateInit(BrotliDecoderState* s,
   s->block_type_trees = NULL;
   s->block_len_trees = NULL;
 
-  /* Make small negative indexes addressable. */
-  s->symbol_lists = &s->symbols_lists_array[BROTLI_HUFFMAN_MAX_CODE_LENGTH + 1];
-
   s->mtf_upper_bound = 63;
 
-  s->dictionary = BrotliGetDictionary();
-  s->transforms = BrotliGetTransforms();
+  s->compound_dictionary = NULL;
+  s->dictionary =
+      BrotliSharedDictionaryCreateInstance(alloc_func, free_func, opaque);
+  if (!s->dictionary) return BROTLI_FALSE;
+
+  s->metadata_start_func = NULL;
+  s->metadata_chunk_func = NULL;
+  s->metadata_callback_opaque = 0;
 
   return BROTLI_TRUE;
 }
 
 void BrotliDecoderStateMetablockBegin(BrotliDecoderState* s) {
   s->meta_block_remaining_len = 0;
-  s->block_length[0] = 1U << 24;
-  s->block_length[1] = 1U << 24;
-  s->block_length[2] = 1U << 24;
+  s->block_length[0] = BROTLI_BLOCK_SIZE_CAP;
+  s->block_length[1] = BROTLI_BLOCK_SIZE_CAP;
+  s->block_length[2] = BROTLI_BLOCK_SIZE_CAP;
   s->num_block_types[0] = 1;
   s->num_block_types[1] = 1;
   s->num_block_types[2] = 1;
@@ -134,25 +135,43 @@ void BrotliDecoderStateCleanupAfterMetablock(BrotliDecoderState* s) {
   BROTLI_DECODER_FREE(s, s->distance_hgroup.htrees);
 }
 
+#ifdef BROTLI_REPORTING
+/* When BROTLI_REPORTING is defined extra reporting module have to be linked. */
+void BrotliDecoderOnFinish(const BrotliDecoderState* s);
+#define BROTLI_DECODER_ON_FINISH(s) BrotliDecoderOnFinish(s);
+#else
+#if !defined(BROTLI_DECODER_ON_FINISH)
+#define BROTLI_DECODER_ON_FINISH(s) (void)(s);
+#endif
+#endif
+
 void BrotliDecoderStateCleanup(BrotliDecoderState* s) {
   BrotliDecoderStateCleanupAfterMetablock(s);
 
+  BROTLI_DECODER_ON_FINISH(s);
+
+  BROTLI_DECODER_FREE(s, s->compound_dictionary);
+  BrotliSharedDictionaryDestroyInstance(s->dictionary);
+  s->dictionary = NULL;
   BROTLI_DECODER_FREE(s, s->ringbuffer);
   BROTLI_DECODER_FREE(s, s->block_type_trees);
 }
 
 BROTLI_BOOL BrotliDecoderHuffmanTreeGroupInit(BrotliDecoderState* s,
-    HuffmanTreeGroup* group, uint32_t alphabet_size, uint32_t max_symbol,
-    uint32_t ntrees) {
-  /* Pack two allocations into one */
-  const size_t max_table_size = kMaxHuffmanTableSize[(alphabet_size + 31) >> 5];
+    HuffmanTreeGroup* group, brotli_reg_t alphabet_size_max,
+    brotli_reg_t alphabet_size_limit, brotli_reg_t ntrees) {
+  /* 376 = 256 (1-st level table) + 4 + 7 + 15 + 31 + 63 (2-nd level mix-tables)
+     This number is discovered "unlimited" "enough" calculator; it is actually
+     a wee bigger than required in several cases (especially for alphabets with
+     less than 16 symbols). */
+  const size_t max_table_size = alphabet_size_limit + 376;
   const size_t code_size = sizeof(HuffmanCode) * ntrees * max_table_size;
   const size_t htree_size = sizeof(HuffmanCode*) * ntrees;
   /* Pointer alignment is, hopefully, wider than sizeof(HuffmanCode). */
   HuffmanCode** p = (HuffmanCode**)BROTLI_DECODER_ALLOC(s,
       code_size + htree_size);
-  group->alphabet_size = (uint16_t)alphabet_size;
-  group->max_symbol = (uint16_t)max_symbol;
+  group->alphabet_size_max = (uint16_t)alphabet_size_max;
+  group->alphabet_size_limit = (uint16_t)alphabet_size_limit;
   group->num_htrees = (uint16_t)ntrees;
   group->htrees = p;
   group->codes = (HuffmanCode*)(&p[ntrees]);
