@@ -126,8 +126,9 @@ void ReplayTask::validate_regs(uint32_t flags) {
   }
 
   /* TODO: add perf counter validations (hw int, page faults, insts) */
-  Registers::compare_register_files(this, "replaying", regs(), "recorded",
-                                    rec_regs, BAIL_ON_MISMATCH);
+  Registers::Comparison comparison = regs().compare_with(rec_regs);
+  ASSERT(this, !comparison.mismatch_count) << "Mismatched registers, replay vs rec: "
+      << comparison;
 }
 
 const TraceFrame& ReplayTask::current_trace_frame() {

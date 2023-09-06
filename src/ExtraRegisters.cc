@@ -800,12 +800,11 @@ void ExtraRegisters::reset() {
   }
 }
 
-static bool compare_regs(const char* label1, const ExtraRegisters& reg1,
-                         const char* label2, const ExtraRegisters& reg2,
+static void compare_regs(const ExtraRegisters& reg1,
+                         const ExtraRegisters& reg2,
                          GdbRegister low, GdbRegister hi,
                          int num_regs, const char* name_base,
-                         MismatchBehavior mismatch_behavior) {
-  bool match = true;
+                         Registers::Comparison& result) {
   for (int i = 0; i < num_regs; ++i) {
     GdbRegister this_low = (GdbRegister)(low + i);
     GdbRegister this_hi = hi == GdbRegister(0) ? hi : (GdbRegister)(hi + i);
@@ -819,70 +818,47 @@ static bool compare_regs(const char* label1, const ExtraRegisters& reg1,
       continue;
     }
 
-    char regname[80];
-    sprintf(regname, "%s%d", name_base, i);
-    string val1 = reg_to_string(reg1, this_low, this_hi);
-    string val2 = reg_to_string(reg2, this_low, this_hi);
-    if (mismatch_behavior >= BAIL_ON_MISMATCH) {
-      LOG(error) << regname << " " << val1 << " != " << val2 << " ("
-                 << label1 << " vs. " << label2 << ")";
-    } else if (mismatch_behavior >= LOG_MISMATCHES) {
-      LOG(info) << regname << " " << val1 << " != " << val2 << " ("
-                << label1 << " vs. " << label2 << ")";
+    ++result.mismatch_count;
+    if (result.store_mismatches) {
+      char regname[80];
+      sprintf(regname, "%s%d", name_base, i);
+      result.mismatches.push_back({regname, reg_to_string(reg1, this_low, this_hi),
+          reg_to_string(reg2, this_low, this_hi)});
     }
-    match = false;
   }
-  return match;
 }
 
-bool ExtraRegisters::compare_register_files_internal(const char* name1,
-  const ExtraRegisters& reg1, const char* name2, const ExtraRegisters& reg2,
-  MismatchBehavior mismatch_behavior) {
-  switch (reg1.arch()) {
+void ExtraRegisters::compare_internal(const ExtraRegisters& reg2,
+  Registers::Comparison& result) const {
+  if (arch() != reg2.arch()) {
+    FATAL() << "Can't compare register files with different archs";
+  }
+
+  if (format() == NONE || reg2.format() == NONE) {
+    // Not enough data to check anything
+    return;
+  }
+  if (format() != reg2.format()) {
+    FATAL() << "Can't compare register files with different formats";
+  }
+
+  switch (arch()) {
     case x86:
-      return compare_regs(name1, reg1, name2, reg2, DREG_ST0, GdbRegister(0), 8, "st", mismatch_behavior)
-        && compare_regs(name1, reg1, name2, reg2, DREG_XMM0, DREG_YMM0H, 8, "ymm", mismatch_behavior);
+      compare_regs(*this, reg2, DREG_ST0, GdbRegister(0), 8, "st", result);
+      compare_regs(*this, reg2, DREG_XMM0, DREG_YMM0H, 8, "ymm", result);
+      break;
     case x86_64:
-      return compare_regs(name1, reg1, name2, reg2, DREG_64_ST0, GdbRegister(0), 8, "st", mismatch_behavior)
-        && compare_regs(name1, reg1, name2, reg2, DREG_64_XMM0, DREG_64_YMM0H, 8, "ymm", mismatch_behavior);
+      compare_regs(*this, reg2, DREG_64_ST0, GdbRegister(0), 8, "st", result);
+      compare_regs(*this, reg2, DREG_64_XMM0, DREG_64_YMM0H, 8, "ymm", result);
+      break;
     case aarch64:
-      DEBUG_ASSERT(reg1.format_ == NT_FPR);
-      return compare_regs(name1, reg1, name2, reg2, DREG_V0, GdbRegister(0), 32, "v", mismatch_behavior);
+      DEBUG_ASSERT(format_ == NT_FPR);
+      compare_regs(*this, reg2, DREG_V0, GdbRegister(0), 32, "v", result);
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
-      return true;
+      break;
   }
-}
-
-bool ExtraRegisters::compare_register_files(ReplayTask* t, const char* name1,
-                                            const ExtraRegisters& reg1, const char* name2,
-                                            const ExtraRegisters& reg2,
-                                            MismatchBehavior mismatch_behavior) {
-  ASSERT(t, reg1.arch() == reg2.arch()) << "Can't compare register files with different archs";
-  if (reg1.format() == NONE || reg2.format() == NONE) {
-    // Not enough data to check anything
-    return true;
-  }
-  ASSERT(t, reg1.format() == reg2.format()) << "Can't compare register files with different formats";
-
-  bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
-  bool match = compare_register_files_internal(name1, reg1, name2, reg2,
-                                               mismatch_behavior);
-
-  if (t) {
-    ASSERT(t, !bail_error || match)
-        << "Fatal extra-register mismatch (ticks/rec:" << t->tick_count() << "/"
-        << t->current_trace_frame().ticks() << ")";
-  } else {
-    DEBUG_ASSERT(!bail_error || match);
-  }
-
-  if (match && mismatch_behavior == LOG_MISMATCHES) {
-    LOG(info) << "(extra-register files are the same for " << name1 << " and "
-              << name2 << ")";
-  }
-
-  return match;
 }
 
 } // namespace rr

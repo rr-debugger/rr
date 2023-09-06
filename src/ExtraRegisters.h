@@ -155,18 +155,23 @@ public:
    * information to verify that the registers definitely don't match.
    * The register files must have the same arch.
    */
-  static bool compare_register_files(ReplayTask* t, const char* name1,
-                                     const ExtraRegisters& reg1, const char* name2,
-                                     const ExtraRegisters& reg2,
-                                     MismatchBehavior mismatch_behavior);
+  Registers::Comparison compare_with(const ExtraRegisters& reg2) const {
+    Registers::Comparison result;
+    compare_internal(reg2, result);
+    return result;
+  }
+
+  bool matches(const ExtraRegisters& reg2) const {
+    Registers::Comparison result;
+    result.store_mismatches = false;
+    compare_internal(reg2, result);
+    return !result.mismatch_count;
+  }
 
 private:
   friend class Task;
 
-  static bool compare_register_files_internal(const char* name1,
-                                              const ExtraRegisters& reg1, const char* name2,
-                                              const ExtraRegisters& reg2,
-                                              MismatchBehavior mismatch_behavior);
+  void compare_internal(const ExtraRegisters& reg2, Registers::Comparison& result) const;
 
   Format format_;
   SupportedArch arch_;

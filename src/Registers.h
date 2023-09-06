@@ -22,12 +22,6 @@ namespace rr {
 
 class ReplayTask;
 
-enum MismatchBehavior {
-  EXPECT_MISMATCHES = 0,
-  LOG_MISMATCHES,
-  BAIL_ON_MISMATCH
-};
-
 const uintptr_t X86_RESERVED_FLAG = 1 << 1;
 const uintptr_t X86_ZF_FLAG = 1 << 6;
 const uintptr_t X86_TF_FLAG = 1 << 8;
@@ -469,22 +463,33 @@ public:
   void print_register_file_compact(FILE* f) const;
   void print_register_file_for_trace_raw(FILE* f) const;
 
-  /**
-   * Return true if |reg1| matches |reg2|.  Passing EXPECT_MISMATCHES
-   * indicates that the caller is using this as a general register
-   * compare and nothing special should be done if the register files
-   * mismatch.  Passing LOG_MISMATCHES will log the registers that don't
-   * match.  Passing BAIL_ON_MISMATCH will additionally abort on
-   * mismatch.
-   */
-  static bool compare_register_files(ReplayTask* t, const char* name1,
-                                     const Registers& reg1, const char* name2,
-                                     const Registers& reg2,
-                                     MismatchBehavior mismatch_behavior);
+  struct Mismatch {
+    std::string register_name;
+    std::string val1;
+    std::string val2;
+  };
+  struct Comparison {
+    std::vector<Mismatch> mismatches;
+    int mismatch_count = 0;
+    bool store_mismatches = true;
+
+    void add_mismatch(const char* reg_name, uint64_t val1, uint64_t val2);
+  };
+
+  // This is cheap when there are no mismatches. It can be a bit expensive
+  // (allocation) when mismatches are expected; call matches() instead in
+  // that case, which doesn't allocate.
+  Comparison compare_with(const Registers& other) const {
+    Comparison result;
+    compare_internal(other, result);
+    return result;
+  }
 
   bool matches(const Registers& other) const {
-    return compare_register_files(nullptr, nullptr, *this, nullptr, other,
-                                  EXPECT_MISMATCHES);
+    Comparison result;
+    result.store_mismatches = false;
+    compare_internal(other, result);
+    return !result.mismatch_count;
   }
 
   // TODO: refactor me to use the GdbRegisterValue helper from
@@ -557,18 +562,16 @@ private:
                                           const char* formats[]) const;
 
   template <typename Arch>
-  static bool compare_registers_core(const char* name1, const Registers& reg1,
-                                     const char* name2, const Registers& reg2,
-                                     MismatchBehavior mismatch_behavior);
+  static void compare_registers_core(const Registers& reg1,
+                                     const Registers& reg2,
+                                     Comparison& result);
 
   template <typename Arch>
-  static bool compare_registers_arch(const char* name1, const Registers& reg1,
-                                     const char* name2, const Registers& reg2,
-                                     MismatchBehavior mismatch_behavior);
+  static void compare_registers_arch(const Registers& reg1,
+                                     const Registers& reg2,
+                                     Comparison& result);
 
-  static bool compare_register_files_internal(
-      const char* name1, const Registers& reg1, const char* name2,
-      const Registers& reg2, MismatchBehavior mismatch_behavior);
+  void compare_internal(const Registers& other, Comparison& result) const;
 
   template <typename Arch>
   size_t read_register_arch(uint8_t* buf, GdbRegister regno,
@@ -626,6 +629,8 @@ ret with_converted_registers(const Registers& regs, SupportedArch arch,
 }
 
 std::ostream& operator<<(std::ostream& stream, const Registers& r);
+
+std::ostream& operator<<(std::ostream& stream, const Registers::Comparison& c);
 
 } // namespace rr
 

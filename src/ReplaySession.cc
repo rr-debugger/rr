@@ -785,17 +785,14 @@ static void guard_overshoot(ReplayTask* t, const Registers& target_regs,
       t->move_ip_before_breakpoint();
     }
     if (closest_matching_regs) {
-      LOG(error)
-          << "Replay diverged; target registers at ticks target mismatched: ";
-      Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
-                                        *closest_matching_regs, LOG_MISMATCHES);
+      ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
+        << -remaining_ticks << "; target registers at ticks target mismatched: "
+        << "replay != rec: " << t->regs().compare_with(*closest_matching_regs);
     } else {
-      LOG(error) << "Replay diverged; target registers mismatched: ";
-      Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
-                                        target_regs, LOG_MISMATCHES);
+      ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
+        << -remaining_ticks << "; target registers mismatched: "
+        << "replay != rec: " << t->regs().compare_with(target_regs);
     }
-    ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
-                     << -remaining_ticks;
   }
 }
 
@@ -822,15 +819,11 @@ static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
                                     Registers* mismatched_regs,
                                     const Registers** mismatched_regs_ptr,
                                     bool in_syscallbuf) {
-  MismatchBehavior behavior =
-      IS_LOGGING(debug) ? LOG_MISMATCHES : EXPECT_MISMATCHES;
-
   if (ticks_left != 0) {
-    LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << rec_regs.ip() << ")";
     if (IS_LOGGING(debug)) {
-      Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)",
-                                        rec_regs, LOG_MISMATCHES);
+      LOG(debug) << "  not same execution point: " << ticks_left
+                 << " ticks left (@" << rec_regs.ip() << ")"
+                 << " replay vs rec: " << t->regs().compare_with(rec_regs);
     }
     return false;
   }
@@ -847,17 +840,19 @@ static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
       *mismatched_regs_ptr = mismatched_regs;
       return false;
     }
-  } else if (!Registers::compare_register_files(t, "rep", t->regs(), "rec", rec_regs,
-                                                behavior)) {
-    LOG(debug) << "  not same execution point: regs differ (@" << rec_regs.ip()
-               << ")";
+  } else if (!t->regs().matches(rec_regs)) {
+    if (IS_LOGGING(debug)) {
+      LOG(debug) << "  not same execution point: regs differ (@" << rec_regs.ip()
+                 << ") replay vs rec: " << t->regs().compare_with(rec_regs);
+    }
     *mismatched_regs = t->regs();
     *mismatched_regs_ptr = mismatched_regs;
     return false;
-  } else if (!ExtraRegisters::compare_register_files(t, "rep", t->extra_regs(), "rec",
-                                                     rec_extra_regs, behavior)) {
-    LOG(debug) << "  not same execution point: extra regs differ (@" << rec_regs.ip()
-               << ")";
+  } else if (!t->extra_regs().matches(rec_extra_regs)) {
+    if (IS_LOGGING(debug)) {
+      LOG(debug) << "  not same execution point: extra regs differ (@" << rec_regs.ip()
+                 << ") replay vs rec: " << t->extra_regs().compare_with(rec_extra_regs);
+    }
     return false;
   }
   LOG(debug) << "  same execution point";

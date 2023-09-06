@@ -291,25 +291,37 @@ void Registers::print_register_file_for_trace_raw(FILE* f) const {
           u.x86regs.esp, u.x86regs.eip, u.x86regs.eflags);
 }
 
-static void maybe_print_reg_mismatch(MismatchBehavior mismatch_behavior,
-                                     const char* regname, const char* label1,
-                                     uint64_t val1, const char* label2,
-                                     uint64_t val2) {
-  if (mismatch_behavior >= BAIL_ON_MISMATCH) {
-    LOG(error) << regname << " " << HEX(val1) << " != " << HEX(val2) << " ("
-               << label1 << " vs. " << label2 << ")";
-  } else if (mismatch_behavior >= LOG_MISMATCHES) {
-    LOG(info) << regname << " " << HEX(val1) << " != " << HEX(val2) << " ("
-              << label1 << " vs. " << label2 << ")";
+std::ostream& operator<<(std::ostream& stream, const Registers::Comparison& c) {
+  if (c.store_mismatches) {
+    bool first = true;
+    for (const Registers::Mismatch& mismatch : c.mismatches) {
+      if (first) {
+        first = false;
+      } else {
+        stream << ", ";
+      }
+      stream << mismatch.register_name << " " << mismatch.val1 << " != " << mismatch.val2;
+    }
+  } else {
+    stream << c.mismatch_count << " register mismatches";
+  }
+  return stream;
+}
+
+void Registers::Comparison::add_mismatch(const char* reg_name, uint64_t val1, uint64_t val2) {
+  ++mismatch_count;
+  if (store_mismatches) {
+    char buf1[40];
+    sprintf(buf1, "%p", reinterpret_cast<void*>(val1));
+    char buf2[40];
+    sprintf(buf2, "%p", reinterpret_cast<void*>(val2));
+    mismatches.push_back({reg_name, buf1, buf2});
   }
 }
 
 template <typename Arch>
-bool Registers::compare_registers_core(const char* name1, const Registers& reg1,
-                                       const char* name2, const Registers& reg2,
-                                       MismatchBehavior mismatch_behavior) {
-  bool match = true;
-
+void Registers::compare_registers_core(const Registers& reg1,
+                                       const Registers& reg2, Comparison& result) {
   for (auto& rv : RegisterInfo<Arch>::registers) {
     if (rv.nbytes == 0) {
       continue;
@@ -326,99 +338,59 @@ bool Registers::compare_registers_core(const char* name1, const Registers& reg1,
     memcpy(&val2, rv.pointer_into(&reg2.u), rv.nbytes);
 
     if ((val1 ^ val2) & rv.comparison_mask) {
-      maybe_print_reg_mismatch(mismatch_behavior, rv.name, name1, val1, name2,
-                               val2);
-      match = false;
+      result.add_mismatch(rv.name, val1, val2);
     }
   }
-
-  return match;
 }
 
 // A handy macro for compare_registers_arch specializations.
-#define REGCMP(user_regs, _reg)                                                \
-  do {                                                                         \
-    if (reg1.user_regs._reg != reg2.user_regs._reg) {                          \
-      maybe_print_reg_mismatch(mismatch_behavior, #_reg, name1,                \
-                               reg1.user_regs._reg, name2,                     \
-                               reg2.user_regs._reg);                           \
-      match = false;                                                           \
-    }                                                                          \
+#define REGCMP(user_regs, _reg, result)                                    \
+  do {                                                                     \
+    if (reg1.user_regs._reg != reg2.user_regs._reg) {                      \
+      result.add_mismatch(#_reg, reg1.user_regs._reg, reg2.user_regs._reg);\
+    }                                                                      \
   } while (0)
-#define X86_REGCMP(_reg) REGCMP(u.x86regs, _reg)
-#define X64_REGCMP(_reg) REGCMP(u.x64regs, _reg)
+#define X86_REGCMP(_reg, result) REGCMP(u.x86regs, _reg, result)
+#define X64_REGCMP(_reg, result) REGCMP(u.x64regs, _reg, result)
 
 // A wrapper around compare_registers_core so registers requiring special
 // processing can be handled via template specialization.
 template <typename Arch>
-/* static */ bool Registers::compare_registers_arch(
-    const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, MismatchBehavior mismatch_behavior) {
+/* static */ void Registers::compare_registers_arch(
+    const Registers& reg1, const Registers& reg2, Comparison& result) {
   // Default behavior.
-  return compare_registers_core<Arch>(name1, reg1, name2, reg2,
-                                      mismatch_behavior);
+  return compare_registers_core<Arch>(reg1, reg2, result);
 }
 
 template <>
-/* static */ bool Registers::compare_registers_arch<rr::X86Arch>(
-    const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, MismatchBehavior mismatch_behavior) {
-  bool match = compare_registers_core<rr::X86Arch>(name1, reg1, name2, reg2,
-                                                   mismatch_behavior);
+/* static */ void Registers::compare_registers_arch<rr::X86Arch>(
+    const Registers& reg1, const Registers& reg2, Comparison& result) {
+  compare_registers_core<rr::X86Arch>(reg1, reg2, result);
   /* When the kernel is entered via an interrupt, orig_rax is set to -IRQ.
      We observe negative orig_eax values at SCHED events and signals and other
      timer interrupts. These values are only really meaningful to compare when
      they reflect original syscall numbers, in which case both will be positive.
   */
   if (reg1.u.x86regs.orig_eax >= 0 && reg2.u.x86regs.orig_eax >= 0) {
-    X86_REGCMP(orig_eax);
+    X86_REGCMP(orig_eax, result);
   }
-  return match;
 }
 
 template <>
-/* static */ bool Registers::compare_registers_arch<rr::X64Arch>(
-    const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, MismatchBehavior mismatch_behavior) {
-  bool match = compare_registers_core<rr::X64Arch>(name1, reg1, name2, reg2,
-                                                   mismatch_behavior);
+/* static */ void Registers::compare_registers_arch<rr::X64Arch>(
+    const Registers& reg1, const Registers& reg2, Comparison& result) {
+  compare_registers_core<rr::X64Arch>(reg1, reg2, result);
   // See comment in the x86 case
   if ((intptr_t)reg1.u.x64regs.orig_rax >= 0 &&
       (intptr_t)reg2.u.x64regs.orig_rax >= 0) {
-    X64_REGCMP(orig_rax);
+    X64_REGCMP(orig_rax, result);
   }
-  return match;
 }
 
-/*static*/ bool Registers::compare_register_files_internal(
-    const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, MismatchBehavior mismatch_behavior) {
-  DEBUG_ASSERT(reg1.arch() == reg2.arch());
-  RR_ARCH_FUNCTION(compare_registers_arch, reg1.arch(), name1, reg1, name2,
-                   reg2, mismatch_behavior);
-}
-
-/*static*/ bool Registers::compare_register_files(
-    ReplayTask* t, const char* name1, const Registers& reg1, const char* name2,
-    const Registers& reg2, MismatchBehavior mismatch_behavior) {
-  bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
-  bool match = compare_register_files_internal(name1, reg1, name2, reg2,
-                                               mismatch_behavior);
-
-  if (t) {
-    ASSERT(t, !bail_error || match)
-        << "Fatal register mismatch (ticks/rec:" << t->tick_count() << "/"
-        << t->current_trace_frame().ticks() << ")";
-  } else {
-    DEBUG_ASSERT(!bail_error || match);
-  }
-
-  if (match && mismatch_behavior == LOG_MISMATCHES) {
-    LOG(info) << "(register files are the same for " << name1 << " and "
-              << name2 << ")";
-  }
-
-  return match;
+void Registers::compare_internal(const Registers& other,
+                                 Comparison& result) const {
+  DEBUG_ASSERT(arch() == other.arch());
+  RR_ARCH_FUNCTION(compare_registers_arch, arch(), *this, other, result);
 }
 
 template <typename Arch>
