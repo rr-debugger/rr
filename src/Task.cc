@@ -3580,6 +3580,9 @@ long Task::ptrace_seize(pid_t tid, Session& session) {
   // any abnormal exit of the rr process will leave the child paused and
   // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
+  if (getenv("RR_TEST_DELAY_SEIZE")) {
+    sleep(1);
+  }
   ret = ptrace_seize(tid, session);
   if (ret) {
     // Note that although the tracee may have died due to some fatal error,

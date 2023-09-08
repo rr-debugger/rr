@@ -3592,6 +3592,9 @@ static pid_t do_detach_teleport(RecordTask *t)
   // on Alder Lake).
   cpu_set_t mask = t->session().original_affinity();
   syscall(SYS_sched_setaffinity, new_t->tid, sizeof(mask), &mask);
+  // Task::spawn my lave the task in a group-stop if the task SIGSTOPs itself
+  // before we can PTRACE_SEIZE it. Kick it out of that group-stop now.
+  ::kill(new_tid, SIGCONT);
   new_t->detach();
   new_t->did_kill();
   delete new_t;

@@ -1,6 +1,7 @@
 source `dirname $0`/util.sh
 RECORD_ARGS="--env=_RR_TRACE_DIR=$workdir/inner"
 save_exe simple$bitness
+export RR_TEST_DELAY_SEIZE=1
 just_record $(which rr) "record --nested=detach $PWD/simple$bitness-$nonce"
 # Replay outer
 replay
