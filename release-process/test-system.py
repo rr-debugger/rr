@@ -141,6 +141,7 @@ try:
             b'function wait_for_test_deps {\nwait %1\n}',
             b'git_revision=%s'%args.git_revision.encode('utf-8'),
             b'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
+            b'TEST_FIREFOX=%d'%(1 if args.architecture == 'x86_64' else 0),
             b'ctest_options="%s"'%b' '.join(map(lambda r: b'-E %s'%r.encode('utf-8'), exclude_tests)),
             rr_testing_script
         ])

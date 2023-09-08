@@ -69,8 +69,12 @@ function xvnc-runner { CMD=$1 EXPECT=$2
   echo PASSED: $CMD
 }
 
-rm -rf /tmp/firefox-profile || true
-xvnc-runner "firefox --profile /tmp/firefox-profile $HOME/rr/release-process/test-data/test.html" "rr Test Page"
+if [[ $TEST_FIREFOX == 1 ]]; then
+  rm -rf /tmp/firefox /tmp/firefox-profile || true
+  mkdir /tmp/firefox-profile
+  ( cd /tmp; curl -L 'https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US' | tar -jxf - )
+  xvnc-runner "/tmp/firefox/firefox --profile /tmp/firefox-profile $HOME/rr/release-process/test-data/test.html" "rr Test Page"
+fi
 
 rm -rf ~/.config/libreoffice || true
 xvnc-runner "libreoffice $HOME/rr/release-process/test-data/rr-test-doc.odt" "rr-test-doc.odt"
