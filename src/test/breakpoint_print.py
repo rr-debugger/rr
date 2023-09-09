@@ -9,7 +9,8 @@ send_gdb('print 123 + 456')
 send_gdb('end')
 
 send_gdb('c')
-expect_gdb('Breakpoint 1')
+# Old gdbs print 579 before 'Breakpoint 1'
+# expect_gdb('Breakpoint 1')
 expect_gdb('579')
 
 ok()
