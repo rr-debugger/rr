@@ -14,7 +14,7 @@ int main(void) {
   pipe(pipe_fds);
   child = fork();
   if (!child) {
-    kill(gettid(), SIGSTOP);
+    kill(sys_gettid(), SIGSTOP);
     return 77;
   }
 
