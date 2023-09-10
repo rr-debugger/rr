@@ -126,25 +126,32 @@ with open(args.distro_config_json, 'r') as f:
 with pathlib.Path(__file__).with_name('rr-testing.sh').open('rb') as f:
     rr_testing_script = f.read()
 
+def config_script_function(config_key):
+    lines = []
+    entry = distro_config.get(config_key)
+    if isinstance(entry, str):
+        lines = [entry]
+    elif isinstance(entry, list):
+        lines = entry
+    elif entry is not None:
+        raise ValueError('Invalid config entry %s: %s' % (config_key, entry))
+    return ('function %s {\n%s\n}' % (config_key, '\n'.join(lines)))
+
 vm = Ec2Vm(args.machine_type, args.architecture, distro_config, args.keypair_pem_file)
 success = False
 try:
     vm.wait_for_ssh()
     exclude_tests = distro_config['exclude_tests'] if 'exclude_tests' in distro_config else []
-    full_script = b'\n'.join(
-        [b"set -x # echo commands",
-         b"set -e # default to exiting on error"] +
-        list(map(lambda c: c.encode('utf-8'), distro_config['setup_commands'])) +
+    full_script = '\n'.join(
         [
-            distro_config['install_build_deps'].encode('utf-8'),
-            b'%s &'%(distro_config['install_test_deps'].encode('utf-8')),
-            b'function wait_for_test_deps {\nwait %1\n}',
-            b'git_revision=%s'%args.git_revision.encode('utf-8'),
-            b'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
-            b'TEST_FIREFOX=%d'%(1 if args.architecture == 'x86_64' else 0),
-            b'ctest_options="%s"'%b' '.join(map(lambda r: b'-E %s'%r.encode('utf-8'), exclude_tests)),
-            rr_testing_script
-        ])
+            config_script_function('setup_commands'),
+            config_script_function('install_build_deps'),
+            config_script_function('install_test_deps'),
+            'git_revision=%s'%args.git_revision,
+            'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
+            'test_firefox=%d'%(1 if args.architecture == 'x86_64' else 0),
+            'ctest_options="%s"'%' '.join('-E %s'%r for r in exclude_tests),
+        ]).encode('utf-8') + b'\n' + rr_testing_script
     vm.ssh(['/bin/bash', '-s'], full_script)
     if args.dist_files_dir is not None:
         vm.scp_from(['-r'], '/tmp/dist', args.dist_files_dir)

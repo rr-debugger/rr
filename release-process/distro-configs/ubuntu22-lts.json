@@ -4,9 +4,10 @@
   "ami_name_pattern": "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-*",
   "user": "ubuntu",
   "setup_commands": [
+    "cloud-init status --wait",
     "sudo apt-get update -y",
     "sudo apt-get dist-upgrade -f -y"
   ],
   "install_build_deps": "sudo apt-get install -y rpm ccache cmake g++-multilib pkg-config zlib1g-dev git python-dev-is-python3 libacl1-dev ninja-build manpages-dev capnproto libcapnp-dev gdb python3-pexpect",
-  "install_test_deps": "sudo apt-get install -y tightvncserver xtightvncviewer curl libdbus-glib-1-2 libreoffice"
+  "install_test_deps": "sudo apt-get install -y tightvncserver xtightvncviewer curl tar bzip2 libdbus-glib-1-2 libreoffice"
 }

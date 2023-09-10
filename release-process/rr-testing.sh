@@ -1,10 +1,23 @@
 # Bash script to build rr and run tests.
 #
-# Requires variables to be set:
+# Requires variables and functions to be set. See test-system.py.
 # $git_revision : git revision to check out, build and test
 # $build_dist : 1 if we should build dist packages, 0 otherwise
+# $test_firefox : 1 to run firefox tests, 0 to skip
+# $ctest_options : options to pass to ctest, e.g to exclude certain tests
+# setup_commands : function to setup environment, e.g. 'apt update'
+# install_build_deps : function to install dependencies required to build rr
+# install_test_deps : function to install dependencies required by tests
+
+set -x # echo commands
+set -e # default to exiting on error"
 
 uname -a
+
+setup_commands
+install_build_deps
+
+install_test_deps & # job %1
 
 # Free up space before we (re)start
 
@@ -21,7 +34,7 @@ ninja
 
 # Test deps are installed in parallel with our build.
 # Make sure that install has finished before running tests
-wait_for_test_deps
+wait %1
 
 # Enable perf events for rr
 echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
@@ -69,7 +82,7 @@ function xvnc-runner { CMD=$1 EXPECT=$2
   echo PASSED: $CMD
 }
 
-if [[ $TEST_FIREFOX == 1 ]]; then
+if [[ $test_firefox == 1 ]]; then
   rm -rf /tmp/firefox /tmp/firefox-profile || true
   mkdir /tmp/firefox-profile
   ( cd /tmp; curl -L 'https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US' | tar -jxf - )
