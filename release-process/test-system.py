@@ -76,14 +76,15 @@ class Ec2Vm:
         self.instance.wait_until_running()
         self.instance.reload()
         print('Started VM %s "%s" at %s'%(self.instance.id, self.distro_name, self.instance.public_ip_address), file=sys.stderr)
-        for retries in range(30):
+        for retries in range(60):
             result = subprocess.run(self.ssh_command() + ['true'], stdin=subprocess.DEVNULL, stderr=subprocess.PIPE)
             if result.returncode == 0:
                 self.ssh_ready = True
-                break
-            if b'Connection refused' not in result.stderr:
+                return
+            if b'Connection refused' not in result.stderr and b'reset by peer' not in result.stderr:
                 raise Exception('SSH connection failed:\n%s'%result.stderr.decode('utf-8'))
             time.sleep(1)
+        raise Exception('Too many retries, cannot connect via SSH')
 
     def ssh(self, cmd, input):
         """Run `cmd` (command + args list) via SSH and wait for it to finish.
@@ -137,6 +138,10 @@ def config_script_function(config_key):
         raise ValueError('Invalid config entry %s: %s' % (config_key, entry))
     return ('function %s {\n%s\n}' % (config_key, '\n'.join(lines)))
 
+if args.dist_files_dir and not distro_config.get('staticlibs', True):
+    print('Dist builds must use staticlibs, aborting', file=sys.stderr)
+    sys.exit(1)
+
 vm = Ec2Vm(args.machine_type, args.architecture, distro_config, args.keypair_pem_file)
 success = False
 try:
@@ -148,6 +153,7 @@ try:
             config_script_function('install_build_deps'),
             config_script_function('install_test_deps'),
             'git_revision=%s'%args.git_revision,
+            'staticlibs=%s'%('TRUE' if distro_config.get('staticlibs', True) else 'FALSE'),
             'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
             'test_firefox=%d'%(1 if args.architecture == 'x86_64' else 0),
             'ctest_options="%s"'%' '.join('-E %s'%r for r in exclude_tests),

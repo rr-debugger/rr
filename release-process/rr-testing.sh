@@ -2,6 +2,7 @@
 #
 # Requires variables and functions to be set. See test-system.py.
 # $git_revision : git revision to check out, build and test
+# $staticlibs : TRUE or FALSE to build with static libs
 # $build_dist : 1 if we should build dist packages, 0 otherwise
 # $test_firefox : 1 to run firefox tests, 0 to skip
 # $ctest_options : options to pass to ctest, e.g to exclude certain tests
@@ -29,7 +30,7 @@ git checkout $git_revision
 rm -rf ~/obj || true
 mkdir ~/obj
 cd ~/obj
-cmake -G Ninja -DCMAKE_BUILD_TYPE=RELEASE -Dstaticlibs=TRUE -Dstrip=TRUE ../rr
+cmake -G Ninja -DCMAKE_BUILD_TYPE=RELEASE -Dstaticlibs=$staticlibs -Dstrip=TRUE ../rr
 ninja
 
 # Test deps are installed in parallel with our build.

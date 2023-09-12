@@ -23,6 +23,8 @@ void callback(__attribute__((unused)) uint64_t env, char* name, map_properties_t
 
 int main(void) {
   page_size = sysconf(_SC_PAGESIZE);
+  /* Trigger dl_runtime_resolve etc for mmap */
+  mmap(NULL, page_size, PROT_NONE, MAP_ANONYMOUS, -1, 0);
   FILE* maps_file = fopen("/proc/self/maps", "r");
   iterate_maps(0, callback, maps_file);
   test_assert(n_to_unmap > 0);
