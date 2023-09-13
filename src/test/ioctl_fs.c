@@ -8,7 +8,6 @@ int main(void) {
   int fd = open("dummy.txt", O_RDWR | O_CREAT, 0600);
   long* version;
   long* flags;
-  struct fsxattr* xattr;
   char filebuf[4096] = {};
   char fmbuf[4096] = {};
   struct fiemap *fm;
@@ -34,6 +33,8 @@ int main(void) {
     atomic_printf("flags=%lx\n", *flags);
   }
 
+#ifdef FS_IOC_FSGETXATTR
+  struct fsxattr* xattr;
   ALLOCATE_GUARD(xattr, 'c');
   ret = ioctl(fd, FS_IOC_FSGETXATTR, xattr);
   VERIFY_GUARD(xattr);
@@ -42,6 +43,7 @@ int main(void) {
   } else {
     atomic_printf("xflags=%d\n", xattr->fsx_xflags);
   }
+#endif
 
   test_assert(sizeof(filebuf) == write(fd, &filebuf, sizeof(filebuf)));
   fm = (struct fiemap*)fmbuf;
