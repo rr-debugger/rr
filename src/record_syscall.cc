@@ -6404,7 +6404,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::fork:
     case Arch::clone:
       if ((syscallno == Arch::vfork ||
-           (syscallno == Arch::clone && (t->regs().arg1() & CLONE_VFORK))) &&
+           (syscallno == Arch::clone && (t->regs().orig_arg1() & CLONE_VFORK))) &&
           (t->emulated_ptrace_options & PTRACE_O_TRACEVFORKDONE)) {
         t->emulate_ptrace_stop(
             WaitStatus::for_ptrace_event(PTRACE_EVENT_VFORK_DONE));
