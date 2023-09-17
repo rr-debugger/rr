@@ -67,7 +67,14 @@ AutoRestoreMem::~AutoRestoreMem() {
     remote.task()->write_bytes_helper(addr, len, data.data());
   }
   remote.regs().set_sp(remote.regs().sp() + len);
-  remote.task()->set_regs(remote.regs());
+  if (remote.task()->is_stopped()) {
+    remote.task()->set_regs(remote.regs());
+    // If the task is not stopped it must have been kicked out of a
+    // stop via SIGKILL or equivalent. In that case we should not be
+    // trying to do anything more with it until restore_state_to(),
+    // which will clean things up, so it doesn't matter if we
+    // set the task's registers here.
+  }
 }
 
 static bool is_SIGTRAP_default_and_unblocked(Task* t) {
