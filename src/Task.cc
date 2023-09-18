@@ -90,6 +90,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       last_resume_orig_cx(0),
       did_set_breakpoint_after_cpuid(false),
       is_stopped_(false),
+      in_unexpected_exit(false),
       seccomp_bpf_enabled(false),
       registers_dirty(false),
       orig_syscallno_dirty(false),
@@ -976,7 +977,7 @@ bool Task::exit_syscall_and_prepare_restart() {
     // make it look like we really entered the syscall. Then
     // handle_ptrace_exit_event will record something appropriate.
     r.emulate_syscall_entry();
-    override_regs_during_exit(r);
+    set_regs(r);
     return false;
   }
   LOG(debug) << "exit_syscall_and_prepare_restart done";
@@ -1100,7 +1101,10 @@ string Task::read_c_str(remote_ptr<char> child_addr, bool *ok) {
 }
 
 const Registers& Task::regs() const {
-  ASSERT(this, is_stopped_ || was_reaped_);
+  // If we're in an unexpected exit then the tracee may
+  // not be stopped but we know its registers won't change again,
+  // so it's safe to ask for them here.
+  ASSERT(this, is_stopped_ || was_reaped_ || in_unexpected_exit);
   return registers;
 }
 
@@ -1566,7 +1570,8 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 }
 
 void Task::set_regs(const Registers& regs) {
-  ASSERT(this, is_stopped_);
+  // Only allow registers to be set while our copy is the source of truth.
+  ASSERT(this, is_stopped_ || in_unexpected_exit);
   if (registers.original_syscallno() != regs.original_syscallno()) {
     orig_syscallno_dirty = true;
   }
@@ -1575,12 +1580,6 @@ void Task::set_regs(const Registers& regs) {
     registers_dirty = true;
     registers = regs;
   }
-}
-
-void Task::override_regs_during_exit(const Registers& regs) {
-  orig_syscallno_dirty = true;
-  registers_dirty = true;
-  registers = regs;
 }
 
 void Task::flush_regs() {
@@ -2171,6 +2170,7 @@ bool Task::did_waitpid(WaitStatus status) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;
         // Let's pretend this stop never happened.
         set_stopped(false);
+        in_unexpected_exit = true;
         return false;
       }
     }
@@ -2231,6 +2231,7 @@ bool Task::did_waitpid(WaitStatus status) {
         // but in that case we're going to ignore this signal-stop
         // so it doesn't matter.
         set_stopped(false);
+        in_unexpected_exit = true;
         return false;
       }
     }

@@ -6970,11 +6970,7 @@ void rec_process_syscall(RecordTask* t) {
 
   aarch64_kernel_bug_workaround(t, syscall_state);
 
-  if (t->is_stopped()) {
-    t->on_syscall_exit(sys_ev.number, sys_ev.arch(), t->regs());
-    // If t was killed via SIGKILL or equivalent, these post-syscall
-    // state updates don't matter.
-  }
+  t->on_syscall_exit(sys_ev.number, sys_ev.arch(), t->regs());
   t->syscall_state = nullptr;
 
   MonitoredSharedMemory::check_all(t);

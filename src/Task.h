@@ -598,13 +598,6 @@ public:
   /** Set the tracee's registers to |regs|. Lazy. */
   void set_regs(const Registers& regs);
 
-  /** Set the tracee's registers to |regs|. The task
-   * is known to be exiting (running towards, or actually in, a
-   * not-yet-reported PTRACE_EVENT_EXIT or reap) so its real registers
-   * won't change underneath us, but we need to override those
-   * registers with our values for recording purposes. */
-  void override_regs_during_exit(const Registers& regs);
-
   /** Ensure registers are flushed back to the underlying task. */
   void flush_regs();
 
@@ -1275,7 +1268,12 @@ protected:
   // Count of all ticks seen by this task since tracees became
   // consistent and the task last wait()ed.
   Ticks ticks;
-  // When |is_stopped_|, these are our child registers.
+  // Copy of the child registers.
+  // When is_stopped_ or in_unexpected_exit, these are the source of
+  // truth. Otherwise the child is running and the registers could be
+  // changed by the kernel or user-space execution, and the values here
+  // are meaningless.
+  // See also registers_dirty.
   Registers registers;
   // Where we last resumed execution
   remote_code_ptr address_of_last_execution_resume;
@@ -1298,6 +1296,9 @@ protected:
   // without our knowledge, due to a SIGKILL or equivalent such as
   // zap_pid_ns_processes.
   bool is_stopped_;
+  // True when we've been kicked out of a ptrace-stop via SIGKILL or
+  // equivalent.
+  bool in_unexpected_exit;
   /* True when the seccomp filter has been enabled via prctl(). This happens
    * in the first system call issued by the initial tracee (after it returns
    * from kill(SIGSTOP) to synchronize with the tracer). */

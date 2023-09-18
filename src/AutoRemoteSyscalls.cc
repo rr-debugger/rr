@@ -67,14 +67,7 @@ AutoRestoreMem::~AutoRestoreMem() {
     remote.task()->write_bytes_helper(addr, len, data.data());
   }
   remote.regs().set_sp(remote.regs().sp() + len);
-  if (remote.task()->is_stopped()) {
-    remote.task()->set_regs(remote.regs());
-    // If the task is not stopped it must have been kicked out of a
-    // stop via SIGKILL or equivalent. In that case we should not be
-    // trying to do anything more with it until restore_state_to(),
-    // which will clean things up, so it doesn't matter if we
-    // set the task's registers here.
-  }
+  remote.task()->set_regs(remote.regs());
 }
 
 static bool is_SIGTRAP_default_and_unblocked(Task* t) {
@@ -270,7 +263,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     // Don't restore status; callers need to see the task is exiting.
     // And the other stuff we don't below won't work.
     // But do restore registers so it looks like the exit happened in a clean state.
-    t->override_regs_during_exit(regs);
+    t->set_regs(regs);
     return;
   }
 
