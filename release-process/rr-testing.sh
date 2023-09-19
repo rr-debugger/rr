@@ -90,8 +90,10 @@ if [[ $test_firefox == 1 ]]; then
   xvnc-runner "/tmp/firefox/firefox --profile /tmp/firefox-profile $HOME/rr/release-process/test-data/test.html" "rr Test Page"
 fi
 
-rm -rf ~/.config/libreoffice || true
-xvnc-runner "libreoffice $HOME/rr/release-process/test-data/rr-test-doc.odt" "rr-test-doc.odt"
+if [[ $test_libreoffice == 1 ]]; then
+  rm -rf ~/.config/libreoffice || true
+  xvnc-runner "libreoffice $HOME/rr/release-process/test-data/rr-test-doc.odt" "rr-test-doc.odt"
+fi
 
 if [[ $build_dist != 0 ]]; then
   make -j`nproc` dist

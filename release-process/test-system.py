@@ -16,7 +16,7 @@ parser.add_argument('distro_config_json')
 parser.add_argument('architecture')
 parser.add_argument('keypair_pem_file')
 parser.add_argument('--git-revision', default='master')
-parser.add_argument('--machine-type', default='c5.9xlarge')
+parser.add_argument('--machine-type')
 parser.add_argument('--keep-vm', action='store_true')
 parser.add_argument('--keep-vm-on-error', action='store_true')
 parser.add_argument('--dist-files-dir')
@@ -127,22 +127,32 @@ with open(args.distro_config_json, 'r') as f:
 with pathlib.Path(__file__).with_name('rr-testing.sh').open('rb') as f:
     rr_testing_script = f.read()
 
-def config_script_function(config_key):
-    lines = []
+def get_config_lines(config_key):
     entry = distro_config.get(config_key)
     if isinstance(entry, str):
-        lines = [entry]
-    elif isinstance(entry, list):
-        lines = entry
-    elif entry is not None:
-        raise ValueError('Invalid config entry %s: %s' % (config_key, entry))
+        return [entry]
+    if isinstance(entry, list):
+        return entry
+    if entry is None:
+        return []
+    raise ValueError('Invalid config entry %s: %s' % (config_key, entry))
+
+def config_script_function(config_key):
+    lines = get_config_lines(config_key) + get_config_lines('%s_%s'%(config_key, args.architecture))
     return ('function %s {\n%s\n}' % (config_key, '\n'.join(lines)))
 
 if args.dist_files_dir and not distro_config.get('staticlibs', True):
     print('Dist builds must use staticlibs, aborting', file=sys.stderr)
     sys.exit(1)
 
-vm = Ec2Vm(args.machine_type, args.architecture, distro_config, args.keypair_pem_file)
+machine_type = args.machine_type
+if not machine_type:
+    if args.architecture == 'x86_64':
+        machine_type = 'c5.9xlarge'
+    elif args.architecture == 'arm64':
+        machine_type = 'c6g.8xlarge'
+
+vm = Ec2Vm(machine_type, args.architecture, distro_config, args.keypair_pem_file)
 success = False
 try:
     vm.wait_for_ssh()
@@ -155,7 +165,10 @@ try:
             'git_revision=%s'%args.git_revision,
             'staticlibs=%s'%('TRUE' if distro_config.get('staticlibs', True) else 'FALSE'),
             'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
+            # Firefox doesn't have release tarballs for Aarch64
             'test_firefox=%d'%(1 if args.architecture == 'x86_64' else 0),
+            # libreoffice uses STREX
+            'test_libreoffice=%d'%(1 if args.architecture == 'x86_64' else 0),
             'ctest_options="%s"'%' '.join('-E %s'%r for r in exclude_tests),
         ]).encode('utf-8') + b'\n' + rr_testing_script
     vm.ssh(['/bin/bash', '-s'], full_script)
