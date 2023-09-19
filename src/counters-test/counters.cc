@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/perf_event.h>
@@ -87,7 +85,7 @@ typedef enum {
  */
 #define PMU_TICKS_TAKEN_BRANCHES (1<<3)
 
-typedef struct {
+struct PmuConfig {
   CpuMicroarch uarch;
   const char* name;
   unsigned rcb_cntr_event;
@@ -96,7 +94,7 @@ typedef struct {
   unsigned llsc_cntr_event;
   uint32_t skid_size;
   uint32_t flags;
-} PmuConfig;
+};
 
 // XXX please only edit this if you really know what you're doing.
 // event = 0x5101c4:
