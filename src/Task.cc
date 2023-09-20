@@ -149,10 +149,15 @@ void Task::wait_exit() {
     WaitResult result = WaitManager::wait_stop(options);
     if (result.code == WAIT_OK) {
       if (result.status.ptrace_event() == PTRACE_EVENT_EXIT) {
-        // It's possible that the earlier exit event was synthetic, in which
-        // case we're only now catching up to the real process exit. In that
-        // case, just ask the process to actually exit. (TODO: We may want to
-        // catch this earlier).
+        // It's possible that we're only now catching up to the real process exit.
+        // (E.g. when a RecordTask for a detached proxy is destroyed because the
+        // detached task exited.)
+        // In that case, just ask the process to actually exit.
+        // Consume this status now, otherwise proceed_to_exit() will call
+        // back here and we won't fetch the new status.
+        options.consume = true;
+        result = WaitManager::wait_stop(options);
+        ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXIT);
         return proceed_to_exit();
       }
       ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXEC)
