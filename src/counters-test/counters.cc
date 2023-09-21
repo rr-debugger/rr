@@ -774,6 +774,13 @@ static void check_ticks(Ticks got, Ticks expected) {
   }
 }
 
+static void reset_counter_period(int counter_fd, uint64_t period) {
+  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_DISABLE, 0));
+  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_RESET, 0));
+  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_PERIOD, &period));
+  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_ENABLE, 0));
+}
+
 /* Wait for child to pause, read counter value, reset the counter value,
    resume the child, and report the read counter value */
 static Ticks reset_counting(pid_t child, int counter_fd, uint64_t period) {
@@ -782,10 +789,7 @@ static Ticks reset_counting(pid_t child, int counter_fd, uint64_t period) {
   CHECK(ch == 'x');
   Ticks ticks;
   CHECK(sizeof(ticks) == read(counter_fd, &ticks, sizeof(ticks)));
-  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_DISABLE, 0));
-  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_RESET, 0));
-  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_PERIOD, &period));
-  CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_ENABLE, 0));
+  reset_counter_period(counter_fd, period);
   CHECK(1 == write(parent_to_child_fds[1], "y", 1));
   return ticks;
 }
@@ -886,7 +890,7 @@ int main(int argc, char** argv) {
       fprintf(stderr, "Skid %d exceeded :-(\n", pmu->skid_size);
       abort();
     }
-    CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_RESET, 0));
+    reset_counter_period(counter_fd, interrupt_period);
     CHECK(1 == write(parent_to_child_fds[1], "y", 1));
   }
 
