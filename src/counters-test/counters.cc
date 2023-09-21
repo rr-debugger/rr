@@ -888,6 +888,7 @@ int main(int argc, char** argv) {
     CHECK(ticks >= interrupt_period);
     if (ticks > interrupt_period + pmu->skid_size) {
       fprintf(stderr, "Skid %d exceeded :-(\n", pmu->skid_size);
+      fflush(stdout);
       abort();
     }
     reset_counter_period(counter_fd, interrupt_period);
