@@ -1994,9 +1994,9 @@ if(BUILD_TESTS)
   add_executable(test-monitor src/test-monitor/test-monitor.cc)
 
   add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
-  if (x86ish AND rr_64BIT)
-    add_executable(counters src/counters-test/counters.cc)
-  endif()
+  add_executable(counters src/counters-test/counters.cc)
+  set_source_files_properties(src/counters-test/counters.cc
+                              PROPERTIES COMPILE_FLAGS "-fno-stack-protector")
 endif()
 
 include(ProcessorCount)
