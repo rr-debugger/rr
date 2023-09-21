@@ -310,7 +310,6 @@ static void child_wait(void) {
 #define NUM_ITERATIONS_BASIC 100000
 #define NUM_VOLATILE_UPDATES 1000
 #define NUM_ITERATIONS_SYSCALLS 100000
-#define INTERRUPT_PERIOD 1000000
 
 static volatile long volatile_value;
 
@@ -339,20 +338,25 @@ void test_ticks_syscalls(void) {
   child_wait();
 }
 
-void test_interrupt(void) {
+void sighandler(int sig) {
+  child_wait();
+}
+
+void test_interrupts(void) {
   /* wait for the parent to set the period */
   child_wait();
+  /* Sync with the parent every time we get a signal */
+  signal(SIGIO, sighandler);
   volatile_value = 0;
+  /* Loop forever. Eventually the parent will kill us. */
   while (!volatile_value) {
   }
-  /* wait for the parent to read our ticks count */
-  child_wait();
 }
 
 static int do_child(void) {
   test_ticks_basic();
   test_ticks_syscalls();
-  test_interrupt();
+  test_interrupts();
   return 0;
 }
 
@@ -383,7 +387,17 @@ static Ticks reset_counting(pid_t child, int counter_fd, uint64_t period) {
 
 #define MAX_PERIOD 0x1000000000000000LL
 
-int main(void) {
+int main(int argc, char** argv) {
+  int interrupt_tests = 1;
+  int interrupt_period = 1000000;
+
+  if (argc > 1) {
+    interrupt_tests = atoi(argv[1]);
+  }
+  if (argc > 2) {
+    interrupt_period = atoi(argv[2]);
+  }
+
   CpuMicroarch uarch = compute_cpu_microarch();
 
   const PmuConfig* pmu = NULL;
@@ -445,18 +459,28 @@ int main(void) {
   /* program an interrupt */
   CHECK(0 == fcntl(counter_fd, F_SETOWN, child));
   CHECK(0 == fcntl(counter_fd, F_SETFL, O_ASYNC));
-  reset_counting(child, counter_fd, INTERRUPT_PERIOD);
+
+  reset_counting(child, counter_fd, interrupt_period);
+  for (int i = 0; i < interrupt_tests; ++i) {
+    char ch;
+    CHECK(1 == read(child_to_parent_fds[0], &ch, 1));
+    CHECK(ch == 'x');
+    Ticks ticks;
+    CHECK(sizeof(ticks) == read(counter_fd, &ticks, sizeof(ticks)));
+    printf("Interrupted after %lld ticks, expected %lld ticks\n", (long long)ticks, (long long)interrupt_period);
+    CHECK(ticks >= interrupt_period);
+    if (ticks > interrupt_period + pmu->skid_size) {
+      fprintf(stderr, "Skid %d exceeded :-(\n", pmu->skid_size);
+      abort();
+    }
+    CHECK(0 == ioctl(counter_fd, PERF_EVENT_IOC_RESET, 0));
+    CHECK(1 == write(parent_to_child_fds[1], "y", 1));
+  }
+
+  kill(child, SIGKILL);
   int status;
   CHECK(child == waitpid(child, &status, 0));
-  CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGIO);
-  Ticks ticks;
-  CHECK(sizeof(ticks) == read(counter_fd, &ticks, sizeof(ticks)));
-  printf("Interrupted after %lld ticks, set period to %lld ticks\n", (long long)ticks, (long long)INTERRUPT_PERIOD);
-  CHECK(ticks >= INTERRUPT_PERIOD);
-  if (ticks > INTERRUPT_PERIOD + pmu->skid_size) {
-    fprintf(stderr, "Skid exceeded :-(\n");
-    abort();
-  }
+  CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL);
 
   puts("EXIT-SUCCESS");
 
