@@ -3,6 +3,7 @@
   "ami_owner": "125523088429",
   "ami_name_pattern": "CentOS Stream 9 *",
   "user": "ec2-user",
+  "archs": ["x86_64", "arm64"],
   "staticlibs": false,
   "setup_commands": [
     "cloud-init status --wait",

@@ -3,6 +3,7 @@
   "ami_owner": "099720109477",
   "ami_name_pattern": "ubuntu/images/hvm-ssd/ubuntu-lunar-23.04-*",
   "user": "ubuntu",
+  "archs": ["x86_64", "arm64"],
   "setup_commands": [
     "cloud-init status --wait",
     "sudo apt-get update -y",

@@ -3,6 +3,7 @@
   "ami_owner": "136693071363",
   "ami_name_pattern": "debian-12-*",
   "user": "admin",
+  "archs": ["x86_64", "arm64"],
   "setup_commands": [
     "cloud-init status --wait",
     "export DEBIAN_FRONTEND=noninteractive UCF_FORCE_CONFNEW=1",
