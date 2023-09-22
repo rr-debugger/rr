@@ -312,7 +312,8 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
 
   string path = find_helper_library(fname);
   if (path.empty()) {
-    FATAL() << "Failed to locate " << fname;
+    FATAL() << "Failed to locate " << fname << "; needed by "
+      << t->exe_path() << " (" << arch_name(t->arch()) << ")";
   }
   path += fname;
   size_t offset_pages = t->session().is_recording() ?
