@@ -790,7 +790,7 @@ Ticks PerfCounters::read_ticks(Task* t) {
     if (strex_count > 0) {
       LOG(debug) << strex_count << " strex detected";
       if (!Flags::get().force_things) {
-        CLEAN_FATAL()
+        ASSERT(t, false)
             << strex_count
             << " (speculatively) executed strex instructions detected. \n"
                "On aarch64, rr only supports applications making use of LSE\n"
