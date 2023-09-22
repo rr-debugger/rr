@@ -2041,7 +2041,7 @@ bool Task::wait(double interrupt_after_elapsed) {
 }
 
 void Task::canonicalize_regs(SupportedArch syscall_arch) {
-  ASSERT(this, is_stopped_);
+  ASSERT(this, is_stopped_ || in_unexpected_exit);
 
   if (registers.arch() == x86_64) {
     if (syscall_arch == x86) {
