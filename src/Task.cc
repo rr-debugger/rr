@@ -3622,6 +3622,8 @@ long Task::ptrace_seize(pid_t tid, Session& session) {
     sleep(1);
   }
   ret = ptrace_seize(tid, session);
+  // See early_error.c for the testing of these paths, which may need to be
+  // updated if these change.
   if (ret) {
     // Note that although the tracee may have died due to some fatal error,
     // we haven't reaped its exit code so there's no danger of killing

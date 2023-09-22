@@ -59,24 +59,32 @@ int main(int argc, char *argv[]) {
   test_assert(ret >= 0);
   atomic_printf("Got status 0x%x\n", status);
   test_assert(WIFSIGNALED(status));
-  test_assert(WTERMSIG(status) == SIGABRT);
 
   char buf[4096];
   memset(buf, 0, sizeof(buf));
   ssize_t nread = read(fd_pair[0], buf, sizeof(buf)-1);
   test_assert(nread >= 0);
-  /* Three possibilities:
-     1) The child gets SIGSYS and exits before we PTRACE_SEIZE it
-     2) The child gets SIGSYS before we PTRACE_SEIZE it, but we still
-     see the PTRACE_EVENT_EXIT
-     3) We PTRACE_SEIZE it in time to see the SIGSYS
-  */
-  if (!strstr(buf, "child probably died before reaching SIGSTOP") &&
-      !strstr(buf, "Tracee died before reaching SIGSTOP") &&
-      !strstr(buf, "Unexpected stop")) {
-    write(2, buf, nread);
-    test_assert(0);
+  /* Three possibilities: */
+  if (WTERMSIG(status) == SIGSYS) {
+    /* The child got SIGSYS and exited before we PTRACE_SEIZEd it.
+       Then rr gets a SIGSYS when it tries to kill the tracee. */
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
   }
+  if (strstr(buf, "Tracee died before reaching SIGSTOP") &&
+      WTERMSIG(status) == SIGABRT) {
+    /* The child got SIGSYS before we PTRACE_SEIZEd it, but we got it
+       in time to see the PTRACE_EVENT_EXIT */
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+  if (strstr(buf, "Unexpected stop") && WTERMSIG(status) == SIGABRT) {
+    /* We ptrace-seized it in time to see the SIGSYS */
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+  write(2, buf, nread);
+  test_assert(0);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
