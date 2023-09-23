@@ -1055,6 +1055,9 @@ public:
   bool handled_ptrace_exit_event() const {
     return handled_ptrace_exit_event_;
   }
+  bool stopped_or_unexpected_exit() const {
+    return is_stopped_ || was_reaped_ || in_unexpected_exit;
+  }
 
   void os_exec(SupportedArch arch, std::string filename);
   void os_exec_stub(SupportedArch arch) {

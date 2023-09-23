@@ -364,6 +364,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
 
   if (t->seen_ptrace_exit_event()) {
     LOG(debug) << "Task is dying, don't try anything.";
+    ASSERT(t, t->stopped_or_unexpected_exit()) << "Already seen exit event";
     return -ESRCH;
   }
 
@@ -387,6 +388,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     while (true) {
       if (!t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
         // Tracee was killed, there is nothing more we can do.
+        ASSERT(t, t->stopped_or_unexpected_exit()) << "Couldn't singlestep";
         return -ESRCH;
       }
       LOG(debug) << "Used singlestep path; status=" << t->status();
@@ -414,6 +416,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       if (!t->enter_syscall(true)) {
         // Tracee was killed, there is nothing more we can do.
         // Ensure callers see the task death status.
+        ASSERT(t, t->stopped_or_unexpected_exit()) << "couldn't enter syscall";
         return -ESRCH;
       }
       LOG(debug) << "Used enter_syscall; status=" << t->status();
@@ -421,6 +424,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
       // Tracee was killed, there is nothing more we can do.
       // Ensure callers see the task death status.
+      ASSERT(t, t->stopped_or_unexpected_exit()) << "couldn't resume syscall";
       return -ESRCH;
     }
     LOG(debug) << "syscall exit status=" << t->status();
@@ -437,6 +441,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
         t->clone_syscall_is_complete(&new_tid_, t->arch())) {
       if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
         // Tracee was killed, there is nothing more we can do.
+        ASSERT(t, t->stopped_or_unexpected_exit()) << "Couldn't resume clone";
         return -ESRCH;
       }
       LOG(debug) << "got clone event; new status=" << t->status();
@@ -446,12 +451,14 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       if (t->regs().syscall_may_restart()) {
         if (!t->enter_syscall(true)) {
           // Tracee was killed, there is nothing more we can do.
+          ASSERT(t, t->stopped_or_unexpected_exit()) << "Couldn't restart";
           return -ESRCH;
         }
         LOG(debug) << "signal ignored; restarting syscall, status="
                    << t->status();
         if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
           // Tracee was killed, there is nothing more we can do.
+          ASSERT(t, t->stopped_or_unexpected_exit()) << "Couldn't resume restart";
           return -ESRCH;
         }
         LOG(debug) << "syscall exit status=" << t->status();
