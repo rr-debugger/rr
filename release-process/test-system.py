@@ -138,8 +138,11 @@ def get_config_lines(config_key):
         return []
     raise ValueError('Invalid config entry %s: %s' % (config_key, entry))
 
+def get_config_lines_arch(config_key):
+    return get_config_lines(config_key) + get_config_lines('%s_%s'%(config_key, args.architecture))
+
 def config_script_function(config_key):
-    lines = get_config_lines(config_key) + get_config_lines('%s_%s'%(config_key, args.architecture))
+    lines = get_config_lines_arch(config_key)
     return ('function %s {\n%s\n}' % (config_key, '\n'.join(lines)))
 
 if args.dist_files_dir and not distro_config.get('staticlibs', True):
@@ -157,7 +160,7 @@ vm = Ec2Vm(machine_type, args.architecture, distro_config, args.keypair_pem_file
 success = False
 try:
     vm.wait_for_ssh()
-    exclude_tests = distro_config['exclude_tests'] if 'exclude_tests' in distro_config else []
+    exclude_tests = get_config_lines_arch('exclude_tests')
     full_script = '\n'.join(
         [
             config_script_function('setup_commands'),
