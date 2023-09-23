@@ -18,7 +18,7 @@ void HasTaskSet::erase_task(Task* t) {
 }
 
 Task* HasTaskSet::first_running_task() const {
-  for (auto t : task_set()) {
+  for (Task* t : task_set()) {
     if (!t->already_exited() && !t->seen_ptrace_exit_event()) {
       return t;
     }

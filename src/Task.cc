@@ -1576,7 +1576,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 
 void Task::set_regs(const Registers& regs) {
   // Only allow registers to be set while our copy is the source of truth.
-  ASSERT(this, is_stopped_ || in_unexpected_exit);
+  ASSERT(this, is_stopped_ || was_reaped_ || in_unexpected_exit);
   if (registers.original_syscallno() != regs.original_syscallno()) {
     orig_syscallno_dirty = true;
   }
@@ -2041,7 +2041,7 @@ bool Task::wait(double interrupt_after_elapsed) {
 }
 
 void Task::canonicalize_regs(SupportedArch syscall_arch) {
-  ASSERT(this, is_stopped_ || in_unexpected_exit);
+  ASSERT(this, is_stopped_ || was_reaped_ || in_unexpected_exit);
 
   if (registers.arch() == x86_64) {
     if (syscall_arch == x86) {
