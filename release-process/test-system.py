@@ -14,6 +14,7 @@ parser.add_argument('distro_config_json')
 parser.add_argument('architecture')
 parser.add_argument('keypair_pem_file')
 parser.add_argument('--git-revision', default='master')
+parser.add_argument('--timeout', default=1200) # 20 minutes
 parser.add_argument('--machine-type')
 parser.add_argument('--keep-vm', action='store_true')
 parser.add_argument('--keep-vm-on-error', action='store_true')
@@ -94,7 +95,7 @@ class Ec2Vm:
         full_cmd = self.ssh_command() + cmd
         print('Running %s'%full_cmd, file=sys.stderr)
         process = subprocess.Popen(full_cmd, stdin=subprocess.PIPE)
-        process.communicate(input=input)
+        process.communicate(input=input, timeout=args.timeout)
         if process.returncode != 0:
             raise Exception('Command failed with %d'%process.returncode)
 
