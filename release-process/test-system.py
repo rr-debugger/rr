@@ -166,7 +166,7 @@ try:
         [
             config_script_function('setup_commands'),
             config_script_function('install_build_deps'),
-            config_script_function('install_test_deps'),
+            config_script_function('install_app_test_deps'),
             'git_revision=%s'%args.git_revision,
             'staticlibs=%s'%('TRUE' if distro_config.get('staticlibs', True) else 'FALSE'),
             'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),

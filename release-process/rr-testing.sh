@@ -8,7 +8,7 @@
 # $ctest_options : options to pass to ctest, e.g to exclude certain tests
 # setup_commands : function to setup environment, e.g. 'apt update'
 # install_build_deps : function to install dependencies required to build rr
-# install_test_deps : function to install dependencies required by tests
+# install_app_test_deps : function to install dependencies required by tests
 
 set -x # echo commands
 set -e # default to exiting on error"
@@ -18,7 +18,7 @@ uname -a
 setup_commands
 install_build_deps
 
-install_test_deps & # job %1
+install_app_test_deps & # job %1
 
 # Free up space before we (re)start
 
@@ -33,10 +33,6 @@ cd ~/obj
 cmake -G Ninja -DCMAKE_BUILD_TYPE=RELEASE -Dstaticlibs=$staticlibs -Dstrip=TRUE ../rr
 ninja
 
-# Test deps are installed in parallel with our build.
-# Make sure that install has finished before running tests
-wait %1
-
 # Enable perf events for rr
 echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 # Enable ptrace-attach to any process. This lets us get more data when tests fail.
@@ -44,6 +40,10 @@ echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 rm -rf /tmp/rr-* || true
 ctest -j`nproc` --verbose $ctest_options
     echo "For some reason I cannot figure out, bash drops the first four characters from the line following ctest"
+
+# Integration test deps are installed in parallel with our build.
+# Make sure that install has finished before running tests
+wait %1
 
 rm -rf ~/.local/share/rr/* || true
 
