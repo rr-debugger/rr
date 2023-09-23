@@ -58,7 +58,7 @@ class Ec2Vm:
 
         tags = [{
             'ResourceType': 'instance',
-            'Tags': [{'Key': 'Name', 'Value': "rr-test %s"%self.distro_name}]
+            'Tags': [{'Key': 'Name', 'Value': "rr-test %s %s"%(self.distro_name, architecture)}]
         }]
         response = self.ec2.create_instances(ImageId=ami, InstanceType=machine_type,
             KeyName='rr-testing', MinCount=1, MaxCount=1,
