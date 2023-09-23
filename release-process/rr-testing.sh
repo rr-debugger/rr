@@ -96,7 +96,7 @@ if [[ $test_libreoffice == 1 ]]; then
 fi
 
 if [[ $build_dist != 0 ]]; then
-  make -j`nproc` dist
+  ninja dist
   rm /tmp/dist || true
   ln -s ~/obj /tmp/dist
 fi
