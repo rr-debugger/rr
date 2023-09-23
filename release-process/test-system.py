@@ -79,7 +79,9 @@ class Ec2Vm:
             if result.returncode == 0:
                 self.ssh_ready = True
                 return
-            if b'Connection refused' not in result.stderr and b'reset by peer' not in result.stderr:
+            if (b'Connection refused' not in result.stderr and
+                b'reset by peer' not in result.stderr and
+                b'Connection timed out' not in result.stderr):
                 raise Exception('SSH connection failed:\n%s'%result.stderr.decode('utf-8'))
             time.sleep(1)
         raise Exception('Too many retries, cannot connect via SSH')
@@ -109,6 +111,7 @@ class Ec2Vm:
         return ['-i', self.keypair_pem_file,
                 '-o', 'StrictHostKeyChecking=no',
                 '-o', 'BatchMode=yes',
+                '-o', 'ConnectTimeout=5',
                 '-o', 'IdentitiesOnly=yes']
 
     def ssh_dest(self):
