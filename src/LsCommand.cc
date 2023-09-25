@@ -151,7 +151,7 @@ string find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
 static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
   DIR* dir = opendir(traces_dir.c_str());
   if (!dir) {
-    fprintf(stderr, "Cannot open %s", traces_dir.c_str());
+    fprintf(stderr, "Cannot open %s\n", traces_dir.c_str());
     return 1;
   }
 
