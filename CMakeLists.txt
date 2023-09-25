@@ -911,6 +911,7 @@ set(BASIC_TESTS
   bad_syscall
   barrier
   big_buffers
+  big_select
   block
   block_open
   bpf

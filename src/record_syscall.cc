@@ -3628,6 +3628,16 @@ static Switchable did_emulate_read(int syscallno, RecordTask* t,
   return PREVENT_SWITCH;
 }
 
+static ParamSize select_param_size(intptr_t nfds, SupportedArch arch) {
+  nfds = (int)nfds;
+  size_t size = 0;
+  if (nfds > 0) {
+    size_t long_size = word_size(arch);
+    size = ((nfds + long_size*8 - 1)/(long_size*8))*long_size;
+  }
+  return ParamSize(size);
+}
+
 template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state,
@@ -4027,32 +4037,35 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return prepare_socketcall<Arch>(t, syscall_state);
 
     case Arch::select:
-    case Arch::_newselect:
+    case Arch::_newselect: {
+      ParamSize size = select_param_size(regs.arg1_signed(), Arch::arch());
       if (syscallno == Arch::select &&
           Arch::select_semantics == Arch::SelectStructArguments) {
         auto argsp =
             syscall_state.reg_parameter<typename Arch::select_args>(1, IN);
-        syscall_state.mem_ptr_parameter_inferred(
-            REMOTE_PTR_FIELD(argsp, read_fds), IN_OUT);
-        syscall_state.mem_ptr_parameter_inferred(
-            REMOTE_PTR_FIELD(argsp, write_fds), IN_OUT);
-        syscall_state.mem_ptr_parameter_inferred(
-            REMOTE_PTR_FIELD(argsp, except_fds), IN_OUT);
-        syscall_state.mem_ptr_parameter_inferred(
+        syscall_state.mem_ptr_parameter(
+            REMOTE_PTR_FIELD(argsp, read_fds), size, IN_OUT);
+        syscall_state.mem_ptr_parameter(
+            REMOTE_PTR_FIELD(argsp, write_fds), size, IN_OUT);
+        syscall_state.mem_ptr_parameter(
+            REMOTE_PTR_FIELD(argsp, except_fds), size, IN_OUT);
+        syscall_state.mem_ptr_parameter(
             REMOTE_PTR_FIELD(argsp, timeout), IN_OUT);
       } else {
-        syscall_state.reg_parameter<typename Arch::fd_set>(2, IN_OUT);
-        syscall_state.reg_parameter<typename Arch::fd_set>(3, IN_OUT);
-        syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
+        syscall_state.reg_parameter(2, size, IN_OUT);
+        syscall_state.reg_parameter(3, size, IN_OUT);
+        syscall_state.reg_parameter(4, size, IN_OUT);
         syscall_state.reg_parameter<typename Arch::timeval>(5, IN_OUT);
       }
       return ALLOW_SWITCH;
+    }
 
     case Arch::pselect6_time64:
     case Arch::pselect6: {
-      syscall_state.reg_parameter<typename Arch::fd_set>(2, IN_OUT);
-      syscall_state.reg_parameter<typename Arch::fd_set>(3, IN_OUT);
-      syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
+      ParamSize size = select_param_size(regs.arg1_signed(), Arch::arch());
+      syscall_state.reg_parameter(2, size, IN_OUT);
+      syscall_state.reg_parameter(3, size, IN_OUT);
+      syscall_state.reg_parameter(4, size, IN_OUT);
       if (syscallno == Arch::pselect6) {
         syscall_state.reg_parameter<typename Arch::timespec>(5, IN_OUT);
       } else {
