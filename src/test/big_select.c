@@ -9,6 +9,7 @@ int main(void) {
     long longs[NUM_LONGS];
   } *fdset;
   int ret;
+  int pipe_fds[2];
   struct timeval timeout = { 0, 0 };
   struct rlimit rlim = { FD_SETSIZE + 1, FD_SETSIZE + 1 };
   if (setrlimit(RLIMIT_NOFILE, &rlim)) {
@@ -17,7 +18,9 @@ int main(void) {
     return 0;
   }
 
-  ret = dup2(0, FD_SETSIZE);
+  ret = pipe(pipe_fds);
+  test_assert(ret == 0);
+  ret = dup2(pipe_fds[0], FD_SETSIZE);
   test_assert(ret == FD_SETSIZE);
 
   ALLOCATE_GUARD(fdset, 'a');
