@@ -525,11 +525,35 @@ struct BaseArch : public wordsize,
     ptr<void> sival_ptr;
   };
 
+  struct in_addr {
+    uint32_t s_addr;
+  };
+  RR_VERIFY_TYPE(in_addr);
+
+  struct in6_addr {
+    union {
+      /* don't call these s6_addrX - those are macros */
+      uint8_t addr8[16];
+      uint16_t addr16[8];
+      uint32_t addr32[4];
+    };
+  };
+  RR_VERIFY_TYPE(in_addr);
+
   struct sockaddr {
     unsigned_short sa_family;
     char sa_data[14];
   };
   RR_VERIFY_TYPE(sockaddr);
+
+  struct sockaddr_in6 {
+    unsigned_short sin6_family;
+    unsigned_short sin6_port;
+    uint32_t sin6_flowinfo;
+    in6_addr sin6_addr;
+    uint32_t sin6_scope_id;
+  };
+  RR_VERIFY_TYPE(sockaddr_in6);
 
   struct sockaddr_storage {
     char sa_data[128];
@@ -1048,6 +1072,24 @@ struct BaseArch : public wordsize,
     iwreq_data u;
   };
   RR_VERIFY_TYPE(iwreq);
+
+  struct sioc_sg_req {
+    in_addr src;
+    in_addr grp;
+    unsigned long pktcnt;
+    unsigned long bytecnt;
+    unsigned long wrong_if;
+  };
+  RR_VERIFY_TYPE(sioc_sg_req);
+
+  struct sioc_sg_req6 {
+    sockaddr_in6 src;
+    sockaddr_in6 grp;
+    unsigned long pktcnt;
+    unsigned long bytecnt;
+    unsigned long wrong_if;
+  };
+  RR_VERIFY_TYPE(sioc_sg_req6);
 
   struct _flock {
     signed_short l_type;
