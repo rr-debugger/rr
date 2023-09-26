@@ -102,12 +102,12 @@ class Ec2Vm:
 
     def scp_from(self, options, src, dst):
         """Copies files from remote `src` to local `dst`."""
-        full_cmd = ['scp'] + self.ssh_options() + options + ['%s:%s'%(self.ssh_dest(), dst)]
+        full_cmd = ['scp'] + self.ssh_options() + options + ['%s:%s'%(self.ssh_dest(), src), dst]
         print('Running %s'%full_cmd, file=sys.stderr)
         subprocess.check_call(full_cmd)
 
     def ssh_command(self):
-        return ['ssh'] + self.ssh_options() + self.ssh_dest()
+        return ['ssh'] + self.ssh_options() + [self.ssh_dest()]
 
     def ssh_options(self):
         return ['-i', self.keypair_pem_file,
@@ -117,7 +117,7 @@ class Ec2Vm:
                 '-o', 'IdentitiesOnly=yes']
 
     def ssh_dest(self):
-        return ['%s@%s'%(self.user, self.instance.public_ip_address)]
+        return '%s@%s'%(self.user, self.instance.public_ip_address)
 
     def terminate(self):
         response = self.instance.terminate()

@@ -99,5 +99,5 @@ fi
 if [[ $build_dist != 0 ]]; then
   ninja package
   rm /tmp/dist || true
-  ln -s ~/obj /tmp/dist
+  ln -s ~/obj/dist /tmp/dist
 fi
