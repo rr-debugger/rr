@@ -260,10 +260,13 @@ public:
    * Records the wait status of this task as |status|, e.g. if
    * |wait()/try_wait()| has returned it. Call this whenever a waitpid
    * returned activity for this task.
-   * If this returns false, then the task was kicked out of a ptrace-stop
-   * by SIGKILL or equivalent before we could read registers etc.
-   * We will treat this stop as if it never happened; the caller must
+   * If this returns false, the task was kicked out of a ptrace-stop
+   * by SIGKILL or equivalent before we could read registers etc:
+   * -- We will treat this stop as if it never happened; the caller must
    * act as if there was no stop.
+   * -- is_stopped will be false
+   * -- in_unexpected_exit will be true
+   * If this returns true, is_stopped will be true.
    * If `status.reaped()` (i.e. fatal signal or normal exit), this always
    * returns true.
    */
@@ -728,7 +731,9 @@ public:
    * Returns false if the wait failed because we reached a stop but we got
    * SIGKILLed (or equivalent) out of it, in which case it is not safe to wait
    * because that might block indefinitely waiting for us to acknowledge the
-   * PTRACE_EVENT_EXIT of other tasks.
+   * PTRACE_EVENT_EXIT of other tasks. In this case in_unexpected_exit will
+   * be true and is_stopped will be false.
+   * This can't reap the task.
    */
   bool wait(double interrupt_after_elapsed = -1);
 

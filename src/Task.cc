@@ -1541,6 +1541,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       if (did_waitpid(result.status)) {
         // We reached a new stop (or actually reaped the task).
         // Consider this "resume execution" to be done.
+        ASSERT(this, is_stopped_ || was_reaped_);
         return wait_how != RESUME_WAIT_NO_EXIT;
       }
       ASSERT(this, result.status.ptrace_event() == PTRACE_EVENT_EXIT)
@@ -1553,6 +1554,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       // We don't know what state it's in exactly, but registers haven't changed
       // since nothing has really happened since the last stop.
       set_stopped(false);
+      ASSERT(this, in_unexpected_exit);
       return RESUME_NONBLOCKING == wait_how;
     }
   }
@@ -1565,6 +1567,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   extra_registers_known = false;
   if (RESUME_NONBLOCKING != wait_how) {
     if (!wait()) {
+      ASSERT(this, in_unexpected_exit);
       return false;
     }
     if (wait_how == RESUME_WAIT_NO_EXIT) {
@@ -2026,6 +2029,7 @@ bool Task::wait(double interrupt_after_elapsed) {
        * This is possible if the process receives a SIGKILL while in the exit
        * event stop, but before we were able to read the event notification.
        */
+      in_unexpected_exit = true;
       return false;
     }
     ASSERT(this, result.code == WAIT_NO_STATUS);
