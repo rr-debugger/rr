@@ -122,6 +122,7 @@ class Ec2Vm:
         response = self.instance.terminate()
         if response['ResponseMetadata']['HTTPStatusCode'] != 200:
             print('Terminating VM %s failed: %s'%(self.instance_id, response), file=sys.stderr)
+        self.instance.wait_until_terminated()
 
 with open(args.distro_config_json, 'r') as f:
     distro_config = json.load(f)
