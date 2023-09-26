@@ -13,6 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('distro_config_json')
 parser.add_argument('architecture')
 parser.add_argument('keypair_pem_file')
+parser.add_argument('--cpack-generators', default='TGZ')
 parser.add_argument('--git-revision', default='master')
 parser.add_argument('--timeout', default=1200) # 20 minutes
 parser.add_argument('--machine-type')
@@ -176,6 +177,7 @@ try:
             # libreoffice uses STREX
             'test_libreoffice=%d'%(1 if args.architecture == 'x86_64' else 0),
             'ctest_options="%s"'%' '.join('-E %s'%r for r in exclude_tests),
+            'cpack_generators=%s'%args.cpack_generators
         ]).encode('utf-8') + b'\n' + rr_testing_script
     vm.ssh(['/bin/bash', '-s'], full_script)
     if args.dist_files_dir is not None:

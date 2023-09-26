@@ -6,6 +6,7 @@
 # $build_dist : 1 if we should build dist packages, 0 otherwise
 # $test_firefox : 1 to run firefox tests, 0 to skip
 # $ctest_options : options to pass to ctest, e.g to exclude certain tests
+# $cpack_generators : CPack generators to build dist
 # setup_commands : function to setup environment, e.g. 'apt update'
 # install_build_deps : function to install dependencies required to build rr
 # install_app_test_deps : function to install dependencies required by tests
@@ -30,7 +31,7 @@ git checkout $git_revision
 rm -rf ~/obj || true
 mkdir ~/obj
 cd ~/obj
-cmake -G Ninja -DCMAKE_BUILD_TYPE=RELEASE -Dstaticlibs=$staticlibs -Dstrip=TRUE ../rr
+cmake -G Ninja -DCMAKE_BUILD_TYPE=RELEASE -Dstaticlibs=$staticlibs -Dstrip=TRUE -DCPACK_GENERATOR=$cpack_generators ../rr
 ninja
 
 # Enable perf events for rr
