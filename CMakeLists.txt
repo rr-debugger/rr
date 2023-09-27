@@ -1,6 +1,6 @@
 # *-* Mode: cmake; *-*
 
-cmake_minimum_required(VERSION 3.1.0)
+cmake_minimum_required(VERSION 3.5)
 project(rr C CXX ASM)
 
 # "Do not add flags to export symbols from executables without the ENABLE_EXPORTS target property."
@@ -318,6 +318,12 @@ set_source_files_properties(${BROTLI_FILES}
 # ==== brotli ====
 
 find_library(LIBRT rt)
+
+set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS OFF)
+set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS ON)
+find_library(LIBRT_32 rt PATHS "/usr/lib32" "/usr/lib" NO_DEFAULT_PATH)
+set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS ON)
+set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS OFF)
 
 find_path(SECCOMP NAMES "linux/seccomp.h")
 if(NOT SECCOMP)
@@ -1896,8 +1902,8 @@ if(BUILD_TESTS)
       post_build_executable(${testname}_32)
       add_dependencies(${testname}_32 Generated)
       set_target_properties(${testname}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS} ${LINKER_FLAGS}")
-      if(LIBRT)
-        target_link_libraries(${testname}_32 ${LIBRT})
+      if(LIBRT_32)
+        target_link_libraries(${testname}_32 ${LIBRT_32})
       endif()
       target_link_libraries(${testname}_32 -ldl)
       # Part of the installable testsuite (test programs).
@@ -1932,8 +1938,8 @@ if(BUILD_TESTS)
     add_dependencies(test_lib_32 Generated)
     set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS "-m32 ${LINKER_FLAGS}")
 
-    if(LIBRT)
-      target_link_libraries(constructor_32 ${LIBRT})
+    if(LIBRT_32)
+      target_link_libraries(constructor_32 ${LIBRT_32})
     endif()
     target_link_libraries(constructor_32 test_lib_32)
 
@@ -1942,8 +1948,8 @@ if(BUILD_TESTS)
     post_build_executable(cpuid_32)
     add_dependencies(cpuid_32 Generated)
     set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS "-m32 ${LINKER_FLAGS}")
-    if(LIBRT)
-      target_link_libraries(cpuid_32 ${LIBRT})
+    if(LIBRT_32)
+      target_link_libraries(cpuid_32 ${LIBRT_32})
     endif()
 
     if(INSTALL_TESTSUITE)
