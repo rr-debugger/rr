@@ -127,7 +127,7 @@ def run_tests():
                 if process.poll() is not None:
                     ready_index = running_index
                     break
-            if ready_index:
+            if ready_index is not None:
                 distro_name, arch, process = running.pop(ready_index)
                 output_file = output_file_name(distro_name, arch)
                 vm_kept = has_line_starting(output_file, 'VM kept; ')
