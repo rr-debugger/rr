@@ -148,10 +148,6 @@ def config_script_function(config_key):
     lines = get_config_lines_arch(config_key)
     return ('function %s {\n%s\n}' % (config_key, '\n'.join(lines)))
 
-if args.dist_files_dir and not distro_config.get('staticlibs', True):
-    print('Dist builds must use staticlibs, aborting', file=sys.stderr)
-    sys.exit(1)
-
 machine_type = args.machine_type
 if not machine_type:
     if args.architecture == 'x86_64':
