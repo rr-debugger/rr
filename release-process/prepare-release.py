@@ -123,9 +123,9 @@ def run_tests():
         # If no exits are seen after 60 seconds, try to launch a new VM anyway.
         for i in range(60):
             ready_index = None
-            for i, (distro_name, arch, process) in enumerate(running):
+            for running_index, (distro_name, arch, process) in enumerate(running):
                 if process.poll() is not None:
-                    ready_index = i
+                    ready_index = running_index
                     break
             if ready_index:
                 distro_name, arch, process = running.pop(ready_index)
