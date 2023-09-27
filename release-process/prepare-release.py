@@ -117,7 +117,7 @@ def run_tests():
             if process:
                 pending.pop(0)
                 running.append((distro_name, arch, process))
-                print('Started %s %s %s' % (distro_name, arch, process.poll()))
+                print('Started %s %s' % (distro_name, arch))
             else:
                 break
         # If no exits are seen after 60 seconds, try to launch a new VM anyway.
