@@ -177,7 +177,7 @@ try:
         ]).encode('utf-8') + b'\n' + rr_testing_script
     vm.ssh(['/bin/bash', '-s'], full_script)
     if args.dist_files_dir is not None:
-        vm.scp_from(['-r'], '/tmp/dist', args.dist_files_dir)
+        vm.scp_from(['-r'], '/tmp/dist/*', args.dist_files_dir)
     success = True
 finally:
     if (not success and args.keep_vm_on_error) or args.keep_vm:
