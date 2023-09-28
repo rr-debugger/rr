@@ -5029,6 +5029,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case MADV_DODUMP:
         case MADV_WIPEONFORK:
         case MADV_KEEPONFORK:
+        case MADV_COLD:
+        case MADV_PAGEOUT:
+        case MADV_POPULATE_READ:
+        case MADV_POPULATE_WRITE:
+        case MADV_DONTNEED_LOCKED:
+        case MADV_COLLAPSE:
           break;
         case MADV_FREE: {
           // MADV_FREE introduces nondeterminism --- the kernel zeroes the

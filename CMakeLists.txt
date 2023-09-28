@@ -1056,6 +1056,7 @@ set(BASIC_TESTS
   x86/lsl
   madvise
   madvise_free
+  madvise_misc
   madvise_wipeonfork
   map_fixed
   map_shared_syscall

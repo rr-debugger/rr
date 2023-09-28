@@ -481,6 +481,39 @@ static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
 #ifndef MADV_FREE
 #define MADV_FREE 8
 #endif
+#ifndef MADV_DONTDUMP
+#define MADV_DONTDUMP 16
+#endif
+#ifndef MADV_DODUMP
+#define MADV_DODUMP 17
+#endif
+#ifndef MADV_WIPEONFORK
+#define MADV_WIPEONFORK 18
+#endif
+#ifndef MADV_KEEPONFORK
+#define MADV_KEEPONFORK 19
+#endif
+#ifndef MADV_SOFT_OFFLINE
+#define MADV_SOFT_OFFLINE 101
+#endif
+#ifndef MADV_COLD
+#define MADV_COLD 20
+#endif
+#ifndef MADV_PAGEOUT
+#define MADV_PAGEOUT 21
+#endif
+#ifndef MADV_POPULATE_READ
+#define MADV_POPULATE_READ 22
+#endif
+#ifndef MADV_POPULATE_WRITE
+#define MADV_POPULATE_WRITE 23
+#endif
+#ifndef MADV_DONTNEED_LOCKED
+#define MADV_DONTNEED_LOCKED 24
+#endif
+#ifndef MADV_COLLAPSE
+#define MADV_COLLAPSE 25
+#endif
 
 #ifndef F_OFD_GETLK
 #define F_OFD_GETLK 36

@@ -57,6 +57,10 @@ int main(void) {
   /* check this madvise did take effect */
   test_assert(count_page_zeroes(page) == PAGE_ZEROES);
 
+  set_page_values_nonzero(page);
+  test_assert(0 == madvise(page, page_size, MADV_DONTNEED_LOCKED));
+  test_assert(count_page_zeroes(page) == PAGE_ZEROES);
+
   atomic_puts("EXIT-SUCCESS");
 
   return 0;

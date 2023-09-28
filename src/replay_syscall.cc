@@ -1182,6 +1182,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       switch ((int)t->regs().arg3()) {
         case MADV_DONTNEED:
         case MADV_REMOVE:
+        case MADV_DONTNEED_LOCKED:
           break;
         /* These are not technically required to be passed through, but the
            syscallbuf code does, so if we don't here, we risk fracturing

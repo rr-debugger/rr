@@ -248,6 +248,24 @@ struct rr_input_mask {
 #ifndef MADV_SOFT_OFFLINE
 #define MADV_SOFT_OFFLINE 101
 #endif
+#ifndef MADV_COLD
+#define MADV_COLD 20
+#endif
+#ifndef MADV_PAGEOUT
+#define MADV_PAGEOUT 21
+#endif
+#ifndef MADV_POPULATE_READ
+#define MADV_POPULATE_READ 22
+#endif
+#ifndef MADV_POPULATE_WRITE
+#define MADV_POPULATE_WRITE 23
+#endif
+#ifndef MADV_DONTNEED_LOCKED
+#define MADV_DONTNEED_LOCKED 24
+#endif
+#ifndef MADV_COLLAPSE
+#define MADV_COLLAPSE 25
+#endif
 
 #ifndef BUS_MCEERR_AR
 #define BUS_MCEERR_AR 4
