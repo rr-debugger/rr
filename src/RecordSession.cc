@@ -2068,7 +2068,7 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
     // Our synthesized deterministic SIGSYS (seccomp trap) needs to match the
     // kernel behavior of unblocking the signal and resetting disposition to
     // default.
-    (void)t->unblock_signal(SIGSYS);
+    t->unblock_signal(SIGSYS);
     t->set_sig_handler_default(SIGSYS);
   }
   switch (handle_signal(t, &si.linux_api, sig->deterministic, SIG_UNBLOCKED)) {

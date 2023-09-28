@@ -1452,63 +1452,59 @@ void Task::work_around_KNL_string_singlestep_bug() {
 
 bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
+  ASSERT(this, is_stopped_);
+
   // Ensure our HW debug registers are up to date before we execute any code.
   // If this fails because the task died, the code below will detect it.
   set_debug_regs(vm()->get_hw_watchpoints());
 
-  bool setup_succeeded = will_resume_execution(how, wait_how, tick_period, sig);
+  will_resume_execution(how, wait_how, tick_period, sig);
 
-  // During record, the process could have died, but otherwise, we control
-  // process lifecycles and this should never fail.
-  ASSERT(this, session().is_recording() || setup_succeeded);
-
-  if (setup_succeeded) {
-    if (tick_period != RESUME_NO_TICKS) {
-      if (tick_period == RESUME_UNLIMITED_TICKS) {
-        hpc.reset(0);
-      } else {
-        ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
-        hpc.reset(max<Ticks>(1, tick_period));
-      }
-      activate_preload_thread_locals();
+  if (tick_period != RESUME_NO_TICKS) {
+    if (tick_period == RESUME_UNLIMITED_TICKS) {
+      hpc.reset(0);
+    } else {
+      ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
+      hpc.reset(max<Ticks>(1, tick_period));
     }
-
-    LOG(debug) << "resuming execution of " << tid << " with "
-              << ptrace_req_name<NativeArch>(how)
-              << (sig ? string(", signal ") + signal_name(sig) : string())
-              << " tick_period " << tick_period << " wait " << wait_how;
-    set_x86_debug_status(0);
-
-    if (is_singlestep_resume(how)) {
-      work_around_KNL_string_singlestep_bug();
-      if (is_x86ish(arch())) {
-        singlestepping_instruction = trapped_instruction_at(this, ip());
-        if (singlestepping_instruction == TrappedInstruction::CPUID) {
-          // In KVM virtual machines (and maybe others), singlestepping over CPUID
-          // executes the following instruction as well. Work around that.
-          did_set_breakpoint_after_cpuid =
-            vm()->add_breakpoint(ip() + trapped_instruction_len(singlestepping_instruction), BKPT_INTERNAL);
-        }
-      } else if (arch() == aarch64 && is_singlestep_resume(how_last_execution_resumed)) {
-        // On aarch64, if the last execution was any sort of single step, then
-        // resuming again with PTRACE_(SYSEMU_)SINGLESTEP will cause a debug fault
-        // immediately before executing the next instruction in userspace
-        // (essentially completing the singlestep that got "interrupted" by
-        // trapping into the kernel). To prevent this, we must re-arm the
-        // PSTATE.SS bit. (If the last resume was not a single step,
-        // the kernel will apply this modification).
-        if (!registers.aarch64_singlestep_flag()) {
-          registers.set_aarch64_singlestep_flag();
-          registers_dirty = true;
-        }
-      }
-    }
-
-    address_of_last_execution_resume = ip();
-    how_last_execution_resumed = how;
-
-    flush_regs();
+    activate_preload_thread_locals();
   }
+
+  LOG(debug) << "resuming execution of " << tid << " with "
+             << ptrace_req_name<NativeArch>(how)
+             << (sig ? string(", signal ") + signal_name(sig) : string())
+             << " tick_period " << tick_period << " wait " << wait_how;
+  set_x86_debug_status(0);
+
+  if (is_singlestep_resume(how)) {
+    work_around_KNL_string_singlestep_bug();
+    if (is_x86ish(arch())) {
+      singlestepping_instruction = trapped_instruction_at(this, ip());
+      if (singlestepping_instruction == TrappedInstruction::CPUID) {
+        // In KVM virtual machines (and maybe others), singlestepping over CPUID
+        // executes the following instruction as well. Work around that.
+        did_set_breakpoint_after_cpuid =
+          vm()->add_breakpoint(ip() + trapped_instruction_len(singlestepping_instruction), BKPT_INTERNAL);
+      }
+    } else if (arch() == aarch64 && is_singlestep_resume(how_last_execution_resumed)) {
+      // On aarch64, if the last execution was any sort of single step, then
+      // resuming again with PTRACE_(SYSEMU_)SINGLESTEP will cause a debug fault
+      // immediately before executing the next instruction in userspace
+      // (essentially completing the singlestep that got "interrupted" by
+      // trapping into the kernel). To prevent this, we must re-arm the
+      // PSTATE.SS bit. (If the last resume was not a single step,
+      // the kernel will apply this modification).
+      if (!registers.aarch64_singlestep_flag()) {
+        registers.set_aarch64_singlestep_flag();
+        registers_dirty = true;
+      }
+    }
+  }
+
+  address_of_last_execution_resume = ip();
+  how_last_execution_resumed = how;
+
+  flush_regs();
 
   if (session().is_recording() && !seen_ptrace_exit_event()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
@@ -1558,7 +1554,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       return RESUME_NONBLOCKING == wait_how;
     }
   }
-  ASSERT(this, setup_succeeded);
+
   ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
   // If ptrace_if_stopped failed, it means we're running along the
   // exit path due to a SIGKILL or equivalent, so just like if it

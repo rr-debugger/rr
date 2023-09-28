@@ -77,7 +77,7 @@ public:
   virtual void post_wait_clone(Task* cloned_from, int flags) override;
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
                                const Registers& regs) override;
-  virtual bool will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+  virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
                                      int /*sig*/) override;
   virtual void did_wait() override;
 
@@ -578,9 +578,8 @@ public:
   sig_set_t read_sigmask_from_process();
   /**
    * Unblock the signal for the process.
-   * Returns `false` if the process died underneath us.
    */
-  bool unblock_signal(int sig);
+  void unblock_signal(int sig);
   /**
    * Set the signal handler to default for the process.
    */
@@ -625,7 +624,7 @@ public:
    */
   void send_synthetic_SIGCHLD_if_necessary();
 
-  bool set_sigmask(sig_set_t mask);
+  void set_sigmask(sig_set_t mask);
 
   /**
    * Update the futex robust list head pointer to |list| (which
