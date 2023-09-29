@@ -56,6 +56,10 @@ pid_t WaitState::do_wait(pid_t tid, bool consume, int type, double block_seconds
     // XXX what if the timer fires before we get into waitid???
   }
   int ret = waitid(tid >= 0 ? P_PID : P_ALL, tid, &siginfo, options);
+  if (ret && errno == EINVAL) {
+    CLEAN_FATAL() << "waitid(options=" << options
+      << ") returned EINVAL; rr requires Linux kernel 4.7 or greater";
+  }
   if (!(block_seconds <= 0.0) && block_seconds < WAIT_BLOCK_MAX) {
     int err = errno;
     struct itimerval timer = { { 0, 0 }, { 0, 0 } };
