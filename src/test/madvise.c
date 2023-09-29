@@ -26,6 +26,7 @@ static void set_page_values_nonzero(int* p) {
 int main(void) {
   int* page;
   void* fixed_area;
+  int ret;
   page_size = sysconf(_SC_PAGESIZE);
 
   fixed_area =
@@ -58,9 +59,12 @@ int main(void) {
   test_assert(count_page_zeroes(page) == PAGE_ZEROES);
 
   set_page_values_nonzero(page);
-  test_assert(0 == madvise(page, page_size, MADV_DONTNEED_LOCKED) ||
-      errno == EINVAL);
-  test_assert(count_page_zeroes(page) == PAGE_ZEROES);
+  ret = madvise(page, page_size, MADV_DONTNEED_LOCKED);
+  if (ret) {
+    test_assert(errno == EINVAL);
+  } else {
+    test_assert(count_page_zeroes(page) == PAGE_ZEROES);
+  }
 
   atomic_puts("EXIT-SUCCESS");
 
