@@ -15,7 +15,8 @@ rr development is sponsored by [Pernosco](https://pernos.co) and was originated 
 
 # System requirements
 
-* Linux kernel ≥ 3.11 is required (for `PTRACE_SETSIGMASK`).
+* Linux kernel >= 4.7 (for support of `__WALL` in `waitid()`)
+  * rr 5.6.0 worked with kernel 3.11 (requiring `PTRACE_SETSIGMASK`)
 * rr currently requires either:
   * An Intel CPU with [Nehalem](https://en.wikipedia.org/wiki/Nehalem_%28microarchitecture%29) (2010) or later microarchitecture.
   * Certain AMD Zen or later processors (see https://github.com/rr-debugger/rr/wiki/Zen)
