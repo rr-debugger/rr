@@ -981,6 +981,7 @@ bool Task::exit_syscall_and_prepare_restart() {
     // The tracee unexpectedly exited. To get this to replay correctly, we need to
     // make it look like we really entered the syscall. Then
     // handle_ptrace_exit_event will record something appropriate.
+    r.set_syscallno(syscallno);
     r.emulate_syscall_entry();
     set_regs(r);
     return false;
