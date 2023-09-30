@@ -1044,6 +1044,10 @@ public:
    */
   long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
 
+  bool is_exiting() const {
+    return seen_ptrace_exit_event_ || was_reaped_ || in_unexpected_exit;
+  }
+
   bool seen_ptrace_exit_event() const {
     return seen_ptrace_exit_event_;
   }

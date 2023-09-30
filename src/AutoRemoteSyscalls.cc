@@ -45,6 +45,11 @@ void AutoRestoreMem::init(const void* mem, ssize_t num_bytes) {
 
   remote.regs().set_sp(remote.regs().sp() - len);
   remote.task()->set_regs(remote.regs());
+  if (remote.task()->is_exiting()) {
+    // Leave addr == nullptr
+    return;
+  }
+
   addr = remote.regs().sp();
 
   data.resize(len);
@@ -362,7 +367,7 @@ static bool ignore_signal(Task* t) {
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   LOG(debug) << "syscall " << syscall_name(syscallno, t->arch()) << " " << callregs;
 
-  if (t->seen_ptrace_exit_event()) {
+  if (t->is_exiting()) {
     LOG(debug) << "Task is dying, don't try anything.";
     ASSERT(t, t->stopped_or_unexpected_exit()) << "Already seen exit event";
     return -ESRCH;
