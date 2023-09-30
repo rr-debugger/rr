@@ -2776,7 +2776,7 @@ bool Task::open_mem_fd() {
   }
 
   ScopedFd fd = ScopedFd::openat(dir_fd, "mem", O_RDWR | O_CLOEXEC);
-  if (!fd.is_open()) {
+  if (!fd.is_open() && !is_exiting()) {
     LOG(debug) << "Falling back to the remote fd dance";
     AutoRemoteSyscalls remote(this);
     int remote_mem_dir_fd = remote.send_fd(dir_fd);
