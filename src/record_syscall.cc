@@ -2168,6 +2168,7 @@ static Switchable prepare_bpf(RecordTask* t,
     case BPF_MAP_CREATE:
     case BPF_MAP_UPDATE_ELEM:
     case BPF_MAP_DELETE_ELEM:
+    case BPF_BTF_LOAD:
       break;
     case BPF_OBJ_GET:
       return ALLOW_SWITCH;
