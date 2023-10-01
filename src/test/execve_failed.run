@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+_RR_TRACE_DIR="$workdir" $RR_EXE record program_that_does_not_exist
+exit_code=$?
+if [[ $exit_code != 69 ]]; then
+  failed "Got exit code $exit_code, expected 69"
+fi

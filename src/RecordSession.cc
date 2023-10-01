@@ -2488,6 +2488,12 @@ RecordSession::RecordSession(const std::string& exe_path,
   on_create(t);
 }
 
+RecordSession::~RecordSession() {
+  // Do this now while we're still a RecordSession. When Session's
+  // destructor calls kill_all_tasks(), things turn bad.
+  kill_all_tasks();
+}
+
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 

@@ -73,6 +73,8 @@ public:
       bool force_asan_active = false,
       bool force_tsan_active = false);
 
+  ~RecordSession() override;
+
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
   }
