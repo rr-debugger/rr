@@ -160,6 +160,10 @@ success = False
 try:
     vm.wait_for_ssh()
     exclude_tests = get_config_lines_arch('exclude_tests')
+    if args.architecture == 'arm64':
+        # Currently AWS Graviton instances have a high failure rate on the `rseq` test
+        # because of missed timer interrupts
+        exclude_tests += ["rseq.*"]
     full_script = '\n'.join(
         [
             config_script_function('setup_commands'),
