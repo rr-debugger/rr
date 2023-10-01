@@ -140,8 +140,8 @@ void Task::wait_exit() {
    * thread, and this is the group leader, then this task may lose its pid
    * as soon as it enters the zombie state, causing `tid` to refer to the
    * newly-execed thread and us getting a PTRACE_EVENT_EXEC instead. To account
-   * for this we add `| WNOWAIT` to prevent dequeuing the event and simply take
-   * it as an indication that the task has execed.
+   * for this we add `| WNOWAIT` (via consume=false) to prevent dequeuing the
+   * event and simply take it as an indication that the task has execed.
    */
   WaitOptions options(tid);
   options.consume = false;
