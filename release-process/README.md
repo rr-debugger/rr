@@ -35,7 +35,7 @@ Repeat until there are no more failures or any failures are ignorable (e.g. due 
 - [ ] [Create release and upload packages](https://github.com/mozilla/rr/releases) from `/tmp/rr-dist`
 - [ ] Update gh-pages: `./scripts/update-gh-pages.sh && git push origin`
 - [ ] Update [News wiki page](https://github.com/mozilla/rr/wiki/News)
-- [ ] Post to rr-dev mailing list.
+- [ ] Post to [rr-devel mailing list](mailto:rr-devel@googlegroups.com).
 
 # Testing a specific distro/CPU configuration
 
