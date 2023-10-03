@@ -30,6 +30,7 @@ Repeat until there are no more failures or any failures are ignorable (e.g. due 
 # Completing the release
 
 - [ ] Cherry-pick `release` to `master` and update tag: `git cherry-pick release; git tag -f <major>.<minor>.0` (Not sure why the tag needs to be updated...)
+- [ ] Delete the local and remote release branches: `git branch -d release; git push origin -d release`
 - [ ] Push changes to Github: `git push origin; git push --tags origin`. Once this is done there is no turning back!
 - [ ] [Create release and upload packages](https://github.com/mozilla/rr/releases) from `/tmp/rr-dist`
 - [ ] Update gh-pages: `./scripts/update-gh-pages.sh && git push origin`
