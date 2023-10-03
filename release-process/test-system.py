@@ -169,6 +169,7 @@ try:
         ctest_options = ['-E', '|'.join(exclude_tests)]
     full_script = '\n'.join(
         [
+            'set -x', # echo commands
             config_script_function('setup_commands'),
             config_script_function('install_build_deps'),
             config_script_function('install_app_test_deps'),

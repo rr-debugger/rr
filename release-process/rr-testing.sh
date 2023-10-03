@@ -11,7 +11,6 @@
 # install_build_deps : function to install dependencies required to build rr
 # install_app_test_deps : function to install dependencies required by tests
 
-set -x # echo commands
 set -e # default to exiting on error"
 
 uname -a
