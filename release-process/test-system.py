@@ -172,7 +172,7 @@ try:
             config_script_function('setup_commands'),
             config_script_function('install_build_deps'),
             config_script_function('install_app_test_deps'),
-            'git_revision=%s'%args.git_revision,
+            'git_revision="%s"'%args.git_revision,
             'staticlibs=%s'%('TRUE' if distro_config.get('staticlibs', True) else 'FALSE'),
             'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
             # Firefox doesn't have release tarballs for Aarch64
@@ -180,7 +180,7 @@ try:
             # libreoffice uses STREX
             'test_libreoffice=%d'%(1 if args.architecture == 'x86_64' else 0),
             'ctest_options="%s"'%' '.join(c for c in ctest_options),
-            'cpack_generators=%s'%args.cpack_generators
+            'cpack_generators="%s"'%args.cpack_generators
         ]).encode('utf-8') + b'\n' + rr_testing_script
     vm.ssh(['/bin/bash', '-s'], full_script)
     if args.dist_files_dir is not None:
