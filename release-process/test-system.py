@@ -164,6 +164,9 @@ try:
         # Currently AWS Graviton instances have a high failure rate on the `rseq` test
         # because of missed timer interrupts
         exclude_tests += ["rseq.*"]
+    ctest_options = []
+    if exclude_tests:
+        ctest_options = ['-E', '|'.join(exclude_tests)]
     full_script = '\n'.join(
         [
             config_script_function('setup_commands'),
@@ -176,7 +179,7 @@ try:
             'test_firefox=%d'%(1 if args.architecture == 'x86_64' else 0),
             # libreoffice uses STREX
             'test_libreoffice=%d'%(1 if args.architecture == 'x86_64' else 0),
-            'ctest_options="%s"'%' '.join('-E %s'%r for r in exclude_tests),
+            'ctest_options="%s"'%' '.join(c for c in ctest_options),
             'cpack_generators=%s'%args.cpack_generators
         ]).encode('utf-8') + b'\n' + rr_testing_script
     vm.ssh(['/bin/bash', '-s'], full_script)
