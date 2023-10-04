@@ -15,7 +15,7 @@ rr development is sponsored by [Pernosco](https://pernos.co) and was originated 
 
 # System requirements
 
-* Linux kernel >= 4.7 (for support of `__WALL` in `waitid()`)
+* Linux kernel >= 4.7 (for support of `__WALL` in `waitid()` and `FS_IOC_FSSETXATTR`)
   * rr 5.6.0 worked with kernel 3.11 (requiring `PTRACE_SETSIGMASK`)
 * rr currently requires either:
   * An Intel CPU with [Nehalem](https://en.wikipedia.org/wiki/Nehalem_%28microarchitecture%29) (2010) or later microarchitecture.
