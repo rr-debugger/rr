@@ -819,8 +819,8 @@ int main(int argc, char** argv) {
   }
   CHECK(pmu);
 
-  do_test_ticks_basic = pmu->flags & PMU_TICKS_RCB != 0;
-  do_test_ticks_syscalls = pmu->flags & PMU_TICKS_RCB != 0;
+  do_test_ticks_basic = (pmu->flags & PMU_TICKS_RCB) != 0;
+  do_test_ticks_syscalls = (pmu->flags & PMU_TICKS_RCB) != 0;
 
   CHECK(0 == pipe(parent_to_child_fds));
   CHECK(0 == pipe(child_to_parent_fds));
