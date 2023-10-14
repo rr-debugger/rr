@@ -759,12 +759,12 @@ public:
   static remote_ptr<uint8_t> rr_page_record_ff_bytes() { return RR_PAGE_FF_BYTES; }
 
   /**
-   * Locate a syscall instruction in t's VDSO.
+   * Locate a syscall instruction in t's VDSO (the real one, not our fake one).
    * This gives us a way to execute remote syscalls without having to write
    * a syscall instruction into executable tracee memory (which might not be
    * possible with some kernels, e.g. PaX).
    */
-  remote_code_ptr find_syscall_instruction(Task* t);
+  remote_code_ptr find_syscall_instruction_in_vdso(Task* t);
 
   /**
    * Task |t| just forked from this address space. Apply dont_fork and
@@ -922,6 +922,7 @@ private:
   void populate_address_space(Task* t);
 
   void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
+  void did_unmap_rr_page(Task* t, const Mapping& m);
 
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);

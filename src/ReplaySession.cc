@@ -1654,7 +1654,13 @@ static void end_task(ReplayTask* t) {
   t->destroy_buffers();
 
   Registers r = t->regs();
-  r.set_ip(t->vm()->privileged_traced_syscall_ip());
+  remote_code_ptr syscall_ip = t->vm()->privileged_traced_syscall_ip();
+  if (!syscall_ip) {
+    // Fall back to unprivileged. If someone uses a seccomp policy to
+    // block `exit` *and* unmaps the rr page, they lose.
+    syscall_ip = t->vm()->traced_syscall_ip();
+  }
+  r.set_ip(syscall_ip);
   r.set_syscallno(syscall_number_for_exit(t->arch()));
   t->set_regs(r);
   // Enter the syscall.

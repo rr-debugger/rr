@@ -269,12 +269,8 @@ static uint32_t find_offset_of_syscall_instruction_in(SupportedArch arch,
 
 uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 
-remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
+remote_code_ptr AddressSpace::find_syscall_instruction_in_vdso(Task* t) {
   SupportedArch arch = t->arch();
-  // This assert passes even if --unmap-vdso is passed because this only ever
-  // gets called at the start of process_execve before we unmap the vdso. After
-  // the rr page is mapped in, we use the syscall instructions contained therein
-  ASSERT(t, has_vdso()) << "Kernel with vDSO disabled?";
   if (!offset_to_syscall_in_vdso[arch]) {
     auto vdso_data = t->read_mem(vdso().start().cast<uint8_t>(), vdso().size());
     offset_to_syscall_in_vdso[arch] = find_offset_of_syscall_instruction_in(
@@ -595,7 +591,7 @@ void AddressSpace::read_mm_map(Task* t, NativeArch::prctl_mm_map* map) {
 
 void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
-  traced_syscall_ip_ = find_syscall_instruction(t);
+  traced_syscall_ip_ = find_syscall_instruction_in_vdso(t);
   privileged_traced_syscall_ip_ = nullptr;
 
   do_breakpoint_fault_addr_ = nullptr;
@@ -1316,12 +1312,22 @@ void AddressSpace::unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes) {
   return unmap_internal(t, addr, num_bytes);
 }
 
-void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
+void AddressSpace::did_unmap_rr_page(Task* t, const Mapping& m) {
+  if (m.map.contains(traced_syscall_ip_.to_data_ptr<void>())) {
+    traced_syscall_ip_ = find_syscall_instruction_in_vdso(t);
+  }
+  privileged_traced_syscall_ip_ = nullptr;
+}
+
+void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
                                   ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
-  auto unmapper = [this](Mapping m, MemoryRange rem) {
+  auto unmapper = [this, t](Mapping m, MemoryRange rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
+    if (m.map.start() == rr_page_start()) {
+      did_unmap_rr_page(t, m);
+    }
 
     remove_from_map(m.map);
 

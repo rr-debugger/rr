@@ -1312,6 +1312,7 @@ set(BASIC_TESTS
   timer
   timerfd
   times
+  tracee_unmap_vdso
   truncate_temp
   tun
   two_signals_with_mask
