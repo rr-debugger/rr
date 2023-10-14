@@ -1312,7 +1312,6 @@ set(BASIC_TESTS
   timer
   timerfd
   times
-  tracee_unmap_vdso
   truncate_temp
   tun
   two_signals_with_mask
@@ -1539,6 +1538,7 @@ set(TESTS_WITH_PROGRAM
   threaded_syscall_spam
   threads
   tls
+  tracee_unmap_vdso
   ttyname
   unexpected_stack_growth
   unicode
