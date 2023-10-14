@@ -272,6 +272,9 @@ uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 remote_code_ptr AddressSpace::find_syscall_instruction_in_vdso(Task* t) {
   SupportedArch arch = t->arch();
   if (!offset_to_syscall_in_vdso[arch]) {
+    if (!vdso_start_addr) {
+      return remote_code_ptr();
+    }
     auto vdso_data = t->read_mem(vdso().start().cast<uint8_t>(), vdso().size());
     offset_to_syscall_in_vdso[arch] = find_offset_of_syscall_instruction_in(
         arch, vdso_data.data(), vdso_data.size());
@@ -351,11 +354,6 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
         remote.infallible_syscall(syscall_number_for_brk(arch), 0);
     ASSERT(t, !brk_end.is_null());
   }
-
-  traced_syscall_ip_ = rr_page_syscall_entry_point(
-      TRACED, UNPRIVILEGED, RECORDING_AND_REPLAY, t->arch());
-  privileged_traced_syscall_ip_ = rr_page_syscall_entry_point(
-      TRACED, PRIVILEGED, RECORDING_AND_REPLAY, t->arch());
 }
 
 void AddressSpace::unmap_all_but_rr_mappings(AutoRemoteSyscalls& remote,
@@ -795,6 +793,10 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
     vdso_start_addr = addr;
   }
 
+  if (MemoryRange(addr, num_bytes).contains(RR_PAGE_ADDR)) {
+    update_syscall_ips(t);
+  }
+
   return m;
 }
 
@@ -1040,6 +1042,11 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
   map_and_coalesce(t, km.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
                    clone_stat(mr.mapped_file_stat), nullptr, nullptr);
+
+  if (MemoryRange(old_addr, old_num_bytes).contains(RR_PAGE_ADDR) ||
+      MemoryRange(new_addr, new_num_bytes).contains(RR_PAGE_ADDR)) {
+    update_syscall_ips(t);
+  }
 }
 
 void AddressSpace::remove_breakpoint(remote_code_ptr addr,
@@ -1309,14 +1316,37 @@ void AddressSpace::unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes) {
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
   remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 
-  return unmap_internal(t, addr, num_bytes);
+  unmap_internal(t, addr, num_bytes);
+
+  if (MemoryRange(addr, num_bytes).contains(RR_PAGE_ADDR)) {
+    update_syscall_ips(t);
+  }
 }
 
-void AddressSpace::did_unmap_rr_page(Task* t, const Mapping& m) {
-  if (m.map.contains(traced_syscall_ip_.to_data_ptr<void>())) {
+void AddressSpace::update_syscall_ips(Task* t) {
+  remote_code_ptr traced_syscall_in_rr_page = rr_page_syscall_entry_point(
+      TRACED, UNPRIVILEGED, RECORDING_AND_REPLAY, t->arch());
+  SupportedArch arch;
+  bool ok = true;
+  if (get_syscall_instruction_arch(t, traced_syscall_in_rr_page, &arch, &ok) &&
+      arch == t->arch()) {
+    // Even if our rr page has been removed, there might still be
+    // an rr-page-alike with a syscall in the right place (e.g. when recording rr replay).
+    traced_syscall_ip_ = traced_syscall_in_rr_page;
+  } else {
     traced_syscall_ip_ = find_syscall_instruction_in_vdso(t);
   }
-  privileged_traced_syscall_ip_ = nullptr;
+
+  remote_code_ptr privileged_traced_syscall_in_rr_page = rr_page_syscall_entry_point(
+      TRACED, PRIVILEGED, RECORDING_AND_REPLAY, t->arch());
+  ok = true;
+  if (get_syscall_instruction_arch(t, privileged_traced_syscall_in_rr_page, &arch, &ok) &&
+      arch == t->arch()) {
+    privileged_traced_syscall_ip_ = privileged_traced_syscall_in_rr_page;
+  } else {
+    // Only the syscall at the privileged address can be privileged.
+    privileged_traced_syscall_ip_ = nullptr;
+  }
 }
 
 void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
@@ -1325,9 +1355,6 @@ void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
 
   auto unmapper = [this, t](Mapping m, MemoryRange rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
-    if (m.map.start() == rr_page_start()) {
-      did_unmap_rr_page(t, m);
-    }
 
     remove_from_map(m.map);
 

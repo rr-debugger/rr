@@ -922,7 +922,7 @@ private:
   void populate_address_space(Task* t);
 
   void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
-  void did_unmap_rr_page(Task* t, const Mapping& m);
+  void update_syscall_ips(Task* t);
 
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);

@@ -152,10 +152,20 @@ bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
     }
   }
 
-  bool read_ok = true;
-  vector<uint8_t> code = t->read_mem(ptr.to_data_ptr<uint8_t>(),
-    syscall_instruction_length(t->arch()), &read_ok);
-  if (!read_ok) {
+  if (!t->session().done_initial_exec()) {
+    // We're in rr, and all our syscalls are native.
+    *arch = NativeArch::arch();
+    return true;
+  }
+
+  if (!t->vm()->has_mapping(ptr.to_data_ptr<void>())) {
+    return false;
+  }
+
+  vector<uint8_t> code;
+  code.resize(syscall_instruction_length(t->arch()));
+  ssize_t bytes = t->read_bytes_fallible(ptr.to_data_ptr<void>(), code.size(), code.data());
+  if (bytes != (ssize_t)code.size()) {
     if (ok) {
       *ok = false;
     }
