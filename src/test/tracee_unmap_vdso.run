@@ -2,5 +2,5 @@ source `dirname $0`/util.sh
 # Unmapping the rr page breaks ssycallbuf; we don't support that.
 skip_if_syscall_buf
 # Unmapping the VDSO breaks all syscalls on 32-bit x86.
-skip_if_32_bit
+skip_if_test_32_bit
 compare_test EXIT-SUCCESS
