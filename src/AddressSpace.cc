@@ -1349,11 +1349,11 @@ void AddressSpace::update_syscall_ips(Task* t) {
   }
 }
 
-void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
+void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
                                   ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
-  auto unmapper = [this, t](Mapping m, MemoryRange rem) {
+  auto unmapper = [this](Mapping m, MemoryRange rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
 
     remove_from_map(m.map);
