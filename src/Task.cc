@@ -2439,6 +2439,7 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   bool ok = t->wait();
   ASSERT(t, ok) << "Task " << t->tid << " killed unexpectedly; not sure how to handle this";
 
+  t->post_wait_clone(this, flags);
   if (CLONE_SHARE_THREAD_GROUP & flags) {
     ASSERT(this, !new_tg);
     t->tg = tg;
@@ -2450,8 +2451,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
     }
   }
   t->tg->insert_task(t);
-
-  t->post_wait_clone(this, flags);
 
   t->open_mem_fd_if_needed();
   t->thread_areas_ = thread_areas_;
