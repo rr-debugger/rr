@@ -33,9 +33,6 @@ enum TicksSemantics {
  * for progress, which we call "ticks". Currently this is the count of retired
  * conditional branches. We support dispatching a signal when the counter
  * reaches a particular value.
- *
- * When extra_perf_counters_enabled() returns true, we monitor additional
- * counters of interest.
  */
 class PerfCounters {
 public:
