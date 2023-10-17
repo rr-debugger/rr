@@ -51,7 +51,8 @@ Session::Session()
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),
-      visible_execution_(true) {
+      visible_execution_(true),
+      intel_pt_(false) {
   LOG(debug) << "Session " << this << " created";
 }
 
@@ -76,7 +77,8 @@ Session::Session(const Session& other)
       ticks_semantics_(other.ticks_semantics_),
       original_affinity_(other.original_affinity_),
       done_initial_exec_(other.done_initial_exec_),
-      visible_execution_(other.visible_execution_) {}
+      visible_execution_(other.visible_execution_),
+      intel_pt_(other.intel_pt_) {}
 
 void Session::on_create(ThreadGroup* tg) { thread_group_map_[tg->tguid()] = tg; }
 void Session::on_destroy(ThreadGroup* tg) {

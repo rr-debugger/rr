@@ -867,6 +867,7 @@ public:
   };
 
   void map_rr_page(AutoRemoteSyscalls& remote);
+  static std::vector<uint8_t> read_rr_page_for_recording(SupportedArch arch);
   struct UnmapOptions {
     bool exclude_vdso_vvar;
     UnmapOptions() : exclude_vdso_vvar(false) {}

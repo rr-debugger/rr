@@ -1992,6 +1992,14 @@ void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
   if (should_checksum(ev, current_time)) {
     checksum_process_memory(this, current_time);
   }
+  if (!ev.has_ticks_slop()) {
+    // Only associate PT data with events whose timing is
+    // exactly the same between recording and replay.
+    PTData pt_data = hpc.extract_intel_pt_data();
+    if (!pt_data.data.empty()) {
+      write_pt_data(this, current_time, pt_data.data);
+    }
+  }
 
   if (trace_writer().clear_fip_fdp()) {
     const ExtraRegisters* maybe_extra = extra_regs_fallible();

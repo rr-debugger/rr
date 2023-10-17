@@ -418,6 +418,11 @@ public:
     return dflt;
   }
 
+  void set_intel_pt_enabled(bool intel_pt) { intel_pt_ = intel_pt; }
+  /* When this is true, we collect Intel PT traces during recording
+     or replay. */
+  bool intel_pt_enabled() const { return intel_pt_; }
+
 protected:
   Session();
   virtual ~Session();
@@ -477,6 +482,11 @@ protected:
    * True while the execution of this session is visible to users.
    */
   bool visible_execution_;
+
+  /**
+   * True while we're collecting Intel PT data.
+   */
+  bool intel_pt_;
 };
 
 } // namespace rr

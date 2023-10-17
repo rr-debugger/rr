@@ -17,6 +17,7 @@
 #include <x86intrin.h>
 #endif
 
+#include "MemoryRange.h"
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 #include "remote_ptr.h"
@@ -128,6 +129,16 @@ void checksum_process_memory(RecordTask* t, FrameTime global_time);
  * during recording.
  */
 void validate_process_memory(ReplayTask* t, FrameTime global_time);
+
+/**
+ * Write raw PT data to a file in the trace dir.
+ */
+void write_pt_data(Task* t, FrameTime global_time, const std::vector<uint8_t>& data);
+
+/**
+ * Read raw PT data to a file in the trace dir. Returns an empty vector if none found.
+ */
+std::vector<uint8_t> read_pt_data(Task* t, FrameTime global_time);
 
 /**
  * Return nonzero if the rr session is probably not interactive (that
@@ -629,6 +640,13 @@ inline unsigned long long dczid_el0_block_size(void) {
   return 0;
 #endif
 }
+
+/**
+ * If `src` overlaps `dst`, replace the bytes in `dst_data` from the range `dst`
+ * with the corresponding bytes in `src_data` from the range `src`.
+ */
+void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
+                       MemoryRange dst, uint8_t* dst_data);
 
 } // namespace rr
 

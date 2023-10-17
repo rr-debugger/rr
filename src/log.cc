@@ -16,10 +16,13 @@
 #include "GdbConnection.h"
 #include "GdbServer.h"
 #include "RecordSession.h"
+#include "ReplaySession.h"
+#include "ReplayTask.h"
 #include "core.h"
 #include "ftrace.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
+#include "processor_trace_check.h"
 #include "util.h"
 
 using namespace std;
@@ -443,6 +446,9 @@ static void emergency_debug(Task* t) {
   RecordSession* record_session = t->session().as_record();
   if (record_session) {
     record_session->close_trace_writer(TraceWriter::CLOSE_ERROR);
+  }
+  if (t->session().is_replaying()) {
+    emergency_check_intel_pt(static_cast<ReplayTask*>(t), log_stream());
   }
 
   // Capture the log buffer now to prevent the log messages from the trace

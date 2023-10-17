@@ -313,6 +313,37 @@ void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
   fclose(dump_file);
 }
 
+void write_pt_data(Task* t, FrameTime global_time, const vector<uint8_t>& data) {
+  string filename = format_dump_filename(t, global_time, "pt");
+  FILE* dump_file = fopen64(filename.c_str(), "w");
+  ASSERT(t, dump_file) << "Can't write to file " << filename;
+  size_t written = fwrite(data.data(), 1, data.size(), dump_file);
+  ASSERT(t, written == data.size()) << "Failed to write PT data to " << filename;
+  fclose(dump_file);
+}
+
+vector<uint8_t> read_pt_data(Task* t, FrameTime global_time) {
+  string filename = format_dump_filename(t, global_time, "pt");
+  FILE* dump_file = fopen64(filename.c_str(), "r");
+  vector<uint8_t> result;
+  if (!dump_file) {
+    return result;
+  }
+
+  while (true) {
+    char buf[1024*1024];
+    size_t bytes_read = fread(buf, 1, sizeof(buf), dump_file);
+    size_t current_size = result.size();
+    result.resize(current_size + bytes_read);
+    memcpy(result.data() + current_size, buf, bytes_read);
+    if (bytes_read < sizeof(buf)) {
+      break;
+    }
+  }
+  fclose(dump_file);
+  return result;
+}
+
 static void notify_checksum_error(ReplayTask* t, FrameTime global_time,
                                   unsigned checksum, unsigned rec_checksum,
                                   const string& raw_map_line) {
@@ -2483,4 +2514,16 @@ int parse_tid_from_proc_path(const std::string& pathname,
   }
   return -1;
 }
+
+void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
+                       MemoryRange dst, uint8_t* dst_data) {
+  remote_ptr<void> overlap_start = max(src.start(), dst.start());
+  remote_ptr<void> overlap_end = min(src.end(), dst.end());
+  if (overlap_start < overlap_end) {
+    memcpy(dst_data + (overlap_start - dst.start()),
+           src_data + (overlap_start - src.start()),
+           overlap_end - overlap_start);
+  }
+}
+
 } // namespace rr

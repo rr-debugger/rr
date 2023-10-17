@@ -9,12 +9,15 @@
 
 #include <signal.h>
 #include <stdint.h>
+#include <linux/perf_event.h>
 #include <sys/types.h>
+
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "ScopedFd.h"
 #include "Ticks.h"
-
-struct perf_event_attr;
 
 namespace rr {
 
@@ -23,6 +26,16 @@ class Task;
 enum TicksSemantics {
   TICKS_RETIRED_CONDITIONAL_BRANCHES,
   TICKS_TAKEN_BRANCHES,
+};
+
+/**
+ * A buffer of Intel PT control-flow data.
+ */
+struct PTData {
+  PTData() {}
+  explicit PTData(std::vector<uint8_t> data)
+    : data(std::move(data)) {}
+  std::vector<uint8_t> data;
 };
 
 /**
@@ -40,9 +53,27 @@ public:
    * Create performance counters monitoring the given task.
    * When enable is false, we always report 0 and don't do any interrupts.
    */
+  enum Enabled {
+    ENABLE,
+    DISABLE
+  };
+  enum IntelPTEnabled {
+    PT_DISABLE,
+    PT_ENABLE
+  };
   PerfCounters(pid_t tid, int cpu_binding, TicksSemantics ticks_semantics,
-               bool enable);
+               Enabled enabled, IntelPTEnabled enable_pt);
   ~PerfCounters() { stop(); }
+
+  struct PTState {
+    PTData pt_data;
+    ScopedFd pt_perf_event_fd;
+    struct perf_event_mmap_page* mmap_header;
+    char* mmap_aux_buffer = nullptr;
+
+    void stop();
+    ~PTState() { stop(); }
+  };
 
   void set_tid(pid_t tid);
 
@@ -130,6 +161,13 @@ public:
    */
   uint32_t recording_skid_size() { return skid_size() * 5; }
 
+  /**
+   * If Intel PT data collection is on, returns the accumulated raw PT data
+   * and clears the internal buffer.
+   * Otherwise returns an empty buffer.
+   */
+  PTData extract_intel_pt_data();
+
 private:
   // Only valid while 'counting' is true
   Ticks counting_period;
@@ -150,8 +188,10 @@ private:
   // aarch64 specific counter to detect use of ll/sc instructions
   ScopedFd fd_strex_counter;
 
+  std::unique_ptr<PTState> pt_state;
+
   TicksSemantics ticks_semantics_;
-  bool enable;
+  Enabled enabled;
   bool started;
   bool counting;
 };

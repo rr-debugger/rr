@@ -9,9 +9,14 @@
 #include <sys/prctl.h>
 
 #include <algorithm>
+#include <ostream>
+#include <sstream>
+#include <unordered_map>
 
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "ProcessorTraceDecoder.h"
+#include "processor_trace_check.h"
 #include "ReplayTask.h"
 #include "ThreadGroup.h"
 #include "core.h"
@@ -209,6 +214,8 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       check_xsave_compatibility(trace_in);
     }
   }
+
+  set_intel_pt_enabled(flags.intel_pt_start_checking_event >= 0);
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)
@@ -597,10 +604,11 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // not generated yet.
       if (!syscall_bp_vm &&
           t->vm()->is_breakpoint_in_private_read_only_memory(
-              syscall_instruction) &&
-          t->vm()->add_breakpoint(syscall_instruction, BKPT_INTERNAL)) {
-        syscall_bp_vm = t->vm();
-        syscall_bp_addr = syscall_instruction;
+              syscall_instruction)) {
+        if (t->vm()->add_breakpoint(syscall_instruction, BKPT_INTERNAL)) {
+          syscall_bp_vm = t->vm();
+          syscall_bp_addr = syscall_instruction;
+        }
       }
     }
 
@@ -2027,6 +2035,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     }
 
     debug_memory(t);
+    check_intel_pt_if_enabled(t);
 
     check_for_watchpoint_changes(t, result.break_status);
     check_approaching_ticks_target(t, constraints, result.break_status);

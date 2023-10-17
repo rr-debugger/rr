@@ -4,6 +4,7 @@
 #define RR_REPLAY_SESSION_H_
 
 #include <memory>
+#include <ostream>
 #include <set>
 
 #include "AddressSpace.h"
@@ -241,13 +242,15 @@ public:
       : redirect_stdio(false)
       , share_private_mappings(false)
       , replay_stops_at_first_execve(false)
-      , cpu_unbound(false) {}
+      , cpu_unbound(false)
+      , intel_pt_start_checking_event(-1) {}
     Flags(const Flags&) = default;
     bool redirect_stdio;
     std::string redirect_stdio_file;
     bool share_private_mappings;
     bool replay_stops_at_first_execve;
     bool cpu_unbound;
+    FrameTime intel_pt_start_checking_event;
   };
 
   /**
@@ -415,6 +418,8 @@ private:
   std::shared_ptr<AddressSpace> syscall_bp_vm;
   remote_code_ptr syscall_bp_addr;
 };
+
+void emergency_check_intel_pt(ReplayTask* t, std::ostream& stream);
 
 } // namespace rr
 

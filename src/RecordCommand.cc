@@ -73,6 +73,8 @@ RecordCommand RecordCommand::singleton(
     "                             instead of terminating the program. The\n"
     "                             signal will still be delivered for user\n"
     "                             handlers and debugging.\n"
+    "  --intel-pt                 Enable PT collection of control flow\n"
+    "                             (for debugging rr)\n"
     "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
     "                             Default is to bind to a random CPU.  This "
     "option\n"
@@ -182,6 +184,10 @@ struct RecordFlags {
   /* True if we should always enable TSAN compatibility. */
   bool tsan;
 
+  /* True if we should enable collection of control flow
+     with PT. */
+  bool intel_pt;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -205,7 +211,8 @@ struct RecordFlags {
         stap_sdt(false),
         unmap_vdso(false),
         asan(false),
-        tsan(false) {}
+        tsan(false),
+        intel_pt(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -267,6 +274,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 16, "disable-avx-512", NO_PARAMETER },
     { 17, "asan", NO_PARAMETER },
     { 18, "tsan", NO_PARAMETER },
+    { 19, "intel-pt", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -480,6 +488,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 18:
       flags.tsan = true;
       break;
+    case 19:
+      flags.intel_pt = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -669,7 +680,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get(),
-      flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan);
+      flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan,
+      flags.intel_pt);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();

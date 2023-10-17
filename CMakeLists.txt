@@ -581,6 +581,7 @@ set(RR_SOURCES
   src/PackCommand.cc
   src/PerfCounters.cc
   src/PidFdMonitor.cc
+  src/processor_trace_check.cc
   src/ProcFdDirMonitor.cc
   src/ProcMemMonitor.cc
   src/ProcStatMonitor.cc
@@ -657,6 +658,12 @@ else()
   set(CMAKE_INSTALL_INCLUDEDIR "include")
 endif()
 
+option(intel_pt_decoding "Build with Intel PT decoding enabled.")
+if (intel_pt_decoding)
+  set(RR_SOURCES ${RR_SOURCES} src/ProcessorTraceDecoder.cc)
+  add_definitions(-DINTEL_PT_DECODING=1)
+endif()
+
 add_executable(rr ${RR_SOURCES})
 set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
 post_build_executable(rr)
@@ -681,6 +688,11 @@ if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
   else()
     set(RR_MAIN_LINKER_FLAGS "${RR_MAIN_LINKER_FLAGS} -flto")
   endif()
+endif()
+
+if(intel_pt_decoding)
+  find_library(LIBIPT ipt)
+  target_link_libraries(rr ${LIBIPT})
 endif()
 
 if(LIBRT)

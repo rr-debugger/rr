@@ -286,16 +286,10 @@ remote_code_ptr AddressSpace::find_syscall_instruction_in_vdso(Task* t) {
           .as_int());
 }
 
-void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
-  int prot = PROT_EXEC | PROT_READ;
-  int flags = MAP_PRIVATE | MAP_FIXED;
-
+static string rr_page_file_name(SupportedArch arch, const char** fname_out) {
   string file_name;
-  Task* t = remote.task();
-  SupportedArch arch = t->arch();
-
   const char *fname = nullptr;
-  switch (t->arch()) {
+  switch (arch) {
     case x86_64:
     case aarch64:
       fname = RRPAGE_LIB_FILENAME;
@@ -308,13 +302,29 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
 #endif
       break;
   }
+  *fname_out = fname;
 
   string path = find_helper_library(fname);
   if (path.empty()) {
-    FATAL() << "Failed to locate " << fname << "; needed by "
-      << t->exe_path() << " (" << arch_name(t->arch()) << ")";
+    return path;
   }
   path += fname;
+  return path;
+}
+
+void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
+  int prot = PROT_EXEC | PROT_READ;
+  int flags = MAP_PRIVATE | MAP_FIXED;
+
+  Task* t = remote.task();
+  SupportedArch arch = t->arch();
+  const char* fname;
+  string path = rr_page_file_name(arch, &fname);
+  if (path.empty()) {
+    FATAL() << "Failed to locate " << fname << "; needed by "
+      << t->exe_path() << " (" << arch_name(arch) << ")";
+  }
+
   size_t offset_pages = t->session().is_recording() ?
     RRPAGE_RECORD_PAGE_OFFSET : RRPAGE_REPLAY_PAGE_OFFSET;
   size_t offset_bytes = offset_pages * PRELOAD_LIBRARY_PAGE_SIZE;
@@ -332,7 +342,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
                                               child_fd, offset_bytes);
 
       struct stat fstat = t->stat_fd(child_fd);
-      file_name = t->file_name_of_fd(child_fd);
+      string file_name = t->file_name_of_fd(child_fd);
 
       remote.infallible_close_syscall_if_alive(child_fd);
 
@@ -354,6 +364,25 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
         remote.infallible_syscall(syscall_number_for_brk(arch), 0);
     ASSERT(t, !brk_end.is_null());
   }
+}
+
+vector<uint8_t> AddressSpace::read_rr_page_for_recording(SupportedArch arch) {
+  const char* fname;
+  string path = rr_page_file_name(arch, &fname);
+  if (path.empty()) {
+    FATAL() << "Failed to locate " << fname;
+  }
+
+  ScopedFd page(path.c_str(), O_RDONLY);
+  char buf[PRELOAD_LIBRARY_PAGE_SIZE];
+  ssize_t ret = read_to_end(page,
+    RRPAGE_RECORD_PAGE_OFFSET * PRELOAD_LIBRARY_PAGE_SIZE, buf, sizeof(buf));
+  if (ret != PRELOAD_LIBRARY_PAGE_SIZE) {
+    FATAL() << "Failed to read full page from " << path;
+  }
+  vector<uint8_t> result;
+  result.insert(result.end(), buf, buf + sizeof(buf));
+  return result;
 }
 
 void AddressSpace::unmap_all_but_rr_mappings(AutoRemoteSyscalls& remote,
@@ -693,14 +722,9 @@ bool AddressSpace::is_breakpoint_in_private_read_only_memory(
 void AddressSpace::replace_breakpoints_with_original_values(
     uint8_t* dest, size_t length, remote_ptr<uint8_t> addr) {
   for (auto& it : breakpoints) {
-    remote_ptr<uint8_t> bkpt_location = it.first.to_data_ptr<uint8_t>();
-    remote_ptr<uint8_t> start = max(addr, bkpt_location);
-    remote_ptr<uint8_t> end =
-        min(addr + length, bkpt_location + bkpt_instruction_length(arch()));
-    if (start < end) {
-      memcpy(dest + (start - addr),
-             it.second.original_data() + (start - bkpt_location), end - start);
-    }
+    replace_in_buffer(MemoryRange(it.first.to_data_ptr<void>(), bkpt_instruction_length(arch())),
+                      it.second.original_data(),
+                      MemoryRange(addr, length), dest);
   }
 }
 

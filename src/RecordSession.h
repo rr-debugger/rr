@@ -71,7 +71,8 @@ public:
       bool use_audit = false,
       bool unmap_vdso = false,
       bool force_asan_active = false,
-      bool force_tsan_active = false);
+      bool force_tsan_active = false,
+      bool intel_pt = false);
 
   ~RecordSession() override;
 
@@ -219,7 +220,8 @@ private:
                 const std::string& output_trace_dir,
                 const TraceUuid* trace_id,
                 bool use_audit,
-                bool unmap_vdso);
+                bool unmap_vdso,
+                bool intel_pt);
 
   virtual void on_create(Task* t) override;
 

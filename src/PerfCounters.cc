@@ -608,11 +608,15 @@ uint32_t PerfCounters::skid_size() {
 }
 
 PerfCounters::PerfCounters(pid_t tid, int cpu_binding,
-                           TicksSemantics ticks_semantics, bool enable)
+                           TicksSemantics ticks_semantics, Enabled enabled,
+                           IntelPTEnabled enable_pt)
     : tid(tid), pmu_index(get_pmu_index(cpu_binding)), ticks_semantics_(ticks_semantics),
-      enable(enable), started(false), counting(false) {
+      enabled(enabled), started(false), counting(false) {
   if (!supports_ticks_semantics(ticks_semantics)) {
     FATAL() << "Ticks semantics " << ticks_semantics << " not supported";
+  }
+  if (enable_pt == PT_ENABLE) {
+    pt_state = make_unique<PTState>();
   }
 }
 
@@ -647,8 +651,133 @@ static void infallible_perf_event_disable_if_open(ScopedFd& fd) {
   }
 }
 
+static uint32_t pt_event_type() {
+  static const char file_name[] = "/sys/bus/event_source/devices/intel_pt/type";
+  ScopedFd fd(file_name, O_RDONLY);
+  if (!fd.is_open()) {
+    FATAL() << "Can't open " << file_name << ", PT events not available";
+  }
+  char buf[6];
+  ssize_t ret = read(fd, buf, sizeof(buf));
+  if (ret < 1 || ret > 5) {
+    FATAL() << "Invalid value in " << file_name;
+  }
+  char* end_ptr;
+  unsigned long value = strtoul(buf, &end_ptr, 10);
+  if (end_ptr < buf + ret && *end_ptr && *end_ptr != '\n') {
+    FATAL() << "Invalid value in " << file_name;
+  }
+  return value;
+}
+
+static const size_t PT_PERF_DATA_SIZE = 8*1024*1024;
+static const size_t PT_PERF_AUX_SIZE = 512*1024*1024;
+
+// See https://github.com/intel/libipt/blob/master/doc/howto_capture.md
+static void start_pt(pid_t tid, PerfCounters::PTState& state) {
+  static uint32_t event_type = pt_event_type();
+
+  struct perf_event_attr attr;
+  init_perf_event_attr(&attr, event_type, 0);
+  state.pt_perf_event_fd = start_counter(tid, -1, &attr);
+
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* base = mmap(NULL, page_size + PT_PERF_DATA_SIZE,
+      PROT_READ | PROT_WRITE, MAP_SHARED, state.pt_perf_event_fd, 0);
+  if (base == MAP_FAILED) {
+    FATAL() << "Can't allocate memory for PT DATA area";
+  }
+  auto header = static_cast<struct perf_event_mmap_page*>(base);
+  state.mmap_header = header;
+
+  header->aux_offset = header->data_offset + header->data_size;
+  header->aux_size = PT_PERF_AUX_SIZE;
+
+  void* aux = mmap(NULL, header->aux_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+      state.pt_perf_event_fd, header->aux_offset);
+  if (aux == MAP_FAILED) {
+    FATAL() << "Can't allocate memory for PT AUX area";
+  }
+  state.mmap_aux_buffer = static_cast<char*>(aux);
+}
+
+// I wish I knew why this type isn't defined in perf_event.h but is just
+// commented out there...
+struct PerfEventAux {
+  struct perf_event_header header;
+  uint64_t aux_offset;
+  uint64_t aux_size;
+  uint64_t flags;
+  uint64_t sample_id;
+};
+
+static void flush_pt(PerfCounters::PTState& state) {
+  uint64_t data_end = state.mmap_header->data_head;
+  __sync_synchronize();
+  char* data_buf = reinterpret_cast<char*>(state.mmap_header) +
+      state.mmap_header->data_offset;
+
+  vector<char> packet;
+  while (state.mmap_header->data_tail < data_end) {
+    uint64_t data_start = state.mmap_header->data_tail;
+    size_t start_offset = data_start % state.mmap_header->data_size;
+    auto header = reinterpret_cast<struct perf_event_header*>(data_buf + start_offset);
+    packet.resize(header->size);
+    size_t first_chunk_size = min<size_t>(header->size,
+        state.mmap_header->data_size - start_offset);
+    memcpy(packet.data(), header, first_chunk_size);
+    memcpy(packet.data() + first_chunk_size, data_buf, header->size - first_chunk_size);
+    state.mmap_header->data_tail += header->size;
+
+    switch (header->type) {
+      case PERF_RECORD_LOST:
+        FATAL() << "PT records lost!";
+        break;
+      case PERF_RECORD_ITRACE_START:
+        break;
+      case PERF_RECORD_AUX: {
+        auto aux_packet = reinterpret_cast<PerfEventAux*>(packet.data());
+        if (aux_packet->flags) {
+          FATAL() << "Unexpected AUX packet flags " << aux_packet->flags;
+        }
+        size_t current_size = state.pt_data.data.size();
+        state.pt_data.data.resize(current_size + aux_packet->aux_size);
+        uint8_t* current = state.pt_data.data.data() + current_size;
+        size_t aux_start_offset = aux_packet->aux_offset % PT_PERF_AUX_SIZE;
+        first_chunk_size = min<size_t>(aux_packet->aux_size, PT_PERF_AUX_SIZE - aux_start_offset);
+        memcpy(current, state.mmap_aux_buffer + aux_start_offset, first_chunk_size);
+        memcpy(current + first_chunk_size, state.mmap_aux_buffer,
+               aux_packet->aux_size - first_chunk_size);
+        break;
+      }
+      default:
+        FATAL() << "Unknown record " << header->type;
+        break;
+    }
+  }
+}
+
+PTData PerfCounters::extract_intel_pt_data() {
+  PTData result;
+  if (pt_state) {
+    result = std::move(pt_state->pt_data);
+  }
+  return result;
+}
+
+void PerfCounters::PTState::stop() {
+  pt_perf_event_fd.close();
+  if (mmap_aux_buffer) {
+    size_t page_size = sysconf(_SC_PAGESIZE);
+    munmap(mmap_aux_buffer, mmap_header->aux_size);
+    mmap_aux_buffer = nullptr;
+    munmap(mmap_header, page_size + PT_PERF_DATA_SIZE);
+    mmap_header = nullptr;
+  }
+}
+
 void PerfCounters::reset(Ticks ticks_period) {
-  if (!enable) {
+  if (enabled == DISABLE) {
     return;
   }
   DEBUG_ASSERT(ticks_period >= 0);
@@ -689,6 +818,10 @@ void PerfCounters::reset(Ticks ticks_period) {
       FATAL() << "Failed to SETOWN_EX ticks event fd";
     }
     make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
+
+    if (pt_state) {
+      start_pt(tid, *pt_state);
+    }
   } else {
     LOG(debug) << "Resetting counters with period " << ticks_period;
 
@@ -707,6 +840,10 @@ void PerfCounters::reset(Ticks ticks_period) {
 
     infallible_perf_event_reset_if_open(fd_ticks_in_transaction);
     infallible_perf_event_enable_if_open(fd_ticks_in_transaction);
+
+    if (pt_state) {
+      infallible_perf_event_enable_if_open(pt_state->pt_perf_event_fd);
+    }
   }
 
   started = true;
@@ -724,6 +861,9 @@ void PerfCounters::stop() {
     return;
   }
   started = false;
+  if (pt_state) {
+    pt_state->stop();
+  }
 
   fd_ticks_interrupt.close();
   fd_ticks_measure.close();
@@ -744,6 +884,9 @@ void PerfCounters::stop_counting() {
     infallible_perf_event_disable_if_open(fd_minus_ticks_measure);
     infallible_perf_event_disable_if_open(fd_ticks_measure);
     infallible_perf_event_disable_if_open(fd_ticks_in_transaction);
+    if (pt_state) {
+      infallible_perf_event_disable_if_open(pt_state->pt_perf_event_fd);
+    }
   }
 }
 
@@ -766,6 +909,10 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
 Ticks PerfCounters::read_ticks(Task* t) {
   if (!started || !counting) {
     return 0;
+  }
+
+  if (pt_state) {
+    flush_pt(*pt_state);
   }
 
   if (fd_ticks_in_transaction.is_open()) {

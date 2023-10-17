@@ -69,6 +69,8 @@ ReplayCommand ReplayCommand::singleton(
     "                             to run on the CPU stored in the trace.\n"
     "                             Note that this may diverge from the recording\n"
     "                             in some cases.\n"
+    "  --intel-pt-start-checking-event   verify control flow using Intel PT\n"
+    "                             (used for debugging rr)\n"
     "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n"
     "  --stats=<N>                display brief stats every N steps (eg 10000).\n"
     "  --serve-files              Serve all files from the trace rather than\n"
@@ -135,6 +137,8 @@ struct ReplayFlags {
 
   string tty;
 
+  FrameTime intel_pt_start_checking_event;
+
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -149,7 +153,8 @@ struct ReplayFlags {
         cpu_unbound(false),
         share_private_mappings(false),
         dump_interval(0),
-        serve_files(false) {}
+        serve_files(false),
+        intel_pt_start_checking_event(-1) {}
 };
 
 static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
@@ -176,6 +181,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 2, "stats", HAS_PARAMETER },
     { 3, "serve-files", NO_PARAMETER },
     { 4, "tty", HAS_PARAMETER },
+    { 5, "intel-pt-start-checking-event", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'i', "interpreter", HAS_PARAMETER }
   };
@@ -267,6 +273,12 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     case 4:
       flags.tty = opt.value;
       break;
+    case 5:
+      if (!opt.verify_valid_int(1, INT64_MAX)) {
+        return false;
+      }
+      flags.intel_pt_start_checking_event = opt.int_value;
+      break;
     case 'u':
       flags.cpu_unbound = true;
       break;
@@ -344,6 +356,7 @@ static ReplaySession::Flags session_flags(const ReplayFlags& flags) {
   result.redirect_stdio_file = flags.tty;
   result.share_private_mappings = flags.share_private_mappings;
   result.cpu_unbound = flags.cpu_unbound;
+  result.intel_pt_start_checking_event = flags.intel_pt_start_checking_event;
   return result;
 }
 

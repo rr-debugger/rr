@@ -2296,7 +2296,8 @@ static string lookup_by_path(const string& name) {
     bool use_audit,
     bool unmap_vdso,
     bool force_asan_active,
-    bool force_tsan_active) {
+    bool force_tsan_active,
+    bool intel_pt) {
   TraceeAttentionSet::initialize();
 
   // The syscallbuf library interposes some critical
@@ -2424,7 +2425,8 @@ static string lookup_by_path(const string& name) {
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
-                        output_trace_dir, trace_id, use_audit, unmap_vdso));
+                        output_trace_dir, trace_id, use_audit, unmap_vdso,
+                        intel_pt));
   session->excluded_ranges_ = std::move(exe_info.sanitizer_exclude_memory_ranges);
   session->fixed_global_exclusion_range_ = std::move(exe_info.fixed_global_exclusion_range);
   return session;
@@ -2440,7 +2442,8 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const string& output_trace_dir,
                              const TraceUuid* trace_id,
                              bool use_audit,
-                             bool unmap_vdso)
+                             bool unmap_vdso,
+                             bool intel_pt_enabled)
     : trace_out(argv[0], output_trace_dir, ticks_semantics_),
       scheduler_(*this),
       trace_id(trace_id),
@@ -2457,6 +2460,8 @@ RecordSession::RecordSession(const std::string& exe_path,
       wait_for_all_(false),
       use_audit_(use_audit),
       unmap_vdso_(unmap_vdso) {
+  set_intel_pt_enabled(intel_pt_enabled);
+
   if (!has_cpuid_faulting() &&
       disable_cpuid_features.any_features_disabled()) {
     FATAL() << "CPUID faulting required to disable CPUID features";
