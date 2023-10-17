@@ -64,19 +64,18 @@ Session::~Session() {
   }
 }
 
-Session::Session(const Session& other) {
-  statistics_ = other.statistics_;
-  next_task_serial_ = other.next_task_serial_;
-  done_initial_exec_ = other.done_initial_exec_;
-  rrcall_base_ = other.rrcall_base_;
-  syscallbuf_fds_disabled_size_ = other.syscallbuf_fds_disabled_size_;
-  visible_execution_ = other.visible_execution_;
-  tracee_socket = other.tracee_socket;
-  tracee_socket_receiver = other.tracee_socket_receiver;
-  tracee_socket_fd_number = other.tracee_socket_fd_number;
-  ticks_semantics_ = other.ticks_semantics_;
-  original_affinity_ = other.original_affinity_;
-}
+Session::Session(const Session& other)
+    : statistics_(other.statistics_),
+      tracee_socket(other.tracee_socket),
+      tracee_socket_receiver(other.tracee_socket_receiver),
+      tracee_socket_fd_number(other.tracee_socket_fd_number),
+      next_task_serial_(other.next_task_serial_),
+      rrcall_base_(other.rrcall_base_),
+      syscallbuf_fds_disabled_size_(other.syscallbuf_fds_disabled_size_),
+      syscall_seccomp_ordering_(other.syscall_seccomp_ordering_),
+      original_affinity_(other.original_affinity_),
+      done_initial_exec_(other.done_initial_exec_),
+      visible_execution_(other.visible_execution_) {}
 
 void Session::on_create(ThreadGroup* tg) { thread_group_map_[tg->tguid()] = tg; }
 void Session::on_destroy(ThreadGroup* tg) {
