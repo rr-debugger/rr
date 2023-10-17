@@ -623,6 +623,30 @@ static void make_counter_async(ScopedFd& fd, int signal) {
   }
 }
 
+static void infallible_perf_event_reset_if_open(ScopedFd& fd) {
+  if (fd.is_open()) {
+    if (ioctl(fd, PERF_EVENT_IOC_RESET, 0)) {
+      FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
+    }
+  }
+}
+
+static void infallible_perf_event_enable_if_open(ScopedFd& fd) {
+  if (fd.is_open()) {
+    if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
+      FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
+    }
+  }
+}
+
+static void infallible_perf_event_disable_if_open(ScopedFd& fd) {
+  if (fd.is_open()) {
+    if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
+      FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
+    }
+  }
+}
+
 void PerfCounters::reset(Ticks ticks_period) {
   if (!enable) {
     return;
@@ -668,40 +692,21 @@ void PerfCounters::reset(Ticks ticks_period) {
   } else {
     LOG(debug) << "Resetting counters with period " << ticks_period;
 
-    if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_RESET, 0)) {
-      FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
-    }
+    infallible_perf_event_reset_if_open(fd_ticks_interrupt);
     if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_PERIOD, &ticks_period)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed with period "
               << ticks_period;
     }
-    if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_ENABLE, 0)) {
-      FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
-    }
-    if (fd_minus_ticks_measure.is_open()) {
-      if (ioctl(fd_minus_ticks_measure, PERF_EVENT_IOC_RESET, 0)) {
-        FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
-      }
-      if (ioctl(fd_minus_ticks_measure, PERF_EVENT_IOC_ENABLE, 0)) {
-        FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
-      }
-    }
-    if (fd_ticks_measure.is_open()) {
-      if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_RESET, 0)) {
-        FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
-      }
-      if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_ENABLE, 0)) {
-        FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
-      }
-    }
-    if (fd_ticks_in_transaction.is_open()) {
-      if (ioctl(fd_ticks_in_transaction, PERF_EVENT_IOC_RESET, 0)) {
-        FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
-      }
-      if (ioctl(fd_ticks_in_transaction, PERF_EVENT_IOC_ENABLE, 0)) {
-        FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
-      }
-    }
+    infallible_perf_event_enable_if_open(fd_ticks_interrupt);
+
+    infallible_perf_event_reset_if_open(fd_minus_ticks_measure);
+    infallible_perf_event_enable_if_open(fd_minus_ticks_measure);
+
+    infallible_perf_event_reset_if_open(fd_ticks_measure);
+    infallible_perf_event_enable_if_open(fd_ticks_measure);
+
+    infallible_perf_event_reset_if_open(fd_ticks_in_transaction);
+    infallible_perf_event_enable_if_open(fd_ticks_in_transaction);
   }
 
   started = true;
@@ -735,16 +740,10 @@ void PerfCounters::stop_counting() {
   if (always_recreate_counters(perf_attrs[pmu_index])) {
     stop();
   } else {
-    ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_DISABLE, 0);
-    if (fd_minus_ticks_measure.is_open()) {
-      ioctl(fd_minus_ticks_measure, PERF_EVENT_IOC_DISABLE, 0);
-    }
-    if (fd_ticks_measure.is_open()) {
-      ioctl(fd_ticks_measure, PERF_EVENT_IOC_DISABLE, 0);
-    }
-    if (fd_ticks_in_transaction.is_open()) {
-      ioctl(fd_ticks_in_transaction, PERF_EVENT_IOC_DISABLE, 0);
-    }
+    infallible_perf_event_disable_if_open(fd_ticks_interrupt);
+    infallible_perf_event_disable_if_open(fd_minus_ticks_measure);
+    infallible_perf_event_disable_if_open(fd_ticks_measure);
+    infallible_perf_event_disable_if_open(fd_ticks_in_transaction);
   }
 }
 
