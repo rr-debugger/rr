@@ -73,6 +73,7 @@ Session::Session(const Session& other)
       rrcall_base_(other.rrcall_base_),
       syscallbuf_fds_disabled_size_(other.syscallbuf_fds_disabled_size_),
       syscall_seccomp_ordering_(other.syscall_seccomp_ordering_),
+      ticks_semantics_(other.ticks_semantics_),
       original_affinity_(other.original_affinity_),
       done_initial_exec_(other.done_initial_exec_),
       visible_execution_(other.visible_execution_) {}
