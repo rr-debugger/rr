@@ -641,7 +641,7 @@ static void infallible_perf_event_enable_if_open(ScopedFd& fd) {
 
 static void infallible_perf_event_disable_if_open(ScopedFd& fd) {
   if (fd.is_open()) {
-    if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
+    if (ioctl(fd, PERF_EVENT_IOC_DISABLE, 0)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
     }
   }
