@@ -2250,7 +2250,12 @@ MemoryRange AddressSpace::get_global_exclusion_range(const RecordSession* sessio
 }
 
 static remote_ptr<void> usable_address_space_end(Task* t) {
-  return remote_ptr<void>((uint64_t(1) << addr_bits(t->arch())) - page_size());
+  auto addr_end = remote_ptr<void>((uint64_t(1) << addr_bits(t->arch())) - page_size());
+#if defined(__i386)
+  // Further limit address space in 32-bit rr to avoid interfering with kernel space.
+  addr_end = min(addr_end, remote_ptr<void>(0xc0000000 - page_size()));
+#endif
+  return addr_end;
 }
 
 static const remote_ptr<void> addr_space_start(0x40000);
