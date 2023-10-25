@@ -353,18 +353,6 @@ static void notify_checksum_error(ReplayTask* t, FrameTime global_time,
       << "$ diff -u " << rec_dump << " " << cur_dump << " > mem-diverge.diff\n";
 }
 
-/**
- * This helper does the heavy lifting of storing or validating
- * checksums.  The iterator data determines which behavior the helper
- * function takes on, and to/from which file it writes/read.
- */
-enum ChecksumMode { STORE_CHECKSUMS, VALIDATE_CHECKSUMS };
-struct checksum_iterator_data {
-  ChecksumMode mode;
-  FILE* checksums_file;
-  FrameTime global_time;
-};
-
 static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   struct stat st;
   int may_diverge;
@@ -405,122 +393,51 @@ static uint32_t compute_checksum(void* data, size_t len) {
 static const uint32_t ignored_checksum = 0x98765432;
 static const uint32_t sigbus_checksum = 0x23456789;
 
-static bool is_task_buffer(const AddressSpace& as,
-                           const AddressSpace::Mapping& m) {
-  for (Task* t : as.task_set()) {
-    if (t->syscallbuf_child.cast<void>() == m.map.start() &&
-        t->syscallbuf_size == m.map.size()) {
-      return true;
-    }
-    if (t->scratch_ptr == m.map.start() &&
-        t->scratch_size == (ssize_t)m.map.size()) {
-      return true;
-    }
+bool should_checksum(const Event& event, FrameTime time) {
+  FrameTime checksum = Flags::get().checksum;
+  if (Flags::CHECKSUM_NONE == checksum) {
+    return false;
   }
-  return false;
+
+  if (event.type() == EV_EXIT) {
+    // Task is dead, or at least detached, and we can't read its memory safely.
+    return false;
+  }
+  if (event.has_ticks_slop()) {
+    // We may not be at the same point during recording and replay, so don't
+    // compute checksums.
+    return false;
+  }
+
+  if (Flags::CHECKSUM_ALL == checksum) {
+    // Don't checksum at syscall entry because we sometimes mutate syscall parameters there
+    // and that will cause false divergence
+    return EV_SYSCALL != event.type() || ENTERING_SYSCALL != event.Syscall().state;
+  }
+  if (Flags::CHECKSUM_SYSCALL == checksum) {
+    return EV_SYSCALL == event.type() && EXITING_SYSCALL == event.Syscall().state;
+  }
+  /* |checksum| is a global time point. */
+  return checksum <= time;
 }
 
-struct ParsedChecksumLine {
-  remote_ptr<void> start;
-  remote_ptr<void> end;
-  unsigned int checksum;
-};
-
-/**
- * Either create and store checksums for each segment mapped in |t|'s
- * address space, or validate an existing computed checksum.  Behavior
- * is selected by |mode|.
- */
-static void iterate_checksums(Task* t, ChecksumMode mode,
-                              FrameTime global_time) {
-  struct checksum_iterator_data c;
-  c.mode = mode;
+void checksum_process_memory(RecordTask* t, FrameTime global_time) {
   char filename[PATH_MAX];
   format_dump_filename(t, global_time, "mem_checksums", filename, sizeof(filename));
-  const char* fmode = (STORE_CHECKSUMS == mode) ? "w" : "r";
-  c.checksums_file = fopen64(filename, fmode);
-  if (!c.checksums_file) {
+  FILE* checksums_file = fopen64(filename, "w");
+  if (!checksums_file) {
     FATAL() << "Failed to open checksum file " << filename;
-  }
-  c.global_time = global_time;
-
-  ReplaySession *replay = t->session().as_replay();
-  remote_ptr<unsigned char> in_replay_flag;
-  if (replay && replay->has_trace_quirk(TraceReader::UsesGlobalsInReplay) && t->preload_globals) {
-    in_replay_flag = REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_in_replay);
-    t->write_mem(in_replay_flag, (unsigned char)0);
   }
 
   AddressSpace& as = *t->vm();
-  vector<ParsedChecksumLine> checksums;
-  if (VALIDATE_CHECKSUMS == mode) {
-    while (true) {
-      char line[1024];
-      if (!fgets(line, sizeof(line), c.checksums_file)) {
-        break;
-      }
-      ParsedChecksumLine parsed;
-      unsigned long rec_start;
-      unsigned long rec_end;
-      int nparsed =
-          sscanf(line, "(%x) %lx-%lx", &parsed.checksum, &rec_start, &rec_end);
-      parsed.start = rec_start;
-      parsed.end = rec_end;
-      ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
-      checksums.push_back(parsed);
-
-      as.ensure_replay_matches_single_recorded_mapping(t, MemoryRange(parsed.start, parsed.end));
-    }
-  }
-
-  auto checksum_iter = checksums.begin();
   for (auto it = as.maps().begin(); it != as.maps().end(); ++it) {
     AddressSpace::Mapping m = *it;
     string raw_map_line = m.map.str();
-    uint32_t rec_checksum = 0;
 
-    if (VALIDATE_CHECKSUMS == mode) {
-      ParsedChecksumLine parsed = *checksum_iter;
-      ++checksum_iter;
-      for (; m.map.start() != parsed.start; m = *(++it)) {
-        if (is_task_buffer(as, m)) {
-          // This region corresponds to a task scratch or syscall buffer. We
-          // tear these down a little later during replay so just skip it for
-          // now.
-          continue;
-        }
-        FATAL() << "Segment " << parsed.start << "-" << parsed.end
-                << " changed to " << m.map << "??";
-      }
-      // As |m| may have changed in the above for loop we need to update the
-      // |raw_map_line| too.
-      raw_map_line = m.map.str();
-      ASSERT(t, m.map.end() == parsed.end)
-          << "Segment " << parsed.start << "-" << parsed.end
-          << " changed to " << m.map << "??";
-      if (is_start_of_scratch_region(t, parsed.start)) {
-        /* Replay doesn't touch scratch regions, so
-         * their contents are allowed to diverge.
-         * Tracees can't observe those segments unless
-         * they do something sneaky (or disastrously
-         * buggy). */
-        LOG(debug) << "Not validating scratch starting at " << parsed.start;
-        continue;
-      }
-      if (parsed.checksum == ignored_checksum) {
-        LOG(debug) << "Checksum not computed during recording";
-        continue;
-      } else if (parsed.checksum == sigbus_checksum) {
-        continue;
-      } else {
-        rec_checksum = parsed.checksum;
-      }
-    } else {
-      if (!checksum_segment_filter(m)) {
-        fprintf(c.checksums_file, "(%x) %s\n", ignored_checksum,
-                raw_map_line.c_str());
-        continue;
-      }
+    if (!checksum_segment_filter(m)) {
+      fprintf(checksums_file, "(%x) %s\n", ignored_checksum,
+              raw_map_line.c_str());
+      continue;
     }
 
     vector<uint8_t> mem;
@@ -566,58 +483,10 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     }
 
     uint32_t checksum = compute_checksum(mem.data(), mem.size());
-
-    if (STORE_CHECKSUMS == mode) {
-      fprintf(c.checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
-    } else {
-      ASSERT(t, t->session().is_replaying());
-      auto rt = static_cast<ReplayTask*>(t);
-
-      // Ignore checksums when valid_mem_len == 0
-      if (checksum != rec_checksum) {
-        notify_checksum_error(rt, c.global_time, checksum, rec_checksum,
-                              raw_map_line.c_str());
-      }
-    }
+    fprintf(checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
   }
 
-  if (in_replay_flag) {
-    t->write_mem(in_replay_flag, (unsigned char)1);
-  }
-
-  fclose(c.checksums_file);
-}
-
-bool should_checksum(const Event& event, FrameTime time) {
-  FrameTime checksum = Flags::get().checksum;
-  if (Flags::CHECKSUM_NONE == checksum) {
-    return false;
-  }
-
-  if (event.type() == EV_EXIT) {
-    // Task is dead, or at least detached, and we can't read its memory safely.
-    return false;
-  }
-  if (event.has_ticks_slop()) {
-    // We may not be at the same point during recording and replay, so don't
-    // compute checksums.
-    return false;
-  }
-
-  if (Flags::CHECKSUM_ALL == checksum) {
-    // Don't checksum at syscall entry because we sometimes mutate syscall parameters there
-    // and that will cause false divergence
-    return EV_SYSCALL != event.type() || ENTERING_SYSCALL != event.Syscall().state;
-  }
-  if (Flags::CHECKSUM_SYSCALL == checksum) {
-    return EV_SYSCALL == event.type() && EXITING_SYSCALL == event.Syscall().state;
-  }
-  /* |checksum| is a global time point. */
-  return checksum <= time;
-}
-
-void checksum_process_memory(Task* t, FrameTime global_time) {
-  iterate_checksums(t, STORE_CHECKSUMS, global_time);
+  fclose(checksums_file);
 }
 
 void validate_process_memory(ReplayTask* t, FrameTime global_time) {

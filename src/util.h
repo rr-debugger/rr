@@ -123,7 +123,7 @@ bool should_checksum(const Event& event, FrameTime time);
  * special log, where it can be read by |validate_process_memory()|
  * during replay.
  */
-void checksum_process_memory(Task* t, FrameTime global_time);
+void checksum_process_memory(RecordTask* t, FrameTime global_time);
 /**
  * Validate the checksum of |t|'s address space that was written
  * during recording.
