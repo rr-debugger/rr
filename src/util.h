@@ -54,6 +54,7 @@ class KernelMapping;
 class Task;
 class TraceFrame;
 class RecordTask;
+class ReplayTask;
 
 enum Completion { COMPLETE, INCOMPLETE };
 
@@ -127,7 +128,7 @@ void checksum_process_memory(Task* t, FrameTime global_time);
  * Validate the checksum of |t|'s address space that was written
  * during recording.
  */
-void validate_process_memory(Task* t, FrameTime global_time);
+void validate_process_memory(ReplayTask* t, FrameTime global_time);
 
 /**
  * Return nonzero if the rr session is probably not interactive (that

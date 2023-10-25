@@ -620,8 +620,96 @@ void checksum_process_memory(Task* t, FrameTime global_time) {
   iterate_checksums(t, STORE_CHECKSUMS, global_time);
 }
 
-void validate_process_memory(Task* t, FrameTime global_time) {
-  iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
+void validate_process_memory(ReplayTask* t, FrameTime global_time) {
+  char filename[PATH_MAX];
+  format_dump_filename(t, global_time, "mem_checksums", filename, sizeof(filename));
+  FILE* checksums_file = fopen64(filename, "r");
+  if (!checksums_file) {
+    FATAL() << "Failed to open checksum file " << filename;
+  }
+
+  remote_ptr<unsigned char> in_replay_flag;
+  if (t->session().has_trace_quirk(TraceReader::UsesGlobalsInReplay) && t->preload_globals) {
+    in_replay_flag = REMOTE_PTR_FIELD(t->preload_globals, reserved_legacy_in_replay);
+    t->write_mem(in_replay_flag, (unsigned char)0);
+  }
+
+  while (true) {
+    char line[1024];
+    if (!fgets(line, sizeof(line), checksums_file)) {
+      break;
+    }
+    unsigned int checksum;
+    unsigned long start;
+    unsigned long end;
+    int nparsed = sscanf(line, "(%x) %lx-%lx", &checksum, &start, &end);
+    ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
+
+    if (is_start_of_scratch_region(t, start)) {
+      /* Replay doesn't touch scratch regions, so
+       * their contents are allowed to diverge.
+       * Tracees can't observe those segments unless
+       * they do something sneaky (or disastrously
+       * buggy). */
+      LOG(debug) << "Not validating scratch starting at " << start;
+      continue;
+    }
+
+    if (checksum == ignored_checksum) {
+      LOG(debug) << "Checksum not computed during recording";
+      continue;
+    }
+    if (checksum == sigbus_checksum) {
+      continue;
+    }
+
+    vector<uint8_t> mem;
+    mem.resize(end - start);
+    memset(mem.data(), 0, mem.size());
+    t->read_bytes_fallible(start, mem.size(), mem.data());
+
+    const AddressSpace::Mapping& m = t->vm()->mapping_of(start);
+
+    if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
+      /* The syscallbuf consists of a region that's written
+      * deterministically wrt the trace events, and a
+      * region that's written nondeterministically in the
+      * same way as trace scratch buffers.  The
+      * deterministic region comprises committed syscallbuf
+      * records, and possibly the one pending record
+      * metadata.  The nondeterministic region starts at
+      * the "extra data" for the possibly one pending
+      * record.
+      *
+      * The deterministic region excludes the notify_on_syscall_hook_exit
+      * flag. This flag is written by is_safe_to_deliver_signal and
+      * that write can occur at a different event to where ReplaySession
+      * eventually sets it.
+      *
+      * So here, we set things up so that we only checksum
+      * the deterministic region. */
+      struct syscallbuf_hdr hdr;
+      ASSERT(t, mem.size() >= sizeof(hdr));
+      memcpy(&hdr, mem.data(), sizeof(hdr));
+      hdr.notify_on_syscall_hook_exit = 0;
+      memcpy(mem.data(), &hdr, sizeof(hdr));
+      mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
+                 sizeof(struct syscallbuf_record));
+    }
+
+    uint32_t our_checksum = compute_checksum(mem.data(), mem.size());
+
+    if (checksum != our_checksum) {
+      notify_checksum_error(t, global_time, our_checksum, checksum,
+                            m.map.str());
+    }
+  }
+
+  if (in_replay_flag) {
+    t->write_mem(in_replay_flag, (unsigned char)1);
+  }
+
+  fclose(checksums_file);
 }
 
 signal_action default_action(int sig) {
