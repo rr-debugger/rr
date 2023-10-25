@@ -274,7 +274,7 @@ struct preload_globals {
      access to the following fields during replay is dangerous. Use
      PRELOAD_GLOBALS_FIELD_AFTER_SYSCALLBUF_FDS_DISABLED or something
      like it! */
-  /* mprotect records. Set by preload. Us
+  /* mprotect records. Set by preload. Use
      PRELOAD_GLOBALS_FIELD_AFTER_SYSCALLBUF_FDS_DISABLED to access. */
   struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
   /* Random seed that can be used for various purposes. DO NOT READ from rr
