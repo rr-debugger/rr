@@ -164,6 +164,13 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
       }
       fprintf(out, "  { start:'%p', size:'%" PRIx64 "', prot:%s }\n",
               (void*)record.start, record.size, prot_flags);
+      if (flags.raw_dump) {
+        fprintf(out, "  ");
+        for (unsigned long i = 0; i < sizeof(record); ++i) {
+          fprintf(out, "%2.2x", *(reinterpret_cast<const uint8_t*>(&record) + (uintptr_t)i));
+        }
+        fprintf(out, "\n");
+      }
     }
   }
 }
