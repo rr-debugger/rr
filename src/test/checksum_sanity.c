@@ -4,6 +4,16 @@
 
 static void* do_thread(__attribute__((unused)) void* p) { return NULL; }
 
+static volatile int dummy;
+
+static void do_some_recursion(int depth) {
+  dummy = depth;
+  if (depth > 0) {
+    do_some_recursion(depth - 1);
+  }
+  dummy = 0;
+}
+
 int main(int argc, char** argv) {
   pthread_t thread;
   pid_t child;
@@ -11,7 +21,9 @@ int main(int argc, char** argv) {
 
   if (argc > 1) {
     return 77;
-  }
+  };
+
+  do_some_recursion(16000);
 
   pthread_create(&thread, NULL, do_thread, NULL);
   pthread_join(thread, NULL);
