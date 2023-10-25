@@ -207,7 +207,7 @@ nontmp_workdir=`mktemp -p $PWD -dt rr-test-$TESTNAME-XXXXXXXXX`
 cd $workdir
 # NB: the testsuite should run on any system with different settings,
 #     so create a reasonable default for all tests
-export LC_ALL=en_US.UTF-8
+export LC_ALL=C
 
 # XXX technically the trailing -XXXXXXXXXX isn't unique, since there
 # could be "foo-123456789" and "bar-123456789", but if that happens,
@@ -545,4 +545,21 @@ function wait_for_complete {
         [[ -f "$record_dir/incomplete" ]] || break
         sleep 0.1
     done
+}
+
+# If not given by user, try to find out if C.UTF-8 or en_US.UTF-8 is available, if not use any UTF-8 locale.
+function set_utf_locale {
+    unset LC_ALL
+    if [ -z "$(which locale)" ]; then
+        if [ -z "$LC_ALL" ]; then export LC_ALL=en_US.UTF-8; fi
+    else
+        if [ -z "$LC_ALL" ]; then export LC_ALL=$(locale -a | grep -i -E "C\.utf.*8" | head -n1); fi
+        if [ -z "$LC_ALL" ]; then export LC_ALL=$(locale -a | grep -i -E "en_US\.utf.*8" | head -n1); fi
+        if [ -z "$LC_ALL" ]; then export LC_ALL=$(locale -a | grep -i -E ".*\.utf.*8" | head -n1); fi
+        if [ -z "$LC_ALL" ]; then
+            echo "Warning: no UTF-8 locale found."
+        else
+            echo "Using LC_ALL=$LC_ALL"
+        fi
+    fi
 }
