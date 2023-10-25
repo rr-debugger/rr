@@ -434,18 +434,15 @@ struct ParsedChecksumLine {
 static void iterate_checksums(Task* t, ChecksumMode mode,
                               FrameTime global_time) {
   struct checksum_iterator_data c;
-  memset(&c, 0, sizeof(c));
-  char filename[PATH_MAX];
-  const char* fmode = (STORE_CHECKSUMS == mode) ? "w" : "r";
-
   c.mode = mode;
-  snprintf(filename, sizeof(filename) - 1, "%s/%lld_%d", t->trace_dir().c_str(),
-           (long long)global_time, t->rec_tid);
+  char filename[PATH_MAX];
+  format_dump_filename(t, global_time, "mem_checksums", filename, sizeof(filename));
+  const char* fmode = (STORE_CHECKSUMS == mode) ? "w" : "r";
   c.checksums_file = fopen64(filename, fmode);
-  c.global_time = global_time;
   if (!c.checksums_file) {
     FATAL() << "Failed to open checksum file " << filename;
   }
+  c.global_time = global_time;
 
   ReplaySession *replay = t->session().as_replay();
   remote_ptr<unsigned char> in_replay_flag;
