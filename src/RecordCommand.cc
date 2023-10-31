@@ -66,6 +66,8 @@ RecordCommand RecordCommand::singleton(
     "  --syscall-buffer-sig=<NUM> the signal used for communication with the\n"
     "                             syscall buffer. SIGPWR by default, unused\n"
     "                             if --no-syscall-buffer is passed\n"
+    "  -s, --always-switch        Context-switch after every rr event\n"
+    "                             (mainly for testing)\n"
     "  -t, --continue-through-signal=<SIG>\n"
     "                             Unhandled <SIG> signals will be ignored\n"
     "                             instead of terminating the program. The\n"
