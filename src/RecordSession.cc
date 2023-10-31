@@ -646,7 +646,6 @@ void RecordSession::handle_seccomp_errno(RecordTask* t,
   // Don't continue yet. At the next iteration of record_step, if we
   // recorded the syscall-entry we'll enter syscall_state_changed and
   // that will trigger a continue to the syscall exit.
-  last_task_switchable = ALLOW_SWITCH;
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 

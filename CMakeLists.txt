@@ -1410,6 +1410,7 @@ set(TESTS_WITH_PROGRAM
   conditional_breakpoint_offload
   condvar_stress
   cont_race
+  context_switch_after_patch
   x86/cpuid_singlestep
   crash
   crash_in_function
