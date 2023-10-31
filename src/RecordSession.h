@@ -232,6 +232,10 @@ private:
                              RecordResult* step_result,
                              SupportedArch syscall_arch);
   void check_initial_task_syscalls(RecordTask* t, RecordResult* step_result);
+  void handle_seccomp_trap(RecordTask* t, StepState* step_state,
+                           uint16_t seccomp_data);
+  void handle_seccomp_errno(RecordTask* t, StepState* step_state,
+                            uint16_t seccomp_data);
   bool handle_ptrace_event(RecordTask** t_ptr, StepState* step_state,
                            RecordResult* result, bool* did_enter_syscall);
   bool handle_signal_event(RecordTask* t, StepState* step_state);

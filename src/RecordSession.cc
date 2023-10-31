@@ -442,6 +442,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
         // Tracee died unexpectedly. We did not enter a syscall.
         // We shouldn't try to resume it now.
+        last_task_switchable = ALLOW_SWITCH;
         step_state->continue_type = RecordSession::DONT_CONTINUE;
         return;
       }
@@ -451,6 +452,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // Don't continue yet. At the next iteration of record_step, we'll
     // enter syscall_state_changed and that will trigger a continue to
     // the syscall exit.
+    last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = RecordSession::DONT_CONTINUE;
     if (!process_syscall_entry(t, step_state, result, t->arch())) {
       return;
@@ -482,6 +484,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       SupportedArch syscall_arch = t->detect_syscall_arch();
       t->canonicalize_regs(syscall_arch);
       if (!process_syscall_entry(t, step_state, result, syscall_arch)) {
+        last_task_switchable = ALLOW_SWITCH;
         step_state->continue_type = RecordSession::DONT_CONTINUE;
         return;
       }
@@ -515,9 +518,9 @@ static void seccomp_trap_done(RecordTask* t) {
       (uint8_t)1);
 }
 
-static void handle_seccomp_trap(RecordTask* t,
-                                RecordSession::StepState* step_state,
-                                uint16_t seccomp_data) {
+void RecordSession::handle_seccomp_trap(RecordTask* t,
+                                        RecordSession::StepState* step_state,
+                                        uint16_t seccomp_data) {
   // The architecture may be wrong, but that's ok, because an actual syscall
   // entry did happen, so the registers are already updated according to the
   // architecture of the system call.
@@ -615,12 +618,13 @@ static void handle_seccomp_trap(RecordTask* t,
   // recorded the syscall-entry we'll enter syscall_state_changed and
   // that will trigger a continue to the syscall exit. If we recorded the
   // syscall-exit we'll go straight into signal delivery.
+  last_task_switchable = ALLOW_SWITCH;
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
-static void handle_seccomp_errno(RecordTask* t,
-                                 RecordSession::StepState* step_state,
-                                 uint16_t seccomp_data) {
+void RecordSession::handle_seccomp_errno(RecordTask* t,
+                                         RecordSession::StepState* step_state,
+                                         uint16_t seccomp_data) {
   t->canonicalize_regs(t->detect_syscall_arch());
 
   Registers r = t->regs();
@@ -642,6 +646,7 @@ static void handle_seccomp_errno(RecordTask* t,
   // Don't continue yet. At the next iteration of record_step, if we
   // recorded the syscall-entry we'll enter syscall_state_changed and
   // that will trigger a continue to the syscall exit.
+  last_task_switchable = ALLOW_SWITCH;
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
@@ -720,6 +725,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
                        << syscall_name(syscallno, t->arch());
             t->tgkill(SIGKILL);
             // Rely on the SIGKILL to bump us out of the ptrace stop.
+            last_task_switchable = ALLOW_SWITCH;
             step_state->continue_type = RecordSession::DONT_CONTINUE;
             // Now wait for us to actually exit our ptrace-stop and proceed
             // to the PTRACE_EVENT_EXIT. This avoids the race where our
@@ -791,6 +797,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
       }
 
       if (t->emulated_stop_pending) {
+        last_task_switchable = ALLOW_SWITCH;
         step_state->continue_type = DONT_CONTINUE;
       } else {
         // Skip past the ptrace event.
@@ -2574,8 +2581,10 @@ RecordSession::RecordResult RecordSession::record_step() {
   bool did_enter_syscall;
   if (rescheduled.by_waitpid &&
       handle_ptrace_event(&t, &step_state, &result, &did_enter_syscall)) {
-    if (result.status != STEP_CONTINUE ||
-        step_state.continue_type == DONT_CONTINUE) {
+    if (step_state.continue_type == DONT_CONTINUE) {
+      return result;
+    }
+    if (result.status != STEP_CONTINUE) {
       last_task_switchable = ALLOW_SWITCH;
       return result;
     }
