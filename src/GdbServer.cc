@@ -1760,6 +1760,8 @@ static unique_ptr<GdbConnection> await_connection(
   return dbg;
 }
 
+string debugger_launch_command;
+
 static void print_debugger_launch_command(Task* t, const string& host,
                                           unsigned short port,
                                           bool serve_files,
@@ -1768,11 +1770,15 @@ static void print_debugger_launch_command(Task* t, const string& host,
   vector<string> options;
   push_default_gdb_options(options, serve_files);
   push_target_remote_cmd(options, host, port);
-  fprintf(out, "%s ", debugger_name);
+  stringstream s;
+  s << debugger_name << " ";
   for (auto& opt : options) {
-    fprintf(out, "'%s' ", opt.c_str());
+    s << "'" << opt << "' ";
   }
-  fprintf(out, "%s\n", t->vm()->exe_image().c_str());
+  s << t->vm()->exe_image() << "\n";
+  debugger_launch_command = s.str();
+  fputs(s.str().c_str(), out);
+  fflush(out);
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
