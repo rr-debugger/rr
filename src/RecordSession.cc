@@ -618,7 +618,6 @@ void RecordSession::handle_seccomp_trap(RecordTask* t,
   // recorded the syscall-entry we'll enter syscall_state_changed and
   // that will trigger a continue to the syscall exit. If we recorded the
   // syscall-exit we'll go straight into signal delivery.
-  last_task_switchable = ALLOW_SWITCH;
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
