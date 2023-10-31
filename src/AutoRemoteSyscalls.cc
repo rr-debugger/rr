@@ -691,6 +691,10 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     if (ret.is_open()) {
       return ret;
     }
+    if (errno == EBADF) {
+      // This can happen when the child was unexpectedly killed.
+      return ret;
+    }
     ASSERT(t, errno == ENOSYS) << "Failed in pidfd_getfd errno=" << errno_name(errno);
   }
 
