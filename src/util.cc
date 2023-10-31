@@ -271,10 +271,11 @@ void dump_binary_data(const char* filename, const char* label,
   fclose(out);
 }
 
-void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
-                          char* filename, size_t filename_size) {
-  snprintf(filename, filename_size - 1, "%s/%d_%lld_%s", t->trace_dir().c_str(),
-           t->rec_tid, (long long)global_time, tag);
+string format_dump_filename(Task* t, FrameTime global_time, const char* tag) {
+  stringstream s;
+  s << t->trace_dir() << "/" << global_time << "_" << t->rec_tid << "_"
+    << tag;
+  return s.str();
 }
 
 bool should_dump_memory(const Event& event, FrameTime time) {
@@ -291,11 +292,8 @@ bool should_dump_memory(const Event& event, FrameTime time) {
 }
 
 void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
-  char filename[PATH_MAX];
-  FILE* dump_file;
-
-  format_dump_filename(t, global_time, tag, filename, sizeof(filename));
-  dump_file = fopen64(filename, "w");
+  string filename = format_dump_filename(t, global_time, tag);
+  FILE* dump_file = fopen64(filename.c_str(), "w");
 
   const AddressSpace& as = *(t->vm());
   for (const auto& m : as.maps()) {
@@ -318,9 +316,6 @@ void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
 static void notify_checksum_error(ReplayTask* t, FrameTime global_time,
                                   unsigned checksum, unsigned rec_checksum,
                                   const string& raw_map_line) {
-  char cur_dump[PATH_MAX];
-  char rec_dump[PATH_MAX];
-
   dump_process_memory(t, global_time, "checksum_error");
 
   /* TODO: if the right recorder memory dump is present,
@@ -328,9 +323,8 @@ static void notify_checksum_error(ReplayTask* t, FrameTime global_time,
    * not-mapped-during-replay region(s) into account.  And if
    * not present, tell the user how to make one in a future
    * run. */
-  format_dump_filename(t, global_time, "checksum_error", cur_dump,
-                       sizeof(cur_dump));
-  format_dump_filename(t, global_time, "rec", rec_dump, sizeof(rec_dump));
+  string cur_dump = format_dump_filename(t, global_time, "checksum_error");
+  string rec_dump = format_dump_filename(t, global_time, "rec");
 
   const Event& ev = t->current_trace_frame().event();
   ASSERT(t, checksum == rec_checksum)
@@ -422,9 +416,8 @@ bool should_checksum(const Event& event, FrameTime time) {
 }
 
 void checksum_process_memory(RecordTask* t, FrameTime global_time) {
-  char filename[PATH_MAX];
-  format_dump_filename(t, global_time, "mem_checksums", filename, sizeof(filename));
-  FILE* checksums_file = fopen64(filename, "w");
+  string filename = format_dump_filename(t, global_time, "mem_checksums");
+  FILE* checksums_file = fopen64(filename.c_str(), "w");
   if (!checksums_file) {
     FATAL() << "Failed to open checksum file " << filename;
   }
@@ -490,9 +483,8 @@ void checksum_process_memory(RecordTask* t, FrameTime global_time) {
 }
 
 void validate_process_memory(ReplayTask* t, FrameTime global_time) {
-  char filename[PATH_MAX];
-  format_dump_filename(t, global_time, "mem_checksums", filename, sizeof(filename));
-  FILE* checksums_file = fopen64(filename, "r");
+  string filename = format_dump_filename(t, global_time, "mem_checksums");
+  FILE* checksums_file = fopen64(filename.c_str(), "r");
   if (!checksums_file) {
     FATAL() << "Failed to open checksum file " << filename;
   }

@@ -94,14 +94,13 @@ void dump_binary_data(const char* filename, const char* label,
 /**
  * Format a suitable filename within the trace directory for dumping
  * information about |t| at the current global time, to a file that
- * contains |tag|.  The constructed filename is returned through
- * |filename|.  For example, a filengit logame for a task with tid 12345 at
+ * contains |tag|.  For example, a file for a task with tid 12345 at
  * time 111, for a file tagged "foo", would be something like
- * "trace_0/12345_111_foo".  The returned name is not guaranteed to be
+ * "trace_0/111_12345_foo".  The returned name is not guaranteed to be
  * unique, caveat emptor.
  */
-void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
-                          char* filename, size_t filename_size);
+std::string format_dump_filename(Task* t, FrameTime global_time,
+                                 const char* tag);
 
 /**
  * Return true if the user requested memory be dumped at this event/time.
