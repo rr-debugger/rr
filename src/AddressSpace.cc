@@ -374,14 +374,14 @@ vector<uint8_t> AddressSpace::read_rr_page_for_recording(SupportedArch arch) {
   }
 
   ScopedFd page(path.c_str(), O_RDONLY);
-  char buf[PRELOAD_LIBRARY_PAGE_SIZE];
+  vector<uint8_t> result;
+  result.resize(PRELOAD_LIBRARY_PAGE_SIZE);
   ssize_t ret = read_to_end(page,
-    RRPAGE_RECORD_PAGE_OFFSET * PRELOAD_LIBRARY_PAGE_SIZE, buf, sizeof(buf));
-  if (ret != PRELOAD_LIBRARY_PAGE_SIZE) {
+    RRPAGE_RECORD_PAGE_OFFSET * PRELOAD_LIBRARY_PAGE_SIZE, result.data(),
+    result.size());
+  if (ret != static_cast<ssize_t>(result.size())) {
     FATAL() << "Failed to read full page from " << path;
   }
-  vector<uint8_t> result;
-  result.insert(result.end(), buf, buf + sizeof(buf));
   return result;
 }
 
