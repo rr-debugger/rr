@@ -81,7 +81,7 @@ EmuFile::shr_ptr EmuFile::clone(EmuFs& owner) {
         break;
       }
       if (uint64_t(ret) <= offset) {
-        FATAL() << "Zero sized hole?";
+        FATAL() << "Zero sized hole? Got " << ret << " expected " << offset;
       }
       // Skip the hole
       offset = ret;
