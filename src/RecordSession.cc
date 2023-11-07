@@ -1551,8 +1551,8 @@ static bool inject_handled_signal(RecordTask* t) {
 
   // We stepped into a user signal handler.
   ASSERT(t, t->stop_sig() == SIGTRAP)
-      << "Got unexpected status " << t->status() << " trying to deliver " << sig
-      << " siginfo is " << t->get_siginfo();
+      << "Got unexpected status " << t->status() << " trying to deliver "
+      << signal_name(sig) << " siginfo is " << t->get_siginfo();
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip())
       << "Expected handler IP " << t->get_signal_user_handler(sig) << ", got "
       << t->ip()
