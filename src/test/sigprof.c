@@ -8,8 +8,8 @@ static void handler(__attribute__((unused)) int sig) { ++count; }
 
 int main(void) {
   struct itimerval itv = {
-    { 0, 1000 },
-    { 0, 1000 },
+    { 0, 500 },
+    { 0, 500 },
   };
 
   test_assert(0 == signal(SIGPROF, handler));
@@ -18,7 +18,7 @@ int main(void) {
   setitimer(ITIMER_REAL, &itv, NULL);
   setitimer(ITIMER_PROF, &itv, NULL);
 
-  while (count < 2000) {
+  while (count < 1000) {
   }
 
   atomic_puts("EXIT-SUCCESS");
