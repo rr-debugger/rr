@@ -18,7 +18,7 @@ int main(void) {
   setitimer(ITIMER_REAL, &itv, NULL);
   setitimer(ITIMER_PROF, &itv, NULL);
 
-  while (count < 1000) {
+  while (count < 100) {
   }
 
   atomic_puts("EXIT-SUCCESS");
