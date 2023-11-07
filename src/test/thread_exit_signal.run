@@ -6,11 +6,12 @@ until grep -q ready record.out; do
   sleep 0
 done
 
+pid=$(pidof $TESTNAME-$nonce)
 for i in $(seq 1 100); do
   sleep 0.001
-  kill -CHLD $(pidof $TESTNAME-$nonce) >& /dev/null
+  kill -CHLD $pid >& /dev/null
 done
-kill -USR2 $(pidof $TESTNAME-$nonce) >& /dev/null
+kill -USR2 $pid >& /dev/null
 
 # Wait for 'record' to actually terminate. Otherwise we might start
 # replaying before the trace file has been completely written.
