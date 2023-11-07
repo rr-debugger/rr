@@ -1571,13 +1571,19 @@ static FrameTime compute_time_from_ticks(ReplayTimeline& timeline, Ticks target)
         break;
       }
     }
+  } else if (target < session.current_trace_frame().ticks()) {
+    // The target tick is entirely within the current frame.
+    // If not handled here, the below loop might otherwise skip over
+    // it if the next frame is for another tid.
+    return last_time;
   }
+  
   while (true) {
     if (tmp_reader.at_end()) {
       return -1;
     }
     TraceFrame frame = tmp_reader.read_frame();
-    if (frame.tid() == task->tuid().tid() && frame.ticks() >= target) {
+    if (frame.tid() == task->tuid().tid() && target < frame.ticks()) {
       break;
     }
     last_time = frame.time() + 1;
