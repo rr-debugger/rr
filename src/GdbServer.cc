@@ -1537,6 +1537,54 @@ void GdbServer::activate_debugger() {
   }
 }
 
+static FrameTime compute_time_from_ticks(ReplayTimeline& timeline, Ticks target) {
+  ReplaySession &session = timeline.current_session();
+  Task* task = session.current_task();
+  FrameTime current_time = session.current_frame_time();
+  TraceReader tmp_reader(session.trace_reader());
+  FrameTime last_time = current_time;
+  if (session.ticks_at_start_of_current_event() > target) {
+    tmp_reader.rewind();
+    FrameTime task_time;
+    // EXEC and CLONE reset the ticks counter. Find the first event
+    // where the tuid matches our current task.
+    // We'll always hit at least one CLONE/EXEC event for a task
+    // (we can't debug the time before the initial exec)
+    // but set this to 0 anyway to silence compiler warnings.
+    FrameTime ticks_start_time = 0;
+    while (true) {
+      TraceTaskEvent r = tmp_reader.read_task_event(&task_time);
+      if (task_time >= current_time) {
+        break;
+      }
+      if (r.type() == TraceTaskEvent::CLONE || r.type() == TraceTaskEvent::EXEC) {
+        if (r.tid() == task->tuid().tid()) {
+          ticks_start_time = task_time;
+        }
+      }
+    }
+    // Forward the frame reader to the current event
+    last_time = ticks_start_time + 1;
+    while (true) {
+      TraceFrame frame = tmp_reader.read_frame();
+      if (frame.time() >= ticks_start_time) {
+        break;
+      }
+    }
+  }
+  while (true) {
+    if (tmp_reader.at_end()) {
+      return -1;
+    }
+    TraceFrame frame = tmp_reader.read_frame();
+    if (frame.tid() == task->tuid().tid() && frame.ticks() >= target) {
+      break;
+    }
+    last_time = frame.time() + 1;
+  }
+  return last_time;
+}
+
 void GdbServer::restart_session(const GdbRequest& req) {
   DEBUG_ASSERT(req.type == DREQ_RESTART);
   DEBUG_ASSERT(dbg);
@@ -1561,54 +1609,14 @@ void GdbServer::restart_session(const GdbRequest& req) {
   } else if (req.restart().type == RESTART_FROM_PREVIOUS) {
     checkpoint_to_restore = debugger_restart_checkpoint;
   } else if (req.restart().type == RESTART_FROM_TICKS) {
-    Ticks target = req.restart().param;
-    ReplaySession &session = timeline.current_session();
-    Task* task = session.current_task();
-    FrameTime current_time = session.current_frame_time();
-    TraceReader tmp_reader(session.trace_reader());
-    FrameTime last_time = current_time;
-    if (session.ticks_at_start_of_current_event() > target) {
-      tmp_reader.rewind();
-      FrameTime task_time;
-      // EXEC and CLONE reset the ticks counter. Find the first event
-      // where the tuid matches our current task.
-      // We'll always hit at least one CLONE/EXEC event for a task
-      // (we can't debug the time before the initial exec)
-      // but set this to 0 anyway to silence compiler warnings.
-      FrameTime ticks_start_time = 0;
-      while (true) {
-        TraceTaskEvent r = tmp_reader.read_task_event(&task_time);
-        if (task_time >= current_time) {
-          break;
-        }
-        if (r.type() == TraceTaskEvent::CLONE || r.type() == TraceTaskEvent::EXEC) {
-          if (r.tid() == task->tuid().tid()) {
-            ticks_start_time = task_time;
-          }
-        }
-      }
-      // Forward the frame reader to the current event
-      last_time = ticks_start_time + 1;
-      while (true) {
-        TraceFrame frame = tmp_reader.read_frame();
-        if (frame.time() >= ticks_start_time) {
-          break;
-        }
-      }
+    Ticks ticks = req.restart().param;
+    FrameTime time = compute_time_from_ticks(timeline, ticks);
+    if (time == -1) {
+      cout << "No event found matching specified ticks target.\n";
+      dbg->notify_restart_failed();
+      return;
     }
-    while (true) {
-      if (tmp_reader.at_end()) {
-        cout << "No event found matching specified ticks target.\n";
-        dbg->notify_restart_failed();
-        return;
-      }
-      TraceFrame frame = tmp_reader.read_frame();
-      if (frame.tid() == task->tuid().tid() && frame.ticks() >= target) {
-        break;
-      }
-      last_time = frame.time() + 1;
-    }
-    timeline.seek_to_ticks(last_time, target);
+    timeline.seek_to_ticks(time, ticks);
   }
 
   interrupt_pending = true;
