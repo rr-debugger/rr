@@ -1418,6 +1418,7 @@ set(TESTS_WITH_PROGRAM
   # Disabled because it fails
   # clone_share_vm
   clone_vfork
+  concurrent_signals
   conditional_breakpoint_calls
   conditional_breakpoint_offload
   condvar_stress
