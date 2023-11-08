@@ -1515,6 +1515,7 @@ set(TESTS_WITH_PROGRAM
   seccomp_blocks_rr
   seccomp_open
   seccomp_signals
+  seekticks_threads
   segfault
   setuid
   shared_map
