@@ -488,9 +488,14 @@ function rerun_singlestep_test {
     rerun "--singlestep=rip,gp_x16,flags"
 }
 
+# Return an rr dump result of the most recent local recording.
+function get_events {
+    $RR_EXE $GLOBAL_OPTIONS dump "$@" latest-trace
+}
+
 # Return the number of events in the most recent local recording.
 function count_events {
-    local events=$($RR_EXE $GLOBAL_OPTIONS dump -r latest-trace | wc -l)
+    local events=$(get_events -r | wc -l)
     # The |simple| test is just about the simplest possible C program,
     # and has around 180 events (when recorded on a particular
     # developer's machine).  If we count a number of events
