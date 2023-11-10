@@ -1,8 +1,12 @@
 from util import *
 
+send_gdb('c')
+send_gdb('checkpoint')
+expect_gdb('is not being run')
+
 send_gdb('b main')
 expect_gdb('Breakpoint 1')
-send_gdb('c')
+restart_replay()
 expect_gdb('Breakpoint 1')
 send_gdb('b atomic_puts')
 expect_gdb('Breakpoint 2')
