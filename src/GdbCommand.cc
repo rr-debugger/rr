@@ -109,6 +109,9 @@ static int gNextCheckpointId = 0;
 string invoke_checkpoint(GdbServer& gdb_server, Task*,
                          const vector<string>& args) {
   const string& where = args[0];
+  if (gdb_server.in_debuggee_end_state) {
+    return string("The program is not being run.");
+  }
   int checkpoint_id = ++gNextCheckpointId;
   GdbServer::Checkpoint::Explicit e;
   if (gdb_server.timeline.can_add_checkpoint()) {
