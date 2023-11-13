@@ -84,7 +84,8 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x90670:
     case 0x906a0:
       return IntelAlderlake;
-    case 0xb0670:
+    case 0xb0670: // Raptor Lake
+    case 0xb06a0: // Raptor Lake-H / Raptor Lake-U
       return IntelRaptorlake;
     case 0x806f0:
       return IntelSapphireRapid;
