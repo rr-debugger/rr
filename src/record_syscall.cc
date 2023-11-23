@@ -4003,6 +4003,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::msync:
     case Arch::open:
     case Arch::openat:
+    case Arch::openat2:
     case Arch::semop:
     case Arch::semtimedop_time64:
     case Arch::semtimedop:
@@ -6599,10 +6600,11 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::open:
-    case Arch::openat: {
+    case Arch::openat:
+    case Arch::openat2: {
       Registers r = t->regs();
       if (r.syscall_failed()) {
-        uintptr_t path = syscallno == Arch::openat ? r.arg2() : r.orig_arg1();
+        uintptr_t path = syscallno == Arch::open ? r.orig_arg1() : r.arg2();
         string pathname = t->read_c_str(remote_ptr<char>(path));
         if (is_gcrypt_deny_file(pathname.c_str())) {
           fake_gcrypt_file(t, &r);
@@ -6610,7 +6612,20 @@ static void rec_process_syscall_arch(RecordTask* t,
         }
       } else {
         int fd = r.syscall_result_signed();
-        int flags = syscallno == Arch::openat ? r.arg3() : r.arg2();
+
+        int flags;
+        switch (syscallno) {
+        case Arch::open:
+          flags = r.arg2();
+          break;
+        case Arch::openat:
+          flags = r.arg3();
+          break;
+        case Arch::openat2:
+          flags = t->read_mem(remote_ptr<int64_t>(r.arg3()));
+          break;
+        }
+
         string pathname = handle_opened_file(t, fd, flags);
         bool gcrypt = is_gcrypt_deny_file(pathname.c_str());
         if (gcrypt || is_blacklisted_filename(pathname.c_str())) {

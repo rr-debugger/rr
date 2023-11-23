@@ -1330,6 +1330,9 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::openat:
       handle_opened_files(t, t->regs().arg3());
       break;
+    case Arch::openat2:
+      handle_opened_files(t, t->read_mem(remote_ptr<int64_t>(t->regs().arg3())));
+      break;
     case Arch::open:
       handle_opened_files(t, t->regs().arg2());
       break;
