@@ -2522,6 +2522,40 @@ static long sys_openat(struct syscall_info* call) {
   return check_file_open_ok(call, ret, state);
 }
 
+#if defined(SYS_openat2)
+static long sys_openat2(struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Opening a FIFO could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
+  const int syscallno = SYS_openat2;
+  int dirfd = call->args[0];
+  const char* pathname = (const char*)call->args[1];
+  struct open_how *how = (struct open_how *)call->args[2];
+  size_t how_size = call->args[3];
+
+  void* ptr;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!supported_open(pathname, how->flags)) {
+    return traced_raw_syscall(call);
+  }
+
+  ptr = prep_syscall();
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(syscallno, dirfd, pathname, how, how_size);
+  struct check_open_state state = capture_check_open_state();
+  ret = commit_raw_syscall(syscallno, ptr, ret);
+  return check_file_open_ok(call, ret, state);
+}
+#endif
+
 #if defined(SYS_poll) || defined(SYS_ppoll)
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
@@ -4080,6 +4114,9 @@ case SYS_epoll_wait:
 #endif
 case SYS_epoll_pwait:
     return sys_epoll_wait(call);
+#if defined(SYS_openat2)
+    CASE(openat2);
+#endif
 #if defined(SYS_epoll_pwait2)
     CASE(epoll_pwait2);
 #endif
