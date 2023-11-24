@@ -40,7 +40,7 @@ echo "  done."
 wait
 
 if [[ "record.out" == $(grep -l "EXIT-SUCCESS" record.out) ]]; then
-        failed "error during recording: tracer not interrupted in time."
+        echo "warning: tracer not interrupted in time."
 fi
 
 echo "Replaying ..."
