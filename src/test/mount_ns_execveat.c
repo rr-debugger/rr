@@ -24,7 +24,11 @@ int main(int argc, char* argv[]) {
   test_assert(0 == umount2("mountpoint/the_copy", MNT_DETACH));
 
   char* const new_argv[] = { "mountpoint/the_copy", "in_copy", NULL };
-  execveat(dst_fd, "", new_argv, environ, AT_EMPTY_PATH);
+  int ret = syscall(RR_execveat, dst_fd, "", new_argv, environ, AT_EMPTY_PATH);
+  if (ret < 0 && errno == ENOSYS) {
+    atomic_puts("execveat not supported, skipping test");
+    atomic_puts("EXIT-SUCCESS");
+  }
   test_assert(0);
   return 1;
 }
