@@ -28,6 +28,7 @@ int main(int argc, char* argv[]) {
   if (ret < 0 && errno == ENOSYS) {
     atomic_puts("execveat not supported, skipping test");
     atomic_puts("EXIT-SUCCESS");
+    return 0;
   }
   test_assert(0);
   return 1;
