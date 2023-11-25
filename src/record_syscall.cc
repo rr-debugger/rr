@@ -5526,6 +5526,17 @@ static pair<remote_ptr<void>, remote_ptr<void>> get_exe_entry_interp_base(Task* 
  */
 static string try_make_process_file_name(RecordTask* t,
                                          const std::string& file_name) {
+  if (file_name == "/") {
+    // The kernel sometimes returns "/" as the file name of a mapped
+    // segment. (We've seen this when the actual file was a bind-mount
+    // that has been opened with O_PATH and then lazily unmounted, then
+    // the O_PATH fd was execed with `execveat`.)
+    // In that case, we have no idea what the actual file is so
+    // return a name that will never work instead "/proc/.../root/"
+    // which can be stat(), causing confusion.
+    return "";
+  }
+
   char proc_root[32];
   // /proc/<pid>/root has magical properties; not only is it a link, but
   // it links to a view of the filesystem as the process sees it, taking into
@@ -5703,6 +5714,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       continue;
     }
     struct stat st;
+    // Maybe we should use /proc/.../map_files instead?
     string file_name = try_make_process_file_name(t, km.fsname());
     if (stat(file_name.c_str(), &st) != 0) {
       st = km.fake_stat();

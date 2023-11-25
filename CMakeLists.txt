@@ -1105,6 +1105,7 @@ set(BASIC_TESTS
   x86/modify_ldt
   mount_ns_exec
   mount_ns_exec2
+  mount_ns_execveat
   mprotect
   mprotect_heterogenous
   mprotect_none
