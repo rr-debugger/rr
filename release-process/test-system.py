@@ -83,7 +83,8 @@ class Ec2Vm:
                 return
             if (b'Connection refused' not in result.stderr and
                 b'reset by peer' not in result.stderr and
-                b'Connection timed out' not in result.stderr):
+                b'Connection timed out' not in result.stderr and
+                b'Unprivileged users are not permitted to log in yet' not in result.stderr):
                 raise Exception('SSH connection failed:\n%s'%result.stderr.decode('utf-8'))
             time.sleep(1)
         raise Exception('Too many retries, cannot connect via SSH')
