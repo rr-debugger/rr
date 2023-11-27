@@ -934,6 +934,7 @@ set(BASIC_TESTS
   block_open
   bpf
   bpf_map
+  bpf_query
   brk
   brk2
   capget

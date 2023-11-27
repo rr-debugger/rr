@@ -2169,6 +2169,8 @@ static Switchable prepare_bpf(RecordTask* t,
     case BPF_MAP_UPDATE_ELEM:
     case BPF_MAP_DELETE_ELEM:
     case BPF_BTF_LOAD:
+    case BPF_PROG_DETACH:
+    case BPF_PROG_ATTACH:
       break;
     case BPF_OBJ_GET:
       return ALLOW_SWITCH;
@@ -2192,6 +2194,48 @@ static Switchable prepare_bpf(RecordTask* t,
       BpfMapMonitor* monitor = bpf_map_monitor<Arch>(t, syscall_state, &argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, next_key),
                                       monitor->key_size());
+      break;
+    }
+    case BPF_PROG_QUERY: {
+      auto attr_size = t->regs().arg3();
+      auto attr_begin = syscall_state.reg_parameter(2, attr_size, IN_OUT);
+      auto attr_buf = MemoryRange(attr_begin, attr_size);
+      auto attrp = attr_begin.cast<typename Arch::bpf_attr>();
+
+      // if this assert fails, we should check what fields were added to the
+      // query ABI, update the structure and track pointers to output arrays
+      ASSERT(t, attr_size <= sizeof(((typename Arch::bpf_attr*)nullptr)->query));
+
+      // if the offset of the prog_cnt is out of the buffer,
+      // the syscall will fail and we can't track anything
+      auto prog_cnt_p = REMOTE_PTR_FIELD(attrp, query.prog_cnt);
+      if (!attr_buf.contains(prog_cnt_p)) {
+        break;
+      }
+      auto prog_cnt = t->read_mem(prog_cnt_p);
+      auto buf_size = prog_cnt * sizeof(__u32);
+
+      // for each output array, only track changes if the field is
+      // within the bounds of the user provided buffer
+      auto prog_ids_p = REMOTE_PTR_FIELD(attrp, query.prog_ids);
+      if (attr_buf.contains(prog_ids_p)) {
+        syscall_state.mem_ptr_parameter(prog_ids_p, buf_size);
+      }
+
+      auto prog_attach_flags_p = REMOTE_PTR_FIELD(attrp, query.prog_attach_flags);
+      if (attr_buf.contains(prog_attach_flags_p)) {
+        syscall_state.mem_ptr_parameter(prog_attach_flags_p, buf_size);
+      }
+
+      auto link_ids_p = REMOTE_PTR_FIELD(attrp, query.link_ids);
+      if (attr_buf.contains(link_ids_p)) {
+        syscall_state.mem_ptr_parameter(link_ids_p, buf_size);
+      }
+
+      auto link_attach_flags_p = REMOTE_PTR_FIELD(attrp, query.link_attach_flags);
+      if (attr_buf.contains(link_attach_flags_p)) {
+        syscall_state.mem_ptr_parameter(link_attach_flags_p, buf_size);
+      }
       break;
     }
     default:
