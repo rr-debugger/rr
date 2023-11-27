@@ -42,6 +42,12 @@ public:
   }
   bool contains(remote_ptr<void> p) const { return start_ <= p && p < end_; }
 
+  template <typename T> bool contains(remote_ptr<T> ptr, size_t count = 1) const {
+    auto o_start_ = ptr.template cast<void>();
+    auto o_end_ = (ptr + count).template cast<void>();
+    return start_ <= o_start_ && o_end_ <= end_;
+  }
+
   bool intersects(const MemoryRange& other) const {
     remote_ptr<void> s = std::max(start_, other.start_);
     remote_ptr<void> e = std::min(end_, other.end_);

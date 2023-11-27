@@ -1760,7 +1760,7 @@ struct BaseArch : public wordsize,
       };
       __u64 flags;
     };
-    struct {
+    struct { /* used by BPF_PROG_LOAD */
       __u32 prog_type;
       __u32 insn_cnt;
       ptr64<void> insns;
@@ -1781,6 +1781,29 @@ struct BaseArch : public wordsize,
       aligned_u64 line_info;
       __u32 line_info_cnt;
     };
+
+    struct { /* anonymous struct used by BPF_PROG_QUERY command */
+      union {
+        __u32 target_fd; /* target object to query or ... */
+        __u32 target_ifindex; /* target ifindex */
+      };
+      __u32 attach_type;
+      __u32 query_flags;
+      __u32 attach_flags;
+      ptr64<__u32> prog_ids;
+      union {
+        __u32 prog_cnt;
+        __u32 count;
+      };
+      __u32 :32;
+      /* output: per-program attach_flags.
+       * not allowed to be set during effective query.
+       */
+      ptr64<__u32> prog_attach_flags;
+      ptr64<__u32> link_ids;
+      ptr64<__u32> link_attach_flags;
+      __u64 revision;
+    } query;
   };
 
   struct file_handle {
