@@ -7,7 +7,11 @@ class BaseSyscall(object):
     """
 
     # Take **kwargs and ignore to make life easier on RegularSyscall.
-    def __init__(self, x86=None, x64=None, generic=None, **kwargs):
+    def __init__(self, all=None, x86=None, x64=None, generic=None, **kwargs):
+        if all:
+            x86 = all
+            x64 = all
+            generic = all
         assert x86 or x64       # Must exist on one architecture.
         self.x86 = x86
         self.x64 = x64
@@ -127,7 +131,7 @@ close = IrregularEmulatedSyscall(x86=6, x64=3, generic=57)
 # from first to last (included).
 #
 # Errors closing a given file descriptor are currently ignored.
-close_range = IrregularEmulatedSyscall(x86=436, x64=436, generic=436)
+close_range = IrregularEmulatedSyscall(all=436)
 
 #  pid_t waitpid(pid_t pid, int *status, int options);
 #
@@ -1714,50 +1718,56 @@ futex_time64 = IrregularEmulatedSyscall(x86=422)
 sched_rr_get_interval_time64 = UnsupportedSyscall(x86=423)
 
 # x86-64 decided to skip ahead here to catchup
-pidfd_send_signal = EmulatedSyscall(x86=424, x64=424, generic=424)
-io_uring_setup = IrregularEmulatedSyscall(x86=425, x64=425, generic=425)
-io_uring_enter = UnsupportedSyscall(x86=426, x64=426, generic=426)
-io_uring_register = UnsupportedSyscall(x86=427, x64=427, generic=427)
-open_tree = UnsupportedSyscall(x86=428, x64=428, generic=428)
-move_mount = UnsupportedSyscall(x86=429, x64=429, generic=429)
-fsopen = UnsupportedSyscall(x86=430, x64=430, generic=430)
-fsconfig = UnsupportedSyscall(x86=431, x64=431, generic=431)
-fsmount = UnsupportedSyscall(x86=432, x64=432, generic=432)
-fspick = UnsupportedSyscall(x86=433, x64=433, generic=433)
-pidfd_open = EmulatedSyscall(x86=434, x64=434, generic=434)
-clone3 = IrregularEmulatedSyscall(x86=435, x64=435, generic=435)
-openat2 = IrregularEmulatedSyscall(x86=437, x64=437, generic=437)
-pidfd_getfd = EmulatedSyscall(x86=438, x64=438, generic=438)
-process_madvise = UnsupportedSyscall(x86=440, x64=440, generic=440)
-epoll_pwait2 = IrregularEmulatedSyscall(x86=441, x64=441, generic=441)
-mount_setattr = UnsupportedSyscall(x86=442, x64=442, generic=442)
-quotactl_fd = UnsupportedSyscall(x86=443, x64=443, generic=443)
-landlock_create_ruleset = UnsupportedSyscall(x86=444, x64=444, generic=444)
-landlock_add_rule = UnsupportedSyscall(x86=445, x64=445, generic=445)
-landlock_restrict_self = UnsupportedSyscall(x86=446, x64=446, generic=446)
-memfd_secret = UnsupportedSyscall(x86=447, x64=447, generic=447)
-process_mrelease = UnsupportedSyscall(x86=448, x64=448, generic=448)
-futex_waitv = UnsupportedSyscall(x86=449, x64=449, generic=449)
-set_mempolicy_home_node = UnsupportedSyscall(x86=450, x64=450, generic=450)
+pidfd_send_signal = EmulatedSyscall(all=424)
+io_uring_setup = IrregularEmulatedSyscall(all=425)
+io_uring_enter = UnsupportedSyscall(all=426)
+io_uring_register = UnsupportedSyscall(all=427)
+open_tree = UnsupportedSyscall(all=428)
+move_mount = UnsupportedSyscall(all=429)
+fsopen = UnsupportedSyscall(all=430)
+fsconfig = UnsupportedSyscall(all=431)
+fsmount = UnsupportedSyscall(all=432)
+fspick = UnsupportedSyscall(all=433)
+pidfd_open = EmulatedSyscall(all=434)
+clone3 = IrregularEmulatedSyscall(all=435)
+openat2 = IrregularEmulatedSyscall(all=437)
+pidfd_getfd = EmulatedSyscall(all=438)
+process_madvise = UnsupportedSyscall(all=440)
+epoll_pwait2 = IrregularEmulatedSyscall(all=441)
+mount_setattr = UnsupportedSyscall(all=442)
+quotactl_fd = UnsupportedSyscall(all=443)
+landlock_create_ruleset = UnsupportedSyscall(all=444)
+landlock_add_rule = UnsupportedSyscall(all=445)
+landlock_restrict_self = UnsupportedSyscall(all=446)
+memfd_secret = UnsupportedSyscall(all=447)
+process_mrelease = UnsupportedSyscall(all=448)
+futex_waitv = UnsupportedSyscall(all=449)
+set_mempolicy_home_node = UnsupportedSyscall(all=450)
+cachestat = UnsupportedSyscall(all=451)
+fchmodat2 = UnsupportedSyscall(all=452)
+map_shadow_stack = UnsupportedSyscall(all=453)
+futex_wake = UnsupportedSyscall(all=454)
+futex_wait = UnsupportedSyscall(all=455)
+futex_requeue = UnsupportedSyscall(all=456)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219, generic=128)
 
 # Internal rr syscall numbers.
 # These syscall numbers must be the same across all architectures.
-rrcall_init_preload = IrregularEmulatedSyscall(x86=1000, x64=1000, generic=1000)
-rrcall_init_buffers = IrregularEmulatedSyscall(x86=1001, x64=1001, generic=1001)
-rrcall_notify_syscall_hook_exit = IrregularEmulatedSyscall(x86=1002, x64=1002, generic=1002)
-rrcall_notify_control_msg = IrregularEmulatedSyscall(x86=1003, x64=1003, generic=1003)
-rrcall_reload_auxv = IrregularEmulatedSyscall(x86=1004, x64=1004, generic=1004)
-rrcall_mprotect_record = IrregularEmulatedSyscall(x86=1005, x64=1005, generic=1005)
-rrcall_notify_stap_semaphore_added = IrregularEmulatedSyscall(x86=1006, x64=1006, generic=1006)
-rrcall_notify_stap_semaphore_removed = IrregularEmulatedSyscall(x86=1007, x64=1007, generic=1007)
-rrcall_check_presence = IrregularEmulatedSyscall(x86=1008, x64=1008, generic=1008)
-rrcall_detach_teleport = IrregularEmulatedSyscall(x86=1009, x64=1009, generic=1009)
-rrcall_arm_time_slice = IrregularEmulatedSyscall(x86=1010, x64=1010, generic=1010)
-rrcall_freeze_tid = IrregularEmulatedSyscall(x86=1011, x64=1011, generic=1011)
-rrcall_rdtsc = IrregularEmulatedSyscall(x86=1012, x64=1012, generic=1012)
+rrcall_init_preload = IrregularEmulatedSyscall(all=1000)
+rrcall_init_buffers = IrregularEmulatedSyscall(all=1001)
+rrcall_notify_syscall_hook_exit = IrregularEmulatedSyscall(all=1002)
+rrcall_notify_control_msg = IrregularEmulatedSyscall(all=1003)
+rrcall_reload_auxv = IrregularEmulatedSyscall(all=1004)
+rrcall_mprotect_record = IrregularEmulatedSyscall(all=1005)
+rrcall_notify_stap_semaphore_added = IrregularEmulatedSyscall(all=1006)
+rrcall_notify_stap_semaphore_removed = IrregularEmulatedSyscall(all=1007)
+rrcall_check_presence = IrregularEmulatedSyscall(all=1008)
+rrcall_detach_teleport = IrregularEmulatedSyscall(all=1009)
+rrcall_arm_time_slice = IrregularEmulatedSyscall(all=1010)
+rrcall_freeze_tid = IrregularEmulatedSyscall(all=1011)
+rrcall_rdtsc = IrregularEmulatedSyscall(all=1012)
 
 # These syscalls also appear under `socketcall` on x86.
 socket = EmulatedSyscall(x86=359, x64=41, generic=198)
