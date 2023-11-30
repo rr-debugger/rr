@@ -464,6 +464,14 @@ static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
 #define RR_KCMP_FILE 0
 #define RR_KCMP_FILES 2
 
+/* Old systems don't have linux/openat2.h */
+struct open_how {
+	__u64 flags;
+	__u64 mode;
+	__u64 resolve;
+};
+#define RESOLVE_BENEATH	0x08
+
 /* Old systems don't have these */
 #ifndef TIOCGPKT
 #define TIOCGPKT _IOR('T', 0x38, int)
