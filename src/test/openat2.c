@@ -3,7 +3,6 @@
 #include "util.h"
 
 #include <fcntl.h>          /* Definition of O_* and S_* constants */
-#include <linux/openat2.h>  /* Definition of RESOLVE_* constants */
 #include <sys/syscall.h>    /* Definition of SYS_* constants */
 #include <unistd.h>
 #include <errno.h>
