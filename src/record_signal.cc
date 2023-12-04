@@ -154,80 +154,11 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   // Use kernel_abi to avoid odd inconsistencies between distros
   auto arch_si = reinterpret_cast<NativeArch::siginfo_t*>(si);
   auto addr = arch_si->_sifields._sigfault.si_addr_.rptr();
-
-  if (t->vm()->has_mapping(addr)) {
-    LOG(debug) << "try_grow_map " << addr << ": address already mapped";
-    return false;
+  if (t->try_grow_map(addr, RecordTask::EXACT_ADDR)) {
+    t->push_event(Event::noop());
+    return true;
   }
-  auto maps = t->vm()->maps_starting_at(floor_page_size(addr));
-  auto it = maps.begin();
-  if (it == maps.end()) {
-    LOG(debug) << "try_grow_map " << addr << ": no later map to grow downward";
-    return false;
-  }
-  if (!(it->map.flags() & MAP_GROWSDOWN)) {
-    LOG(debug) << "try_grow_map " << addr << ": map is not MAP_GROWSDOWN ("
-               << it->map << ")";
-    return false;
-  }
-  if (addr >= page_size() && t->vm()->has_mapping(addr - page_size())) {
-    LOG(debug) << "try_grow_map " << addr << ": address would be in guard page";
-    return false;
-  }
-  remote_ptr<void> limit_bottom;
-#if defined (__i386__)
-  struct rlimit stack_limit;
-  int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
-#else
-  struct rlimit64 stack_limit;
-  int ret = syscall(__NR_prlimit64, t->tid, RLIMIT_STACK, (void*)0, &stack_limit);
-#endif
-  if (ret >= 0 && stack_limit.rlim_cur != RLIM_INFINITY) {
-    limit_bottom = ceil_page_size(it->map.end() - stack_limit.rlim_cur);
-    if (limit_bottom > addr) {
-      LOG(debug) << "try_grow_map " << addr << ": RLIMIT_STACK exceeded";
-      return false;
-    }
-  }
-
-  // Try to grow by 64K at a time to reduce signal frequency.
-  auto new_start = floor_page_size(addr);
-  static const uintptr_t grow_size = 0x10000;
-  if (it->map.start().as_int() >= grow_size) {
-    auto possible_new_start = std::max(
-        limit_bottom, std::min(new_start, it->map.start() - grow_size));
-    // Ensure that no mapping exists between possible_new_start - page_size()
-    // and new_start. If there is, possible_new_start is not valid, in which
-    // case we just abandon the optimization.
-    if (possible_new_start >= page_size() &&
-        !t->vm()->has_mapping(possible_new_start - page_size()) &&
-        t->vm()->maps_starting_at(possible_new_start - page_size())
-                .begin()
-                ->map.start() == it->map.start()) {
-      new_start = possible_new_start;
-    }
-  }
-  LOG(debug) << "try_grow_map " << addr << ": trying to grow map " << it->map;
-
-  {
-    AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
-    remote.infallible_mmap_syscall_if_alive(
-        new_start, it->map.start() - new_start, it->map.prot(),
-        (it->map.flags() & ~MAP_GROWSDOWN) | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-  }
-
-  KernelMapping km =
-      t->vm()->map(t, new_start, it->map.start() - new_start, it->map.prot(),
-                   it->map.flags() | MAP_ANONYMOUS, 0, string(),
-                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
-  t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
-  // No need to flush syscallbuf here. It's safe to map these pages "early"
-  // before they're really needed.
-  t->record_event(Event::grow_map(), RecordTask::DONT_FLUSH_SYSCALLBUF);
-  t->push_event(Event::noop());
-  LOG(debug) << "try_grow_map " << addr << ": extended map "
-             << t->vm()->mapping_of(addr).map;
-  return true;
+  return false;
 }
 
 void disarm_desched_event(RecordTask* t) {

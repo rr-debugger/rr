@@ -637,6 +637,18 @@ public:
 
   void set_stopped(bool stopped) override;
 
+  enum GrowMode {
+    // Grow to include the given address.
+    EXACT_ADDR,
+    // Make a best effort to grow to the given address but
+    // if it's not possible to grow all the way, get as close
+    // as possible.
+    BEST_EFFORT
+  };
+  // Tries to extend an adjacent `MAP_GROWSDOWN` mapping to include the
+  // given address. Returns false if nothing was done.
+  bool try_grow_map(remote_ptr<void> addr, GrowMode mode);
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();

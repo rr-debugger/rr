@@ -1503,6 +1503,54 @@ static bool preinject_signal(RecordTask* t) {
   return true;
 }
 
+// More memory than we'll need for a sigframe
+static const size_t CONSERVATIVE_SIGFRAME_MEM = 0x10000;
+
+// We might need to extend a MAP_GROWSDOWN stack mapping to have
+// space for the sigframe. Do that now. We don't know how big
+// the sigframe is going to be, so we just try to ensure we have 64K
+// available. Should be harmless to allocate more than we strictly need.
+// If something's in the way we just allocate as much as we can.
+static void maybe_grow_stack_for_sigframe(RecordTask* t) {
+  auto sp = t->regs().sp();
+  AddressSpace& vm = *t->vm();
+  if (!vm.has_mapping(sp)) {
+    return;
+  }
+  AddressSpace::Mapping stack_mapping = vm.mapping_of(sp);
+  remote_ptr<void> desired_sp =
+    max(remote_ptr<void>(CONSERVATIVE_SIGFRAME_MEM + page_size()), sp) - CONSERVATIVE_SIGFRAME_MEM;
+  if (desired_sp >= stack_mapping.map.start()) {
+    // desired_sp is in the current stack map so we're good.
+    return;
+  }
+  auto maps = vm.maps_containing_or_after(desired_sp - page_size());
+  // The iterator must have the current stack map at least
+  ASSERT(t, maps.begin() != maps.end());
+
+  const AddressSpace::Mapping& m = *maps.begin();
+  if (m.map.start() == stack_mapping.map.start()) {
+    // No mapping is in the way.
+    t->try_grow_map(desired_sp, RecordTask::BEST_EFFORT);
+    return;
+  }
+
+  remote_ptr<void> last_end;
+  auto iter = maps.begin();
+  while (true) {
+    last_end = iter->map.end();
+    ++iter;
+    if (iter->map.start() == stack_mapping.map.start()) {
+      break;
+    }
+  }
+  if (last_end + page_size() >= stack_mapping.map.start()) {
+    // Don't try to grow the stack if there's no room for a guard page.
+    return;
+  }
+  t->try_grow_map(last_end + page_size(), RecordTask::BEST_EFFORT);
+}
+
 /**
  * Returns true if the signal should be delivered.
  * Returns false if this signal should not be delivered because another signal
@@ -1510,6 +1558,8 @@ static bool preinject_signal(RecordTask* t) {
  * Must call t->stashed_signal_processed() once we're ready to unmask signals.
  */
 static bool inject_handled_signal(RecordTask* t) {
+  maybe_grow_stack_for_sigframe(t);
+
   if (!preinject_signal(t)) {
     // Task prematurely exited.
     return false;
