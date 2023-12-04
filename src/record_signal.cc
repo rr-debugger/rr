@@ -154,7 +154,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   // Use kernel_abi to avoid odd inconsistencies between distros
   auto arch_si = reinterpret_cast<NativeArch::siginfo_t*>(si);
   auto addr = arch_si->_sifields._sigfault.si_addr_.rptr();
-  if (t->try_grow_map(addr, RecordTask::EXACT_ADDR)) {
+  if (t->try_grow_map(addr)) {
     t->push_event(Event::noop());
     return true;
   }

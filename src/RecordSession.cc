@@ -1531,7 +1531,7 @@ static void maybe_grow_stack_for_sigframe(RecordTask* t) {
   const AddressSpace::Mapping& m = *maps.begin();
   if (m.map.start() == stack_mapping.map.start()) {
     // No mapping is in the way.
-    t->try_grow_map(desired_sp, RecordTask::BEST_EFFORT);
+    t->try_grow_map(desired_sp);
     return;
   }
 
@@ -1548,7 +1548,7 @@ static void maybe_grow_stack_for_sigframe(RecordTask* t) {
     // Don't try to grow the stack if there's no room for a guard page.
     return;
   }
-  t->try_grow_map(last_end + page_size(), RecordTask::BEST_EFFORT);
+  t->try_grow_map(last_end + page_size());
 }
 
 /**

@@ -2334,7 +2334,7 @@ bool RecordTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   return false;
 };
 
-bool RecordTask::try_grow_map(remote_ptr<void> addr, GrowMode mode) {
+bool RecordTask::try_grow_map(remote_ptr<void> addr) {
   if (vm()->has_mapping(addr)) {
     LOG(debug) << "try_grow_map " << addr << ": address already mapped";
     return false;
@@ -2351,17 +2351,8 @@ bool RecordTask::try_grow_map(remote_ptr<void> addr, GrowMode mode) {
     return false;
   }
   if (addr >= page_size() && vm()->has_mapping(addr - page_size())) {
-    if (mode == BEST_EFFORT) {
-      // Avoid guard page by starting the mapping at the start of the next page.
-      addr = ceil_page_size(addr + 1);
-      if (vm()->has_mapping(addr)) {
-        LOG(debug) << "try_grow_map " << addr << ": address already mapped after guard page";
-        return false;
-      }
-    } else {
-      LOG(debug) << "try_grow_map " << addr << ": address would be in guard page";
-      return false;
-    }
+    LOG(debug) << "try_grow_map " << addr << ": address would be in guard page";
+    return false;
   }
   remote_ptr<void> limit_bottom;
 #if defined (__i386__)
