@@ -59,6 +59,8 @@ def gdb_unescape(string):
 def gdb_escape(string):
     result = ""
     for curr_char in string.encode('utf-8'):
+        if isinstance(curr_char, str):
+            curr_char = ord(curr_char)
         result += format(curr_char, '02x')
     return result
 
