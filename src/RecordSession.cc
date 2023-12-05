@@ -1477,7 +1477,8 @@ static bool preinject_signal(RecordTask* t) {
    * So, first we check if we're in a signal-stop that we can use to inject
    * a signal. Some (all?) SIGTRAP stops are *not* usable for signal injection.
    */
-  if (t->stop_sig() && t->stop_sig() != SIGTRAP) {
+  if (t->in_signal_stop() && t->stop_sig() != SIGTRAP) {
+    ASSERT(t, t->stop_sig() > 0);
     LOG(debug) << "    in signal-stop for " << signal_name(t->stop_sig());
   } else {
     /* We're not in a usable signal-stop. Force a signal-stop by sending
