@@ -667,7 +667,7 @@ public:
    */
   virtual void set_stopped(bool stopped) { is_stopped_ = stopped; }
 
-  bool in_signal_stop() const { return in_signal_stop_; }
+  bool in_injectable_signal_stop() const { return in_injectable_signal_stop_; }
 
   /**
    * Return the status of this as of the last successful wait()/try_wait() call.
@@ -1311,11 +1311,11 @@ protected:
   // True when we've been kicked out of a ptrace-stop via SIGKILL or
   // equivalent.
   bool in_unexpected_exit;
-  // True when the task is stopped in a signal-stop. Usually equal to
-  // wait_status.stop_sig() > 0, but can be different if an AutoRemoteSyscalls
-  // kicked us out of the signal-stop. If this is true, then
-  // wait_status.stop_sig() must be > 0.
-  bool in_signal_stop_;
+  // True when the task is stopped in a signal-stop where we can
+  // inject our own signal. Usually equal to wait_status.stop_sig() > 0,
+  // but can be different if an AutoRemoteSyscalls changed our state and
+  // then restored wait_status.
+  bool in_injectable_signal_stop_;
   /* True when the seccomp filter has been enabled via prctl(). This happens
    * in the first system call issued by the initial tracee (after it returns
    * from kill(SIGSTOP) to synchronize with the tracer). */

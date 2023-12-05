@@ -94,7 +94,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       did_set_breakpoint_after_cpuid(false),
       is_stopped_(false),
       in_unexpected_exit(false),
-      in_signal_stop_(false),
+      in_injectable_signal_stop_(false),
       seccomp_bpf_enabled(false),
       registers_dirty(false),
       orig_syscallno_dirty(false),
@@ -1555,7 +1555,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
       // We don't know what state it's in exactly, but registers haven't changed
       // since nothing has really happened since the last stop.
       set_stopped(false);
-      in_signal_stop_ = false;
+      in_injectable_signal_stop_ = false;
       ASSERT(this, in_unexpected_exit);
       return RESUME_NONBLOCKING == wait_how;
     }
@@ -1566,7 +1566,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   // exit path due to a SIGKILL or equivalent, so just like if it
   // succeeded, we will eventually receive a wait notification.
   set_stopped(false);
-  in_signal_stop_ = false;
+  in_injectable_signal_stop_ = false;
   extra_registers_known = false;
   if (RESUME_NONBLOCKING != wait_how) {
     if (!wait()) {
@@ -2250,7 +2250,9 @@ bool Task::did_waitpid(WaitStatus status) {
   }
 
   wait_status = status;
-  in_signal_stop_ = status.stop_sig() > 0;
+  // Some (all?) SIGTRAP stops are *not* usable for signal injection.
+  in_injectable_signal_stop_ =
+    status.stop_sig() > 0 && status.stop_sig() != SIGTRAP;
   // We stop counting here because there may be things we want to do to the
   // tracee that would otherwise generate ticks.
   hpc.stop_counting();
