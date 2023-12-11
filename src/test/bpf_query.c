@@ -74,7 +74,7 @@ int main(void) {
     .log_buf = (uintptr_t)log_buf,
     .log_level = 1,
   };
-  size_t prog_attr_size = offsetof(union bpf_attr, core_relo_rec_size) + sizeof(__u32);
+  size_t prog_attr_size = offsetof(union bpf_attr, attach_prog_fd) + sizeof(__u32);
 
   union bpf_attr attach_attr = {
     .attach_type = ATTACH_TYPE,
