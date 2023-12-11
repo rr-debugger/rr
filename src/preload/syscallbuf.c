@@ -628,7 +628,7 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
  * Return a counter that generates a signal targeted at this task
  * every time the task is descheduled |nr_descheds| times.
  */
-static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
+static int open_desched_event_counter(pid_t tid) {
   struct perf_event_attr attr;
   int tmp_fd, fd;
   struct rr_f_owner_ex own;
@@ -638,7 +638,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   attr.type = PERF_TYPE_SOFTWARE;
   attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
   attr.disabled = 1;
-  attr.sample_period = nr_descheds;
+  attr.sample_period = 1;
 
   tmp_fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
                                              -1, 0);
@@ -692,7 +692,7 @@ static void init_thread(void) {
 
   /* NB: we want this setup emulated during replay. */
   thread_locals->desched_counter_fd =
-      open_desched_event_counter(1, privileged_traced_gettid());
+      open_desched_event_counter(privileged_traced_gettid());
 
   args.desched_counter_fd = thread_locals->desched_counter_fd;
 
