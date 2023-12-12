@@ -20,6 +20,7 @@ int main(void) {
   test_assert(filefd > 0);
   test_assert(close(filefd) == 0);
 
+#if defined(SYS_openat2)
   struct open_how how = {0};
   how.flags = O_CREAT | O_RDONLY;
   how.mode = 0600;
@@ -41,6 +42,7 @@ int main(void) {
   filefd = syscall(SYS_openat2, dirfd, REL_FILENAME, &how, sizeof(how));
   test_assert(filefd > 0);
   test_assert(close(filefd) == 0);
+#endif
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
