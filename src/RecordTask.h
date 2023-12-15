@@ -751,6 +751,7 @@ public:
 
   SyscallbufCodeLayout syscallbuf_code_layout;
   ScopedFd desched_fd;
+  struct perf_event_mmap_page* desched_event_buf;
   /* Value of hdr->num_rec_bytes when the buffer was flushed */
   uint32_t flushed_num_rec_bytes;
   /* Nonzero after the trace recorder has flushed the

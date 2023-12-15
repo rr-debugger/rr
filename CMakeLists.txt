@@ -1728,11 +1728,6 @@ if(BUILD_TESTS)
                   \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin_dir)")
   endif(INSTALL_TESTSUITE)
 
-  add_test(check_environment
-      bash source_dir/src/test/check_environment_test.run)
-  set_tests_properties(check_environment
-      PROPERTIES FAIL_REGULAR_EXPRESSION "rr needs /proc/sys/kernel/perf_event_paranoid <= 1")
-
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
     if (NOT x86ish AND ${test} MATCHES "^x86/.*")
       continue()

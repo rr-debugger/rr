@@ -79,6 +79,11 @@ bool is_coredumping_signal(int signo);
 NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
     const void* data, size_t size);
 
+/**
+ * Convert an rlimit resource name to a string.
+ */
+std::string rlimit_resource_name(int resource);
+
 } // namespace rr
 
 #endif

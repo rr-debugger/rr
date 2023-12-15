@@ -683,8 +683,7 @@ static void start_pt(pid_t tid, PerfCounters::PTState& state) {
   init_perf_event_attr(&attr, event_type, 0);
   state.pt_perf_event_fd = start_counter(tid, -1, &attr);
 
-  size_t page_size = sysconf(_SC_PAGESIZE);
-  void* base = mmap(NULL, page_size + PT_PERF_DATA_SIZE,
+  void* base = mmap(NULL, page_size() + PT_PERF_DATA_SIZE,
       PROT_READ | PROT_WRITE, MAP_SHARED, state.pt_perf_event_fd, 0);
   if (base == MAP_FAILED) {
     FATAL() << "Can't allocate memory for PT DATA area";
@@ -770,10 +769,9 @@ PTData PerfCounters::extract_intel_pt_data() {
 void PerfCounters::PTState::stop() {
   pt_perf_event_fd.close();
   if (mmap_aux_buffer) {
-    size_t page_size = sysconf(_SC_PAGESIZE);
     munmap(mmap_aux_buffer, mmap_header->aux_size);
     mmap_aux_buffer = nullptr;
-    munmap(mmap_header, page_size + PT_PERF_DATA_SIZE);
+    munmap(mmap_header, page_size() + PT_PERF_DATA_SIZE);
     mmap_header = nullptr;
   }
 }

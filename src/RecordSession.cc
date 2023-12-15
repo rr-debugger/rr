@@ -2390,11 +2390,11 @@ static string lookup_by_path(const string& name) {
         if (size >= 0) {
           buf[size] = 0;
           int val = atoi(buf);
-          if (val > 1) {
+          if (val > 2) {
             fprintf(stderr,
-                    "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is %d.\n"
-                    "Change it to 1, or use 'rr record -n' (slow).\n"
-                    "Consider putting 'kernel.perf_event_paranoid = 1' in /etc/sysctl.d/10-rr.conf.\n"
+                    "rr needs /proc/sys/kernel/perf_event_paranoid <= 2, but it is %d.\n"
+                    "Change it to 2.\n"
+                    "Consider putting 'kernel.perf_event_paranoid = 2' in /etc/sysctl.d/10-rr.conf.\n"
                     "See 'man 8 sysctl', 'man 5 sysctl.d' (systemd systems)\n"
                     "and 'man 5 sysctl.conf' (non-systemd systems) for more details.\n",
                     val);

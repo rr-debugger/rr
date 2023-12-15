@@ -180,6 +180,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       emulated_stop_type(NOT_STOPPED),
       blocked_sigs_dirty(true),
       syscallbuf_blocked_sigs_generation(0),
+      desched_event_buf(nullptr),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
       delay_syscallbuf_reset_for_desched(false),
@@ -216,6 +217,10 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
     sighandlers.swap(sh);
     own_namespace_rec_tid = _tid;
   }
+}
+
+static size_t desched_sample_buf_size() {
+  return page_size() * 2;
 }
 
 RecordTask::~RecordTask() {
@@ -261,6 +266,10 @@ RecordTask::~RecordTask() {
 
   // If this was stopped, notify the scheduler.
   set_stopped(false);
+
+  if (desched_event_buf) {
+    munmap(desched_event_buf, desched_sample_buf_size());
+  }
 }
 
 void RecordTask::record_exit_event(WriteChildTid write_child_tid) {
@@ -518,6 +527,15 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     // Prevent the child from closing this fd
     fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
     desched_fd = remote.retrieve_fd(desched_fd_child);
+
+    if (desched_event_buf) {
+      munmap(desched_event_buf, desched_sample_buf_size());
+    }
+    desched_event_buf = static_cast<struct perf_event_mmap_page*>(
+        mmap(NULL, desched_sample_buf_size(), PROT_READ | PROT_WRITE, MAP_SHARED, desched_fd, 0));
+    if (desched_event_buf == MAP_FAILED) {
+      FATAL() << "Can't allocate memory for desched perf event buffer";
+    }
 
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {
