@@ -1467,10 +1467,10 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 
   if (tick_period != RESUME_NO_TICKS) {
     if (tick_period == RESUME_UNLIMITED_TICKS) {
-      hpc.start(0);
+      hpc.start(this, 0);
     } else {
       ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
-      hpc.start(max<Ticks>(1, tick_period));
+      hpc.start(this, max<Ticks>(1, tick_period));
     }
     activate_preload_thread_locals();
   }
@@ -2224,14 +2224,14 @@ bool Task::did_waitpid(WaitStatus status) {
         // For example if the task is already reaped we don't have new
         // register values and we don't want to read a ticks value
         // that mismatches our registers.
-        more_ticks = hpc.read_ticks(this);
+        more_ticks = hpc.stop(this);
       }
 #elif defined(__aarch64__)
       struct iovec vec = { &ptrace_regs,
                           sizeof(ptrace_regs) };
       if (ptrace_if_stopped(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
         registers.set_from_ptrace(ptrace_regs);
-        more_ticks = hpc.read_ticks(this);
+        more_ticks = hpc.stop(this);
       }
 #else
 #error detect architecture here
@@ -2253,9 +2253,6 @@ bool Task::did_waitpid(WaitStatus status) {
   // Some (all?) SIGTRAP stops are *not* usable for signal injection.
   in_injectable_signal_stop_ =
     status.stop_sig() > 0 && status.stop_sig() != SIGTRAP;
-  // We stop counting here because there may be things we want to do to the
-  // tracee that would otherwise generate ticks.
-  hpc.stop();
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 

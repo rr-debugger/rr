@@ -91,12 +91,14 @@ public:
    * `ticks_period` of zero means don't interrupt at all.
    * Opens all relevant fds if necessary.
    */
-  void start(Ticks ticks_period);
+  void start(Task* t, Ticks ticks_period);
 
   /**
    * Suspend counting until the next start.
+   * Returns the current value of the ticks counter.
+   * `t` is used for debugging purposes.
    */
-  void stop();
+  Ticks stop(Task* t);
 
   /**
    * Close the perfcounter fds (if open). They will be automatically reopened if/when
@@ -121,12 +123,6 @@ public:
    * Whether PMU on core i is supported.
    */
   static bool support_cpu(int cpu);
-
-  /**
-   * Read the current value of the ticks counter.
-   * `t` is used for debugging purposes.
-   */
-  Ticks read_ticks(Task* t);
 
   /**
    * Returns what ticks mean for these counters.
@@ -170,6 +166,8 @@ private:
    * async_signal_syscalls tests
    */
   uint32_t recording_skid_size() { return skid_size() * 5; }
+
+  Ticks read_ticks(Task* t);
 
   // Only valid while 'counting' is true
   Ticks counting_period;

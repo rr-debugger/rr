@@ -778,11 +778,14 @@ void PerfCounters::PTState::close() {
   }
 }
 
-void PerfCounters::start(Ticks ticks_period) {
+void PerfCounters::start(Task* t, Ticks ticks_period) {
+  ASSERT(t, !counting);
+  ASSERT(t, ticks_period >= 0);
+
   if (enabled == DISABLE) {
     return;
   }
-  DEBUG_ASSERT(ticks_period >= 0);
+
   check_pmu(pmu_index);
 
   auto &perf_attr = perf_attrs[pmu_index];
@@ -874,10 +877,11 @@ void PerfCounters::close() {
   fd_ticks_in_transaction.close();
 }
 
-void PerfCounters::stop() {
+Ticks PerfCounters::stop(Task* t) {
   if (!counting) {
-    return;
+    return 0;
   }
+  Ticks ticks = read_ticks(t);
   counting = false;
   if (always_recreate_counters(perf_attrs[pmu_index])) {
     close();
@@ -890,6 +894,7 @@ void PerfCounters::stop() {
       infallible_perf_event_disable_if_open(pt_state->pt_perf_event_fd);
     }
   }
+  return ticks;
 }
 
 // Note that on aarch64 this is also used to get the count for `ret`
@@ -909,9 +914,8 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
 }
 
 Ticks PerfCounters::read_ticks(Task* t) {
-  if (!opened || !counting) {
-    return 0;
-  }
+  ASSERT(t, opened);
+  ASSERT(t, counting);
 
   if (pt_state) {
     pt_state->flush();
