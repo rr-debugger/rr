@@ -72,11 +72,11 @@ public:
     char* mmap_aux_buffer;
 
     PTState() : mmap_header(nullptr), mmap_aux_buffer(nullptr) {}
-    ~PTState() { stop(); }
+    ~PTState() { close(); }
 
     void start(pid_t tid);
     void flush();
-    void stop();
+    void close();
   };
 
   void set_tid(pid_t tid);

@@ -767,7 +767,7 @@ PTData PerfCounters::extract_intel_pt_data() {
   return result;
 }
 
-void PerfCounters::PTState::stop() {
+void PerfCounters::PTState::close() {
   pt_perf_event_fd.close();
   if (mmap_aux_buffer) {
     size_t page_size = sysconf(_SC_PAGESIZE);
@@ -864,7 +864,7 @@ void PerfCounters::close() {
   }
   started = false;
   if (pt_state) {
-    pt_state->stop();
+    pt_state->close();
   }
 
   fd_ticks_interrupt.close();
