@@ -92,9 +92,6 @@ public:
    */
   void reset(Ticks ticks_period);
 
-  template <typename Arch>
-  void reset_arch_extras();
-
   /**
    * Close the perfcounter fds. They will be automatically reopened if/when
    * reset is called again.
@@ -159,13 +156,6 @@ public:
   uint32_t skid_size();
 
   /**
-   * Use a separate skid_size for recording since we seem to see more skid
-   * in practice during recording, in particular during the
-   * async_signal_syscalls tests
-   */
-  uint32_t recording_skid_size() { return skid_size() * 5; }
-
-  /**
    * If Intel PT data collection is on, returns the accumulated raw PT data
    * and clears the internal buffer.
    * Otherwise returns an empty buffer.
@@ -173,6 +163,15 @@ public:
   PTData extract_intel_pt_data();
 
 private:
+  template <typename Arch> void reset_arch_extras();
+
+  /**
+   * Use a separate skid_size for recording since we seem to see more skid
+   * in practice during recording, in particular during the
+   * async_signal_syscalls tests
+   */
+  uint32_t recording_skid_size() { return skid_size() * 5; }
+
   // Only valid while 'counting' is true
   Ticks counting_period;
   pid_t tid;
