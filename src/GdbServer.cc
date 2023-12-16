@@ -312,7 +312,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     case DREQ_GET_THREAD_LIST: {
       vector<GdbThreadId> tids;
-      if (state != REPORT_THREADS_DEAD) {
+      if (state != REPORT_THREADS_DEAD && !failed_restart) {
         for (auto& kv : session.tasks()) {
           tids.push_back(get_threadid(session, kv.second->tuid()));
         }
@@ -1504,6 +1504,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
   DEBUG_ASSERT(req.type == DREQ_RESTART);
   DEBUG_ASSERT(dbg);
 
+  failed_restart = false;
   in_debuggee_end_state = false;
   timeline.remove_breakpoints_and_watchpoints();
 
@@ -1517,6 +1518,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
         cout << " " << c.first;
       }
       cout << "\n";
+      failed_restart = true;
       dbg->notify_restart_failed();
       return;
     }
@@ -1528,6 +1530,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
     FrameTime time = compute_time_from_ticks(timeline, ticks);
     if (time == -1) {
       cout << "No event found matching specified ticks target.\n";
+      failed_restart = true;
       dbg->notify_restart_failed();
       return;
     }

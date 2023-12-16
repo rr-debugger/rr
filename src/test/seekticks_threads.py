@@ -1,6 +1,9 @@
 from util import *
 import re, os
 
+send_gdb('restart 9')
+expect_gdb(re.compile(r'Checkpoint 9 not found'))
+
 def curr_thread():
     send_gdb('thread')
     expect_gdb(re.compile(r'\[Current thread is \d+ \(Thread (.*?)\)\]'))
@@ -44,12 +47,15 @@ tests = [
     [event_C, tick_B, tick_D]]
 
 threads = set()
+is_first = True
 for [start_event, initial_tick, other_tick] in tests:
     center_tick = (initial_tick + other_tick) // 2
     
     send_gdb('run %d' % start_event)
-    expect_gdb('from the beginning')
-    send_gdb('y')
+    if not is_first:
+        expect_gdb('from the beginning')
+        send_gdb('y')
+    is_first = False
     expect_stopped()
     
     thread = curr_thread()
@@ -82,6 +88,11 @@ for [start_event, initial_tick, other_tick] in tests:
     send_gdb('seek-ticks %d' % other_tick)
     expect_stopped()
     expect_thread_tick(thread, other_tick)
+    
+    send_gdb('info threads')
+    expect_gdb(r'\d\s*Thread')
+    expect_gdb(r'\d\s*Thread')
+    
 if len(threads) != 2:
     failed('ERROR: Tested events had the same thread')
 
