@@ -16,6 +16,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "ElfReader.h"
 #include "Flags.h"
+#include "PerfCounters.h"
 #include "RecordTask.h"
 #include "TraceeAttentionSet.h"
 #include "VirtualPerfCounterMonitor.h"
@@ -2533,6 +2534,9 @@ RecordSession::RecordSession(const std::string& exe_path,
       use_audit_(use_audit),
       unmap_vdso_(unmap_vdso) {
   set_intel_pt_enabled(intel_pt_enabled);
+  if (intel_pt_enabled) {
+    PerfCounters::start_pt_copy_thread();
+  }
 
   if (!has_cpuid_faulting() &&
       disable_cpuid_features.any_features_disabled()) {

@@ -42,6 +42,7 @@
 #include "ReplaySession.h"
 #include "RecordTask.h"
 #include "ReplayTask.h"
+#include "ScopedFd.h"
 #include "TraceStream.h"
 #include "WaitManager.h"
 #include "core.h"
@@ -313,13 +314,13 @@ void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
   fclose(dump_file);
 }
 
-void write_pt_data(Task* t, FrameTime global_time, const vector<uint8_t>& data) {
+void write_pt_data(Task* t, FrameTime global_time, const vector<vector<uint8_t>>& data) {
   string filename = format_dump_filename(t, global_time, "pt");
-  FILE* dump_file = fopen64(filename.c_str(), "w");
-  ASSERT(t, dump_file) << "Can't write to file " << filename;
-  size_t written = fwrite(data.data(), 1, data.size(), dump_file);
-  ASSERT(t, written == data.size()) << "Failed to write PT data to " << filename;
-  fclose(dump_file);
+  ScopedFd dump_file(filename.c_str(), O_WRONLY | O_TRUNC | O_CREAT, 0700);
+  ASSERT(t, dump_file.is_open()) << "Can't write to file " << filename;
+  for (const auto& d : data) {
+    write_all(dump_file, d.data(), d.size());
+  }
 }
 
 vector<uint8_t> read_pt_data(Task* t, FrameTime global_time) {

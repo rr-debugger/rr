@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <linux/perf_event.h>
 #include <poll.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,12 +15,14 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <time.h>
 
 #include <algorithm>
 #include <fstream>
 #include <limits>
 #include <regex>
 #include <string>
+#include <unordered_set>
 
 #include "Flags.h"
 #include "Session.h"
@@ -673,7 +676,64 @@ static uint32_t pt_event_type() {
 }
 
 static const size_t PT_PERF_DATA_SIZE = 8*1024*1024;
-static const size_t PT_PERF_AUX_SIZE = 512*1024*1024;
+static const size_t PT_PERF_AUX_SIZE = 128*1024*1024;
+
+struct PTCopyThreadState {
+  pthread_mutex_t mutex;
+  unordered_set<PerfCounters::PTState*> counting_pt_states;
+
+  PTCopyThreadState() {
+    pthread_mutex_init(&mutex, nullptr);
+    pthread_t thread;
+    pthread_create(&thread, nullptr, do_thread, this);
+    pthread_setname_np(thread, "pt_copy");
+  }
+  void start_copying(PerfCounters::PTState* state) {
+    pthread_mutex_lock(&mutex);
+    counting_pt_states.insert(state);
+    pthread_mutex_unlock(&mutex);
+  }
+  void stop_copying(PerfCounters::PTState* state) {
+    pthread_mutex_lock(&mutex);
+    counting_pt_states.erase(state);
+    pthread_mutex_unlock(&mutex);
+  }
+
+private:
+  static void* do_thread(void* p) {
+    static_cast<PTCopyThreadState*>(p)->thread_run();
+    return nullptr;
+  }
+  void thread_run() {
+    while (true) {
+      pthread_mutex_lock(&mutex);
+      while (true) {
+        bool did_work = false;
+        for (PerfCounters::PTState* state : counting_pt_states) {
+          size_t bytes = state->flush();
+          if (bytes > 0) {
+            did_work = true;
+          }
+        }
+        if (!did_work) {
+          break;
+        }
+      }
+      pthread_mutex_unlock(&mutex);
+
+      struct timespec ts = { 0, 250000 };
+      nanosleep(&ts, nullptr);
+    }
+  }
+};
+
+static PTCopyThreadState* pt_thread_state;
+
+void PerfCounters::start_pt_copy_thread() {
+  if (!pt_thread_state) {
+    pt_thread_state = new PTCopyThreadState();
+  }
+}
 
 // See https://github.com/intel/libipt/blob/master/doc/howto_capture.md
 void PerfCounters::PTState::open(pid_t tid) {
@@ -681,6 +741,7 @@ void PerfCounters::PTState::open(pid_t tid) {
 
   struct perf_event_attr attr;
   init_perf_event_attr(&attr, event_type, 0);
+  attr.aux_watermark = 8 * 1024 * 1024;
   pt_perf_event_fd = start_counter(tid, -1, &attr);
 
   size_t page_size = sysconf(_SC_PAGESIZE);
@@ -713,22 +774,23 @@ struct PerfEventAux {
   uint64_t sample_id;
 };
 
-void PerfCounters::PTState::flush() {
+size_t PerfCounters::PTState::flush() {
   uint64_t data_end = mmap_header->data_head;
   __sync_synchronize();
-  char* data_buf = reinterpret_cast<char*>(mmap_header) +
+  volatile char* data_buf = reinterpret_cast<volatile char*>(mmap_header) +
       mmap_header->data_offset;
 
   vector<char> packet;
+  size_t ret = 0;
   while (mmap_header->data_tail < data_end) {
     uint64_t data_start = mmap_header->data_tail;
     size_t start_offset = data_start % mmap_header->data_size;
-    auto header = reinterpret_cast<struct perf_event_header*>(data_buf + start_offset);
+    auto header = reinterpret_cast<volatile perf_event_header*>(data_buf + start_offset);
     packet.resize(header->size);
     size_t first_chunk_size = min<size_t>(header->size,
         mmap_header->data_size - start_offset);
-    memcpy(packet.data(), header, first_chunk_size);
-    memcpy(packet.data() + first_chunk_size, data_buf, header->size - first_chunk_size);
+    memcpy(packet.data(), const_cast<perf_event_header*>(header), first_chunk_size);
+    memcpy(packet.data() + first_chunk_size, const_cast<char*>(data_buf), header->size - first_chunk_size);
     mmap_header->data_tail += header->size;
 
     switch (header->type) {
@@ -742,14 +804,16 @@ void PerfCounters::PTState::flush() {
         if (aux_packet->flags) {
           FATAL() << "Unexpected AUX packet flags " << aux_packet->flags;
         }
-        size_t current_size = pt_data.data.size();
-        pt_data.data.resize(current_size + aux_packet->aux_size);
-        uint8_t* current = pt_data.data.data() + current_size;
+        pt_data.data.emplace_back();
+        vector<uint8_t>& data = pt_data.data.back();
+        data.resize(aux_packet->aux_size);
+        ret += aux_packet->aux_size;
         size_t aux_start_offset = aux_packet->aux_offset % PT_PERF_AUX_SIZE;
         first_chunk_size = min<size_t>(aux_packet->aux_size, PT_PERF_AUX_SIZE - aux_start_offset);
-        memcpy(current, mmap_aux_buffer + aux_start_offset, first_chunk_size);
-        memcpy(current + first_chunk_size, mmap_aux_buffer,
+        memcpy(data.data(), mmap_aux_buffer + aux_start_offset, first_chunk_size);
+        memcpy(data.data() + first_chunk_size, mmap_aux_buffer,
                aux_packet->aux_size - first_chunk_size);
+        mmap_header->aux_tail += aux_packet->aux_size;
         break;
       }
       default:
@@ -757,6 +821,7 @@ void PerfCounters::PTState::flush() {
         break;
     }
   }
+  return ret;
 }
 
 PTData PerfCounters::extract_intel_pt_data() {
@@ -773,7 +838,7 @@ void PerfCounters::PTState::close() {
     size_t page_size = sysconf(_SC_PAGESIZE);
     munmap(mmap_aux_buffer, mmap_header->aux_size);
     mmap_aux_buffer = nullptr;
-    munmap(mmap_header, page_size + PT_PERF_DATA_SIZE);
+    munmap(const_cast<perf_event_mmap_page*>(mmap_header), page_size + PT_PERF_DATA_SIZE);
     mmap_header = nullptr;
   }
 }
@@ -826,6 +891,7 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
 
     if (pt_state) {
       pt_state->open(tid);
+      pt_thread_state->start_copying(pt_state.get());
     }
   } else {
     LOG(debug) << "Resetting counters with period " << ticks_period;
@@ -848,6 +914,7 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
 
     if (pt_state) {
       infallible_perf_event_enable_if_open(pt_state->pt_perf_event_fd);
+      pt_thread_state->start_copying(pt_state.get());
     }
   }
 
@@ -862,6 +929,10 @@ void PerfCounters::set_tid(pid_t tid) {
 }
 
 void PerfCounters::close() {
+  if (counting) {
+    FATAL() << "Can't close while counting task " << tid;
+  }
+
   if (!opened) {
     return;
   }
@@ -881,8 +952,13 @@ Ticks PerfCounters::stop(Task* t) {
   if (!counting) {
     return 0;
   }
+
   Ticks ticks = read_ticks(t);
   counting = false;
+  if (pt_state) {
+    pt_thread_state->stop_copying(pt_state.get());
+    pt_state->flush();
+  }
   if (always_recreate_counters(perf_attrs[pmu_index])) {
     close();
   } else {
@@ -916,10 +992,6 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
 Ticks PerfCounters::read_ticks(Task* t) {
   ASSERT(t, opened);
   ASSERT(t, counting);
-
-  if (pt_state) {
-    pt_state->flush();
-  }
 
   if (fd_ticks_in_transaction.is_open()) {
     uint64_t transaction_ticks = read_counter(fd_ticks_in_transaction);

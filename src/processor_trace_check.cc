@@ -33,8 +33,8 @@ static bool get_next_instruction(ReplayTask* t, ProcessorTraceDecoder& decoder,
   }
 }
 
-static string intel_pt_context(ReplayTask* t, const PTData& record_pt_data,
-    const PTData& replay_pt_data, int instruction_count,
+static string intel_pt_context(ReplayTask* t, const vector<uint8_t>& record_pt_data,
+    const vector<uint8_t>& replay_pt_data, int instruction_count,
     remote_ptr<void> patch_addr,
     const vector<uint8_t>& patch_data,
     remote_code_ptr record_instruction_to_ignore) {
@@ -79,6 +79,21 @@ static string intel_pt_context(ReplayTask* t, const PTData& record_pt_data,
   return out.str();
 }
 
+static vector<uint8_t> flatten_vector(const vector<vector<uint8_t>>& data) {
+  vector<uint8_t> ret;
+  size_t total_size = 0;
+  for (const auto& d : data) {
+    total_size += d.size();
+  }
+  ret.resize(total_size);
+  size_t offset = 0;
+  for (const auto& d : data) {
+    memcpy(ret.data() + offset, d.data(), d.size());
+    offset += d.size();
+  }
+  return ret;
+}
+
 static bool check_intel_pt_internal(ReplayTask* t,
     const PTData& replay_pt_data, ostream& stream) {
   remote_ptr<void> patch_addr;
@@ -105,6 +120,8 @@ static bool check_intel_pt_internal(ReplayTask* t,
       break;
   }
 
+  vector<uint8_t> replay_data = flatten_vector(replay_pt_data.data);
+
   FrameTime recorded_pt_data_time = t->current_frame_time();
   if (ev.has_ticks_slop()) {
     // This is for an emergency debugging dump. Look for PT data
@@ -112,11 +129,11 @@ static bool check_intel_pt_internal(ReplayTask* t,
     // accumulated the data for this event.
     ++recorded_pt_data_time;
   }
-  PTData record_pt_data(read_pt_data(t, recorded_pt_data_time));
+  vector<uint8_t> record_pt_data = read_pt_data(t, recorded_pt_data_time);
   ProcessorTraceDecoder record_pt_decoder(t, record_pt_data,
       ProcessorTraceDecoder::IS_RECORDING);
   record_pt_decoder.set_patch(patch_addr, patch_data);
-  ProcessorTraceDecoder replay_pt_decoder(t, replay_pt_data,
+  ProcessorTraceDecoder replay_pt_decoder(t, replay_data,
       ProcessorTraceDecoder::IS_REPLAY);
   replay_pt_decoder.set_patch(patch_addr, patch_data);
 
@@ -133,7 +150,7 @@ static bool check_intel_pt_internal(ReplayTask* t,
       stream << "Instruction sequence ended early: got_record_instruction "
           << got_record_instruction << " got_replay_instruction "
           << got_replay_instruction
-          << intel_pt_context(t, record_pt_data, replay_pt_data, instruction_count,
+          << intel_pt_context(t, record_pt_data, replay_data, instruction_count,
                               patch_addr, patch_data, record_instruction_to_ignore) << "\n";
       return false;
     }
@@ -142,7 +159,7 @@ static bool check_intel_pt_internal(ReplayTask* t,
     }
     if (record_instruction.address != replay_instruction.address) {
       stream << "Control flow diverged"
-          << intel_pt_context(t, record_pt_data, replay_pt_data, instruction_count,
+          << intel_pt_context(t, record_pt_data, replay_data, instruction_count,
                               patch_addr, patch_data, record_instruction_to_ignore) << "\n";
       return false;
     }

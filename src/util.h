@@ -133,7 +133,8 @@ void validate_process_memory(ReplayTask* t, FrameTime global_time);
 /**
  * Write raw PT data to a file in the trace dir.
  */
-void write_pt_data(Task* t, FrameTime global_time, const std::vector<uint8_t>& data);
+void write_pt_data(Task* t, FrameTime global_time,
+                   const std::vector<std::vector<uint8_t>>& data);
 
 /**
  * Read raw PT data to a file in the trace dir. Returns an empty vector if none found.

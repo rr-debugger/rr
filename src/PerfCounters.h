@@ -33,9 +33,9 @@ enum TicksSemantics {
  */
 struct PTData {
   PTData() {}
-  explicit PTData(std::vector<uint8_t> data)
+  explicit PTData(std::vector<std::vector<uint8_t>> data)
     : data(std::move(data)) {}
-  std::vector<uint8_t> data;
+  std::vector<std::vector<uint8_t>> data;
 };
 
 /**
@@ -68,14 +68,15 @@ public:
   struct PTState {
     PTData pt_data;
     ScopedFd pt_perf_event_fd;
-    struct perf_event_mmap_page* mmap_header;
+    volatile perf_event_mmap_page* mmap_header;
     char* mmap_aux_buffer;
 
     PTState() : mmap_header(nullptr), mmap_aux_buffer(nullptr) {}
     ~PTState() { close(); }
 
     void open(pid_t tid);
-    void flush();
+    // Returns number of bytes flushed
+    size_t flush();
     void close();
   };
 
@@ -156,6 +157,12 @@ public:
    * Otherwise returns an empty buffer.
    */
   PTData extract_intel_pt_data();
+
+  /**
+   * Start the PT copy thread. We need to do this early, before CPU binding
+   * has occurred.
+   */
+  static void start_pt_copy_thread();
 
 private:
   template <typename Arch> void reset_arch_extras();

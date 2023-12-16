@@ -43,19 +43,19 @@ static constexpr uint8_t injected_header_packets[] =
       /*PSBEND*/ 0x02, 0x23 };
 static constexpr size_t PSB_LEN = 16;
 
-void ProcessorTraceDecoder::init(const PTData& trace_data) {
-  if (trace_data.data.empty()) {
+void ProcessorTraceDecoder::init(const vector<uint8_t>& trace_data) {
+  if (trace_data.empty()) {
     return;
   }
 
-  if (trace_data.data.size() < PSB_LEN ||
-      memcmp(injected_header_packets, trace_data.data.data(), PSB_LEN)) {
-    full_trace_data.reserve(sizeof(injected_header_packets) + trace_data.data.size());
+  if (trace_data.size() < PSB_LEN ||
+      memcmp(injected_header_packets, trace_data.data(), PSB_LEN)) {
+    full_trace_data.reserve(sizeof(injected_header_packets) + trace_data.size());
     full_trace_data.insert(full_trace_data.end(), injected_header_packets,
                            injected_header_packets + sizeof(injected_header_packets));
   }
-  full_trace_data.insert(full_trace_data.end(), trace_data.data.begin(),
-                         trace_data.data.end());
+  full_trace_data.insert(full_trace_data.end(), trace_data.begin(),
+                         trace_data.end());
 
   init_decoder();
 }
@@ -84,12 +84,6 @@ void ProcessorTraceDecoder::init_decoder() {
   }
 
   need_sync = true;
-}
-
-ProcessorTraceDecoder::ProcessorTraceDecoder(Task* task, std::vector<uint8_t> full_trace_data,
-                                             Mode mode)
-  : task(task), full_trace_data(full_trace_data), mode(mode), need_sync(false) {
-  init_decoder();
 }
 
 static vector<uint8_t>* cached_rr_page_for_recording[2];
@@ -144,6 +138,9 @@ void ProcessorTraceDecoder::maybe_process_events(int status) {
       case ptev_exec_mode:
       case ptev_cbr:
       case ptev_tsx:
+        break;
+      case ptev_overflow:
+        FATAL() << "Detected ptev_overflow";
         break;
       default:
         FATAL() << "Unhandled event type: " << event.type;

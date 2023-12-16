@@ -762,6 +762,10 @@ static bool set_cpu_affinity(int cpu) {
 }
 
 void Session::do_bind_cpu() {
+  if (intel_pt_) {
+    PerfCounters::start_pt_copy_thread();
+  }
+
   sched_getaffinity(0, sizeof(original_affinity_), &original_affinity_);
 
   int cpu_index = this->cpu_binding();

@@ -5,8 +5,9 @@
 
 #include <stdint.h>
 
+#include <vector>
+
 #include "log.h"
-#include "PerfCounters.h"
 #include "Task.h"
 #include "remote_code_ptr.h"
 
@@ -32,7 +33,7 @@ public:
     remote_code_ptr address;
   };
 
-  ProcessorTraceDecoder(Task* t, const PTData& trace_data, Mode mode)
+  ProcessorTraceDecoder(Task* t, const std::vector<uint8_t>& trace_data, Mode mode)
     : task(t), decoder(nullptr), mode(mode), need_sync(false) {
     init(trace_data);
   }
@@ -58,19 +59,16 @@ public:
 
 private:
 #ifdef INTEL_PT_DECODING
-  void init(const PTData& trace_data);
+  void init(const std::vector<uint8_t>& trace_data);
 #else
-  void init(const PTData&)
+  void init(const std::vector<uint8_t>&)
   {
-    FATAL() << "Intel PT support not built";
+    FATAL() << "Intel PT decoding support not built; run CMake with -Dintel_pt_decoding=TRUE";
   }
 #endif
   void init_decoder();
 
   void dump_full_trace_data_to_file();
-
-  ProcessorTraceDecoder(Task* task, std::vector<uint8_t> full_trace_data,
-                        Mode mode);
 
   void maybe_process_events(int status);
   std::string internal_error_context_string();
