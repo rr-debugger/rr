@@ -63,7 +63,7 @@ public:
   };
   PerfCounters(pid_t tid, int cpu_binding, TicksSemantics ticks_semantics,
                Enabled enabled, IntelPTEnabled enable_pt);
-  ~PerfCounters() { stop(); }
+  ~PerfCounters() { close(); }
 
   struct PTState {
     PTData pt_data;
@@ -96,7 +96,7 @@ public:
    * Close the perfcounter fds. They will be automatically reopened if/when
    * reset is called again.
    */
-  void stop();
+  void close();
 
   /**
    * Suspend counting until the next reset. This may or may not actually stop

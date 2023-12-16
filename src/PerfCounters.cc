@@ -854,11 +854,11 @@ void PerfCounters::reset(Ticks ticks_period) {
 }
 
 void PerfCounters::set_tid(pid_t tid) {
-  stop();
+  close();
   this->tid = tid;
 }
 
-void PerfCounters::stop() {
+void PerfCounters::close() {
   if (!started) {
     return;
   }
@@ -880,7 +880,7 @@ void PerfCounters::stop_counting() {
   }
   counting = false;
   if (always_recreate_counters(perf_attrs[pmu_index])) {
-    stop();
+    close();
   } else {
     infallible_perf_event_disable_if_open(fd_ticks_interrupt);
     infallible_perf_event_disable_if_open(fd_minus_ticks_measure);
