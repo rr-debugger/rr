@@ -87,7 +87,7 @@ public:
    * the hardware triggers its interrupt some time after that. We also allow
    * the interrupt to fire early.)
    * This must be called while the task is stopped, and it must be called
-   * before the task is allowed to run again.
+   * before the task is allowed to run again if it's going to trigger ticks.
    * `ticks_period` of zero means don't interrupt at all.
    */
   void reset(Ticks ticks_period);
