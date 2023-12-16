@@ -194,7 +194,7 @@ private:
 
   TicksSemantics ticks_semantics_;
   Enabled enabled;
-  bool started;
+  bool opened;
   bool counting;
 };
 

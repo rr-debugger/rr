@@ -613,7 +613,7 @@ PerfCounters::PerfCounters(pid_t tid, int cpu_binding,
                            TicksSemantics ticks_semantics, Enabled enabled,
                            IntelPTEnabled enable_pt)
     : tid(tid), pmu_index(get_pmu_index(cpu_binding)), ticks_semantics_(ticks_semantics),
-      enabled(enabled), started(false), counting(false) {
+      enabled(enabled), opened(false), counting(false) {
   if (!supports_ticks_semantics(ticks_semantics)) {
     FATAL() << "Ticks semantics " << ticks_semantics << " not supported";
   }
@@ -792,7 +792,7 @@ void PerfCounters::start(Ticks ticks_period) {
     ticks_period = uint64_t(1) << 60;
   }
 
-  if (!started) {
+  if (!opened) {
     LOG(debug) << "Recreating counters with period " << ticks_period;
 
     struct perf_event_attr attr = perf_attr.ticks;
@@ -848,7 +848,7 @@ void PerfCounters::start(Ticks ticks_period) {
     }
   }
 
-  started = true;
+  opened = true;
   counting = true;
   counting_period = ticks_period;
 }
@@ -859,10 +859,10 @@ void PerfCounters::set_tid(pid_t tid) {
 }
 
 void PerfCounters::close() {
-  if (!started) {
+  if (!opened) {
     return;
   }
-  started = false;
+  opened = false;
   if (pt_state) {
     pt_state->close();
   }
@@ -909,7 +909,7 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
 }
 
 Ticks PerfCounters::read_ticks(Task* t) {
-  if (!started || !counting) {
+  if (!opened || !counting) {
     return 0;
   }
 
