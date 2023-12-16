@@ -94,17 +94,15 @@ public:
   void start(Ticks ticks_period);
 
   /**
+   * Suspend counting until the next start.
+   */
+  void stop();
+
+  /**
    * Close the perfcounter fds (if open). They will be automatically reopened if/when
    * reset is called again.
    */
   void close();
-
-  /**
-   * Suspend counting until the next reset. This may or may not actually stop
-   * the performance counters, depending on whether or not this is required
-   * for correctness on this kernel version.
-   */
-  void stop_counting();
 
   /**
    * Return the number of ticks we need for an emulated branch.

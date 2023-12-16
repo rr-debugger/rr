@@ -2255,7 +2255,7 @@ bool Task::did_waitpid(WaitStatus status) {
     status.stop_sig() > 0 && status.stop_sig() != SIGTRAP;
   // We stop counting here because there may be things we want to do to the
   // tracee that would otherwise generate ticks.
-  hpc.stop_counting();
+  hpc.stop();
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 

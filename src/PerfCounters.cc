@@ -874,7 +874,7 @@ void PerfCounters::close() {
   fd_ticks_in_transaction.close();
 }
 
-void PerfCounters::stop_counting() {
+void PerfCounters::stop() {
   if (!counting) {
     return;
   }
