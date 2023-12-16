@@ -209,6 +209,8 @@ private:
   // siginfo for last notified stop.
   siginfo_t stop_siginfo;
   bool in_debuggee_end_state;
+  // True when a restart was attempted but didn't succeed.
+  bool failed_restart;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
   // True when a DREQ_INTERRUPT has been received but not handled, or when

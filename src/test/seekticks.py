@@ -72,4 +72,10 @@ for i in range(len(tests)):
     if ticks8 != ticks7:
         failed("ERROR: seek-ticks didn't go to correct tick on test %d" % i)
 
+send_gdb('seek-ticks 2000000000')
+expect_gdb('No event found matching specified ticks target')
+send_gdb('info threads')
+# don't expect anything specific from 'info threads', but make sure gdb at least functions
+send_gdb('p 123456789+1')
+expect_gdb('123456790')
 ok()
