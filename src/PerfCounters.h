@@ -69,10 +69,14 @@ public:
     PTData pt_data;
     ScopedFd pt_perf_event_fd;
     struct perf_event_mmap_page* mmap_header;
-    char* mmap_aux_buffer = nullptr;
+    char* mmap_aux_buffer;
 
-    void stop();
+    PTState() : mmap_header(nullptr), mmap_aux_buffer(nullptr) {}
     ~PTState() { stop(); }
+
+    void start(pid_t tid);
+    void flush();
+    void stop();
   };
 
   void set_tid(pid_t tid);

@@ -676,31 +676,31 @@ static const size_t PT_PERF_DATA_SIZE = 8*1024*1024;
 static const size_t PT_PERF_AUX_SIZE = 512*1024*1024;
 
 // See https://github.com/intel/libipt/blob/master/doc/howto_capture.md
-static void start_pt(pid_t tid, PerfCounters::PTState& state) {
+void PerfCounters::PTState::start(pid_t tid) {
   static uint32_t event_type = pt_event_type();
 
   struct perf_event_attr attr;
   init_perf_event_attr(&attr, event_type, 0);
-  state.pt_perf_event_fd = start_counter(tid, -1, &attr);
+  pt_perf_event_fd = start_counter(tid, -1, &attr);
 
   size_t page_size = sysconf(_SC_PAGESIZE);
   void* base = mmap(NULL, page_size + PT_PERF_DATA_SIZE,
-      PROT_READ | PROT_WRITE, MAP_SHARED, state.pt_perf_event_fd, 0);
+      PROT_READ | PROT_WRITE, MAP_SHARED, pt_perf_event_fd, 0);
   if (base == MAP_FAILED) {
     FATAL() << "Can't allocate memory for PT DATA area";
   }
   auto header = static_cast<struct perf_event_mmap_page*>(base);
-  state.mmap_header = header;
+  mmap_header = header;
 
   header->aux_offset = header->data_offset + header->data_size;
   header->aux_size = PT_PERF_AUX_SIZE;
 
   void* aux = mmap(NULL, header->aux_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-      state.pt_perf_event_fd, header->aux_offset);
+      pt_perf_event_fd, header->aux_offset);
   if (aux == MAP_FAILED) {
     FATAL() << "Can't allocate memory for PT AUX area";
   }
-  state.mmap_aux_buffer = static_cast<char*>(aux);
+  mmap_aux_buffer = static_cast<char*>(aux);
 }
 
 // I wish I knew why this type isn't defined in perf_event.h but is just
@@ -713,23 +713,23 @@ struct PerfEventAux {
   uint64_t sample_id;
 };
 
-static void flush_pt(PerfCounters::PTState& state) {
-  uint64_t data_end = state.mmap_header->data_head;
+void PerfCounters::PTState::flush() {
+  uint64_t data_end = mmap_header->data_head;
   __sync_synchronize();
-  char* data_buf = reinterpret_cast<char*>(state.mmap_header) +
-      state.mmap_header->data_offset;
+  char* data_buf = reinterpret_cast<char*>(mmap_header) +
+      mmap_header->data_offset;
 
   vector<char> packet;
-  while (state.mmap_header->data_tail < data_end) {
-    uint64_t data_start = state.mmap_header->data_tail;
-    size_t start_offset = data_start % state.mmap_header->data_size;
+  while (mmap_header->data_tail < data_end) {
+    uint64_t data_start = mmap_header->data_tail;
+    size_t start_offset = data_start % mmap_header->data_size;
     auto header = reinterpret_cast<struct perf_event_header*>(data_buf + start_offset);
     packet.resize(header->size);
     size_t first_chunk_size = min<size_t>(header->size,
-        state.mmap_header->data_size - start_offset);
+        mmap_header->data_size - start_offset);
     memcpy(packet.data(), header, first_chunk_size);
     memcpy(packet.data() + first_chunk_size, data_buf, header->size - first_chunk_size);
-    state.mmap_header->data_tail += header->size;
+    mmap_header->data_tail += header->size;
 
     switch (header->type) {
       case PERF_RECORD_LOST:
@@ -742,13 +742,13 @@ static void flush_pt(PerfCounters::PTState& state) {
         if (aux_packet->flags) {
           FATAL() << "Unexpected AUX packet flags " << aux_packet->flags;
         }
-        size_t current_size = state.pt_data.data.size();
-        state.pt_data.data.resize(current_size + aux_packet->aux_size);
-        uint8_t* current = state.pt_data.data.data() + current_size;
+        size_t current_size = pt_data.data.size();
+        pt_data.data.resize(current_size + aux_packet->aux_size);
+        uint8_t* current = pt_data.data.data() + current_size;
         size_t aux_start_offset = aux_packet->aux_offset % PT_PERF_AUX_SIZE;
         first_chunk_size = min<size_t>(aux_packet->aux_size, PT_PERF_AUX_SIZE - aux_start_offset);
-        memcpy(current, state.mmap_aux_buffer + aux_start_offset, first_chunk_size);
-        memcpy(current + first_chunk_size, state.mmap_aux_buffer,
+        memcpy(current, mmap_aux_buffer + aux_start_offset, first_chunk_size);
+        memcpy(current + first_chunk_size, mmap_aux_buffer,
                aux_packet->aux_size - first_chunk_size);
         break;
       }
@@ -822,7 +822,7 @@ void PerfCounters::reset(Ticks ticks_period) {
     make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
 
     if (pt_state) {
-      start_pt(tid, *pt_state);
+      pt_state->start(tid);
     }
   } else {
     LOG(debug) << "Resetting counters with period " << ticks_period;
@@ -914,7 +914,7 @@ Ticks PerfCounters::read_ticks(Task* t) {
   }
 
   if (pt_state) {
-    flush_pt(*pt_state);
+    pt_state->flush();
   }
 
   if (fd_ticks_in_transaction.is_open()) {
