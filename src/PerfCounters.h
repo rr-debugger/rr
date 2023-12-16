@@ -89,11 +89,12 @@ public:
    * This must be called while the task is stopped, and it must be called
    * before the task is allowed to run again if it's going to trigger ticks.
    * `ticks_period` of zero means don't interrupt at all.
+   * Opens all relevant fds if necessary.
    */
-  void reset(Ticks ticks_period);
+  void start(Ticks ticks_period);
 
   /**
-   * Close the perfcounter fds. They will be automatically reopened if/when
+   * Close the perfcounter fds (if open). They will be automatically reopened if/when
    * reset is called again.
    */
   void close();

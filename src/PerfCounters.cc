@@ -778,7 +778,7 @@ void PerfCounters::PTState::close() {
   }
 }
 
-void PerfCounters::reset(Ticks ticks_period) {
+void PerfCounters::start(Ticks ticks_period) {
   if (enabled == DISABLE) {
     return;
   }
