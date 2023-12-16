@@ -676,7 +676,7 @@ static const size_t PT_PERF_DATA_SIZE = 8*1024*1024;
 static const size_t PT_PERF_AUX_SIZE = 512*1024*1024;
 
 // See https://github.com/intel/libipt/blob/master/doc/howto_capture.md
-void PerfCounters::PTState::start(pid_t tid) {
+void PerfCounters::PTState::open(pid_t tid) {
   static uint32_t event_type = pt_event_type();
 
   struct perf_event_attr attr;
@@ -822,7 +822,7 @@ void PerfCounters::reset(Ticks ticks_period) {
     make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
 
     if (pt_state) {
-      pt_state->start(tid);
+      pt_state->open(tid);
     }
   } else {
     LOG(debug) << "Resetting counters with period " << ticks_period;

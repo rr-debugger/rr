@@ -74,7 +74,7 @@ public:
     PTState() : mmap_header(nullptr), mmap_aux_buffer(nullptr) {}
     ~PTState() { close(); }
 
-    void start(pid_t tid);
+    void open(pid_t tid);
     void flush();
     void close();
   };
