@@ -3269,7 +3269,7 @@ static void prepare_mmap_register_params(RecordTask* t) {
     }
   }
 
-  intptr_t mask_flag = MAP_FIXED;
+  intptr_t mask_flag = MAP_FIXED | MAP_FIXED_NOREPLACE;
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
 #endif
