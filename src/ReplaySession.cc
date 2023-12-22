@@ -1132,8 +1132,7 @@ static bool is_fatal_default_action(int sig) {
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
-Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask,
-                                                  int sig) {
+Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask) {
   ReplayTask* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
@@ -1153,10 +1152,7 @@ Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask,
   }
 
   /* Restore the signal-hander frame data, if there was one. */
-  bool restored_sighandler_frame = 0 < t->set_data_from_trace();
-  if (restored_sighandler_frame) {
-    LOG(debug) << "--> restoring sighandler frame for " << signal_name(sig);
-  }
+  t->set_data_from_trace();
   // Note that fatal signals are not actually injected into the task!
   // This is very important; we must never actually inject fatal signals
   // into a task. All replay task death must go through exit_task.
@@ -1638,7 +1634,7 @@ Completion ReplaySession::try_one_trace_step(
       return completion;
     }
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, current_step.target.signo);
+      return emulate_signal_delivery(t);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, constraints);
     case TSTEP_PATCH_IP:

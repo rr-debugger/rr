@@ -360,7 +360,7 @@ private:
   ReplayTask* revive_task_for_exec();
   ReplayTask* setup_replay_one_trace_frame(ReplayTask* t);
   void advance_to_next_trace_frame();
-  Completion emulate_signal_delivery(ReplayTask* oldtask, int sig);
+  Completion emulate_signal_delivery(ReplayTask* oldtask);
   Completion try_one_trace_step(ReplayTask* t,
                                 const StepConstraints& step_constraints);
   Completion cont_syscall_boundary(ReplayTask* t,
