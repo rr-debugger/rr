@@ -111,7 +111,11 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   if (frame.event().type() != EV_SYSCALLBUF_FLUSH) {
     return;
   }
-  auto buf = trace.read_raw_data();
+  TraceReader::RawData buf;
+  bool ok = trace.read_raw_data_for_frame(buf);
+  if (!ok) {
+    FATAL() << "Can't read raw-data record for syscallbuf";
+  }
   size_t bytes_remaining = buf.data.size() - sizeof(struct syscallbuf_hdr);
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
   if (flush_hdr->num_rec_bytes > bytes_remaining) {

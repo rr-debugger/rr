@@ -1259,7 +1259,9 @@ Completion ReplaySession::emulate_deterministic_signal(
 void ReplaySession::prepare_syscallbuf_records(ReplayTask* t, Ticks ticks) {
   // Read the recorded syscall buffer back into the buffer
   // region.
-  auto buf = t->trace_reader().read_raw_data();
+  TraceReader::RawData buf;
+  bool ok = t->trace_reader().read_raw_data_for_frame(buf);
+  ASSERT(t, ok);
   ASSERT(t, buf.data.size() >= sizeof(struct syscallbuf_hdr));
   ASSERT(t, buf.data.size() <= t->syscallbuf_size);
   ASSERT(t, buf.addr == t->syscallbuf_child.cast<void>());

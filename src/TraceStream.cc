@@ -1208,14 +1208,6 @@ void TraceWriter::write_raw_data(const void* d, size_t len) {
   data.write(d, len);
 }
 
-TraceReader::RawData TraceReader::read_raw_data() {
-  RawData d;
-  if (!read_raw_data_for_frame(d)) {
-    FATAL() << "Expected raw data, found none";
-  }
-  return d;
-}
-
 bool TraceReader::read_raw_data_for_frame(RawData& d) {
   if (raw_recs.empty()) {
     return false;

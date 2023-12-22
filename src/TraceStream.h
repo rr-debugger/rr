@@ -382,12 +382,6 @@ public:
   TraceTaskEvent read_task_event(FrameTime* time = nullptr);
 
   /**
-   * Read the next raw data record for this frame and return it. Aborts if
-   * there are no more raw data records for this frame.
-   */
-  RawData read_raw_data();
-
-  /**
    * Reads the next raw data record for last-read frame. If there are no more
    * raw data records for this frame, return false.
    * Holes are filled with zeroes in the output buffer.
