@@ -51,8 +51,14 @@ int main(void) {
   strcpy(entries->name, "nat");
   entries->size = info.size;
   uint32_t getentries_size = sizeof(struct ipt_get_entries) + entries->size;
-  test_assert(0 == getsockopt(sock_fd, SOL_IP, IPT_SO_GET_ENTRIES, entries,
-                              &getentries_size));
+  ret = getsockopt(sock_fd, SOL_IP, IPT_SO_GET_ENTRIES, entries,
+                   &getentries_size);
+  if (ret < 0 && errno == EINVAL && sizeof(void*) == 4) {
+    atomic_puts("Kernel may have been built without CONFIG_NETFILTER_XTABLES_COMPAT");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+  test_assert(ret == 0);
   test_assert(getentries_size == sizeof(struct ipt_get_entries) + info.size);
 
   // matches will be empty
