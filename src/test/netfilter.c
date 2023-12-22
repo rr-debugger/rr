@@ -91,6 +91,7 @@ int main(void) {
     dest_ptr += cur_entry->next_offset;
     src_ptr += cur_entry->next_offset;
   }
+  test_assert(dest_ptr == final + final_size);
 
   // Finally pass this off to the kernel
   ret = setsockopt(sock_fd, SOL_IP, IPT_SO_SET_REPLACE, final, final_size);
