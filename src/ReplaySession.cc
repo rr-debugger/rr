@@ -1152,7 +1152,7 @@ Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask) {
   }
 
   /* Restore the signal-hander frame data, if there was one. */
-  t->set_data_from_trace();
+  t->apply_data_record_from_trace();
   // Note that fatal signals are not actually injected into the task!
   // This is very important; we must never actually inject fatal signals
   // into a task. All replay task death must go through exit_task.

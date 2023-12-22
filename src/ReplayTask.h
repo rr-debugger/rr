@@ -62,7 +62,7 @@ public:
   FrameTime current_frame_time();
 
   /** Restore the next chunk of this frame's saved data from the trace to this. */
-  void set_data_from_trace();
+  void apply_data_record_from_trace();
   /** Restore all remaining chunks of saved data for the current trace frame. */
   void apply_all_data_records_from_trace();
 

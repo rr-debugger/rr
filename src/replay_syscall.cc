@@ -114,7 +114,7 @@ static void maybe_noop_restore_syscallbuf_scratch(ReplayTask* t) {
     // Untraced syscalls always have t's arch
     LOG(debug) << "  noop-restoring scratch for write-only desched'd "
                << syscall_name(t->regs().original_syscallno(), t->arch());
-    t->set_data_from_trace();
+    t->apply_data_record_from_trace();
   }
 }
 
@@ -271,16 +271,16 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an
      * invalid address? */
-    t->set_data_from_trace();
+    t->apply_data_record_from_trace();
 
     if (Arch::clone_tls_type == Arch::UserDescPointer) {
-      t->set_data_from_trace();
-      new_task->set_data_from_trace();
+      t->apply_data_record_from_trace();
+      new_task->apply_data_record_from_trace();
     } else {
       DEBUG_ASSERT(Arch::clone_tls_type == Arch::PthreadStructurePointer);
     }
-    new_task->set_data_from_trace();
-    new_task->set_data_from_trace();
+    new_task->apply_data_record_from_trace();
+    new_task->apply_data_record_from_trace();
   }
 
   // Fix registers in new task
@@ -1351,7 +1351,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       if (dest) {
         uint32_t iov_cnt = t->regs().arg5();
         for (uint32_t i = 0; i < iov_cnt; ++i) {
-          dest->set_data_from_trace();
+          dest->apply_data_record_from_trace();
         }
       }
       return;

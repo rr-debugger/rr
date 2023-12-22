@@ -139,7 +139,7 @@ FrameTime ReplayTask::current_frame_time() {
   return current_trace_frame().time();
 }
 
-void ReplayTask::set_data_from_trace() {
+void ReplayTask::apply_data_record_from_trace() {
   TraceReader::RawData buf;
   bool ok = trace_reader().read_raw_data_for_frame(buf);
   ASSERT(this, ok);
