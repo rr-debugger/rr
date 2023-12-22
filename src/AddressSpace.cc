@@ -2059,6 +2059,9 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
 
 void AddressSpace::maybe_update_breakpoints(Task* t, remote_ptr<uint8_t> addr,
                                             size_t len) {
+  if (!len) {
+    return;
+  }
   for (auto& it : breakpoints) {
     remote_ptr<uint8_t> bp_addr = it.first.to_data_ptr<uint8_t>();
     if (addr <= bp_addr && bp_addr < addr + len - 1) {
