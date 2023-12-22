@@ -908,6 +908,49 @@ static void process_shmdt(ReplayTask* t, const TraceFrame& trace_frame,
   t->validate_regs();
 }
 
+// Return true if this madvise() call should be passed through and
+// executed by the tracee.
+static bool process_madvise(ReplayTask* t, const TraceFrame& trace_frame,
+                            int advice, int result) {
+  switch (advice) {
+    case MADV_DONTNEED:
+    case MADV_REMOVE:
+    case MADV_DONTNEED_LOCKED: {
+      const SyscallEvent& ev = trace_frame.event().Syscall();
+      if (result == 0) {
+        ASSERT(t, ev.madvise_ranges.empty());
+        return true;
+      }
+      if (!ev.madvise_ranges.empty()) {
+        AutoRemoteSyscalls remote(t);
+        for (const auto& r : ev.madvise_ranges) {
+          remote.infallible_syscall(syscall_number_for_madvise(t->arch()),
+              r.start(), r.size(), advice);
+        }
+      }
+      return false;
+    }
+    /* These are not technically required to be passed through, but the
+       syscallbuf code does, so if we don't here, we risk fracturing
+       otherwise coalescable memory regions. Asan in particular triggers
+       a pathological case here that quickly exhausts the total mapping
+       limit by fracturing its shadow region */
+    case MADV_NORMAL:
+    case MADV_RANDOM:
+    case MADV_SEQUENTIAL:
+    case MADV_WILLNEED:
+    case MADV_MERGEABLE:
+    case MADV_UNMERGEABLE:
+    case MADV_HUGEPAGE:
+    case MADV_NOHUGEPAGE:
+    case MADV_DONTDUMP:
+    case MADV_DODUMP:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static void process_init_buffers(ReplayTask* t, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
@@ -1151,29 +1194,9 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       return process_mremap(t, trace_frame, step);
 
     case Arch::madvise:
-      switch ((int)t->regs().arg3()) {
-        case MADV_DONTNEED:
-        case MADV_REMOVE:
-        case MADV_DONTNEED_LOCKED:
-          break;
-        /* These are not technically required to be passed through, but the
-           syscallbuf code does, so if we don't here, we risk fracturing
-           otherwise coalescable memory regions. Asan in particular triggers
-           a pathological case here that quickly exhausts the total mapping
-           limit by fracturing its shadow region */
-        case MADV_NORMAL:
-        case MADV_RANDOM:
-        case MADV_SEQUENTIAL:
-        case MADV_WILLNEED:
-        case MADV_MERGEABLE:
-        case MADV_UNMERGEABLE:
-        case MADV_HUGEPAGE:
-        case MADV_NOHUGEPAGE:
-        case MADV_DONTDUMP:
-        case MADV_DODUMP:
-          break;
-        default:
-          return;
+      if (!process_madvise(t, trace_frame, trace_regs.arg3(),
+                           trace_regs.syscall_result_signed())) {
+        return;
       }
       RR_FALLTHROUGH;
     case Arch::arch_prctl: {

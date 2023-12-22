@@ -5599,6 +5599,49 @@ static string try_make_process_file_name(RecordTask* t,
   return string(proc_root) + (ret == 1 ? file_name : file_name.substr(ret));
 }
 
+enum class PageState {
+  PRESENT,
+  NOT_PRESENT
+};
+
+// Returns pages that satisfy the given PageState constraint.
+static vector<MemoryRange> find_pages(RecordTask* t, MemoryRange range, PageState state) {
+  ScopedFd& pagemap = t->pagemap_fd();
+  ASSERT(t, pagemap.is_open());
+  remote_ptr<void> addr = floor_page_size(range.start());
+  remote_ptr<void> end = ceil_page_size(range.end());
+  vector<uint64_t> pfns;
+  pfns.resize((end - addr)/page_size());
+  ssize_t r = read_to_end(pagemap, addr.as_int() / page_size() * sizeof(uint64_t),
+                          pfns.data(), pfns.size() * sizeof(uint64_t));
+  ASSERT(t, r == (ssize_t)pfns.size() * 8);
+  vector<MemoryRange> ret;
+  for (size_t i = 0; i < pfns.size(); ++i) {
+    bool is_present = pfns[i] & ((1ULL << 63) | (1ULL << 62));
+    bool match;
+    switch (state) {
+      case PageState::PRESENT:
+        match = is_present;
+        break;
+      case PageState::NOT_PRESENT:
+        match = !is_present;
+        break;
+      default:
+        FATAL() << "Invalid PageState";
+        return ret;
+    }
+    if (match) {
+      remote_ptr<void> p = addr + i * page_size();
+      remote_ptr<void> p_end = p + page_size();
+      if (ret.empty() || ret.back().end() != p) {
+        ret.push_back(MemoryRange(p, p_end));
+      } else {
+        ret.back() = MemoryRange(ret.back().start(), p_end);
+      }
+    }
+  }
+  return ret;
+}
 
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
@@ -5740,9 +5783,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   // The kernel may modify some of the pages in the mapping according to
   // ELF BSS metadata. We use /proc/<pid>/pagemap to observe which pages
   // have been changed and mark them for recording.
-  ScopedFd& pagemap = t->pagemap_fd();
-  ASSERT(t, pagemap.is_open());
-  vector<remote_ptr<void>> pages_to_record;
+  vector<MemoryRange> memory_to_record;
 
   for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
@@ -5777,25 +5818,14 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
         t->record_remote(km.start(), km.size());
       }
     } else {
-      auto ptr = km.start();
-      auto r = lseek(pagemap.get(), ptr.as_int() / page_size() * 8, SEEK_SET);
-      ASSERT(t, r >= 0);
-      while (ptr != km.end()) {
-        uint64_t pfn;
-        r = read(pagemap.get(), &pfn, sizeof(pfn));
-        ASSERT(t, r == sizeof(pfn));
-        // If the page is physically present (bit 63) or in swap (bit 62)
-        // then it was modified by the kernel and we need to record it.
-        if (pfn & ((1ULL << 63) | (1ULL << 62))) {
-          pages_to_record.push_back(ptr);
-        }
-        ptr += page_size();
-      }
+      vector<MemoryRange> present_pages = find_pages(t, km, PageState::PRESENT);
+      memory_to_record.insert(memory_to_record.end(),
+          present_pages.begin(), present_pages.end());
     }
   }
 
-  for (auto& p : pages_to_record) {
-    t->record_remote(p, page_size());
+  for (const auto& mr : memory_to_record) {
+    t->record_remote(mr.start(), mr.size());
   }
 
   // Patch LD_PRELOAD and VDSO after saving the mappings. Replay will apply
@@ -6431,6 +6461,40 @@ static void fake_gcrypt_file(RecordTask* t, Registers* r) {
   r->set_syscall_result(child_fd);
 }
 
+static void record_madvise(RecordTask* t) {
+  Registers regs = t->regs();
+  remote_ptr<void> start = floor_page_size(remote_ptr<void>(regs.arg1()));
+  remote_ptr<void> end = ceil_page_size(start + regs.arg2());
+  int advice = regs.arg3();
+  int result = regs.syscall_result_signed();
+  if (end <= start || !result) {
+    // Everything was affected according to the madvise
+    // parameters, so we don't need to record anything special.
+    return;
+  }
+  switch (advice) {
+    case MADV_DONTNEED:
+    case MADV_DONTNEED_LOCKED:
+      for (const auto& m : t->vm()->maps_containing_or_after(start)) {
+        MemoryRange r = m.map.intersect(MemoryRange(start, end));
+        if (!r.size()) {
+          break;
+        }
+        vector<MemoryRange> pages_present = find_pages(t, r,
+                                                       PageState::NOT_PRESENT);
+        auto& ranges = t->ev().Syscall().madvise_ranges;
+        ranges.insert(ranges.end(), pages_present.begin(), pages_present.end());
+      }
+      break;
+    case MADV_REMOVE:
+      // We don't handle this yet...
+      ASSERT(t, false) << "Possibly-partial MADV_REMOVEs not handled yet";
+      break;
+    default:
+      break;
+  }
+}
+
 template <typename Arch>
 static void rec_process_syscall_arch(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
@@ -6835,6 +6899,14 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::madvise: {
+      Registers r = t->regs();
+      r.set_arg3(syscall_state.syscall_entry_registers.arg3());
+      t->set_regs(r);
+      record_madvise(t);
+      break;
+    }
+
     case Arch::clone3:
     case Arch::close_range:
     case Arch::close:
@@ -6845,7 +6917,6 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::ioctl:
     case Arch::io_setup:
     case Arch::io_uring_setup:
-    case Arch::madvise:
     case Arch::memfd_create:
     case Arch::mprotect:
     case Arch::pkey_mprotect:

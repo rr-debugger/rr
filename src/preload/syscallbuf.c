@@ -2344,6 +2344,18 @@ static long sys_madvise(struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
+  if (advice == MADV_DONTNEED) {
+    ret = untraced_syscall3(syscallno, addr, length, MADV_COLD);
+    commit_raw_syscall(syscallno, ptr, ret);
+    if (ret < 0) {
+      return traced_raw_syscall(call);
+    }
+    ptr = prep_syscall();
+    if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+      return traced_raw_syscall(call);
+    }
+  }
+
   /* Ensure this syscall happens during replay. In particular MADV_DONTNEED
    * must be executed.
    */

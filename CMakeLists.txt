@@ -1075,6 +1075,7 @@ set(BASIC_TESTS
   x86/lsl
   madvise
   madvise_free
+  madvise_dontneed_private
   madvise_misc
   madvise_wipeonfork
   map_fixed
@@ -1086,6 +1087,7 @@ set(BASIC_TESTS
   mincore
   mknod
   mlock
+  mlock_madvise
   mmap_adjacent_to_rr_usage
   mmap_private
   mmap_private_grow_under_map

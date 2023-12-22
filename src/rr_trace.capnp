@@ -283,6 +283,11 @@ struct OpenedFd {
   inode @3 :Inode;
 }
 
+struct MemRange {
+  start @0 :RemotePtr;
+  end @1 :RemotePtr;
+}
+
 # The 'events' file is a sequence of these.
 struct Frame {
   tid @0 :Tid;
@@ -339,6 +344,14 @@ struct Frame {
           localAddr @28 :Data;
           remoteAddr @29 :Data;
         }
+        # The list of all memory ranges affected by an madvise(). If empty,
+        # a successful madvise affected the range indicated by its parameters,
+        # and an unsuccessful madvise affected nothing.
+        # Currently, if an madvise was fully successful (returned 0),
+        # this list is always empty.
+        # Only populated for replay-relevant madvises, i.e. DONTNEED(_LOCKED)
+        # and REMOVE.
+        madviseRanges @32 :List(MemRange);
       }
     }
     patchAfterSyscall @26: Void;

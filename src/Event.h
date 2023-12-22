@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "MemoryRange.h"
 #include "Registers.h"
 #include "core.h"
 #include "kernel_abi.h"
@@ -253,12 +254,16 @@ struct SyscallEvent {
   // record for that syscall.
   remote_ptr<const struct syscallbuf_record> desched_rec;
 
-  // Extra data for specific syscalls. Only used for exit events currently.
-  // -1 to indicate there isn't one
+  // Extra data for specific syscalls.
+  // -1 to indicate there isn't a write offset.
   int64_t write_offset;
   std::vector<int> exec_fds_to_close;
   std::vector<OpenedFd> opened;
   std::shared_ptr<std::array<typename NativeArch::sockaddr_storage, 2>> socket_addrs;
+  // Memory ranges affected by an madvise(). If empty, a successful madvise affected
+  // the range indicated by its parameters, and an unsuccessful madvise affected
+  // nothing.
+  std::vector<MemoryRange> madvise_ranges;
 
   SyscallState state;
   // Syscall number.

@@ -491,10 +491,12 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
       auto data = syscall.initExtra();
       if (e.write_offset >= 0) {
         data.setWriteOffset(e.write_offset);
-      } else if (e.exec_fds_to_close.size()) {
+      }
+      if (!e.exec_fds_to_close.empty()) {
         data.setExecFdsToClose(kj::ArrayPtr<const int>(
             e.exec_fds_to_close.data(), e.exec_fds_to_close.size()));
-      } else if (e.opened.size()) {
+      }
+      if (!e.opened.empty()) {
         auto open = data.initOpenedFds(e.opened.size());
         for (size_t i = 0; i < e.opened.size(); ++i) {
           auto o = open[i];
@@ -504,12 +506,22 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
           o.setDevice(opened.device);
           o.setInode(opened.inode);
         }
-      } else if (e.socket_addrs) {
+      }
+      if (e.socket_addrs) {
         auto addrs = data.initSocketAddrs();
         auto localAddr = (*e.socket_addrs.get())[0];
         auto remoteAddr = (*e.socket_addrs.get())[1];
         addrs.setLocalAddr(Data::Reader(reinterpret_cast<uint8_t*>(&localAddr), sizeof(localAddr)));
         addrs.setRemoteAddr(Data::Reader(reinterpret_cast<uint8_t*>(&remoteAddr), sizeof(remoteAddr)));
+      }
+      if (!e.madvise_ranges.empty()) {
+        auto ranges = data.initMadviseRanges(e.madvise_ranges.size());
+        for (size_t i = 0; i < e.madvise_ranges.size(); ++i) {
+          auto r = ranges[i];
+          auto mr = e.madvise_ranges[i];
+          r.setStart(mr.start().as_int());
+          r.setEnd(mr.end().as_int());
+        }
       }
       break;
     }
@@ -704,6 +716,16 @@ TraceFrame TraceReader::read_frame(FrameTime skip_before) {
             FATAL() << "Invalid sockaddr length";
           }
           memcpy(&(*syscall_ev.socket_addrs.get())[1], remote.begin(), sizeof(NativeArch::sockaddr_storage));
+          break;
+        }
+        case trace::Frame::Event::Syscall::Extra::MADVISE_RANGES: {
+          auto mrs = data.getMadviseRanges();
+          syscall_ev.madvise_ranges.resize(mrs.size());
+          for (size_t i = 0; i < mrs.size(); ++i) {
+            const auto& mr = mrs[i];
+            syscall_ev.madvise_ranges[i] =
+                MemoryRange(remote_ptr<void>(mr.getStart()), remote_ptr<void>(mr.getEnd()));
+          }
           break;
         }
         default:
