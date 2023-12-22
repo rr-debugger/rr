@@ -3153,30 +3153,30 @@ void Task::write_zeroes(unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void>
     return;
   }
 
-  bool remove_ok = true;
   remote_ptr<void> initial_addr = addr;
   size_t initial_size = size;
   vector<uint8_t> zeroes;
   while (size > 0) {
     size_t bytes;
-    remote_ptr<void> first_page = ceil_page_size(addr);
-    if (addr < first_page) {
-      bytes = min<size_t>(first_page - addr, size);
+    remote_ptr<void> start_page = ceil_page_size(addr);
+    if (addr < start_page) {
+      bytes = min<size_t>(start_page - addr, size);
     } else {
-      if (remove_ok) {
-        remote_ptr<void> last_page = floor_page_size(addr + size);
-        if (first_page < last_page) {
-          if (!*remote) {
-            *remote = make_unique<AutoRemoteSyscalls>(this);
-          }
-          int ret = (*remote)->syscall(syscall_number_for_madvise(arch()), first_page, last_page - first_page, MADV_REMOVE);
-          if (ret == 0) {
-            addr = last_page;
-            size -= last_page - first_page;
-            continue;
-          }
-          // Don't try MADV_REMOVE again
-          remove_ok = false;
+      // we're page-aligned. Try using an madvise call to quickly zero large
+      // areas. Process one VMA at a time.
+      const KernelMapping& m = vm()->mapping_of(start_page).map;
+      remote_ptr<void> end_page = min(floor_page_size(start_page + size), m.end());
+      if (start_page + 65536 <= end_page) {
+        if (!*remote) {
+          *remote = make_unique<AutoRemoteSyscalls>(this);
+        }
+        int advice = (m.flags() & MAP_ANONYMOUS) ? MADV_DONTNEED : MADV_REMOVE;
+        int ret = (*remote)->syscall(syscall_number_for_madvise(arch()),
+            start_page, end_page - start_page, advice);
+        if (ret == 0) {
+          addr = end_page;
+          size -= end_page - start_page;
+          continue;
         }
       }
       bytes = min<size_t>(4*1024*1024, size);
