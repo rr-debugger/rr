@@ -1056,9 +1056,19 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       for (size_t i = buf_valid_start_offset; i + 2 <= buf_valid_end_offset; ++i) {
         uint8_t b = bytes[i];
         // Check for short conditional or unconditional jump
-        if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
-          int offset_from_instruction_end = (int)i + 2 + (int8_t)bytes[i + 1] -
-              (LOOK_BACK + instruction_length);
+        int branch_instruction_len = 0;
+        int32_t branch_offset = 0;
+        if (b == 0xeb || b == 0xe3 || (b >= 0x70 && b < 0x80)) {
+          branch_instruction_len = 2;
+          branch_offset = (int8_t)bytes[i + 1];
+        } else if (b == 0x0f && i + 6 <= buf_valid_end_offset &&
+                   (bytes[i + 1] >= 0x80 && bytes[i + 1] < 0x90)) {
+          branch_instruction_len = 6;
+          memcpy(&branch_offset, bytes + i + 2, 4);
+        }
+        if (branch_instruction_len) {
+          int offset_from_instruction_end = (int)i + branch_instruction_len +
+              branch_offset - (LOOK_BACK + instruction_length);
           if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
             if (hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS) {
               found_potential_interfering_branch =
