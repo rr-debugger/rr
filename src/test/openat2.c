@@ -2,11 +2,6 @@
 
 #include "util.h"
 
-#include <fcntl.h>          /* Definition of O_* and S_* constants */
-#include <sys/syscall.h>    /* Definition of SYS_* constants */
-#include <unistd.h>
-#include <errno.h>
-
 #define TEST_DIR "test_dir"
 #define FILENAME "foo"
 #define REL_FILENAME "../" TEST_DIR "/" FILENAME
@@ -25,7 +20,7 @@ int main(void) {
   how.mode = 0600;
 
   how.resolve = RESOLVE_BENEATH;
-  filefd = syscall(SYS_openat2, dirfd, REL_FILENAME, &how, sizeof(how));
+  filefd = syscall(RR_openat2, dirfd, REL_FILENAME, &how, sizeof(how));
   test_assert(filefd == -1);
 
   // openat2 was introduced by Linux 5.6
@@ -38,7 +33,7 @@ int main(void) {
   test_assert(errno == EXDEV);
 
   how.resolve = 0;
-  filefd = syscall(SYS_openat2, dirfd, REL_FILENAME, &how, sizeof(how));
+  filefd = syscall(RR_openat2, dirfd, REL_FILENAME, &how, sizeof(how));
   test_assert(filefd > 0);
   test_assert(close(filefd) == 0);
 
