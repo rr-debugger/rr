@@ -2245,15 +2245,19 @@ static Switchable prepare_bpf(RecordTask* t,
 
 static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
                                int options) {
+  for (Task* thread : t->thread_group()->task_set()) {
+    RecordTask* rthread = static_cast<RecordTask*>(thread);
+    for (RecordTask* child : rthread->emulated_ptrace_tracees) {
+      if (t->is_waiting_for_ptrace(child) && child->emulated_stop_pending) {
+        syscall_state.emulate_wait_for_child = child;
+        return true;
+      }
+    }
+  }
+
   for (ThreadGroup* child_process : t->thread_group()->children()) {
     for (Task* child : child_process->task_set()) {
       auto rchild = static_cast<RecordTask*>(child);
-
-      if (t->is_waiting_for_ptrace(rchild) && rchild->emulated_stop_pending) {
-        syscall_state.emulate_wait_for_child = rchild;
-        return true;
-      }
-
       if (rchild->emulated_stop_type == NOT_STOPPED) {
         continue;
       }
