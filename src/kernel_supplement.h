@@ -277,8 +277,11 @@ struct rr_input_mask {
 
 // Defined in the ip_tables header for each protocol, but always to the same,
 // value, so it should be fine to set this here
-#ifndef SO_SET_REPLACE
-#define SO_SET_REPLACE 64
+#ifndef IPT_SO_SET_REPLACE
+#define IPT_SO_SET_REPLACE 64
+#endif
+#ifndef IPV6T_SO_SET_REPLACE
+#define IPV6T_SO_SET_REPLACE 64
 #endif
 
 #ifndef HCIGETDEVLIST

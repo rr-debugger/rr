@@ -976,28 +976,18 @@ static Switchable prepare_setsockopt(RecordTask* t,
     r.set_arg1(-1);
     t->set_regs(r);
   } else {
-    switch (args.level) {
-      case SOL_IP:
-      case SOL_IPV6:
-        switch (args.optname) {
-          case SO_SET_REPLACE: {
-            if (args.optlen < (ssize_t)sizeof(typename Arch::ipt_replace)) {
-              break;
-            }
-            auto repl_ptr =
-                args.optval.rptr().template cast<typename Arch::ipt_replace>();
-            syscall_state.mem_ptr_parameter(
-                REMOTE_PTR_FIELD(repl_ptr, counters),
-                t->read_mem(REMOTE_PTR_FIELD(repl_ptr, num_counters)) *
-                    sizeof(typename Arch::xt_counters));
-            break;
-          }
-          default:
-            break;
-        }
-        break;
-      default:
-        break;
+    if (args.level == SOL_IP && args.optname == IPT_SO_SET_REPLACE) {
+      if (args.optlen < (ssize_t)sizeof(typename Arch::ipt_replace)) {
+        return PREVENT_SWITCH;
+      }
+      auto repl_ptr =
+          args.optval.rptr().template cast<typename Arch::ipt_replace>();
+      syscall_state.mem_ptr_parameter(
+          REMOTE_PTR_FIELD(repl_ptr, counters),
+          t->read_mem(REMOTE_PTR_FIELD(repl_ptr, num_counters)) *
+              sizeof(typename Arch::xt_counters));
+    } else if (args.level == SOL_IPV6 && args.optname == IPV6T_SO_SET_REPLACE) {
+      FATAL() << "IPV6T_SO_SET_REPLACE not supported yet";
     }
   }
   return PREVENT_SWITCH;

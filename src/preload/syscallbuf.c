@@ -111,6 +111,19 @@ struct btrfs_ioctl_clone_range_args {
 #define GRND_NONBLOCK 1
 #endif
 
+#ifndef SOL_IP
+#define SOL_IP 0
+#endif
+#ifndef SOL_IPV6
+#define SOL_IPV6 41
+#endif
+#ifndef IPT_SO_SET_REPLACE
+#define IPT_SO_SET_REPLACE 64
+#endif
+#ifndef IPV6T_SO_SET_REPLACE
+#define IPV6T_SO_SET_REPLACE 64
+#endif
+
 struct rr_rseq {
   uint32_t cpu_id_start;
   uint32_t cpu_id;
@@ -3393,6 +3406,11 @@ static long sys_setsockopt(struct syscall_info* call) {
   if (level == SOL_NETLINK &&
       (optname == NETLINK_RX_RING || optname == NETLINK_TX_RING)) {
     // Let rr intercept this (and probably disable it)
+    return traced_raw_syscall(call);
+  }
+  if ((level == SOL_IP && optname == IPT_SO_SET_REPLACE) ||
+      (level == SOL_IPV6 && optname == IPV6T_SO_SET_REPLACE)) {
+    // Let rr intercept this because it has output parameters :-(
     return traced_raw_syscall(call);
   }
 
