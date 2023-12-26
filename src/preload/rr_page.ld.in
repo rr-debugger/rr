@@ -45,14 +45,6 @@ VERSION {
     global:
       gettimeofday;
       clock_gettime;
-      __vdso_gettimeofday;
-      __vdso_clock_getres;
-      __vdso_time;
-      __vdso_clock_gettime;
-      __vdso_getcpu;
-      __kernel_clock_getres;
-      __kernel_rt_sigreturn;
-      __kernel_gettimeofday;
-      __kernel_clock_gettime;
+      @VDSO_SYMBOLS@
   };
 }
