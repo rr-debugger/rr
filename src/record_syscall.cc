@@ -6463,7 +6463,7 @@ static void fake_gcrypt_file(RecordTask* t, Registers* r) {
 
 static void record_madvise(RecordTask* t) {
   Registers regs = t->regs();
-  remote_ptr<void> start = floor_page_size(remote_ptr<void>(regs.arg1()));
+  remote_ptr<void> start = floor_page_size(remote_ptr<void>(regs.orig_arg1()));
   remote_ptr<void> end = ceil_page_size(start + regs.arg2());
   int advice = regs.arg3();
   int result = regs.syscall_result_signed();
