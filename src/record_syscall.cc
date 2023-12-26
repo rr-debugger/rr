@@ -977,8 +977,8 @@ static Switchable prepare_setsockopt(RecordTask* t,
     t->set_regs(r);
   } else {
     switch (args.level) {
-      case IPPROTO_IP:
-      case IPPROTO_IPV6:
+      case SOL_IP:
+      case SOL_IPV6:
         switch (args.optname) {
           case SO_SET_REPLACE: {
             if (args.optlen < (ssize_t)sizeof(typename Arch::ipt_replace)) {
