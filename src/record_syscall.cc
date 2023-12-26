@@ -987,7 +987,15 @@ static Switchable prepare_setsockopt(RecordTask* t,
           t->read_mem(REMOTE_PTR_FIELD(repl_ptr, num_counters)) *
               sizeof(typename Arch::xt_counters));
     } else if (args.level == SOL_IPV6 && args.optname == IPV6T_SO_SET_REPLACE) {
-      FATAL() << "IPV6T_SO_SET_REPLACE not supported yet";
+      if (args.optlen < (ssize_t)sizeof(typename Arch::ip6t_replace)) {
+        return PREVENT_SWITCH;
+      }
+      auto repl_ptr =
+          args.optval.rptr().template cast<typename Arch::ip6t_replace>();
+      syscall_state.mem_ptr_parameter(
+          REMOTE_PTR_FIELD(repl_ptr, counters),
+          t->read_mem(REMOTE_PTR_FIELD(repl_ptr, num_counters)) *
+              sizeof(typename Arch::xt_counters));
     }
   }
   return PREVENT_SWITCH;

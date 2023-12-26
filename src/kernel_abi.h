@@ -1558,6 +1558,21 @@ struct BaseArch : public wordsize,
   // this check.
   // RR_VERIFY_TYPE(ipt_replace);
 
+  struct ip6t_replace {
+    uint8_t name[32];
+    uint32_t valid_hook;
+    uint32_t num_entries;
+    uint32_t size;
+    uint32_t hook_entry[5];
+    uint32_t underflow[5];
+    uint32_t num_counters;
+    ptr<xt_counters> counters; // ptr<xt_counters>
+    // Plus hangoff here
+  };
+  // The corresponding header requires -fpermissive, which we don't pass. Skip
+  // this check.
+  // RR_VERIFY_TYPE(ip6t_replace);
+
   struct cap_header {
     uint32_t version;
     int pid;

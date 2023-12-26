@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
-#include <linux/netfilter_ipv4/ip_tables.h>
+#include <linux/netfilter_ipv6/ip6_tables.h>
 
 #include "nsutils.h"
 
@@ -11,20 +11,20 @@ int main(void) {
     return 0;
   }
 
-  int sock_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+  int sock_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_RAW);
   test_assert(sock_fd >= 0);
 
-  struct ipt_getinfo* info;
+  struct ip6t_getinfo* info;
   ALLOCATE_GUARD(info, 'a');
   strcpy(info->name, "nat");
   uint32_t getinfo_size = sizeof(*info);
 
   errno = 0;
-  int ret = getsockopt(sock_fd, SOL_IP, IPT_SO_GET_INFO, info, &getinfo_size);
+  int ret = getsockopt(sock_fd, SOL_IPV6, IP6T_SO_GET_INFO, info, &getinfo_size);
   if (ret < 0) {
     switch (errno) {
     case ENOPROTOOPT:
-      atomic_puts("IPT_SO_GET_INFO not available");
+      atomic_puts("IPV6T_SO_GET_INFO not available");
       atomic_puts("EXIT-SUCCESS");
       break;
     case ENOENT:
@@ -41,11 +41,11 @@ int main(void) {
 
   atomic_printf("%d existing entries in nat table\n", info->num_entries);
 
-  uint32_t getentries_size = sizeof(struct ipt_get_entries) + info->size;
-  struct ipt_get_entries* entries = allocate_guard(getentries_size, 'b');
+  uint32_t getentries_size = sizeof(struct ip6t_get_entries) + info->size;
+  struct ip6t_get_entries* entries = allocate_guard(getentries_size, 'b');
   strcpy(entries->name, "nat");
   entries->size = info->size;
-  ret = getsockopt(sock_fd, SOL_IP, IPT_SO_GET_ENTRIES, entries,
+  ret = getsockopt(sock_fd, SOL_IPV6, IP6T_SO_GET_ENTRIES, entries,
                    &getentries_size);
   if (ret < 0 && errno == EINVAL && sizeof(void*) == 4) {
     atomic_puts("Kernel may have been built without CONFIG_NETFILTER_XTABLES_COMPAT");
@@ -55,8 +55,8 @@ int main(void) {
   test_assert(ret == 0);
   VERIFY_GUARD(entries);
 
-  size_t final_size = sizeof(struct ipt_replace) + info->size;
-  struct ipt_replace* final = allocate_guard(final_size, 'c');
+  size_t final_size = sizeof(struct ip6t_replace) + info->size;
+  struct ip6t_replace* final = allocate_guard(final_size, 'c');
 
   strcpy(final->name, "nat");
   final->valid_hooks = info->valid_hooks;
@@ -74,7 +74,7 @@ int main(void) {
   char* src_ptr = (char*)entries->entrytable;
   char* dest_ptr = (char*)final->entries;
   for (size_t i = 0; i < info->num_entries; ++i) {
-    struct ipt_entry* cur_entry = (struct ipt_entry*)src_ptr;
+    struct ip6t_entry* cur_entry = (struct ip6t_entry*)src_ptr;
     memcpy(dest_ptr, src_ptr, cur_entry->next_offset);
     dest_ptr += cur_entry->next_offset;
     src_ptr += cur_entry->next_offset;
@@ -82,7 +82,7 @@ int main(void) {
   test_assert(dest_ptr == (char*)final + final_size);
 
   // Finally pass this off to the kernel
-  ret = setsockopt(sock_fd, SOL_IP, IPT_SO_SET_REPLACE, final, final_size);
+  ret = setsockopt(sock_fd, SOL_IPV6, IP6T_SO_SET_REPLACE, final, final_size);
   test_assert(ret == 0);
   VERIFY_GUARD(final);
   VERIFY_GUARD(final->counters);

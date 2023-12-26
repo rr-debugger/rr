@@ -1132,6 +1132,7 @@ set(BASIC_TESTS
   munmap_discontinuous
   nanosleep
   netfilter
+  netfilter_ipv6
   netlink_mmap_disable
   no_mask_timeslice
   nscd
