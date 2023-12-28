@@ -106,6 +106,9 @@ struct btrfs_ioctl_clone_range_args {
 #ifndef MADV_FREE
 #define MADV_FREE 8
 #endif
+#ifndef MADV_COLD
+#define MADV_COLD 20
+#endif
 
 #ifndef GRND_NONBLOCK
 #define GRND_NONBLOCK 1
