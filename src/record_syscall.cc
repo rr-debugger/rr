@@ -6469,7 +6469,7 @@ static void record_madvise(RecordTask* t) {
   remote_ptr<void> end = ceil_page_size(start + regs.arg2());
   int advice = regs.arg3();
   int result = regs.syscall_result_signed();
-  if (end <= start || !result) {
+  if (end <= start || !result || start != regs.orig_arg1()) {
     // Everything was affected according to the madvise
     // parameters, so we don't need to record anything special.
     return;
