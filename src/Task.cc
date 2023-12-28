@@ -2847,10 +2847,6 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
       << "Should not already have syscallbuf initialized!";
 
   syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
-
-  // No entries to begin with.
-  memset(m.local_addr, 0, sizeof(struct syscallbuf_hdr));
-
   return km;
 }
 
