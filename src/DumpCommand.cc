@@ -116,7 +116,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   if (!ok) {
     FATAL() << "Can't read raw-data record for syscallbuf";
   }
-  size_t bytes_remaining = buf.data.size() - sizeof(struct syscallbuf_hdr);
+  size_t bytes_remaining = buf.data.size() - trace.syscallbuf_hdr_size();
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
   if (flush_hdr->num_rec_bytes > bytes_remaining) {
     fprintf(stderr, "Malformed trace file (bad recorded-bytes count)\n");
@@ -131,7 +131,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   }
   bytes_remaining = flush_hdr->num_rec_bytes;
 
-  auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr + 1);
+  auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr) + trace.syscallbuf_hdr_size();
   auto end_ptr = record_ptr + bytes_remaining;
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);

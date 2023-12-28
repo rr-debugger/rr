@@ -179,6 +179,7 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
   ticks_semantics_ = trace_in.ticks_semantics();
   rrcall_base_ = trace_in.rrcall_base();
   syscallbuf_fds_disabled_size_ = trace_in.syscallbuf_fds_disabled_size();
+  syscallbuf_hdr_size_ = trace_in.syscallbuf_hdr_size();
 
   if (!flags.redirect_stdio_file.empty()) {
     tracee_output_fd_ = make_shared<ScopedFd>(flags.redirect_stdio_file.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
@@ -1257,22 +1258,21 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t, Ticks ticks) {
   // region.
   TraceReader::RawData buf;
   bool ok = t->trace_reader().read_raw_data_for_frame(buf);
+  size_t hdr_size = syscallbuf_hdr_size();
   ASSERT(t, ok);
-  ASSERT(t, buf.data.size() >= sizeof(struct syscallbuf_hdr));
+  ASSERT(t, buf.data.size() >= hdr_size);
   ASSERT(t, buf.data.size() <= t->syscallbuf_size);
   ASSERT(t, buf.addr == t->syscallbuf_child.cast<void>());
 
   struct syscallbuf_hdr recorded_hdr;
-  memcpy(&recorded_hdr, buf.data.data(), sizeof(struct syscallbuf_hdr));
+  memcpy(&recorded_hdr, buf.data.data(), hdr_size);
   // Don't overwrite syscallbuf_hdr. That needs to keep tracking the current
   // syscallbuf state.
-  t->write_bytes_helper(t->syscallbuf_child + 1,
-                        buf.data.size() - sizeof(struct syscallbuf_hdr),
-                        buf.data.data() + sizeof(struct syscallbuf_hdr));
+  t->write_bytes_helper(t->syscallbuf_child.cast<void>() + hdr_size,
+                        buf.data.size() - hdr_size,
+                        buf.data.data() + hdr_size);
 
-  ASSERT(t,
-         recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
-             t->syscallbuf_size);
+  ASSERT(t, recorded_hdr.num_rec_bytes + hdr_size <= t->syscallbuf_size);
 
   current_step.flush.stop_breakpoint_offset = recorded_hdr.num_rec_bytes / 8;
   current_step.flush.recorded_ticks = ticks;

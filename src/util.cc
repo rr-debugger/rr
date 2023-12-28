@@ -446,6 +446,33 @@ bool should_checksum(const Event& event, FrameTime time) {
   return checksum <= time;
 }
 
+static void normalize_syscallbuf(Task* t, vector<uint8_t>& mem) {
+  /* The syscallbuf consists of a region that's written
+   * deterministically wrt the trace events, and a
+   * region that's written nondeterministically in the
+   * same way as trace scratch buffers.  The
+   * deterministic region comprises committed syscallbuf
+   * records, and possibly the one pending record
+   * metadata.  The nondeterministic region starts at
+   * the "extra data" for the possibly one pending
+   * record.
+   *
+   * The deterministic region excludes the notify_on_syscall_hook_exit
+   * flag. This flag is written by is_safe_to_deliver_signal and
+   * that write can occur at a different event to where ReplaySession
+   * eventually sets it.
+   *
+   * So here, we set things up so that we only checksum
+   * the deterministic region. */
+  struct syscallbuf_hdr hdr;
+  size_t hdr_size = t->session().syscallbuf_hdr_size();
+  ASSERT(t, mem.size() >= hdr_size);
+  memcpy(&hdr, mem.data(), hdr_size);
+  hdr.notify_on_syscall_hook_exit = 0;
+  memcpy(mem.data(), &hdr, hdr_size);
+  mem.resize(hdr_size + hdr.num_rec_bytes + sizeof(struct syscallbuf_record));
+}
+
 void checksum_process_memory(RecordTask* t, FrameTime global_time) {
   string filename = format_dump_filename(t, global_time, "mem_checksums");
   FILE* checksums_file = fopen64(filename.c_str(), "w");
@@ -480,30 +507,7 @@ void checksum_process_memory(RecordTask* t, FrameTime global_time) {
     }
 
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
-      /* The syscallbuf consists of a region that's written
-      * deterministically wrt the trace events, and a
-      * region that's written nondeterministically in the
-      * same way as trace scratch buffers.  The
-      * deterministic region comprises committed syscallbuf
-      * records, and possibly the one pending record
-      * metadata.  The nondeterministic region starts at
-      * the "extra data" for the possibly one pending
-      * record.
-      *
-      * The deterministic region excludes the notify_on_syscall_hook_exit
-      * flag. This flag is written by is_safe_to_deliver_signal and
-      * that write can occur at a different event to where ReplaySession
-      * eventually sets it.
-      *
-      * So here, we set things up so that we only checksum
-      * the deterministic region. */
-      struct syscallbuf_hdr hdr;
-      ASSERT(t, mem.size() >= sizeof(hdr));
-      memcpy(&hdr, mem.data(), sizeof(hdr));
-      hdr.notify_on_syscall_hook_exit = 0;
-      memcpy(mem.data(), &hdr, sizeof(hdr));
-      mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
-                 sizeof(struct syscallbuf_record));
+      normalize_syscallbuf(t, mem);
     }
 
     uint32_t checksum = compute_checksum(mem.data(), mem.size());
@@ -563,30 +567,7 @@ void validate_process_memory(ReplayTask* t, FrameTime global_time) {
     const AddressSpace::Mapping& m = t->vm()->mapping_of(start);
 
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
-      /* The syscallbuf consists of a region that's written
-      * deterministically wrt the trace events, and a
-      * region that's written nondeterministically in the
-      * same way as trace scratch buffers.  The
-      * deterministic region comprises committed syscallbuf
-      * records, and possibly the one pending record
-      * metadata.  The nondeterministic region starts at
-      * the "extra data" for the possibly one pending
-      * record.
-      *
-      * The deterministic region excludes the notify_on_syscall_hook_exit
-      * flag. This flag is written by is_safe_to_deliver_signal and
-      * that write can occur at a different event to where ReplaySession
-      * eventually sets it.
-      *
-      * So here, we set things up so that we only checksum
-      * the deterministic region. */
-      struct syscallbuf_hdr hdr;
-      ASSERT(t, mem.size() >= sizeof(hdr));
-      memcpy(&hdr, mem.data(), sizeof(hdr));
-      hdr.notify_on_syscall_hook_exit = 0;
-      memcpy(mem.data(), &hdr, sizeof(hdr));
-      mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
-                 sizeof(struct syscallbuf_record));
+      normalize_syscallbuf(t, mem);
     }
 
     uint32_t our_checksum = compute_checksum(mem.data(), mem.size());

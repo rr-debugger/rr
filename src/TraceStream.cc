@@ -1426,6 +1426,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setPreloadThreadLocalsRecorded(true);
   header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
   header.setSyscallbufFdsDisabledSize(SYSCALLBUF_FDS_DISABLED_SIZE);
+  header.setSyscallbufHdrSize(sizeof(syscallbuf_hdr));
 
   header.setNativeArch(to_trace_arch(NativeArch::arch()));
   if (NativeArch::is_x86ish())
@@ -1612,6 +1613,7 @@ TraceReader::TraceReader(const string& dir)
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   rrcall_base_ = header.getRrcallBase();
   syscallbuf_fds_disabled_size_ = header.getSyscallbufFdsDisabledSize();
+  syscallbuf_hdr_size_ = header.getSyscallbufHdrSize();
   required_forward_compatibility_version_ = header.getRequiredForwardCompatibilityVersion();
   quirks_ = 0;
   {

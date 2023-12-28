@@ -2740,9 +2740,13 @@ void Task::copy_state(const CapturedState& state) {
   }
 }
 
+size_t Task::syscallbuf_data_size() {
+  return read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes)) +
+         session().syscallbuf_hdr_size();
+}
+
 remote_ptr<const struct syscallbuf_record> Task::next_syscallbuf_record() {
-  return ((syscallbuf_child + 1).cast<uint8_t>() +
-          read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes)))
+  return (syscallbuf_child.cast<uint8_t>() + syscallbuf_data_size())
       .cast<const struct syscallbuf_record>();
 }
 
@@ -2839,7 +2843,6 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   if (!km.size()) {
     return km;
   }
-  auto& m = remote.task()->vm()->mapping_of(km.start());
   remote.task()->vm()->mapping_flags_of(km.start()) |=
       AddressSpace::Mapping::IS_SYSCALLBUF;
 
@@ -2877,7 +2880,8 @@ void Task::reset_syscallbuf() {
   // exist for the syscallbuf
   uint32_t num_rec =
       read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes));
-  uint8_t* ptr = as->local_mapping(syscallbuf_child + 1, num_rec);
+  uint8_t* ptr = as->local_mapping(
+        syscallbuf_child.cast<void>() + session().syscallbuf_hdr_size(), num_rec);
   DEBUG_ASSERT(ptr != nullptr);
   memset(ptr, 0, num_rec);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes), (uint32_t)0);

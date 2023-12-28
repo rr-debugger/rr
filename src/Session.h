@@ -405,6 +405,9 @@ public:
   uint32_t syscallbuf_fds_disabled_size() const {
     return syscallbuf_fds_disabled_size_;
   }
+  uint32_t syscallbuf_hdr_size() const {
+    return syscallbuf_hdr_size_;
+  }
 
   /* Bind the current process to the a CPU as specified in the session options
      or trace */
@@ -466,6 +469,7 @@ protected:
 
   int rrcall_base_;
   uint32_t syscallbuf_fds_disabled_size_;
+  uint32_t syscallbuf_hdr_size_;
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
 
   TicksSemantics ticks_semantics_;

@@ -48,6 +48,7 @@ Session::Session()
       next_task_serial_(1),
       rrcall_base_(RR_CALL_BASE),
       syscallbuf_fds_disabled_size_(SYSCALLBUF_FDS_DISABLED_SIZE),
+      syscallbuf_hdr_size_(sizeof(syscallbuf_hdr)),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),
@@ -73,6 +74,7 @@ Session::Session(const Session& other)
       next_task_serial_(other.next_task_serial_),
       rrcall_base_(other.rrcall_base_),
       syscallbuf_fds_disabled_size_(other.syscallbuf_fds_disabled_size_),
+      syscallbuf_hdr_size_(other.syscallbuf_hdr_size_),
       syscall_seccomp_ordering_(other.syscall_seccomp_ordering_),
       ticks_semantics_(other.ticks_semantics_),
       original_affinity_(other.original_affinity_),
@@ -653,9 +655,7 @@ static vector<uint8_t> capture_syscallbuf(const AddressSpace::Mapping& m,
     // so just record the entire buffer. This should not be common.
     data_size = m.map.size();
   } else {
-    data_size = clone_leader->read_mem(
-                    REMOTE_PTR_FIELD(syscallbuf_hdr, num_rec_bytes)) +
-                sizeof(struct syscallbuf_hdr);
+    data_size = clone_leader->syscallbuf_data_size();
   }
   return clone_leader->read_mem(start, data_size);
 }

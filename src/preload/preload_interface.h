@@ -621,8 +621,6 @@ struct syscallbuf_hdr {
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
-/* TODO: static_assert(sizeof(uint32_t) ==
- *                     sizeof(struct syscallbuf_hdr)) */
 
 /**
  * Each bit of of syscallbuf_hdr->locked indicates a reason why the syscallbuf
@@ -635,17 +633,6 @@ enum syscallbuf_locked_why {
      semantics (e.g. for ptracees whose syscalls are being observed) */
   SYSCALLBUF_LOCKED_TRACER = 0x2
 };
-
-/**
- * Return a pointer to what may be the next syscall record.
- *
- * THIS POINTER IS NOT GUARANTEED TO BE VALID!!!  Caveat emptor.
- */
-inline static struct syscallbuf_record* next_record(
-    struct syscallbuf_hdr* hdr) {
-  uintptr_t next = (uintptr_t)hdr->recs + hdr->num_rec_bytes;
-  return (struct syscallbuf_record*)next;
-}
 
 /**
  * Return the amount of space that a record of |length| will occupy in

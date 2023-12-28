@@ -178,10 +178,7 @@ public:
    */
   void finish_emulated_syscall();
 
-  size_t syscallbuf_data_size() {
-    return read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes)) +
-           sizeof(struct syscallbuf_hdr);
-  }
+  size_t syscallbuf_data_size();
 
   /**
    * Dump attributes of this process, including pending events,

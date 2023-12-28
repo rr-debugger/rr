@@ -131,7 +131,9 @@ struct Header {
   # rr page size, i.e. the one used to build the librr_page.so
   preloadLibraryPageSize @23 :UInt32 = 4096;
   # SYSCALLBUF_FDS_DISABLED_SIZE during recording
-  syscallbufFdsDisabledSize @25 : UInt32 = 1024;
+  syscallbufFdsDisabledSize @25 :UInt32 = 1024;
+  # sizeof(syscallbuf_hdr) during recording
+  syscallbufHdrSize @26 :UInt32 = 30;
 }
 
 # A file descriptor belonging to a task
