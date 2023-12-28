@@ -655,7 +655,8 @@ static vector<uint8_t> capture_syscallbuf(const AddressSpace::Mapping& m,
     // so just record the entire buffer. This should not be common.
     data_size = m.map.size();
   } else {
-    data_size = clone_leader->syscallbuf_data_size();
+    data_size = clone_leader->read_mem(REMOTE_PTR_FIELD(syscallbuf_hdr, num_rec_bytes)) +
+        clone_leader->session().syscallbuf_hdr_size();
   }
   return clone_leader->read_mem(start, data_size);
 }
