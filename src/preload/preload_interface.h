@@ -619,8 +619,12 @@ struct syscallbuf_hdr {
    * anything. This is set when a user seccomp filter forces a SIGSYS. */
   volatile uint8_t failed_during_preparation;
 
-  struct syscallbuf_record recs[0];
+  uint8_t padding[2];
 } __attribute__((__packed__));
+#ifdef __cplusplus
+static_assert(sizeof(struct syscallbuf_hdr) % 8 == 0,
+              "syscallbuf_hdr size must be multiple of 8");
+#endif
 
 /**
  * Each bit of of syscallbuf_hdr->locked indicates a reason why the syscallbuf

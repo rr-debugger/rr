@@ -203,7 +203,7 @@ static struct syscallbuf_hdr* buffer_hdr(void) {
  */
 inline static struct syscallbuf_record* next_record(
     struct syscallbuf_hdr* hdr) {
-  uintptr_t next = (uintptr_t)hdr->recs + hdr->num_rec_bytes;
+  uintptr_t next = (uintptr_t)hdr + sizeof(*hdr) + hdr->num_rec_bytes;
   return (struct syscallbuf_record*)next;
 }
 
