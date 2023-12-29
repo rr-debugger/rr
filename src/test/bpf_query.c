@@ -8,8 +8,8 @@
 
 
 #define MAX_PROG_CNT 1
-#define ATTACH_TYPE BPF_FLOW_DISSECTOR
-#define PROG_TYPE BPF_PROG_TYPE_FLOW_DISSECTOR
+#define ATTACH_TYPE 17 // BPF_FLOW_DISSECTOR
+#define PROG_TYPE 22 // BPF_PROG_TYPE_FLOW_DISSECTOR
 
 
 int bpf(int cmd, union bpf_attr *attr, unsigned int size) {
@@ -58,7 +58,7 @@ int main(void) {
       atomic_puts("EXIT-SUCCESS");
       return 0;
     }
-    test_assert(!"bpf(BPF_PROG_QUERY) failed");
+    test_assert(0 && "bpf(BPF_PROG_QUERY) failed");
   }
   test_assert(query_attr.query.prog_cnt == 0);
 
@@ -69,24 +69,24 @@ int main(void) {
     .insns = (uintptr_t)bpf_program,
     .license = (uintptr_t)"MIT",
     .prog_type = PROG_TYPE,
-    .expected_attach_type = ATTACH_TYPE,
     .log_size = sizeof(log_buf),
     .log_buf = (uintptr_t)log_buf,
     .log_level = 1,
   };
-  size_t prog_attr_size = offsetof(union bpf_attr, attach_prog_fd) + sizeof(__u32);
+  const int offset_of_attach_prog_fd = 112;
+  size_t prog_attr_size = offset_of_attach_prog_fd + sizeof(__u32);
+  int prog = bpf(BPF_PROG_LOAD, &prog_attr, prog_attr_size);
+  if (prog < 0) {
+    atomic_puts(log_buf);
+    test_assert(0 && "failed to load program");
+  }
+  test_assert(prog > 0);
 
   union bpf_attr attach_attr = {
     .attach_type = ATTACH_TYPE,
   };
-  size_t attach_attr_size = offsetof(union bpf_attr, replace_bpf_fd) + sizeof(__u32);
-
-  int prog = bpf(BPF_PROG_LOAD, &prog_attr, prog_attr_size);
-  if (prog < 0) {
-    atomic_puts(log_buf);
-    test_assert(!"failed to load program");
-  }
-  test_assert(prog > 0);
+  const int offset_of_replace_bpf_fd = 112;
+  size_t attach_attr_size = offset_of_replace_bpf_fd + sizeof(__u32);
   attach_attr.attach_bpf_fd = prog;
   test_assert(bpf(BPF_PROG_ATTACH, &attach_attr, attach_attr_size) == 0);
 
