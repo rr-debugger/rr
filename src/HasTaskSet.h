@@ -14,6 +14,9 @@ class Task;
  */
 class HasTaskSet {
 public:
+  // Has virtual methods, therefore must have virtual destructor
+  virtual ~HasTaskSet() {}
+
   typedef std::set<Task*> TaskSet;
 
   const TaskSet& task_set() const { return tasks; }
