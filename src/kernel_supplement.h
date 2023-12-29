@@ -413,6 +413,9 @@ struct rr_input_mask {
 #ifndef MAP_SYNC
 #define MAP_SYNC  0x80000
 #endif
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000
+#endif
 
 enum {
   BPF_MAP_CREATE,
