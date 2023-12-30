@@ -282,6 +282,10 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   }
 
   t->did_handle_ptrace_exit_event();
+  // The counters might be running if we did not read the final register values
+  // (e.g. because our registers are dirty). Stop them now so we can close them
+  // safely.
+  t->hpc.stop(t);
 
   // If we died because of a coredumping signal, that is a barrier event, and
   // every task in the address space needs to pass its PTRACE_EXIT_EVENT before

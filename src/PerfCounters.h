@@ -103,7 +103,7 @@ public:
 
   /**
    * Close the perfcounter fds (if open). They will be automatically reopened if/when
-   * reset is called again.
+   * reset is called again. The counters must not be currently running.
    */
   void close();
 
