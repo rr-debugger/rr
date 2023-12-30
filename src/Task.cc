@@ -1465,16 +1465,6 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 
   will_resume_execution(how, wait_how, tick_period, sig);
 
-  if (tick_period != RESUME_NO_TICKS) {
-    if (tick_period == RESUME_UNLIMITED_TICKS) {
-      hpc.start(this, 0);
-    } else {
-      ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
-      hpc.start(this, max<Ticks>(1, tick_period));
-    }
-    activate_preload_thread_locals();
-  }
-
   LOG(debug) << "resuming execution of " << tid << " with "
              << ptrace_req_name<NativeArch>(how)
              << (sig ? string(", signal ") + signal_name(sig) : string())
@@ -1509,7 +1499,21 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
 
-  flush_regs();
+  bool flushed_ok = flush_regs();
+
+  // Start perf counters now. Stop them later if we don't
+  // actually resume the task. We can't defer starting the perf
+  // counters later than this, because we want to minimize the time
+  // between the wait_stop_or_exit below and the PTRACE_CONT.
+  if (tick_period != RESUME_NO_TICKS) {
+    if (tick_period == RESUME_UNLIMITED_TICKS) {
+      hpc.start(this, 0);
+    } else {
+      ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
+      hpc.start(this, max<Ticks>(1, tick_period));
+    }
+    activate_preload_thread_locals();
+  }
 
   if (session().is_recording() && !seen_ptrace_exit_event()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
@@ -1539,6 +1543,9 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
           << "got " << result.status;
       LOG(debug) << "Task " << tid << " exited unexpectedly with status "
           << result.status;
+      Ticks executed_ticks = hpc.stop(this);
+      ASSERT(this, !executed_ticks)
+          << "Didn't actually resume the task, so there should be no ticks";
       if (did_waitpid(result.status)) {
         // We reached a new stop (or actually reaped the task).
         // Consider this "resume execution" to be done.
@@ -1561,7 +1568,17 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     }
   }
 
-  ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
+  // If the flush failed and we reached here, then the tracee must have
+  // been unexpectedly killed but not yet at a PTRACE_EVENT_EXIT that we
+  // could detect above. In that case we don't need to resume it, it is
+  // already resumed.
+  if (flushed_ok) {
+    ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
+  } else {
+    Ticks executed_ticks = hpc.stop(this);
+    ASSERT(this, !executed_ticks)
+        << "Didn't actually resume the task, so there should be no ticks";
+  }
   // If ptrace_if_stopped failed, it means we're running along the
   // exit path due to a SIGKILL or equivalent, so just like if it
   // succeeded, we will eventually receive a wait notification.
@@ -1593,7 +1610,7 @@ void Task::set_regs(const Registers& regs) {
   }
 }
 
-void Task::flush_regs() {
+bool Task::flush_regs() {
   if (registers_dirty) {
     LOG(debug) << "Flushing registers for tid " << tid << " " << registers;
     auto ptrace_regs = registers.get_ptrace_iovec();
@@ -1631,6 +1648,7 @@ void Task::flush_regs() {
     }
   }
 #endif
+  return !registers_dirty;
 }
 
 void Task::set_extra_regs(const ExtraRegisters& regs) {

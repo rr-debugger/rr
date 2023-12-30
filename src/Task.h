@@ -596,8 +596,10 @@ public:
   /** Set the tracee's registers to |regs|. Lazy. */
   void set_regs(const Registers& regs);
 
-  /** Ensure registers are flushed back to the underlying task. */
-  void flush_regs();
+  /** Ensure registers are flushed back to the underlying task.
+   *  Returns false if that failed due to the tracee being in
+   *  an unexpected state. */
+  bool flush_regs();
 
   /** Set the tracee's extra registers to |regs|. */
   void set_extra_regs(const ExtraRegisters& regs);
