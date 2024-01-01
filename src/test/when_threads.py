@@ -18,7 +18,7 @@ thread_ticks2 = eval(last_match().group(1));
 assert thread_ticks == thread_ticks2
 
 send_gdb('thread 1')
-expect_gdb('nanosleep')
+expect_gdb('Switching')
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
 main_ticks = eval(last_match().group(1));
