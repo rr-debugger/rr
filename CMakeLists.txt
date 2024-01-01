@@ -1583,6 +1583,7 @@ set(TESTS_WITH_PROGRAM
   watchpoint_size_change
   watchpoint_syscall
   watchpoint_unaligned
+  when_threads
 )
 
 # A "test without program" is a foo.run driver script only, which does

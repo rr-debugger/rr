@@ -110,6 +110,8 @@ class RRCmd(gdb.Command):
         self.rr_cmd(args)
 
     def rr_cmd(self, args):
+        # Ensure gdb tells rr its current thread
+        gdb.execute('maintenance flush register-cache')
         cmd_prefix = "maint packet qRRCmd:" + gdb_escape(self.cmd_name)
         argStr = ""
         for auto_arg in self.auto_args:
