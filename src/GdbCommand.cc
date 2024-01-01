@@ -26,14 +26,16 @@ static SimpleGdbCommand elapsed_time(
     });
 
 static SimpleGdbCommand when(
-    "when", "Print the current rr event number.",
+    "when", "Print the numer of the last completely replayed rr event.",
     [](GdbServer&, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
         return GdbCommandHandler::cmd_end_diversion();
       }
-      return string("Current event: ") +
+      // The current event has not been completely replayed, so
+      // we report the number of the previuos event.
+      return string("Completed event: ") +
              to_string(
-                 static_cast<ReplayTask*>(t)->current_trace_frame().time());
+                 static_cast<ReplayTask*>(t)->current_trace_frame().time() - 1);
     });
 
 static SimpleGdbCommand when_ticks(

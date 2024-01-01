@@ -1,6 +1,6 @@
 source `dirname $0`/util.sh
 
-EVENTS=1000
+export EVENTS=1000
 record $TESTNAME $EVENTS
 
 debug goto_event "-g $EVENTS"

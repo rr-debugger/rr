@@ -1,4 +1,10 @@
+import os
 from util import *
+
+EVENTS = int(os.environ['EVENTS'])
+
+send_gdb('when')
+expect_gdb('Completed event: 1000')
 
 send_gdb('b first_breakpoint')
 expect_gdb('Breakpoint 1')

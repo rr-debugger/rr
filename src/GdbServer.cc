@@ -1486,7 +1486,7 @@ bool GdbServer::at_target(ReplayResult& result) {
  */
 void GdbServer::activate_debugger() {
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
-  FrameTime event_now = next_frame.time();
+  FrameTime completed_event = next_frame.time() - 1;
   Task* t = timeline.current_session().current_task();
   if (target.event || target.pid) {
     if (stop_replaying_to_target) {
@@ -1494,20 +1494,20 @@ void GdbServer::activate_debugger() {
                       "--------------------------------------------------\n"
                       " ---> Interrupted; attached to NON-TARGET process %d at event %llu.\n"
                       "--------------------------------------------------\n",
-              t->tgid(), (long long)event_now);
+              t->tgid(), (long long)completed_event);
     } else if (target.event >= 0) {
       fprintf(stderr, "\a\n"
                       "--------------------------------------------------\n"
                       " ---> Reached target process %d at event %llu.\n"
                       "--------------------------------------------------\n",
-              t->tgid(), (long long)event_now);
+              t->tgid(), (long long)completed_event);
     } else {
       ASSERT(t, target.event == -1);
       fprintf(stderr, "\a\n"
                       "--------------------------------------------------\n"
                       " ---> Reached exit of target process %d at event %llu.\n"
                       "--------------------------------------------------\n",
-              t->tgid(), (long long)event_now);
+              t->tgid(), (long long)completed_event);
       exit_sigkill_pending = true;
     }
   }
@@ -1518,7 +1518,7 @@ void GdbServer::activate_debugger() {
   // target without necessarily replaying up to this point.
   target.pid = t->tgid();
   target.require_exec = false;
-  target.event = event_now;
+  target.event = completed_event;
 
   last_query_tuid = last_continue_tuid = t->tuid();
 

@@ -5,7 +5,7 @@ send_gdb('handle SIGKILL stop')
 
 def get_when():
     send_gdb('when')
-    expect_gdb(re.compile(r'Current event: (\d+)'))
+    expect_gdb(re.compile(r'Completed event: (\d+)'))
     event = eval(last_match().group(1))
 
     send_gdb('when-ticks')
