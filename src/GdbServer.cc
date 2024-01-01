@@ -745,7 +745,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     case DREQ_RR_CMD:
       dbg->reply_rr_cmd(
-          GdbCommandHandler::process_command(*this, target, req.text()));
+          GdbCommandHandler::process_command(*this, target, req.rr_cmd()));
       return;
 #ifdef PROC_SERVICE_H
     case DREQ_QSYMBOL: {
@@ -903,7 +903,7 @@ bool GdbServer::diverter_process_debugger_requests(
         Task* task = diversion_session.find_task(last_continue_tuid);
         if (task) {
           std::string reply =
-              GdbCommandHandler::process_command(*this, task, req->text());
+              GdbCommandHandler::process_command(*this, task, req->rr_cmd());
           // Certain commands cause the diversion to end immediately
           // while other commands must work within a diversion.
           if (reply == GdbCommandHandler::cmd_end_diversion()) {

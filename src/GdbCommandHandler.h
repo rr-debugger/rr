@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include "GdbConnection.h"
+
 namespace rr {
 
 class GdbCommand;
@@ -27,7 +29,7 @@ public:
    * should of been striped already.
    */
   static std::string process_command(GdbServer& gdb_server, Task* t,
-                                     std::string payload);
+                                     const GdbRequest::RRCmd& rr_cmd);
 
   static GdbCommand* command_for_name(const std::string& name);
 

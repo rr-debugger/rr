@@ -605,14 +605,32 @@ bool GdbConnection::query(char* payload) {
 
   args = strchr(payload, ':');
   if (args) {
-    *args++ = '\0';
+    *args++ = 0;
   }
   name = payload;
 
   if (strstr(name, "RRCmd") == name) {
     LOG(debug) << "gdb requests rr cmd: " << name;
     req = GdbRequest(DREQ_RR_CMD);
-    req.text_ = args;
+    parser_assert(args && *args);
+    char* endp = strchr(args, ':');
+    parser_assert(endp);
+    *endp = 0;
+    req.rr_cmd_.name = string(args);
+    args = endp + 1;
+    req.rr_cmd_.target_tid = strtol(args, &endp, 10);
+    if (*endp) {
+      parser_assert(*endp == ':');
+      args = endp + 1;
+      while (args) {
+        endp = strchr(args, ':');
+        if (endp) {
+          *endp++ = 0;
+        }
+        req.rr_cmd_.args.emplace_back(args);
+        args = endp;
+      }
+    }
     return true;
   }
   if (!strcmp(name, "C")) {

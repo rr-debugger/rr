@@ -111,14 +111,14 @@ class RRCmd(gdb.Command):
 
     def rr_cmd(self, args):
         # Ensure gdb tells rr its current thread
-        gdb.execute('maintenance flush register-cache')
-        cmd_prefix = "maint packet qRRCmd:" + gdb_escape(self.cmd_name)
-        argStr = ""
+        cmd_prefix = ("maint packet qRRCmd:%s:%d"%
+            (self.cmd_name, gdb.selected_thread().ptid[1]))
+        arg_strs = []
         for auto_arg in self.auto_args:
-            argStr += ":" + gdb_escape(gdb.execute(auto_arg, to_string=True))
+            arg_strs.append(":" + gdb_escape(gdb.execute(auto_arg, to_string=True)))
         for arg in args:
-            argStr += ":" + gdb_escape(arg)
-        rv = gdb.execute(cmd_prefix + argStr, to_string=True);
+            arg_strs.append(":" + gdb_escape(arg))
+        rv = gdb.execute(cmd_prefix + ''.join(arg_strs), to_string=True);
         rv_match = re.search('received: "(.*)"', rv, re.MULTILINE);
         if not rv_match:
             gdb.write("Response error: " + rv)
@@ -241,28 +241,22 @@ static string gdb_unescape(const string& str) {
   }
   return ss.str();
 }
-static vector<string> parse_cmd(string& str) {
-  vector<string> args;
-  size_t pos = 0;
-  string delimiter = ":";
-  while ((pos = str.find(delimiter)) != string::npos) {
-    args.push_back(gdb_unescape(str.substr(0, pos)));
-    str.erase(0, pos + delimiter.length());
-  }
-  args.push_back(gdb_unescape(str));
-  return args;
-}
 
 /* static */ string GdbCommandHandler::process_command(GdbServer& gdb_server,
                                                        Task* t,
-                                                       string payload) {
-  const vector<string> args = parse_cmd(payload);
-  GdbCommand* cmd = command_for_name(args[0]);
+                                                       const GdbRequest::RRCmd& rr_cmd) {
+  vector<string> args;
+  for (const auto& arg : rr_cmd.args) {
+    args.push_back(gdb_unescape(arg));
+  }
+
+  GdbCommand* cmd = command_for_name(rr_cmd.name);
   if (!cmd) {
-    return gdb_escape(string() + "Command '" + args[0] + "' not found.\n");
+    return gdb_escape(string() + "Command '" + rr_cmd.name + "' not found.\n");
   }
   LOG(debug) << "invoking command: " << cmd->name();
-  string resp = cmd->invoke(gdb_server, t, args);
+  Task* target = t->session().find_task(rr_cmd.target_tid);
+  string resp = cmd->invoke(gdb_server, target, args);
 
   if (resp == GdbCommandHandler::cmd_end_diversion()) {
     LOG(debug) << "cmd must run outside of diversion (" << resp << ")";

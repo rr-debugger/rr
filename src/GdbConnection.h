@@ -180,7 +180,7 @@ struct GdbRequest {
         reg_(other.reg_),
         restart_(other.restart_),
         cont_(other.cont_),
-        text_(other.text_),
+        rr_cmd_(other.rr_cmd_),
         tls_(other.tls_),
         sym_(other.sym_),
         file_setfs_(other.file_setfs_),
@@ -219,7 +219,11 @@ struct GdbRequest {
     RunDirection run_direction;
     std::vector<GdbContAction> actions;
   } cont_;
-  std::string text_;
+  struct RRCmd {
+    std::string name;
+    pid_t target_tid;
+    std::vector<std::string> args;  
+  } rr_cmd_;
   struct Tls {
     size_t offset;
     remote_ptr<void> load_module;
@@ -287,9 +291,13 @@ struct GdbRequest {
     DEBUG_ASSERT(type == DREQ_CONT);
     return cont_;
   }
-  const std::string& text() const {
+  RRCmd& rr_cmd() {
     DEBUG_ASSERT(type == DREQ_RR_CMD);
-    return text_;
+    return rr_cmd_;
+  }
+  const RRCmd& rr_cmd() const {
+    DEBUG_ASSERT(type == DREQ_RR_CMD);
+    return rr_cmd_;
   }
   Tls& tls() {
     DEBUG_ASSERT(type == DREQ_TLS);

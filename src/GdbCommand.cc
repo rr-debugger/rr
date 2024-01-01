@@ -108,7 +108,7 @@ static int gNextCheckpointId = 0;
 
 string invoke_checkpoint(GdbServer& gdb_server, Task*,
                          const vector<string>& args) {
-  const string& where = args[1];
+  const string& where = args[0];
   int checkpoint_id = ++gNextCheckpointId;
   GdbServer::Checkpoint::Explicit e;
   if (gdb_server.timeline.can_add_checkpoint()) {
@@ -128,7 +128,7 @@ static SimpleGdbCommand checkpoint(
 
 string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
                                 const vector<string>& args) {
-  int id = stoi(args[1]);
+  int id = stoi(args[0]);
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
     if (it->second.is_explicit == GdbServer::Checkpoint::EXPLICIT) {
