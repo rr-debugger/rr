@@ -78,7 +78,7 @@ class RRWhere(gdb.Command):
             rv = gdb.execute('frame 0', to_string=True)
         except:
             rv = "???" # This may occurs if we're not running
-        m = re.match("#0\w*(.*)", rv);
+        m = re.match(r"#0\w*(.*)", rv);
         if m:
             rv = m.group(1)
         else:
