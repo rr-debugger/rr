@@ -156,18 +156,8 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   }
   if (flags.dump_mmaps) {
     for (auto& record : frame.event().SyscallbufFlush().mprotect_records) {
-      char prot_flags[] = "rwx";
-      if (!(record.prot & PROT_READ)) {
-        prot_flags[0] = '-';
-      }
-      if (!(record.prot & PROT_WRITE)) {
-        prot_flags[1] = '-';
-      }
-      if (!(record.prot & PROT_EXEC)) {
-        prot_flags[2] = '-';
-      }
-      fprintf(out, "  { start:'%p', size:'%" PRIx64 "', prot:%s }\n",
-              (void*)record.start, record.size, prot_flags);
+      fprintf(out, "  { start:%p, size:%" PRIx64 ", prot:'%s' }\n",
+              (void*)record.start, record.size, prot_flags_string(record.prot).c_str());
       if (flags.raw_dump) {
         fprintf(out, "  ");
         for (unsigned long i = 0; i < sizeof(record); ++i) {

@@ -79,6 +79,8 @@ bool is_coredumping_signal(int signo);
 NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
     const void* data, size_t size);
 
+std::string prot_flags_string(int prot);
+
 } // namespace rr
 
 #endif

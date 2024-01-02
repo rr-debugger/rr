@@ -7,6 +7,8 @@
 #include <signal.h>
 #include <syscall.h>
 
+#include <sstream>
+
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "log.h"
@@ -558,6 +560,25 @@ NativeArch::siginfo_t convert_to_native_siginfo_arch(const void* data,
 NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
     const void* data, size_t size) {
   RR_ARCH_FUNCTION(convert_to_native_siginfo_arch, arch, data, size);
+}
+
+string prot_flags_string(int prot) {
+  char prot_flags[] = "rwx";
+  if (!(prot & PROT_READ)) {
+    prot_flags[0] = '-';
+  }
+  if (!(prot & PROT_WRITE)) {
+    prot_flags[1] = '-';
+  }
+  if (!(prot & PROT_EXEC)) {
+    prot_flags[2] = '-';
+  }
+  stringstream ret;
+  ret << prot_flags;
+  if (prot & ~(PROT_READ | PROT_WRITE | PROT_EXEC)) {
+    ret << " (" << HEX(prot) << ")";
+  }
+  return ret.str();
 }
 
 } // namespace rr
