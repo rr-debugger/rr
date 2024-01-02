@@ -1491,6 +1491,7 @@ set(TESTS_WITH_PROGRAM
   mmap_tmpfs
   mmap_write
   mmap_write_private
+  mprotect_checkpoint
   x86/morestack_unwind
   mprotect_growsdown
   mprotect_syscallbuf_overflow

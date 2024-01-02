@@ -1307,22 +1307,22 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
                     final_mprotect_record_count - skip_mprotect_records);
     auto recorded_records =
         t->current_trace_frame().event().SyscallbufFlush().mprotect_records;
-    for (size_t i = 0; i < records.size(); ++i) {
-      auto& r = records[i];
-      uint32_t completed_count = t->read_mem(REMOTE_PTR_FIELD(
-          t->syscallbuf_child, mprotect_record_count_completed));
-      if (i >= completed_count) {
+    uint32_t completed_count = t->read_mem(REMOTE_PTR_FIELD(
+        t->syscallbuf_child, mprotect_record_count_completed));
+    size_t record_index = skip_mprotect_records;
+    for (const auto& r : records) {
+      if (record_index >= completed_count) {
         auto km = t->vm()->read_kernel_mapping(t, r.start);
         if (km.prot() != r.prot) {
           // mprotect didn't happen yet.
           continue;
         }
       } else {
-        auto& recorded_r = recorded_records[i + skip_mprotect_records];
+        auto& recorded_r = recorded_records[record_index];
         ASSERT(t, r.start == recorded_r.start &&
                r.size == recorded_r.size &&
                r.prot == recorded_r.prot)
-          << "Mismatched mprotect record " << (i + skip_mprotect_records)
+          << "Mismatched mprotect record " << record_index
           << ": recorded " << mprotect_record_string(recorded_r)
           << ", got " << mprotect_record_string(r);
       }
@@ -1331,6 +1331,7 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
         syscall(SYS_rrcall_mprotect_record, t->tid, (uintptr_t)r.start,
                 (uintptr_t)r.size, r.prot);
       }
+      ++record_index;
     }
   }
   return final_mprotect_record_count;
