@@ -23,7 +23,7 @@ _rr_completion() {
     local cmd="$(echo "${COMP_WORDS[1]}" | tr -d '[:space:]')"
 
     if [ "$(echo $rr_commands | grep -w "$cmd")" ] ; then
-        COMPREPLY=( $( compgen -W "$(_rr_subcmd_completion "$cmd")" -- "${COMP_WORDS[COMP_CWORD]}" ) )
+        COMPREPLY=( $( compgen -W "$(_rr_subcmd_completion "$cmd")" -f -- "${COMP_WORDS[COMP_CWORD]}" ) )
     fi
 }
 complete -F _rr_completion rr
