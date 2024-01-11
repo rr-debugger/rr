@@ -1076,9 +1076,10 @@ set(BASIC_TESTS
   legacy_ugid
   x86/lsl
   madvise
-  madvise_free
   madvise_dontneed_private
+  madvise_free
   madvise_misc
+  madvise_remove
   madvise_wipeonfork
   map_fixed
   map_shared_syscall

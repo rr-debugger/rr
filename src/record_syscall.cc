@@ -6488,10 +6488,21 @@ static void record_madvise(RecordTask* t) {
         ranges.insert(ranges.end(), pages_present.begin(), pages_present.end());
       }
       break;
-    case MADV_REMOVE:
-      // We don't handle this yet...
-      ASSERT(t, false) << "Possibly-partial MADV_REMOVEs not handled yet";
+    case MADV_REMOVE: {
+      for (const auto& m : t->vm()->maps_containing_or_after(start)) {
+        if (m.map.start() >= end) {
+          break;
+        }
+        if (m.map.flags() & MAP_PRIVATE) {
+          // Private mappings fail cleanly with MADV_REMOVE so we
+          // don't need to worry about any effects on them.
+          continue;
+        }
+        // We don't handle this yet...
+        ASSERT(t, false) << "Possibly-partial MADV_REMOVEs not handled yet";
+      }
       break;
+    }
     default:
       break;
   }
