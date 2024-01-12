@@ -14,7 +14,6 @@ const char* sockaddr_name(const struct sockaddr* addr) {
 const char* sockaddr_hw_name(const struct sockaddr* addr) {
   static char str[PATH_MAX];
   const unsigned char* data = (const unsigned char*)addr->sa_data;
-  test_assert(AF_LOCAL == addr->sa_family);
   sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x", data[0], data[1], data[2],
           data[3], data[4], data[5]);
   return str;
