@@ -47,6 +47,7 @@ int check_range_available(uint64_t* ptrs, size_t num_ptrs, uint64_t map_size, ui
     fgets(maps_line, sizeof(maps_line), maps_file);
     fputs(maps_line, stdout);
   }
+  fflush(stdout);
 
   return 0;
 }
