@@ -586,8 +586,8 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     sizeof(msg), &msg, &ok);
 
   if (!ok) {
-    ASSERT(remote.task(), errno == ESRCH) << "Error writing " << remote_buf.get()
-        << " in " << remote.task()->tid;
+    ASSERT(remote.task(), errno == ESRCH || errno == EIO)
+        << "Error writing " << remote_buf.get() << " in " << remote.task()->tid;
     LOG(debug) << "Failed to write memory";
     return -ESRCH;
   }
@@ -603,7 +603,7 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
   }
   int their_fd = remote.task()->read_mem(msg.remote_cmsgdata(), &ok);
   if (!ok) {
-    ASSERT(remote.task(), errno == ESRCH);
+    ASSERT(remote.task(), errno == ESRCH || errno == EIO);
     LOG(debug) << "Failed to read msg";
     return -ESRCH;
   }
