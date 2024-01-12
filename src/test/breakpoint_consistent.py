@@ -14,7 +14,7 @@ send_gdb('c')
 
 expect_rr('calling C')
 
-expect_gdb('Breakpoint 1, C')
+expect_gdb('Breakpoint 1(.*) C')
 
 send_gdb('check')
 send_gdb('c')
