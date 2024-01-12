@@ -12,6 +12,12 @@ if(POLICY CMP0065)
   cmake_policy(SET CMP0065 NEW)
 endif()
 
+# We should switch to using FindPython3, but that requires CMake 3.12.
+# We'll switch later.
+if(POLICY CMP0148)
+  cmake_policy(SET CMP0148 OLD)
+endif()
+
 # On single configuration generators, make Debug the default configuration
 if(NOT CMAKE_CONFIGURATION_TYPES)
   if(NOT CMAKE_BUILD_TYPE)
