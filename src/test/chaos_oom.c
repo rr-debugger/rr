@@ -40,6 +40,14 @@ int check_range_available(uint64_t* ptrs, size_t num_ptrs, uint64_t map_size, ui
   if (addr_max - last >= range_size) {
     return 1;
   }
+
+  FILE* maps_file = fopen("/proc/self/maps", "r");
+  while (!feof(maps_file)) {
+    char maps_line[1024];
+    fgets(maps_line, sizeof(maps_line), maps_file);
+    fputs(maps_line, stdout);
+  }
+
   return 0;
 }
 
