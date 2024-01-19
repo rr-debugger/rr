@@ -2151,6 +2151,9 @@ bool Task::did_waitpid(WaitStatus status) {
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
   Ticks more_ticks = 0;
+  // Some (all?) SIGTRAP stops are *not* usable for signal injection.
+  bool in_injectable_signal_stop =
+    status.stop_sig() > 0 && status.stop_sig() != SIGTRAP;
 
   if (status.reaped()) {
     was_reaped_ = true;
@@ -2195,6 +2198,8 @@ bool Task::did_waitpid(WaitStatus status) {
       pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
       pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
       pending_siginfo.si_code = POLL_IN;
+      // Don't try to inject signals into ptrace-interrupt stops
+      in_injectable_signal_stop = false;
     } else if (status.stop_sig()) {
       if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;
@@ -2268,9 +2273,8 @@ bool Task::did_waitpid(WaitStatus status) {
   }
 
   wait_status = status;
-  // Some (all?) SIGTRAP stops are *not* usable for signal injection.
-  in_injectable_signal_stop_ =
-    status.stop_sig() > 0 && status.stop_sig() != SIGTRAP;
+  /* Record this now that we're going to stay in the stopped state */
+  in_injectable_signal_stop_ = in_injectable_signal_stop;
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 
