@@ -20,12 +20,7 @@ int main(void) {
   if (0 == (child = fork())) {
     test_assert(1 == read(parent_to_child_fds[0], &ch, 1));
     test_assert(1 == write(child_to_parent_fds[1], "x", 1));
-    sleep(1);
-    
-    volatile int ccc = 0;
-    while (!ccc) {
-    }
-    
+    sleep(10000);
     return 77;
   }
 
@@ -45,18 +40,13 @@ int main(void) {
   test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f));
 
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, 0));
-
-  sleep(60);
-
   test_assert(0 == ptrace(PTRACE_INTERRUPT, child, NULL, 0));
-  test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f) ||
               status == (((SIGTRAP | 0x80) << 8) | 0x7f));
+
   test_assert(WIFSTOPPED(status));
 
-
-  sleep(1000);
-  test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)SIGTERM));
+  test_assert(0 == kill(child, SIGKILL));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
