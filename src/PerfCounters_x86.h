@@ -70,6 +70,7 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelTremont;
     case 0x706e0:
     case 0x606a0:
+    case 0x80660:
       return IntelIcelake;
     case 0x806c0:
     case 0x806d0:
