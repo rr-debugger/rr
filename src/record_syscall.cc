@@ -1778,7 +1778,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case BLKALIGNOFF:
     case KDGKBMODE:
     case RNDGETENTCNT:
-    case TIOCINQ:
+    case TIOCINQ: // == FIONREAD
     case TIOCOUTQ:
     case TIOCGETD:
     case VT_OPENQRY:
