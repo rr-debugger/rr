@@ -37,6 +37,13 @@ using namespace std;
 
 namespace rr {
 
+GdbServer::ConnectionFlags::ConnectionFlags()
+  : dbg_port(-1),
+    dbg_host(localhost_addr),
+    keep_listening(false),
+    serve_files(false),
+    debugger_params_write_pipe(nullptr) {}
+
 GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
     : dbg(std::move(dbg)),
       debuggee_tguid(t->thread_group()->tguid()),
@@ -1962,7 +1969,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unsigned short port = t->tid;
-  ScopedFd listen_fd = open_socket(localhost_addr.c_str(), &port, PROBE_PORT);
+  ScopedFd listen_fd = open_socket(localhost_addr, &port, PROBE_PORT);
 
   dump_rr_stack();
 

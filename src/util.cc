@@ -2508,4 +2508,6 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
   }
 }
 
+const char localhost_addr[10] = "127.0.0.1";
+
 } // namespace rr

@@ -649,6 +649,8 @@ inline unsigned long long dczid_el0_block_size(void) {
 void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
                        MemoryRange dst, uint8_t* dst_data);
 
+extern const char localhost_addr[10];
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

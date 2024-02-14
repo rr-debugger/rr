@@ -19,8 +19,6 @@
 
 namespace rr {
 
-static std::string localhost_addr = "127.0.0.1";
-
 class GdbServer {
   // Not ideal but we can't inherit friend from GdbCommand
   friend std::string invoke_checkpoint(GdbServer&, Task*,
@@ -57,12 +55,7 @@ public:
     // is null.
     std::string debugger_name;
 
-    ConnectionFlags()
-        : dbg_port(-1),
-          dbg_host(localhost_addr),
-          keep_listening(false),
-          serve_files(false),
-          debugger_params_write_pipe(nullptr) {}
+    ConnectionFlags();
   };
 
   /**
