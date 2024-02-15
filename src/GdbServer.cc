@@ -21,7 +21,7 @@
 #include "ElfReader.h"
 #include "Event.h"
 #include "GdbCommandHandler.h"
-#include "GdbExpression.h"
+#include "GdbServerExpression.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "ScopedFd.h"
@@ -307,12 +307,12 @@ class GdbBreakpointCondition : public BreakpointCondition {
 public:
   GdbBreakpointCondition(const vector<vector<uint8_t>>& bytecodes) {
     for (auto& b : bytecodes) {
-      expressions.push_back(GdbExpression(b.data(), b.size()));
+      expressions.push_back(GdbServerExpression(b.data(), b.size()));
     }
   }
   virtual bool evaluate(Task* t) const override {
     for (auto& e : expressions) {
-      GdbExpression::Value v;
+      GdbServerExpression::Value v;
       // Break if evaluation fails or the result is nonzero
       if (!e.evaluate(t, &v) || v.i != 0) {
         return true;
@@ -322,7 +322,7 @@ public:
   }
 
 private:
-  vector<GdbExpression> expressions;
+  vector<GdbServerExpression> expressions;
 };
 
 static unique_ptr<BreakpointCondition> breakpoint_condition(

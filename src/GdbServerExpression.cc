@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "GdbExpression.h"
+#include "GdbServerExpression.h"
 
 #include "GdbServer.h"
 #include "Task.h"
@@ -69,7 +69,7 @@ enum Opcode {
 };
 
 struct ExpressionState {
-  typedef GdbExpression::Value Value;
+  typedef GdbServerExpression::Value Value;
 
   ExpressionState(const vector<uint8_t>& bytecode)
       : bytecode(bytecode), pc(0), error(false), end(false) {}
@@ -329,7 +329,7 @@ static T fetch(const uint8_t* data, size_t size, size_t pc) {
   return v;
 }
 
-GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
+GdbServerExpression::GdbServerExpression(const uint8_t* data, size_t size) {
   vector<bool> instruction_starts;
   instruction_starts.resize(size);
   fill(instruction_starts.begin(), instruction_starts.end(), false);
@@ -419,12 +419,12 @@ GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
   }
 }
 #else
-GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
+GdbServerExpression::GdbServerExpression(const uint8_t* data, size_t size) {
   bytecode_variants.push_back(vector<uint8_t>(data, data + size));
 }
 #endif
 
-bool GdbExpression::evaluate(Task* t, Value* result) const {
+bool GdbServerExpression::evaluate(Task* t, Value* result) const {
   if (bytecode_variants.empty()) {
     return false;
   }

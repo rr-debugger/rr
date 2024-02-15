@@ -570,7 +570,7 @@ set(RR_SOURCES
   src/GdbCommand.cc
   src/GdbCommandHandler.cc
   src/GdbConnection.cc
-  src/GdbExpression.cc
+  src/GdbServerExpression.cc
   src/GdbInitCommand.cc
   src/GdbServer.cc
   src/HasTaskSet.cc

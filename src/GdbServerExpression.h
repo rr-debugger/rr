@@ -17,9 +17,9 @@ class Task;
  * in a remote target. This class implements evaluation of such expressions.
  * See https://sourceware.org/gdb/current/onlinedocs/gdb/Agent-Expressions.html
  */
-class GdbExpression {
+class GdbServerExpression {
 public:
-  GdbExpression(const uint8_t* data, size_t size);
+  GdbServerExpression(const uint8_t* data, size_t size);
 
   struct Value {
     Value(int64_t i = 0) : i(i) {}
