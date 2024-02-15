@@ -569,7 +569,7 @@ set(RR_SOURCES
   src/ftrace.cc
   src/GdbCommand.cc
   src/GdbCommandHandler.cc
-  src/GdbConnection.cc
+  src/GdbServerConnection.cc
   src/GdbServerExpression.cc
   src/GdbInitCommand.cc
   src/GdbServer.cc

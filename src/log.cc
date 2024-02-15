@@ -13,7 +13,7 @@
 
 #include "DumpCommand.h"
 #include "Flags.h"
-#include "GdbConnection.h"
+#include "GdbServerConnection.h"
 #include "GdbServer.h"
 #include "RecordSession.h"
 #include "ReplaySession.h"

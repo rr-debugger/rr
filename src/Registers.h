@@ -493,7 +493,7 @@ public:
   }
 
   // TODO: refactor me to use the GdbRegisterValue helper from
-  // GdbConnection.h.
+  // GdbServerConnection.h.
 
   /**
    * Write the value for register |regno| into |buf|, which should

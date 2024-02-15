@@ -8,7 +8,7 @@
 #include <string>
 
 #include "DiversionSession.h"
-#include "GdbConnection.h"
+#include "GdbServerConnection.h"
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
@@ -119,7 +119,7 @@ public:
   ReplayTimeline& get_timeline() { return timeline; }
 
 private:
-  GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t);
+  GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t);
 
   Session& current_session() {
     return timeline.is_running() ? timeline.current_session()
@@ -211,7 +211,7 @@ private:
   Target target;
   // dbg is initially null. Once the debugger connection is established, it
   // never changes.
-  std::unique_ptr<GdbConnection> dbg;
+  std::unique_ptr<GdbServerConnection> dbg;
   // When dbg is non-null, the ThreadGroupUid of the task being debugged. Never
   // changes once the connection is established --- we don't currently
   // support switching gdb between debuggee processes.

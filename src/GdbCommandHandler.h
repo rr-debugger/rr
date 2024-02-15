@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "GdbConnection.h"
+#include "GdbServerConnection.h"
 
 namespace rr {
 

@@ -8,7 +8,7 @@
  * http://sourceware.org/gdb/onlinedocs/gdb/Packets.html
  */
 
-#include "GdbConnection.h"
+#include "GdbServerConnection.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -56,7 +56,7 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 #endif
 
-GdbConnection::GdbConnection(pid_t tgid, const Features& features)
+GdbServerConnection::GdbServerConnection(pid_t tgid, const Features& features)
     : tgid(tgid),
       cpu_features_(0),
       no_ack(false),
@@ -67,7 +67,7 @@ GdbConnection::GdbConnection(pid_t tgid, const Features& features)
 #endif
 }
 
-void GdbConnection::await_debugger(ScopedFd& listen_fd) {
+void GdbServerConnection::await_debugger(ScopedFd& listen_fd) {
   sock_fd = ScopedFd(accept(listen_fd, nullptr, nullptr));
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
@@ -101,7 +101,7 @@ static void poll_outgoing(const ScopedFd& sock_fd, int timeoutMs) {
 /**
  * read() incoming data exactly one time, successfully.  May block.
  */
-void GdbConnection::read_data_once() {
+void GdbServerConnection::read_data_once() {
   ssize_t nread;
   /* Wait until there's data, instead of busy-looping on
    * EAGAIN. */
@@ -117,7 +117,7 @@ void GdbConnection::read_data_once() {
   }
 }
 
-void GdbConnection::write_flush() {
+void GdbServerConnection::write_flush() {
   size_t write_index = 0;
 
   outbuf.push_back(0);
@@ -143,11 +143,11 @@ void GdbConnection::write_flush() {
   outbuf.clear();
 }
 
-void GdbConnection::write_data_raw(const uint8_t* data, ssize_t len) {
+void GdbServerConnection::write_data_raw(const uint8_t* data, ssize_t len) {
   outbuf.insert(outbuf.end(), data, data + len);
 }
 
-void GdbConnection::write_hex(unsigned long hex) {
+void GdbServerConnection::write_hex(unsigned long hex) {
   char buf[32];
   size_t len;
 
@@ -155,7 +155,7 @@ void GdbConnection::write_hex(unsigned long hex) {
   write_data_raw((uint8_t*)buf, len);
 }
 
-void GdbConnection::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
+void GdbServerConnection::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
   uint8_t checksum;
   size_t i;
 
@@ -168,11 +168,11 @@ void GdbConnection::write_packet_bytes(const uint8_t* data, size_t num_bytes) {
   write_hex(checksum);
 }
 
-void GdbConnection::write_packet(const char* data) {
+void GdbServerConnection::write_packet(const char* data) {
   return write_packet_bytes((const uint8_t*)data, strlen(data));
 }
 
-void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
+void GdbServerConnection::write_binary_packet(const char* pfx, const uint8_t* data,
                                         ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
   vector<uint8_t> buf;
@@ -208,7 +208,7 @@ void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
   return write_packet_bytes(buf.data(), buf_num_bytes);
 }
 
-void GdbConnection::write_hex_bytes_packet(const char* prefix,
+void GdbServerConnection::write_hex_bytes_packet(const char* prefix,
                                            const uint8_t* bytes, size_t len) {
   if (prefix[0] == '\0' && 0 == len) {
     write_packet("");
@@ -226,7 +226,7 @@ void GdbConnection::write_hex_bytes_packet(const char* prefix,
   write_packet(buf.data());
 }
 
-void GdbConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
+void GdbServerConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
   write_hex_bytes_packet("", bytes, len);
 }
 
@@ -252,7 +252,7 @@ static string decode_ascii_encoded_hex_str(const char* encoded) {
   return str;
 }
 
-bool GdbConnection::skip_to_packet_start() {
+bool GdbServerConnection::skip_to_packet_start() {
   ssize_t end = -1;
   /* XXX we want memcspn() here ... */
   for (size_t i = 0; i < inbuf.size(); ++i) {
@@ -276,7 +276,7 @@ bool GdbConnection::skip_to_packet_start() {
   return true;
 }
 
-bool GdbConnection::sniff_packet() {
+bool GdbServerConnection::sniff_packet() {
   if (skip_to_packet_start()) {
     /* We've already seen a (possibly partial) packet. */
     return true;
@@ -285,7 +285,7 @@ bool GdbConnection::sniff_packet() {
   return poll_incoming(sock_fd, 0 /*don't wait*/);
 }
 
-void GdbConnection::read_packet() {
+void GdbServerConnection::read_packet() {
   /* Read and discard bytes until we see the start of a
    * packet.
    *
@@ -389,7 +389,7 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
   return t;
 }
 
-void GdbConnection::write_xfer_response(const void* data, size_t size,
+void GdbServerConnection::write_xfer_response(const void* data, size_t size,
                                         uint64_t offset, uint64_t len) {
   if (offset > size) {
     write_packet("E01");
@@ -435,17 +435,17 @@ static const char* target_description_name(uint32_t cpu_features) {
   switch (cpu_features) {
     case 0:
       return "i386-linux.xml";
-    case GdbConnection::CPU_X86_64:
+    case GdbServerConnection::CPU_X86_64:
       return "amd64-linux.xml";
-    case GdbConnection::CPU_AVX:
+    case GdbServerConnection::CPU_AVX:
       return "i386-avx-linux.xml";
-    case GdbConnection::CPU_X86_64 | GdbConnection::CPU_AVX:
+    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_AVX:
       return "amd64-avx-linux.xml";
-    case GdbConnection::CPU_PKU | GdbConnection::CPU_AVX:
+    case GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
       return "i386-pkeys-linux.xml";
-    case GdbConnection::CPU_X86_64 | GdbConnection::CPU_PKU | GdbConnection::CPU_AVX:
+    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
       return "amd64-pkeys-linux.xml";
-    case GdbConnection::CPU_AARCH64:
+    case GdbServerConnection::CPU_AARCH64:
       return "aarch64-core.xml";
     default:
       FATAL() << "Unknown features";
@@ -453,7 +453,7 @@ static const char* target_description_name(uint32_t cpu_features) {
   }
 }
 
-bool GdbConnection::xfer(const char* name, char* args) {
+bool GdbServerConnection::xfer(const char* name, char* args) {
   const char* mode = args;
   args = strchr(args, ':');
   parser_assert(args);
@@ -599,7 +599,7 @@ static void read_reg_value(char** strp, GdbRegisterValue* reg) {
   *strp = str;
 }
 
-bool GdbConnection::query(char* payload) {
+bool GdbServerConnection::query(char* payload) {
   const char* name;
   char* args;
 
@@ -789,7 +789,7 @@ bool GdbConnection::query(char* payload) {
   return false;
 }
 
-bool GdbConnection::set_var(char* payload) {
+bool GdbServerConnection::set_var(char* payload) {
   const char* name;
   char* args;
 
@@ -832,12 +832,12 @@ bool GdbConnection::set_var(char* payload) {
   return false;
 }
 
-void GdbConnection::consume_request() {
+void GdbServerConnection::consume_request() {
   req = GdbRequest();
   write_flush();
 }
 
-bool GdbConnection::process_bpacket(char* payload) {
+bool GdbServerConnection::process_bpacket(char* payload) {
   if (strcmp(payload, "c") == 0) {
     req = GdbRequest(DREQ_CONT);
     req.cont().run_direction = RUN_BACKWARD;
@@ -886,7 +886,7 @@ static int gdb_open_flags_to_system_flags(int64_t flags) {
   return ret;
 }
 
-bool GdbConnection::process_vpacket(char* payload) {
+bool GdbServerConnection::process_vpacket(char* payload) {
   const char* name;
   char* args;
 
@@ -1119,7 +1119,7 @@ static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
   return ss.str();
 }
 
-bool GdbConnection::process_packet() {
+bool GdbServerConnection::process_packet() {
   parser_assert(
       INTERRUPT_CHAR == inbuf[0] ||
       ('$' == inbuf[0] && (uint8_t*)memchr(inbuf.data(), '#', inbuf.size()) ==
@@ -1331,7 +1331,7 @@ bool GdbConnection::process_packet() {
   return ret;
 }
 
-void GdbConnection::notify_no_such_thread(const GdbRequest& req) {
+void GdbServerConnection::notify_no_such_thread(const GdbRequest& req) {
   DEBUG_ASSERT(req.target == this->req.target && req.type == this->req.type);
 
   /* '10' is the errno ECHILD.  We use it as a magic code to
@@ -1348,7 +1348,7 @@ void GdbConnection::notify_no_such_thread(const GdbRequest& req) {
   consume_request();
 }
 
-void GdbConnection::notify_restart() {
+void GdbServerConnection::notify_restart() {
   DEBUG_ASSERT(DREQ_RESTART == req.type);
 
   // These threads may not exist at the first trace-stop after
@@ -1360,7 +1360,7 @@ void GdbConnection::notify_restart() {
   req = GdbRequest();
 }
 
-GdbRequest GdbConnection::get_request() {
+GdbRequest GdbServerConnection::get_request() {
   if (DREQ_RESTART == req.type) {
     LOG(debug) << "consuming RESTART request";
     notify_restart();
@@ -1407,7 +1407,7 @@ GdbRequest GdbConnection::get_request() {
   }
 }
 
-void GdbConnection::notify_exit_code(int code) {
+void GdbServerConnection::notify_exit_code(int code) {
   char buf[64];
 
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
@@ -1418,7 +1418,7 @@ void GdbConnection::notify_exit_code(int code) {
   consume_request();
 }
 
-void GdbConnection::notify_exit_signal(int sig) {
+void GdbServerConnection::notify_exit_signal(int sig) {
   char buf[64];
 
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
@@ -1517,7 +1517,7 @@ static int to_gdb_signum(int sig) {
   }
 }
 
-void GdbConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
+void GdbServerConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
                                            const char *reason) {
   if (sig < 0) {
     write_packet("E01");
@@ -1534,7 +1534,7 @@ void GdbConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
   write_packet(buf);
 }
 
-void GdbConnection::notify_stop(GdbThreadId thread, int sig,
+void GdbServerConnection::notify_stop(GdbThreadId thread, int sig,
                                 const char *reason) {
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
@@ -1577,7 +1577,7 @@ void GdbConnection::notify_stop(GdbThreadId thread, int sig,
   consume_request();
 }
 
-void GdbConnection::notify_restart_failed() {
+void GdbServerConnection::notify_restart_failed() {
   DEBUG_ASSERT(DREQ_RESTART == req.type);
 
   // TODO: it's not known by this author whether gdb knows how
@@ -1587,7 +1587,7 @@ void GdbConnection::notify_restart_failed() {
   consume_request();
 }
 
-void GdbConnection::reply_get_current_thread(GdbThreadId thread) {
+void GdbServerConnection::reply_get_current_thread(GdbThreadId thread) {
   DEBUG_ASSERT(DREQ_GET_CURRENT_THREAD == req.type);
 
   char buf[1024];
@@ -1601,7 +1601,7 @@ void GdbConnection::reply_get_current_thread(GdbThreadId thread) {
   consume_request();
 }
 
-void GdbConnection::reply_get_auxv(const vector<uint8_t>& auxv) {
+void GdbServerConnection::reply_get_auxv(const vector<uint8_t>& auxv) {
   DEBUG_ASSERT(DREQ_GET_AUXV == req.type);
 
   if (!auxv.empty()) {
@@ -1613,7 +1613,7 @@ void GdbConnection::reply_get_auxv(const vector<uint8_t>& auxv) {
   consume_request();
 }
 
-void GdbConnection::reply_get_exec_file(const string& exec_file) {
+void GdbServerConnection::reply_get_exec_file(const string& exec_file) {
   DEBUG_ASSERT(DREQ_GET_EXEC_FILE == req.type);
 
   if (!exec_file.empty()) {
@@ -1627,7 +1627,7 @@ void GdbConnection::reply_get_exec_file(const string& exec_file) {
   consume_request();
 }
 
-void GdbConnection::reply_get_is_thread_alive(bool alive) {
+void GdbServerConnection::reply_get_is_thread_alive(bool alive) {
   DEBUG_ASSERT(DREQ_GET_IS_THREAD_ALIVE == req.type);
 
   write_packet(alive ? "OK" : "E01");
@@ -1635,7 +1635,7 @@ void GdbConnection::reply_get_is_thread_alive(bool alive) {
   consume_request();
 }
 
-void GdbConnection::reply_get_thread_extra_info(const string& info) {
+void GdbServerConnection::reply_get_thread_extra_info(const string& info) {
   DEBUG_ASSERT(DREQ_GET_THREAD_EXTRA_INFO == req.type);
 
   LOG(debug) << "thread extra info: '" << info.c_str() << "'";
@@ -1644,7 +1644,7 @@ void GdbConnection::reply_get_thread_extra_info(const string& info) {
   consume_request();
 }
 
-void GdbConnection::reply_select_thread(bool ok) {
+void GdbServerConnection::reply_select_thread(bool ok) {
   DEBUG_ASSERT(DREQ_SET_CONTINUE_THREAD == req.type ||
                DREQ_SET_QUERY_THREAD == req.type);
 
@@ -1658,7 +1658,7 @@ void GdbConnection::reply_select_thread(bool ok) {
   consume_request();
 }
 
-void GdbConnection::reply_get_mem(const vector<uint8_t>& mem) {
+void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
   DEBUG_ASSERT(DREQ_GET_MEM == req.type);
   DEBUG_ASSERT(mem.size() <= req.mem().len);
 
@@ -1671,7 +1671,7 @@ void GdbConnection::reply_get_mem(const vector<uint8_t>& mem) {
   consume_request();
 }
 
-void GdbConnection::reply_set_mem(bool ok) {
+void GdbServerConnection::reply_set_mem(bool ok) {
   DEBUG_ASSERT(DREQ_SET_MEM == req.type);
 
   write_packet(ok ? "OK" : "E01");
@@ -1679,7 +1679,7 @@ void GdbConnection::reply_set_mem(bool ok) {
   consume_request();
 }
 
-void GdbConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
+void GdbServerConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
   DEBUG_ASSERT(DREQ_SEARCH_MEM == req.type);
 
   if (found) {
@@ -1693,7 +1693,7 @@ void GdbConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
   consume_request();
 }
 
-void GdbConnection::reply_get_offsets(/* TODO */) {
+void GdbServerConnection::reply_get_offsets(/* TODO */) {
   DEBUG_ASSERT(DREQ_GET_OFFSETS == req.type);
 
   /* XXX FIXME TODO */
@@ -1702,7 +1702,7 @@ void GdbConnection::reply_get_offsets(/* TODO */) {
   consume_request();
 }
 
-void GdbConnection::reply_get_reg(const GdbRegisterValue& reg) {
+void GdbServerConnection::reply_get_reg(const GdbRegisterValue& reg) {
   char buf[2 * GdbRegisterValue::MAX_SIZE + 1];
 
   DEBUG_ASSERT(DREQ_GET_REG == req.type);
@@ -1713,7 +1713,7 @@ void GdbConnection::reply_get_reg(const GdbRegisterValue& reg) {
   consume_request();
 }
 
-void GdbConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
+void GdbServerConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
   std::unique_ptr<char[]> buf(
       new char[file.size() * 2 * GdbRegisterValue::MAX_SIZE + 1]);
 
@@ -1728,7 +1728,7 @@ void GdbConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
   consume_request();
 }
 
-void GdbConnection::reply_set_reg(bool ok) {
+void GdbServerConnection::reply_set_reg(bool ok) {
   DEBUG_ASSERT(DREQ_SET_REG == req.type);
 
   // TODO: what happens if we're forced to reply to a
@@ -1744,7 +1744,7 @@ void GdbConnection::reply_set_reg(bool ok) {
   consume_request();
 }
 
-void GdbConnection::reply_get_stop_reason(GdbThreadId which, int sig) {
+void GdbServerConnection::reply_get_stop_reason(GdbThreadId which, int sig) {
   DEBUG_ASSERT(DREQ_GET_STOP_REASON == req.type);
 
   send_stop_reply_packet(which, sig, "");
@@ -1752,7 +1752,7 @@ void GdbConnection::reply_get_stop_reason(GdbThreadId which, int sig) {
   consume_request();
 }
 
-void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
+void GdbServerConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
   DEBUG_ASSERT(DREQ_GET_THREAD_LIST == req.type);
   if (threads.empty()) {
     write_packet("l");
@@ -1781,7 +1781,7 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
   consume_request();
 }
 
-void GdbConnection::reply_watchpoint_request(bool ok) {
+void GdbServerConnection::reply_watchpoint_request(bool ok) {
   DEBUG_ASSERT(DREQ_WATCH_FIRST <= req.type && req.type <= DREQ_WATCH_LAST);
 
   write_packet(ok ? "OK" : "E01");
@@ -1789,7 +1789,7 @@ void GdbConnection::reply_watchpoint_request(bool ok) {
   consume_request();
 }
 
-void GdbConnection::reply_detach() {
+void GdbServerConnection::reply_detach() {
   DEBUG_ASSERT(DREQ_DETACH <= req.type);
 
   write_packet("OK");
@@ -1797,7 +1797,7 @@ void GdbConnection::reply_detach() {
   consume_request();
 }
 
-void GdbConnection::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
+void GdbServerConnection::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
   DEBUG_ASSERT(DREQ_READ_SIGINFO == req.type);
 
   if (si_bytes.empty()) {
@@ -1809,7 +1809,7 @@ void GdbConnection::reply_read_siginfo(const vector<uint8_t>& si_bytes) {
   consume_request();
 }
 
-void GdbConnection::reply_write_siginfo(/* TODO*/) {
+void GdbServerConnection::reply_write_siginfo(/* TODO*/) {
   DEBUG_ASSERT(DREQ_WRITE_SIGINFO == req.type);
 
   write_packet("E01");
@@ -1817,7 +1817,7 @@ void GdbConnection::reply_write_siginfo(/* TODO*/) {
   consume_request();
 }
 
-void GdbConnection::reply_rr_cmd(const std::string& text) {
+void GdbServerConnection::reply_rr_cmd(const std::string& text) {
   DEBUG_ASSERT(DREQ_RR_CMD == req.type);
 
   write_packet(text.c_str());
@@ -1825,7 +1825,7 @@ void GdbConnection::reply_rr_cmd(const std::string& text) {
   consume_request();
 }
 
-void GdbConnection::send_qsymbol(const std::string& name) {
+void GdbServerConnection::send_qsymbol(const std::string& name) {
   DEBUG_ASSERT(DREQ_QSYMBOL == req.type);
 
   const void* data = static_cast<const void*>(name.c_str());
@@ -1835,7 +1835,7 @@ void GdbConnection::send_qsymbol(const std::string& name) {
   consume_request();
 }
 
-void GdbConnection::qsymbols_finished() {
+void GdbServerConnection::qsymbols_finished() {
   DEBUG_ASSERT(DREQ_QSYMBOL == req.type);
 
   write_packet("OK");
@@ -1843,7 +1843,7 @@ void GdbConnection::qsymbols_finished() {
   consume_request();
 }
 
-void GdbConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
+void GdbServerConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
   DEBUG_ASSERT(DREQ_TLS == req.type);
 
   if (ok) {
@@ -1857,7 +1857,7 @@ void GdbConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
   consume_request();
 }
 
-void GdbConnection::reply_setfs(int err) {
+void GdbServerConnection::reply_setfs(int err) {
   DEBUG_ASSERT(DREQ_FILE_SETFS == req.type);
   if (err) {
     send_file_error_reply(err);
@@ -1868,7 +1868,7 @@ void GdbConnection::reply_setfs(int err) {
   consume_request();
 }
 
-void GdbConnection::reply_open(int fd, int err) {
+void GdbServerConnection::reply_open(int fd, int err) {
   DEBUG_ASSERT(DREQ_FILE_OPEN == req.type);
   if (err) {
     send_file_error_reply(err);
@@ -1881,7 +1881,7 @@ void GdbConnection::reply_open(int fd, int err) {
   consume_request();
 }
 
-void GdbConnection::reply_pread(const uint8_t* bytes, ssize_t len, int err) {
+void GdbServerConnection::reply_pread(const uint8_t* bytes, ssize_t len, int err) {
   DEBUG_ASSERT(DREQ_FILE_PREAD == req.type);
   if (err) {
     send_file_error_reply(err);
@@ -1894,7 +1894,7 @@ void GdbConnection::reply_pread(const uint8_t* bytes, ssize_t len, int err) {
   consume_request();
 }
 
-void GdbConnection::reply_close(int err) {
+void GdbServerConnection::reply_close(int err) {
   DEBUG_ASSERT(DREQ_FILE_CLOSE == req.type);
   if (err) {
     send_file_error_reply(err);
@@ -1905,7 +1905,7 @@ void GdbConnection::reply_close(int err) {
   consume_request();
 }
 
-void GdbConnection::send_file_error_reply(int system_errno) {
+void GdbServerConnection::send_file_error_reply(int system_errno) {
   int gdb_err;
   switch (system_errno) {
     case EPERM:
@@ -1974,8 +1974,8 @@ void GdbConnection::send_file_error_reply(int system_errno) {
   write_packet(buf);
 }
 
-bool GdbConnection::is_connection_alive() { return connection_alive_; }
+bool GdbServerConnection::is_connection_alive() { return connection_alive_; }
 
-bool GdbConnection::is_pass_signal(int sig) { return pass_signals.find(to_gdb_signum(sig)) != pass_signals.end(); }
+bool GdbServerConnection::is_pass_signal(int sig) { return pass_signals.find(to_gdb_signum(sig)) != pass_signals.end(); }
 
 } // namespace rr

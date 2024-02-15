@@ -44,7 +44,7 @@ GdbServer::ConnectionFlags::ConnectionFlags()
     serve_files(false),
     debugger_params_write_pipe(nullptr) {}
 
-GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
+GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t)
     : dbg(std::move(dbg)),
       debuggee_tguid(t->thread_group()->tguid()),
       last_continue_tuid(t->tuid()),
@@ -279,9 +279,9 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
                                       const ExtraRegisters& extra_regs) {
   GdbRegister end;
   // Send values for all the registers we sent XML register descriptions for.
-  // Those descriptions are controlled by GdbConnection::cpu_features().
-  bool have_PKU = dbg->cpu_features() & GdbConnection::CPU_PKU;
-  bool have_AVX = dbg->cpu_features() & GdbConnection::CPU_AVX;
+  // Those descriptions are controlled by GdbServerConnection::cpu_features().
+  bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
+  bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
   switch (regs.arch()) {
     case x86:
       end = have_PKU ? DREG_PKRU : (have_AVX ? DREG_YMM7H : DREG_ORIG_EAX);
@@ -1678,12 +1678,12 @@ static uint32_t get_cpu_features(SupportedArch arch) {
   switch (arch) {
     case x86:
     case x86_64: {
-      cpu_features = arch == x86_64 ? GdbConnection::CPU_X86_64 : 0;
+      cpu_features = arch == x86_64 ? GdbServerConnection::CPU_X86_64 : 0;
       unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
       auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
       if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
         // PKU (Skylake) implies AVX (Sandy Bridge).
-        cpu_features |= GdbConnection::CPU_AVX | GdbConnection::CPU_PKU;
+        cpu_features |= GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_PKU;
         break;
       }
 
@@ -1692,12 +1692,12 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       // is the same as the AVX support during replay. But if that's not true,
       // rr is totally broken anyway.
       if ((cpuid_data.ecx & AVX_cpuid_flags) == AVX_cpuid_flags) {
-        cpu_features |= GdbConnection::CPU_AVX;
+        cpu_features |= GdbServerConnection::CPU_AVX;
       }
       break;
     }
     case aarch64:
-      cpu_features = GdbConnection::CPU_AARCH64;
+      cpu_features = GdbServerConnection::CPU_AARCH64;
       break;
     default:
       FATAL() << "Unknown architecture";
@@ -1773,9 +1773,9 @@ static void push_target_remote_cmd(vector<string>& vec, const string& host,
  * This function is infallible: either it will return a valid
  * debugging context, or it won't return.
  */
-static unique_ptr<GdbConnection> await_connection(
-    Task* t, ScopedFd& listen_fd, const GdbConnection::Features& features) {
-  auto dbg = unique_ptr<GdbConnection>(new GdbConnection(t->tgid(), features));
+static unique_ptr<GdbServerConnection> await_connection(
+    Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
+  auto dbg = unique_ptr<GdbServerConnection>(new GdbServerConnection(t->tgid(), features));
   dbg->set_cpu_features(get_cpu_features(t->arch()));
   dbg->await_debugger(listen_fd);
   return dbg;
@@ -1851,7 +1851,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
   do {
     LOG(debug) << "initializing debugger connection";
-    dbg = await_connection(t, listen_fd, GdbConnection::Features());
+    dbg = await_connection(t, listen_fd, GdbServerConnection::Features());
     activate_debugger();
 
     GdbRequest last_resume_request;
@@ -1963,7 +1963,7 @@ void GdbServer::emergency_debug(Task* t) {
   // likely already in a debugger, and wouldn't be able to
   // control another session. Instead, launch a new GdbServer and wait for
   // the user to connect from another window.
-  GdbConnection::Features features;
+  GdbServerConnection::Features features;
   // Don't advertise reverse_execution to gdb because a) it won't work and
   // b) some gdb versions will fail if the user doesn't turn off async
   // mode (and we don't want to require users to do that)
@@ -1990,7 +1990,7 @@ void GdbServer::emergency_debug(Task* t) {
     print_debugger_launch_command(t, localhost_addr, port, false, "gdb",
                                   stderr);
   }
-  unique_ptr<GdbConnection> dbg = await_connection(t, listen_fd, features);
+  unique_ptr<GdbServerConnection> dbg = await_connection(t, listen_fd, features);
 
   GdbServer(dbg, t).process_debugger_requests();
 }

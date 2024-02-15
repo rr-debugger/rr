@@ -359,7 +359,7 @@ struct GdbRequest {
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
  */
-class GdbConnection {
+class GdbServerConnection {
 public:
   struct Features {
     Features() : reverse_execution(true) {}
@@ -375,7 +375,7 @@ public:
 
   /**
    * Finish a DREQ_RESTART request.  Should be invoked after replay
-   * restarts and prior GdbConnection has been restored.
+   * restarts and prior GdbServerConnection has been restored.
    */
   void notify_restart();
 
@@ -597,7 +597,7 @@ public:
   void set_cpu_features(uint32_t features) { cpu_features_ = features; }
   uint32_t cpu_features() const { return cpu_features_; }
 
-  GdbConnection(pid_t tgid, const Features& features);
+  GdbServerConnection(pid_t tgid, const Features& features);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
