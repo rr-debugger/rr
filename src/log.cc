@@ -22,6 +22,7 @@
 #include "ftrace.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
+#include "launch_debugger.h"
 #include "processor_trace_check.h"
 #include "util.h"
 
@@ -433,7 +434,7 @@ static void dump_last_events(const TraceStream& trace) {
   dump(trace.dir(), flags, specs, stderr);
 }
 
-static void emergency_debug(Task* t) {
+static void start_emergency_debug(Task* t) {
   ftrace::stop();
 
   // Enable SIGINT in case it was disabled. Users want to be able to ctrl-C
@@ -472,7 +473,7 @@ static void emergency_debug(Task* t) {
     CLEAN_FATAL() << "(task is in a bad state, aborting emergency debugging)";
   }
 
-  GdbServer::emergency_debug(t);
+  emergency_debug(t);
   CLEAN_FATAL() << "Can't resume execution from invalid state";
 }
 
@@ -494,7 +495,7 @@ EmergencyDebugOstream::~EmergencyDebugOstream() {
     log_stream() << endl;
     flush_log_stream();
     t->log_pending_events();
-    emergency_debug(t);
+    start_emergency_debug(t);
   }
 }
 

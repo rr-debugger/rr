@@ -79,30 +79,6 @@ public:
   void serve_replay(const ConnectionFlags& flags);
 
   /**
-   * exec()'s gdb using parameters read from params_pipe_fd (and sent through
-   * the pipe passed to serve_replay_with_debugger).
-   */
-  static void launch_gdb(ScopedFd& params_pipe_fd,
-                         const std::string& gdb_binary_file_path,
-                         const std::vector<std::string>& gdb_options,
-                         bool serve_files);
-
-  /**
-   * Start a debugging connection for |t| and return when there are no
-   * more requests to process (usually because the debugger detaches).
-   *
-   * This helper doesn't attempt to determine whether blocking rr on a
-   * debugger connection might be a bad idea.  It will always open the debug
-   * socket and block awaiting a connection.
-   */
-  static void emergency_debug(Task* t);
-
-  /**
-   * A string containing the default gdbinit script that we load into gdb.
-   */
-  static std::string init_script();
-
-  /**
    * Called from a signal handler (or other thread) during serve_replay,
    * this will cause the replay-to-target phase to be interrupted and
    * debugging started wherever the replay happens to be.
@@ -117,6 +93,11 @@ public:
                                   GdbRegister which);
 
   ReplayTimeline& get_timeline() { return timeline; }
+
+  static void serve_emergency_debugger(
+        std::unique_ptr<GdbServerConnection> dbg, Task* t) {
+    GdbServer(dbg, t).process_debugger_requests();
+  }
 
 private:
   GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t);

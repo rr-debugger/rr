@@ -2,6 +2,7 @@
 
 #include "Command.h"
 #include "GdbServer.h"
+#include "launch_debugger.h"
 #include "main.h"
 
 using namespace std;
@@ -24,7 +25,7 @@ int GdbInitCommand::run(vector<string>& args) {
   while (parse_global_option(args)) {
   }
 
-  fputs(GdbServer::init_script().c_str(), stdout);
+  fputs(gdb_init_script().c_str(), stdout);
   return 0;
 }
 

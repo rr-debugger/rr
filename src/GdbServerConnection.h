@@ -16,6 +16,7 @@
 #include "Registers.h"
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
+#include "ScopedFd.h"
 #include "core.h"
 
 namespace rr {
@@ -365,6 +366,29 @@ public:
     Features() : reverse_execution(true) {}
     bool reverse_execution;
   };
+
+  /**
+   * Wait for exactly one gdb host to connect to this remote target on
+   * the specified IP address |host|, port |port|.  If |probe| is nonzero,
+   * a unique port based on |start_port| will be searched for.  Otherwise,
+   * if |port| is already bound, this function will fail.
+   *
+   * Pass the |tgid| of the task on which this debug-connection request
+   * is being made.  The remaining debugging session will be limited to
+   * traffic regarding |tgid|, but clients don't need to and shouldn't
+   * need to assume that.
+   *
+   * If we're opening this connection on behalf of a known client, pass
+   * an fd in |client_params_fd|; we'll write the allocated port and |exe_image|
+   * through the fd before waiting for a connection. |exe_image| is the
+   * process that will be debugged by client, or null ptr if there isn't
+   * a client.
+   *
+   * This function is infallible: either it will return a valid
+   * debugging context, or it won't return.
+   */
+  static std::unique_ptr<GdbServerConnection> await_connection(
+    Task* t, ScopedFd& listen_fd, const Features& features = Features());
 
   /**
    * Call this when the target of |req| is needed to fulfill the

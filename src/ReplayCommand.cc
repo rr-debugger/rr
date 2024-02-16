@@ -17,6 +17,7 @@
 #include "WaitManager.h"
 #include "core.h"
 #include "kernel_metadata.h"
+#include "launch_debugger.h"
 #include "log.h"
 #include "main.h"
 
@@ -549,9 +550,9 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_binary_file_path,
-                          flags.gdb_options,
-                          flags.serve_files);
+    launch_debugger(params_pipe_read_fd, flags.gdb_binary_file_path,
+                    flags.gdb_options,
+                    flags.serve_files);
   }
 
   // Child must have died before we were able to get debugger parameters

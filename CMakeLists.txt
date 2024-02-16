@@ -578,6 +578,7 @@ set(RR_SOURCES
   src/ExportImportCheckpoints.cc
   src/kernel_abi.cc
   src/kernel_metadata.cc
+  src/launch_debugger.cc
   src/log.cc
   src/LsCommand.cc
   src/main.cc

@@ -67,6 +67,68 @@ GdbServerConnection::GdbServerConnection(pid_t tgid, const Features& features)
 #endif
 }
 
+static uint32_t get_cpu_features(SupportedArch arch) {
+  uint32_t cpu_features;
+  switch (arch) {
+    case x86:
+    case x86_64: {
+      cpu_features = arch == x86_64 ? GdbServerConnection::CPU_X86_64 : 0;
+      unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
+      auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
+      if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
+        // PKU (Skylake) implies AVX (Sandy Bridge).
+        cpu_features |= GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_PKU;
+        break;
+      }
+
+      cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+      // We're assuming here that AVX support on the system making the recording
+      // is the same as the AVX support during replay. But if that's not true,
+      // rr is totally broken anyway.
+      if ((cpuid_data.ecx & AVX_cpuid_flags) == AVX_cpuid_flags) {
+        cpu_features |= GdbServerConnection::CPU_AVX;
+      }
+      break;
+    }
+    case aarch64:
+      cpu_features = GdbServerConnection::CPU_AARCH64;
+      break;
+    default:
+      FATAL() << "Unknown architecture";
+      return 0;
+  }
+
+  return cpu_features;
+}
+
+/**
+ * Wait for exactly one debugger host to connect to this remote target on
+ * the specified IP address |host|, port |port|.  If |probe| is nonzero,
+ * a unique port based on |start_port| will be searched for.  Otherwise,
+ * if |port| is already bound, this function will fail.
+ *
+ * Pass the |tgid| of the task on which this debug-connection request
+ * is being made.  The remaining debugging session will be limited to
+ * traffic regarding |tgid|, but clients don't need to and shouldn't
+ * need to assume that.
+ *
+ * If we're opening this connection on behalf of a known client, pass
+ * an fd in |client_params_fd|; we'll write the allocated port and |exe_image|
+ * through the fd before waiting for a connection. |exe_image| is the
+ * process that will be debugged by the client, or null ptr if there isn't
+ * a client.
+ *
+ * This function is infallible: either it will return a valid
+ * debugging context, or it won't return.
+ */
+unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
+    Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
+  auto dbg = unique_ptr<GdbServerConnection>(new GdbServerConnection(t->tgid(), features));
+  dbg->set_cpu_features(get_cpu_features(t->arch()));
+  dbg->await_debugger(listen_fd);
+  return dbg;
+}
+
 void GdbServerConnection::await_debugger(ScopedFd& listen_fd) {
   sock_fd = ScopedFd(accept(listen_fd, nullptr, nullptr));
   // We might restart this debugging session, so don't set the
