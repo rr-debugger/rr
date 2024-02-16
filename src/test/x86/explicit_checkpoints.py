@@ -61,4 +61,7 @@ send_gdb("restart 2");
 send_gdb('c')
 expect_gdb('failed')
 
+send_gdb('delete checkpoint')
+expect_gdb('requires an argument')
+
 ok()
