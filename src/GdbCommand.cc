@@ -128,6 +128,9 @@ static SimpleGdbCommand checkpoint(
 
 string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
                                 const vector<string>& args) {
+  if (args.size() < 1) {
+    return "'delete checkpoint' requires an argument";
+  }
   int id = stoi(args[0]);
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
