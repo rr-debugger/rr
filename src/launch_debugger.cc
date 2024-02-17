@@ -137,6 +137,20 @@ static const string& gdb_rr_macros() {
   return s;
 }
 
+// Special-sauce macros defined by rr when launching the gdb client,
+// which implement functionality outside of the gdb remote protocol.
+// (Don't stare at them too long or you'll go blind ;).)
+static const string& lldb_rr_macros() {
+  static string s;
+
+  if (s.empty()) {
+    stringstream ss;
+    ss << "set set prompt \"(rr) \"\n";
+    s = ss.str();
+  }
+  return s;
+}
+
 struct DebuggerParams {
   char exe_image[PATH_MAX];
   char host[16]; // INET_ADDRSTRLEN, omitted for header churn
@@ -205,6 +219,7 @@ vector<string> debugger_launch_command(Task* t, const string& host,
       push_gdb_target_remote_cmd(cmd, host, port);
       break;
     case DebuggerType::LLDB:
+      cmd.push_back("--source-quietly");
       push_lldb_target_remote_cmd(cmd, host, port);
       break;
     default:
@@ -216,8 +231,8 @@ vector<string> debugger_launch_command(Task* t, const string& host,
   return cmd;
 }
 
-static string create_gdb_command_file(const string& macros) {
-  TempFile file = create_temporary_file("rr-gdb-commands-XXXXXX");
+static string create_command_file(const string& macros) {
+  TempFile file = create_temporary_file("rr-debugger-commands-XXXXXX");
   // This fd is just leaked. That's fine since we only call this once
   // per rr invocation at the moment.
   int fd = file.fd.extract();
@@ -278,7 +293,7 @@ void launch_debugger(ScopedFd& params_pipe_fd,
   switch (identify_debugger(debugger_file_path)) {
     case DebuggerType::GDB: {
       push_default_gdb_options(cmd, serve_files);
-      string gdb_command_file = create_gdb_command_file(gdb_rr_macros());
+      string gdb_command_file = create_command_file(gdb_rr_macros());
       cmd.push_back("-x");
       cmd.push_back(gdb_command_file);
 
@@ -298,10 +313,15 @@ void launch_debugger(ScopedFd& params_pipe_fd,
       env.push_back("GDB_UNDER_RR=1");
       break;
     }
-    case DebuggerType::LLDB:
+    case DebuggerType::LLDB: {
+      cmd.push_back("--source-quietly");
+      string lldb_command_file = create_command_file(lldb_rr_macros());
+      cmd.push_back("--source-before-file");
+      cmd.push_back(lldb_command_file);
       push_lldb_target_remote_cmd(cmd, host, port);
       env.push_back("LLDB_UNDER_RR=1");
       break;
+    }
     default:
       FATAL() << "Unknown debugger type";
       break;
