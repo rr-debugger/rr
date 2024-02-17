@@ -23,12 +23,5 @@ const platforms = Platforms(
             allow_fail      = false,
             commit_status   = true,
         ),
-        Platform(;
-            arch            = "aarch64",
-            rootfs_tag      = "v5.22",
-            rootfs_treehash = "7a63218e46996b36aa108b55746a3d94a3e312c1",
-            allow_fail      = false,
-            commit_status   = true,
-        ),
     ]
 )
