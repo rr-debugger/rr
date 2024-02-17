@@ -318,6 +318,7 @@ void launch_debugger(ScopedFd& params_pipe_fd,
       string lldb_command_file = create_command_file(lldb_rr_macros());
       cmd.push_back("--source-before-file");
       cmd.push_back(lldb_command_file);
+      cmd.insert(cmd.end(), options.begin(), options.end());
       push_lldb_target_remote_cmd(cmd, host, port);
       env.push_back("LLDB_UNDER_RR=1");
       break;
