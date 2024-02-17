@@ -5,15 +5,21 @@ __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'expect_list',
             'failed', 'iterlines_both', 'last_match', 'get_exe_arch',
             'get_gdb_version' ]
 
+# Don't use python timeout. Use test-monitor timeout instead.
+TIMEOUT_SEC = 10000
+# The debugger and rr are part of the same process tree, so they share
+# stdin/stdout.
+child = None
+
 # Public API
 def expect_gdb(what):
-    expect(gdb_rr, what)
+    expect(child, what)
 
 def expect_list(pats):
-    return gdb_rr.expect_list(pats)
+    return child.expect_list(pats)
 
 def expect_rr(what):
-    expect(gdb_rr, what)
+    expect(child, what)
 
 def failed(why, e=None):
     print('FAILED:', why)
@@ -24,16 +30,16 @@ def failed(why, e=None):
 
 def interrupt_gdb():
     try:
-        gdb_rr.kill(signal.SIGINT)
+        child.kill(signal.SIGINT)
     except Exception as e:
         failed('interrupting gdb', e)
     expect_gdb('stopped.')
 
 def iterlines_both():
-    return gdb_rr
+    return child
 
 def last_match():
-    return gdb_rr.match
+    return child.match
 
 # Restarts and continues execution
 def restart_replay(event=0):
@@ -51,7 +57,7 @@ def restart_replay(event=0):
     send_gdb('c')
 
 def send_gdb(what):
-    send(gdb_rr, "%s\n"%what)
+    send(child, "%s\n"%what)
 
 def ok():
     send_gdb('q')
@@ -59,28 +65,22 @@ def ok():
     clean_up()
 
 # Internal helpers
-# Don't use python timeout. Use test-monitor timeout instead.
-TIMEOUT_SEC = 10000
-# gdb and rr are part of the same process tree, so they share
-# stdin/stdout.
-gdb_rr = None
-
 def clean_up():
-    global gdb_rr
+    global child
     iterations = 0
-    while gdb_rr:
+    while child:
         try:
             # FIXME: without this sleep python freezes instead of exiting.
             # The sleep has to be before BufferedRWPair.close()
             time.sleep(0.1)
-            gdb_rr.close(force=1)
-            gdb_rr = None
+            child.close(force=1)
+            child = None
         except Exception as e:
             if iterations < 5:
                 print("close() failed with '%s', retrying..."%e)
                 iterations = iterations + 1
             else:
-                gdb_rr = None
+                child = None
 
 def expect(prog, what):
     try:
@@ -91,8 +91,8 @@ def expect(prog, what):
 def get_exe_arch():
     send_gdb('show architecture')
     expect_gdb(r'The target architecture is set (automatically|to "auto") \(currently "?([0-9a-z:-]+)"?\)\.?')
-    global gdb_rr
-    return gdb_rr.match.group(2)
+    global child
+    return child.match.group(2)
 
 def get_rr_cmd():
     '''Return the command that should be used to invoke rr, as the tuple
@@ -104,8 +104,8 @@ def get_gdb_version():
     '''Return the gdb version'''
     send_gdb('python print(gdb.VERSION)')
     expect_gdb(r'(\d+.\d+)')
-    global gdb_rr
-    return float(gdb_rr.match.group(1))
+    global child
+    return float(child.match.group(1))
 
 def send(prog, what):
     try:
@@ -114,10 +114,10 @@ def send(prog, what):
         failed('sending "%s"'% (what), e)
 
 def set_up():
-    global gdb_rr
+    global child
     try:
-        gdb_rr = pexpect.spawn(*get_rr_cmd(), codec_errors='ignore', timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open('gdb_rr.log', 'w'))
-        gdb_rr.delaybeforesend = 0
+        child = pexpect.spawn(*get_rr_cmd(), codec_errors='ignore', timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open('gdb_rr.log', 'w'))
+        child.delaybeforesend = 0
         expect_gdb('\(rr\)')
     except Exception as e:
         failed('initializing rr and gdb', e)
