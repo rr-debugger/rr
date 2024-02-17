@@ -4,4 +4,4 @@ recorded_exe=async_usr1$bitness
 
 # SIGUSR1, wait 2.0s
 record_async_signal 10 2.0 $recorded_exe
-debug $TESTNAME_NO_BITNESS
+debug_gdb_only $TESTNAME_NO_BITNESS

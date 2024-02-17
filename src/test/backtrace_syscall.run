@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record simple$bitness
-debug backtrace_syscall
+debug_gdb_only backtrace_syscall

@@ -7,4 +7,4 @@ record $TESTNAME "$saved_breakpoint"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug restart_breakpoint "-p $TARGET_PID -g 1"
+debug_gdb_only restart_breakpoint "-p $TARGET_PID -g 1"

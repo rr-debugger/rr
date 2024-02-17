@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record barrier$bitness
-debug dead_thread_target
+debug_gdb_only dead_thread_target

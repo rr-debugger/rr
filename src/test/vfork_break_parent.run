@@ -4,4 +4,4 @@ save_exe simple$bitness
 saved_exe="simple$bitness-$nonce"
 
 record vfork$bitness "$saved_exe"
-debug vfork_break_parent
+debug_gdb_only vfork_break_parent

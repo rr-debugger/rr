@@ -14,11 +14,11 @@ num_events=$(count_events)
 # run the debugger for each one.  The original bug reproduces when the
 # debugger attaches to pretty much any event past event 350, so we
 # somewhat arbitrarily choose a stride that reduces the number of
-# debug sessions by about 10x.
+# debug_gdb_only sessions by about 10x.
 stride=80
 for i in $(seq 1 $stride $num_events); do
     echo Checkpointing at event $i ...
-    debug restart_finish "-g $i"
+    debug_gdb_only restart_finish "-g $i"
     if [[ "$leave_data" == "y" ]]; then
         break
     fi

@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record tgkill$bitness
-debug siginfo
+debug_gdb_only siginfo

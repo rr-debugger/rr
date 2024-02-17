@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record ptrace_remote_unmap$bitness
-debug ptrace_remote_unmap
+debug_gdb_only ptrace_remote_unmap

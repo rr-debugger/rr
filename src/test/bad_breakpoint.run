@@ -2,7 +2,7 @@ source `dirname $0`/util.sh
 record simple$bitness
 for i in $(seq 15 25); do
     echo Replaying to event $i ...
-    debug restart_finish "-g $i"
+    debug_gdb_only restart_finish "-g $i"
     if [[ "$leave_data" == "y" ]]; then
         break
     fi

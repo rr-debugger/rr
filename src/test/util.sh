@@ -336,10 +336,11 @@ function do_ps { psflags=$1
         $RR_EXE $GLOBAL_OPTIONS ps $psflags
 }
 
-#  debug <expect-script-name> [replay-args]
+#  debug_gdb_only <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
-function debug { expectscript=$1; replayargs=$2
+# Only GDB is tested.
+function debug_gdb_only { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
         python3 $TESTDIR/$expectscript.py \
         $RR_EXE $GLOBAL_OPTIONS replay -o-n -o-ix -o$TESTDIR/test_setup.gdb $replayargs
@@ -469,14 +470,14 @@ function compare_test { token=$1; replayflags=$2;
     check $token
 }
 
-#  debug_test
+#  debug_test_gdb_only
 #
 # Record the test name passed to |util.sh|, then replay the recording
 # using the "expect" script $test-name.py, which is responsible for
 # computing test pass/fail.
-function debug_test {
+function debug_test_gdb_only {
     record $TESTNAME
-    debug $TEST_PREFIX$TESTNAME_NO_BITNESS
+    debug_gdb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
 }
 
 #  rerun_singlestep_test
@@ -537,7 +538,7 @@ function checkpoint_test { exe=$1; min=$2; max=$3;
     stride=$(rand_range $min $max)
     for i in $(seq 1 $stride $num_events); do
         echo Checkpointing at event $i ...
-        debug restart_finish "-g $i"
+        debug_gdb_only restart_finish "-g $i"
         if [[ "$test_passed" != "y" ]]; then
             break
         fi

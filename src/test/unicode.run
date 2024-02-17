@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 set_utf_locale
-debug_test
+debug_test_gdb_only

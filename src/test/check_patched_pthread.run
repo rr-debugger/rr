@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record threads$bitness
-debug check_patched_pthread
+debug_gdb_only check_patched_pthread

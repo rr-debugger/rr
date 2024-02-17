@@ -3,4 +3,4 @@ source `dirname $0`/util.sh
 skip_if_rr_32_bit_with_shell_64_bit
 
 just_record $TESTDIR/simple_script.sh
-debug simple_script_debug "--onprocess simple_script.sh"
+debug_gdb_only simple_script_debug_gdb_only "--onprocess simple_script.sh"

@@ -1,4 +1,4 @@
 source `dirname $0`/util.sh
 record seekticks_threads$bitness
 SCHED_EVENTS="$(get_events | grep \`SCHED\')" \
-debug seekticks_threads
+debug_gdb_only seekticks_threads

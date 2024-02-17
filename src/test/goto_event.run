@@ -3,4 +3,4 @@ source `dirname $0`/util.sh
 export EVENTS=1000
 record $TESTNAME $EVENTS
 
-debug goto_event "-g $EVENTS"
+debug_gdb_only goto_event "-g $EVENTS"

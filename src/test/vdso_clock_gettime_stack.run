@@ -12,4 +12,4 @@ skip_if_test_32_bit
 # Use 4K syscallbuf size to force frequent overflows
 RECORD_ARGS=--syscall-buffer-size=4
 record $TESTNAME
-debug vdso_stack
+debug_gdb_only vdso_stack

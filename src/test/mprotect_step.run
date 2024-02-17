@@ -1,4 +1,4 @@
 source `dirname $0`/util.sh
 record mprotect$bitness
-debug mprotect_step
+debug_gdb_only mprotect_step
 

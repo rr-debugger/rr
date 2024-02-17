@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record watchpoint$bitness
-debug reverse_watchpoint
+debug_gdb_only reverse_watchpoint

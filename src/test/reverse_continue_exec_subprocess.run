@@ -8,4 +8,4 @@ record "target_process$bitness" "$saved_simple"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug reverse_continue_exec_subprocess "-p $TARGET_PID"
+debug_gdb_only reverse_continue_exec_subprocess "-p $TARGET_PID"

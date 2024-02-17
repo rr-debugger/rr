@@ -1,8 +1,8 @@
 source `dirname $0`/util.sh
 compare_test EXIT-SUCCESS
-# Skip debug script test if there were no jumps to abort_ip
+# Skip debug_gdb_only script test if there were no jumps to abort_ip
 grep -q ", 0 jump aborts" record.out
 if [[ $? != 0 ]]; then
     TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
-    debug rseq "-f $TARGET_PID"
+    debug_gdb_only rseq "-f $TARGET_PID"
 fi

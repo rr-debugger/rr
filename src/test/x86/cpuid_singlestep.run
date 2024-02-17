@@ -3,4 +3,4 @@ source `dirname $0`/util.sh
 GLOBAL_OPTIONS=--disable-cpuid-faulting
 record $TESTNAME
 GLOBAL_OPTIONS=
-debug x86/cpuid_singlestep
+debug_gdb_only x86/cpuid_singlestep

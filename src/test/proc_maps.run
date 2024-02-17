@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
 record simple$bitness
-debug proc_maps
+debug_gdb_only proc_maps

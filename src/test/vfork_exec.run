@@ -7,4 +7,4 @@ record vfork$bitness "$saved_exe"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug first_instruction "-p $TARGET_PID"
+debug_gdb_only first_instruction "-p $TARGET_PID"

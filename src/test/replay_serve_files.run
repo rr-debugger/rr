@@ -10,4 +10,4 @@ rr pack $workdir/latest-trace || failed "'rr pack' failed"
 # Make sure rr pack really copied the file
 truncate --size 0 libtest_lib$bitness.so
 rm libtest_lib$bitness.so
-debug $TESTNAME_NO_BITNESS "--serve-files"
+debug_gdb_only $TESTNAME_NO_BITNESS "--serve-files"
