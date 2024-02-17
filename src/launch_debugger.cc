@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <memory>
 #include <sstream>
+#include <string>
 
 #include "launch_debugger.h"
 
@@ -20,6 +21,22 @@
 using namespace std;
 
 namespace rr {
+
+// Controls the command-line arguments and command syntax we'll use
+// to control the debugger.
+enum class DebuggerType {
+  GDB,
+  LLDB,
+};
+
+static DebuggerType identify_debugger(const string& debugger_name) {
+  string debugger_base_name = debugger_name;
+  base_name(debugger_base_name);
+  if (debugger_base_name.find("lldb") != string::npos) {
+    return DebuggerType::LLDB;
+  }
+  return DebuggerType::GDB;
+}
 
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
@@ -166,6 +183,14 @@ static void push_gdb_target_remote_cmd(vector<string>& vec, const string& host,
   vec.push_back(ss.str());
 }
 
+static void push_lldb_target_remote_cmd(vector<string>& vec, const string& host,
+                                        unsigned short port) {
+  vec.push_back("-o");
+  stringstream ss;
+  ss << "gdb-remote " << host << ":" << port;
+  vec.push_back(ss.str());
+}
+
 string saved_debugger_launch_command;
 
 vector<string> debugger_launch_command(Task* t, const string& host,
@@ -174,8 +199,18 @@ vector<string> debugger_launch_command(Task* t, const string& host,
                                        const string& debugger_name) {
   vector<string> cmd;
   cmd.push_back(debugger_name);
-  push_default_gdb_options(cmd, serve_files);
-  push_gdb_target_remote_cmd(cmd, host, port);
+  switch (identify_debugger(debugger_name)) {
+    case DebuggerType::GDB:
+      push_default_gdb_options(cmd, serve_files);
+      push_gdb_target_remote_cmd(cmd, host, port);
+      break;
+    case DebuggerType::LLDB:
+      push_lldb_target_remote_cmd(cmd, host, port);
+      break;
+    default:
+      FATAL() << "Unknown debugger type";
+      break;
+  }
   cmd.push_back(t->vm()->exe_image());
   saved_debugger_launch_command = to_shell_string(cmd);
   return cmd;
@@ -219,9 +254,6 @@ void launch_debugger(ScopedFd& params_pipe_fd,
                      const string& debugger_file_path,
                      const vector<string>& options,
                      bool serve_files) {
-  auto macros = gdb_rr_macros();
-  string gdb_command_file = create_gdb_command_file(macros);
-
   DebuggerParams params;
   ssize_t nread;
   while (true) {
@@ -236,31 +268,50 @@ void launch_debugger(ScopedFd& params_pipe_fd,
   }
   DEBUG_ASSERT(nread == sizeof(params));
 
-  vector<string> args;
-  args.push_back(debugger_file_path);
-  push_default_gdb_options(args, serve_files);
-  args.push_back("-x");
-  args.push_back(gdb_command_file);
-  bool did_set_remote = false;
-  for (size_t i = 0; i < options.size(); ++i) {
-    if (!did_set_remote && options[i] == "-ex" &&
-        i + 1 < options.size() && needs_target(options[i + 1])) {
-      push_gdb_target_remote_cmd(args, string(params.host), params.port);
-      did_set_remote = true;
-    }
-    args.push_back(options[i]);
-  }
-  if (!did_set_remote) {
-    push_gdb_target_remote_cmd(args, string(params.host), params.port);
-  }
-  args.push_back(params.exe_image);
+  string host(params.host);
+  uint16_t port(params.port);
 
+  vector<string> cmd;
+  cmd.push_back(debugger_file_path);
   vector<string> env = current_env();
-  env.push_back("GDB_UNDER_RR=1");
 
-  LOG(debug) << "launching " << to_shell_string(args);
+  switch (identify_debugger(debugger_file_path)) {
+    case DebuggerType::GDB: {
+      push_default_gdb_options(cmd, serve_files);
+      string gdb_command_file = create_gdb_command_file(gdb_rr_macros());
+      cmd.push_back("-x");
+      cmd.push_back(gdb_command_file);
 
-  StringVectorToCharArray c_args(args);
+      bool did_set_remote = false;
+      for (size_t i = 0; i < options.size(); ++i) {
+        if (!did_set_remote && options[i] == "-ex" &&
+            i + 1 < options.size() && needs_target(options[i + 1])) {
+          push_gdb_target_remote_cmd(cmd, host, port);
+          did_set_remote = true;
+        }
+        cmd.push_back(options[i]);
+      }
+      if (!did_set_remote) {
+        push_gdb_target_remote_cmd(cmd, host, port);
+      }
+
+      env.push_back("GDB_UNDER_RR=1");
+      break;
+    }
+    case DebuggerType::LLDB:
+      push_lldb_target_remote_cmd(cmd, host, port);
+      env.push_back("LLDB_UNDER_RR=1");
+      break;
+    default:
+      FATAL() << "Unknown debugger type";
+      break;
+  }
+
+  cmd.push_back(params.exe_image);
+
+  LOG(debug) << "launching " << to_shell_string(cmd);
+
+  StringVectorToCharArray c_args(cmd);
   StringVectorToCharArray c_env(env);
   execvpe(debugger_file_path.c_str(), c_args.get(), c_env.get());
   CLEAN_FATAL() << "Failed to exec " << debugger_file_path << ".";
