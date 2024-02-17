@@ -337,6 +337,28 @@ function do_ps { psflags=$1
         $RR_EXE $GLOBAL_OPTIONS ps $psflags
 }
 
+#  debug_lldb_only <expect-script-name> [replay-args]
+#
+# Load the "expect" script to drive replay of the recording of |exe|.
+# Only LLDB is tested.
+function debug_lldb_only { expectscript=$1; replayargs=$2
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
+        python3 $TESTDIR/$expectscript.py --lldb \
+        $RR_EXE $GLOBAL_OPTIONS replay -o-S -o$TESTDIR/test_setup.lldb $replayargs
+    if [[ $? == 0 ]]; then
+        passed_msg lldb
+    else
+        failed "debug script failed (lldb)"
+        echo "--------------------------------------------------"
+        echo "lldb_rr.log:"
+        cat lldb_rr.log
+        echo "--------------------------------------------------"
+        echo "debug.err:"
+        cat debug.err
+        echo "--------------------------------------------------"
+    fi
+}
+
 #  debug_gdb_only <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
@@ -346,9 +368,9 @@ function debug_gdb_only { expectscript=$1; replayargs=$2
         python3 $TESTDIR/$expectscript.py \
         $RR_EXE $GLOBAL_OPTIONS replay -o-n -o-ix -o$TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
-        passed
+        passed_msg gdb
     else
-        failed "debug script failed"
+        failed "debug script failed (lldb)"
         echo "--------------------------------------------------"
         echo "gdb_rr.log:"
         cat gdb_rr.log
@@ -366,6 +388,10 @@ function failed { msg=$1;
 
 function passed {
     echo "Test '$TESTNAME' PASSED"
+}
+
+function passed_msg { msg=$1
+    echo "Test '$TESTNAME' PASSED ($msg)"
 }
 
 function just_check_replay_err {
@@ -471,11 +497,22 @@ function compare_test { token=$1; replayflags=$2;
     check $token
 }
 
-#  debug_test_gdb_only
+#  debug_test
 #
 # Record the test name passed to |util.sh|, then replay the recording
 # using the "expect" script $test-name.py, which is responsible for
 # computing test pass/fail.
+function debug_test {
+    record $TESTNAME
+    debug_gdb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+    debug_lldb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+}
+
+#  debug_test_gdb_only
+#
+# Record the test name passed to |util.sh|, then replay the recording
+# using the "expect" script $test-name.py, which is responsible for
+# computing test pass/fail. Only GDB is tested.
 function debug_test_gdb_only {
     record $TESTNAME
     debug_gdb_only $TEST_PREFIX$TESTNAME_NO_BITNESS

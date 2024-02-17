@@ -1,18 +1,21 @@
 import pexpect, re, signal, sys, time
 
-__all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'expect_list',
-            'restart_replay', 'interrupt_gdb', 'ok',
-            'failed', 'iterlines_both', 'last_match', 'get_exe_arch',
-            'get_gdb_version', 'set_breakpoint', 'set_watchpoint' ]
+__all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
+            'restart_replay', 'interrupt_gdb', 'expect_gdb', 'send_gdb',
+            'ok', 'failed', 'iterlines_both', 'last_match', 'get_exe_arch',
+            'get_gdb_version', 'breakpoint_at_function',
+            'watchpoint_at_address', 'cont', 'backtrace',
+            'expect_breakpoint_stop', 'expect_watchpoint_stop' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
 # The debugger and rr are part of the same process tree, so they share
 # stdin/stdout.
 child = None
+debugger_type = 'GDB'
 
 # Public API
-def expect_gdb(what):
+def expect_debugger(what):
     expect(child, what)
 
 def expect_list(pats):
@@ -28,30 +31,34 @@ def failed(why, e=None):
     clean_up()
     sys.exit(1)
 
-def interrupt_gdb():
+def interrupt_debugger():
     try:
         child.kill(signal.SIGINT)
     except Exception as e:
-        failed('interrupting gdb', e)
+        failed('interrupting debugger', e)
     expect_gdb('stopped.')
-
-def set_breakpoint(args):
-    send_gdb(f'b {args}')
-    expect_gdb(r'Breakpoint ([0-9]+)[^0-9]')
-    global child
-    return child.match.group(1)
-
-def set_watchpoint(args):
-    send_gdb(f'watch {args}')
-    expect_gdb(r'atchpoint ([0-9]+)[^0-9]')
-    global child
-    return child.match.group(1)
 
 def iterlines_both():
     return child
 
 def last_match():
     return child.match
+
+def expect_gdb(what):
+    assert debugger_type == 'GDB'
+    expect_debugger(what)
+
+def interrupt_gdb():
+    assert debugger_type == 'GDB'
+    interrupt_debugger()
+
+def send_gdb(what):
+    assert debugger_type == 'GDB'
+    send(child, "%s\n"%what)
+
+def send_lldb(what):
+    assert debugger_type == 'LLDB'
+    send(child, "%s\n"%what)
 
 # Restarts and continues execution
 def restart_replay(event=0):
@@ -68,13 +75,60 @@ def restart_replay(event=0):
     expect_rr('stopped')
     send_gdb('c')
 
-def send_gdb(what):
-    send(child, "%s\n"%what)
+def breakpoint_at_function(function):
+    send_debugger(f'break {function}', f'breakpoint set --name {function}')
+    expect_debugger(r'Breakpoint (\d+)')
+    return int(last_match().group(1))
+
+size_to_type = {1: 'char', 2:'short', 4:'int', 8:'long long'}
+
+def watchpoint_at_address(address, size):
+    send_debugger(f'watch -l *({size_to_type[size]}*){address}',
+                  f'watchpoint set expression -s {size} -- {address}')
+    expect_debugger(r'atchpoint (\d+)')
+    return int(last_match().group(1))
+
+def cont():
+    send_debugger('continue', 'continue')
+
+def backtrace():
+    send_debugger('bt', 'thread backtrace')
+
+def expect_breakpoint_stop(number):
+    if debugger_type == 'GDB':
+        expect_debugger("Breakpoint %d"%number)
+    else:
+        expect_debugger("stop reason = breakpoint %d"%number)
+
+def expect_watchpoint_stop(number):
+    if debugger_type == 'GDB':
+        expect_debugger("atchpoint %d"%number)
+    else:
+        expect_debugger("stop reason = watchpoint %d"%number)
+
+def send_debugger(gdb_cmd, lldb_cmd):
+    if debugger_type == 'GDB':
+        send_gdb(gdb_cmd)
+    else:
+        send_lldb(lldb_cmd)
 
 def ok():
-    send_gdb('q')
-    send_gdb('y')
+    send_debugger('quit', 'quit')
+    send_debugger('y', 'y')
     clean_up()
+
+def get_exe_arch():
+    send_gdb('show architecture')
+    expect_gdb(r'The target architecture is set (automatically|to "auto") \(currently "?([0-9a-z:-]+)"?\)\.?')
+    global child
+    return child.match.group(2)
+
+def get_gdb_version():
+    '''Return the gdb version'''
+    send_gdb('python print(gdb.VERSION)')
+    expect_gdb(r'(\d+.\d+)')
+    global child
+    return float(child.match.group(1))
 
 # Internal helpers
 def clean_up():
@@ -100,25 +154,6 @@ def expect(prog, what):
     except Exception as e:
         failed('expecting "%s"'% (what), e)
 
-def get_exe_arch():
-    send_gdb('show architecture')
-    expect_gdb(r'The target architecture is set (automatically|to "auto") \(currently "?([0-9a-z:-]+)"?\)\.?')
-    global child
-    return child.match.group(2)
-
-def get_rr_cmd():
-    '''Return the command that should be used to invoke rr, as the tuple
-  (executable, array-of-args)'''
-    rrargs = sys.argv[1:]
-    return (rrargs[0], rrargs[1:])
-
-def get_gdb_version():
-    '''Return the gdb version'''
-    send_gdb('python print(gdb.VERSION)')
-    expect_gdb(r'(\d+.\d+)')
-    global child
-    return float(child.match.group(1))
-
 def send(prog, what):
     try:
         prog.send(what)
@@ -127,11 +162,19 @@ def send(prog, what):
 
 def set_up():
     global child
+    global debugger_type
+    args = sys.argv[1:]
+    log_file = 'gdb_rr.log'
+    if args[0] == '--lldb':
+        debugger_type = 'LLDB'
+        args = args[1:] + ['-d', 'lldb', '-o', '--no-use-colors']
+        log_file = 'lldb_rr.log'
     try:
-        child = pexpect.spawn(*get_rr_cmd(), codec_errors='ignore', timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open('gdb_rr.log', 'w'))
+        child = pexpect.spawn(args[0], args[1:], codec_errors='ignore',
+            timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open(log_file, 'w'))
         child.delaybeforesend = 0
-        expect_gdb(r'\(rr\)')
+        expect_debugger(r'\(rr\)')
     except Exception as e:
-        failed('initializing rr and gdb', e)
+        failed('initializing rr and debugger', e)
 
 set_up()
