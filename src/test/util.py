@@ -118,7 +118,7 @@ def set_up():
     try:
         child = pexpect.spawn(*get_rr_cmd(), codec_errors='ignore', timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open('gdb_rr.log', 'w'))
         child.delaybeforesend = 0
-        expect_gdb('\(rr\)')
+        expect_gdb(r'\(rr\)')
     except Exception as e:
         failed('initializing rr and gdb', e)
 
