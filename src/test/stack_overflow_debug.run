@@ -4,4 +4,4 @@ record stack_overflow$bitness
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug_gdb_only stack_overflow_debug_gdb_only "-f $TARGET_PID"
+debug_gdb_only stack_overflow_debug "-f $TARGET_PID"
