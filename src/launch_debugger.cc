@@ -156,8 +156,8 @@ static void push_default_gdb_options(vector<string>& vec, bool serve_files) {
   }
 }
 
-static void push_target_remote_cmd(vector<string>& vec, const string& host,
-                                   unsigned short port) {
+static void push_gdb_target_remote_cmd(vector<string>& vec, const string& host,
+                                       unsigned short port) {
   vec.push_back("-ex");
   stringstream ss;
   // If we omit the address, then gdb can try to resolve "localhost" which
@@ -175,7 +175,7 @@ vector<string> debugger_launch_command(Task* t, const string& host,
   vector<string> cmd;
   cmd.push_back(debugger_name);
   push_default_gdb_options(cmd, serve_files);
-  push_target_remote_cmd(cmd, host, port);
+  push_gdb_target_remote_cmd(cmd, host, port);
   cmd.push_back(t->vm()->exe_image());
   saved_debugger_launch_command = to_shell_string(cmd);
   return cmd;
@@ -245,13 +245,13 @@ void launch_debugger(ScopedFd& params_pipe_fd,
   for (size_t i = 0; i < options.size(); ++i) {
     if (!did_set_remote && options[i] == "-ex" &&
         i + 1 < options.size() && needs_target(options[i + 1])) {
-      push_target_remote_cmd(args, string(params.host), params.port);
+      push_gdb_target_remote_cmd(args, string(params.host), params.port);
       did_set_remote = true;
     }
     args.push_back(options[i]);
   }
   if (!did_set_remote) {
-    push_target_remote_cmd(args, string(params.host), params.port);
+    push_gdb_target_remote_cmd(args, string(params.host), params.port);
   }
   args.push_back(params.exe_image);
 
