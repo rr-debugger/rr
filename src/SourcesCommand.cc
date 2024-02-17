@@ -101,13 +101,6 @@ static void dir_name(string& s) {
   }
 }
 
-static void base_name(string& s) {
-  size_t p = s.rfind('/');
-  if (p != string::npos) {
-    s.erase(0, p + 1);
-  }
-}
-
 static bool is_absolute(const string& s) {
   return s[0] == '/';
 }

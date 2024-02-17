@@ -2510,4 +2510,11 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
 
 const char localhost_addr[10] = "127.0.0.1";
 
+void base_name(string& s) {
+  size_t p = s.rfind('/');
+  if (p != string::npos) {
+    s.erase(0, p + 1);
+  }
+}
+
 } // namespace rr

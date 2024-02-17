@@ -651,6 +651,9 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
 
 extern const char localhost_addr[10];
 
+// Strip any directory part from the filename `s`
+void base_name(std::string& s);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
