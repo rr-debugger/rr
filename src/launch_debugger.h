@@ -23,7 +23,7 @@ void launch_debugger(ScopedFd& params_pipe_fd, const std::string& debugger_file_
 std::vector<std::string> debugger_launch_command(Task* t, const std::string& host,
                                                  unsigned short port,
                                                  bool serve_files,
-                                                 const char* debugger_name);
+                                                 const std::string& debugger_name);
 
 /**
  * Convert the command line to a string containing quoted parameters.

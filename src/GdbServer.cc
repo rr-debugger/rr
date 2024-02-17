@@ -1613,7 +1613,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
     vector<string> cmd = debugger_launch_command(t, flags.dbg_host, port,
-        flags.serve_files, flags.debugger_name.c_str());
+        flags.serve_files, flags.debugger_name);
     fprintf(stderr, "Launch debugger with\n  %s\n", to_shell_string(cmd).c_str());
   }
 

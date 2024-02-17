@@ -171,7 +171,7 @@ string saved_debugger_launch_command;
 vector<string> debugger_launch_command(Task* t, const string& host,
                                        unsigned short port,
                                        bool serve_files,
-                                       const char* debugger_name) {
+                                       const string& debugger_name) {
   vector<string> cmd;
   cmd.push_back(debugger_name);
   push_default_gdb_options(cmd, serve_files);
