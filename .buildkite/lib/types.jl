@@ -18,15 +18,15 @@ const platforms = Platforms(
     [
         Platform(;
             arch            = "x86_64",
-            rootfs_tag      = "v5.22",
-            rootfs_treehash = "1cd67e278881dcfeed695282256b26fad603e15d",
+            rootfs_tag      = "v7.0",
+            rootfs_treehash = "ee8a34cb17337e367e8c40b1df2c481a2ec78c56",
             allow_fail      = false,
             commit_status   = true,
         ),
         Platform(;
             arch            = "aarch64",
-            rootfs_tag      = "v5.22",
-            rootfs_treehash = "7a63218e46996b36aa108b55746a3d94a3e312c1",
+            rootfs_tag      = "v7.0",
+            rootfs_treehash = "a046a7a1e5498c2bf51829926513220d0de13b02",
             allow_fail      = false,
             commit_status   = true,
         ),
