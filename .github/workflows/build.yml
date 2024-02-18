@@ -1,10 +1,10 @@
-name: Build
+name: Android Build
 
 on: [push, pull_request]
 
 jobs:
-  build:
-    name: Build
+  android-build:
+    name: Android Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
