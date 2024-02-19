@@ -14,8 +14,8 @@ function generate(platform::Platform)
 
     if [[ "$(platform.arch)" == "aarch64" ]]; then
       echo "--- Patch glibc host environment"
-      curl -LO https://github.com/JuliaBinaryWrappers/DebianGlibc_jll.jl/releases/download/DebianGlibc-v2.33.0%2B1/DebianGlibc.v2.33.0.aarch64-linux-gnu.tar.gz
-      tar -C / -xf DebianGlibc.v2.33.0.aarch64-linux-gnu.tar.gz
+      curl -LO https://github.com/JuliaBinaryWrappers/DebianGlibc_jll.jl/releases/download/DebianGlibc-v2.38.0%2B0/DebianGlibc.v2.38.0.aarch64-linux-gnu.tar.gz
+      tar -C / -xf DebianGlibc.v2.38.0.aarch64-linux-gnu.tar.gz
     fi
 
     echo "--- Generate build environment"
