@@ -111,8 +111,9 @@ class RRCmd(gdb.Command):
 
     def rr_cmd(self, args):
         # Ensure gdb tells rr its current thread
+        curr_thread = gdb.selected_thread()
         cmd_prefix = ("maint packet qRRCmd:%s:%d"%
-            (self.cmd_name, gdb.selected_thread().ptid[1]))
+            (self.cmd_name, -1 if curr_thread is None else curr_thread.ptid[1]))
         arg_strs = []
         for auto_arg in self.auto_args:
             arg_strs.append(":" + gdb_escape(gdb.execute(auto_arg, to_string=True)))
@@ -256,6 +257,10 @@ static string gdb_unescape(const string& str) {
   }
   LOG(debug) << "invoking command: " << cmd->name();
   Task* target = t->session().find_task(rr_cmd.target_tid);
+  
+  // perhaps not the best option, but better than a nullptr
+  if (target == nullptr) target = t;
+  
   string resp = cmd->invoke(gdb_server, target, args);
 
   if (resp == GdbCommandHandler::cmd_end_diversion()) {
