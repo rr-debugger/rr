@@ -1516,8 +1516,7 @@ static void set_and_record_bytes(RecordTask* t, ElfReader& reader,
  * register so that CPU-specific behaviors involving that register don't leak
  * into stack memory.
  */
-static void patch_dl_runtime_resolve(Monkeypatcher& patcher,
-                                     RecordTask* t, ElfReader& reader,
+static void patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
                                      uintptr_t elf_addr,
                                      remote_ptr<void> map_start,
                                      size_t map_size,
@@ -1547,27 +1546,13 @@ static void patch_dl_runtime_resolve(Monkeypatcher& patcher,
     return;
   }
 
-  uint8_t call_patch[X64CallMonkeypatch::size];
+  uint8_t call_patch[X64AbsoluteIndirectCallMonkeypatch::size];
   // We're patching in a relative call, so we need to compute the offset from
   // the end of the call to our actual destination.
   auto call_patch_start = addr.cast<uint8_t>();
-  auto call_patch_end = call_patch_start + sizeof(call_patch);
 
-  remote_ptr<uint8_t> extended_call_start =
-      allocate_extended_jump_x86ish<X64DLRuntimeResolvePrelude>(
-          t, patcher.extended_jump_pages, call_patch_end);
-  if (extended_call_start.is_null()) {
-    return;
-  }
-  uint8_t stub_patch[X64DLRuntimeResolvePrelude::size];
-  X64DLRuntimeResolvePrelude::substitute(stub_patch);
-  write_and_record_bytes(t, extended_call_start, stub_patch);
-
-  intptr_t call_offset = extended_call_start - call_patch_end;
-  int32_t call_offset32 = (int32_t)call_offset;
-  ASSERT(t, call_offset32 == call_offset)
-      << "allocate_extended_jump_x86ish didn't work";
-  X64CallMonkeypatch::substitute(call_patch, call_offset32);
+  X64AbsoluteIndirectCallMonkeypatch::substitute(call_patch,
+      RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE);
   write_and_record_bytes(t, call_patch_start, call_patch);
 
   // pad with NOPs to the next instruction
@@ -1657,7 +1642,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
           (syms.is_name(i, "_dl_runtime_resolve_fxsave") ||
            syms.is_name(i, "_dl_runtime_resolve_xsave") ||
            syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
-        patch_dl_runtime_resolve(*this, t, reader, syms.addr(i), start, size,
+        patch_dl_runtime_resolve(t, reader, syms.addr(i), start, size,
                                  offset_bytes);
       }
     }

@@ -13,6 +13,26 @@
 
 #if defined(__x86_64__)
 
+.section .plt, "a", @progbits
+
+// Current address is 0x70000000 - PRELOAD_LIBRARY_PAGE_SIZE
+// The following is equal to __rr_dl_runtime_resolve_prelude,
+// but doesn't introduce a relocation record.
+.quad  0x70000000 - PRELOAD_LIBRARY_PAGE_SIZE + 8
+
+STARTPROC_GLOBAL(__rr_dl_runtime_resolve_prelude)
+fstenv -32(%rsp)
+movq $0,-12(%rsp)
+fldenv -32(%rsp)
+xchg (%rsp),%rbx
+# r11 is destroyed anyway by _dl_runtime_resolve, so we can use it here.
+mov %rbx,%r11
+mov %rsp,%rbx
+and $0xffffffffffffffc0,%rsp
+push %r11
+ret
+CFI_ENDPROC
+
 #define SYSCALL(which) \
     movq $which, %rax;  \
     syscall; \

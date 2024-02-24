@@ -1545,6 +1545,7 @@ set(TESTS_WITH_PROGRAM
   simple
   x86/singlestep_pushf
   stack_growth
+  step_into_lib
   step_thread
   strict_priorities
   x86/string_instructions
@@ -1821,8 +1822,10 @@ if(BUILD_TESTS)
                               PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
   if(LIBRT)
     target_link_libraries(constructor ${LIBRT})
+    target_link_libraries(step_into_lib ${LIBRT})
   endif()
   target_link_libraries(constructor test_lib)
+  target_link_libraries(step_into_lib test_lib)
 
   # cpuid test needs to link with cpuid_loop.S
   if (x86ish)
@@ -1977,8 +1980,10 @@ if(BUILD_TESTS)
 
     if(LIBRT_32)
       target_link_libraries(constructor_32 ${LIBRT_32})
+      target_link_libraries(step_into_lib_32 ${LIBRT_32})
     endif()
     target_link_libraries(constructor_32 test_lib_32)
+    target_link_libraries(step_into_lib_32 test_lib_32)
 
     # cpuid test needs to link with cpuid_loop.S
     add_executable(cpuid_32 32/x86/cpuid.c 32/x86/cpuid_loop.S)

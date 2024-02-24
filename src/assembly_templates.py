@@ -132,6 +132,10 @@ templates = {
         RawBytes(0xe9),         # jmp $relative_addr
         Field('relative_addr', 4),
     ),
+    'X64AbsoluteIndirectCallMonkeypatch': AssemblyTemplate(
+        RawBytes(0xff, 0x14, 0x25),     # call [absolute_addr]
+        Field('absolute_addr', 4),
+    ),
     'X64SyscallStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
         RawBytes(0x48, 0x89, 0x24, 0x25, 0x10, 0x10, 0x00, 0x70), # movq %rsp,(stub_scratch_1)
@@ -193,18 +197,6 @@ templates = {
         RawBytes(0x53),                   # push %rbx
         RawBytes(0x48, 0x89, 0xe3),       # mov %rsp,%rbx
         RawBytes(0x48, 0x83, 0xe4, 0xc0), # and $0xffffffffffffffc0,%rsp
-    ),
-    'X64DLRuntimeResolvePrelude': AssemblyTemplate(
-        RawBytes(0xd9, 0x74, 0x24, 0xe0),                               # fstenv -32(%rsp)
-        RawBytes(0x48, 0xc7, 0x44, 0x24, 0xf4, 0x00, 0x00, 0x00, 0x00), # movq $0,-12(%rsp)
-        RawBytes(0xd9, 0x64, 0x24, 0xe0),                               # fldenv -32(%rsp)
-        RawBytes(0x48, 0x87, 0x1c, 0x24), # xchg (%rsp),%rbx
-        # r11 is destroyed anyways by _dl_runtime_resolve, so we can use it here.
-        RawBytes(0x49, 0x89, 0xdb),       # mov %rbx,%r11
-        RawBytes(0x48, 0x89, 0xe3),       # mov %rsp,%rbx
-        RawBytes(0x48, 0x83, 0xe4, 0xc0), # and $0xffffffffffffffc0,%rsp
-        RawBytes(0x41, 0x53),             # push %r11
-        RawBytes(0xc3),                   # ret
     ),
     'X64EndBr': AssemblyTemplate(
         RawBytes(0xf3, 0x0f, 0x1e, 0xfa)

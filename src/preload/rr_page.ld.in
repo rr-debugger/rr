@@ -32,6 +32,7 @@ SECTIONS
      scripts can't specify these locations for legacy reasons */
   .sh_placeholder : { *(.sh_placeholder) } :header
   . = 0x70000000 - @PRELOAD_LIBRARY_PAGE_SIZE@;
+  .plt       : { *(.plt) } :text
   .vdso.text : { *(.vdso.text) } :text
   . = 0x70000000;
   .record.text : { *(.record.text) } :text
