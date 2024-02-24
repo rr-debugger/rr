@@ -147,7 +147,7 @@ static bool poll_socket(const ScopedFd& sock_fd, short events, int timeoutMs) {
 
   int ret = poll(&pfd, 1, timeoutMs);
   if (ret < 0 && errno != EINTR) {
-    LOG(info) << "gdb socket has been closed";
+    LOG(info) << "debugger socket has been closed";
   }
   return ret > 0;
 }
@@ -171,7 +171,7 @@ void GdbServerConnection::read_data_once() {
   uint8_t buf[4096];
   nread = read(sock_fd, buf, sizeof(buf));
   if (nread <= 0) {
-    LOG(info) << "Could not read data from gdb socket, "
+    LOG(info) << "Could not read data from debugger socket, "
                  "marking connection as closed";
     connection_alive_ = false;
   } else {
@@ -193,7 +193,7 @@ void GdbServerConnection::write_flush() {
     nwritten = write(sock_fd, outbuf.data() + write_index,
                      outbuf.size() - write_index);
     if (nwritten < 0) {
-      LOG(info) << "Could not write data to gdb socket, "
+      LOG(info) << "Could not write data to debugger socket, "
                    "marking connection as closed";
       connection_alive_ = false;
       outbuf.clear();
@@ -294,7 +294,7 @@ void GdbServerConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t le
 
 static void parser_assert(bool cond) {
   if (!cond) {
-    fputs("Failed to parse gdb request\n", stderr);
+    fputs("Failed to parse debugger request\n", stderr);
     DEBUG_ASSERT(false);
     exit(2);
   }
@@ -543,7 +543,7 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
     ++args;
   }
 
-  LOG(debug) << "gdb asks us to transfer " << name << " mode=" << mode
+  LOG(debug) << "debugger asks us to transfer " << name << " mode=" << mode
              << ", annex=" << annex << ", offset=" << offset << " len=" << len;
 
   if (!strcmp(name, "auxv")) {
@@ -672,7 +672,7 @@ bool GdbServerConnection::query(char* payload) {
   name = payload;
 
   if (strstr(name, "RRCmd") == name) {
-    LOG(debug) << "gdb requests rr cmd: " << name;
+    LOG(debug) << "debugger requests rr cmd: " << name;
     req = GdbRequest(DREQ_RR_CMD);
     parser_assert(args && *args);
     char* endp = strchr(args, ':');
@@ -696,19 +696,19 @@ bool GdbServerConnection::query(char* payload) {
     return true;
   }
   if (!strcmp(name, "C")) {
-    LOG(debug) << "gdb requests current thread ID";
+    LOG(debug) << "debugger requests current thread ID";
     req = GdbRequest(DREQ_GET_CURRENT_THREAD);
     return true;
   }
   if (!strcmp(name, "Attached")) {
-    LOG(debug) << "gdb asks if this is a new or existing process";
+    LOG(debug) << "debugger asks if this is a new or existing process";
     /* Tell gdb this is an existing process; it might be
      * (see emergency_debug()). */
     write_packet("1");
     return false;
   }
   if (!strcmp(name, "fThreadInfo")) {
-    LOG(debug) << "gdb asks for thread list";
+    LOG(debug) << "debugger asks for thread list";
     req = GdbRequest(DREQ_GET_THREAD_LIST);
     return true;
   }
@@ -717,7 +717,7 @@ bool GdbServerConnection::query(char* payload) {
     return false;
   }
   if (!strcmp(name, "GetTLSAddr")) {
-    LOG(debug) << "gdb asks for TLS addr";
+    LOG(debug) << "debugger asks for TLS addr";
     req = GdbRequest(DREQ_TLS);
     req.target = parse_threadid(args, &args);
     parser_assert(*args == ',');
@@ -732,7 +732,7 @@ bool GdbServerConnection::query(char* payload) {
     return true;
   }
   if (!strcmp(name, "Offsets")) {
-    LOG(debug) << "gdb asks for section offsets";
+    LOG(debug) << "debugger asks for section offsets";
     req = GdbRequest(DREQ_GET_OFFSETS);
     req.target = query_thread;
     return true;
@@ -744,7 +744,7 @@ bool GdbServerConnection::query(char* payload) {
   }
   if (!strcmp(name, "Supported")) {
     /* TODO process these */
-    LOG(debug) << "gdb supports " << args;
+    LOG(debug) << "debugger supports " << args;
 
     multiprocess_supported_ = strstr(args, "multiprocess+") != nullptr;
     hwbreak_supported_ = strstr(args, "hwbreak+") != nullptr;
@@ -774,7 +774,7 @@ bool GdbServerConnection::query(char* payload) {
   }
   if (!strcmp(name, "Symbol")) {
 #ifdef PROC_SERVICE_H
-    LOG(debug) << "gdb is ready for symbol lookups";
+    LOG(debug) << "debugger is ready for symbol lookups";
     const char* colon = strchr(args, ':');
     parser_assert(colon != nullptr);
     req = GdbRequest(DREQ_QSYMBOL);
@@ -789,7 +789,7 @@ bool GdbServerConnection::query(char* payload) {
     req.sym().name = decode_ascii_encoded_hex_str(args);
     return true;
 #else
-    LOG(debug) << "gdb is ready for symbol lookups, but we don't support them";
+    LOG(debug) << "debugger is ready for symbol lookups, but we don't support them";
     write_packet("");
     return false;
 #endif
@@ -807,7 +807,7 @@ bool GdbServerConnection::query(char* payload) {
     return true;
   }
   if (!strcmp(name, "TStatus")) {
-    LOG(debug) << "gdb asks for trace status";
+    LOG(debug) << "debugger asks for trace status";
     /* XXX from the docs, it appears that we should reply
      * with "T0" here.  But if we do, gdb keeps bothering
      * us with trace queries.  So pretend we don't know
@@ -839,7 +839,7 @@ bool GdbServerConnection::query(char* payload) {
       read_binary_data((const uint8_t*)args, inbuf.data() + packetend,
                        req.mem().data);
 
-      LOG(debug) << "gdb searching memory (addr=" << HEX(req.mem().addr)
+      LOG(debug) << "debugger searching memory (addr=" << HEX(req.mem().addr)
                  << ", len=" << req.mem().len << ")";
       return true;
     }
@@ -847,7 +847,7 @@ bool GdbServerConnection::query(char* payload) {
     return false;
   }
 
-  UNHANDLED_REQ() << "Unhandled gdb query: q" << name;
+  UNHANDLED_REQ() << "Unhandled debugger query: q" << name;
   return false;
 }
 
@@ -890,7 +890,7 @@ bool GdbServerConnection::set_var(char* payload) {
     return false;
   }
 
-  UNHANDLED_REQ() << "Unhandled gdb set: Q" << name;
+  UNHANDLED_REQ() << "Unhandled debugger set: Q" << name;
   return false;
 }
 
@@ -911,7 +911,7 @@ bool GdbServerConnection::process_bpacket(char* payload) {
     req.cont().actions.push_back(GdbContAction(ACTION_STEP, resume_thread));
     return true;
   } else {
-    UNHANDLED_REQ() << "Unhandled gdb bpacket: b" << payload;
+    UNHANDLED_REQ() << "Unhandled debugger bpacket: b" << payload;
     return false;
   }
 }
@@ -1038,7 +1038,7 @@ bool GdbServerConnection::process_vpacket(char* payload) {
   }
 
   if (!strcmp("Cont?", name)) {
-    LOG(debug) << "gdb queries which continue commands we support";
+    LOG(debug) << "debugger queries which continue commands we support";
     write_packet("vCont;c;C;s;S;");
     return false;
   }
@@ -1048,7 +1048,7 @@ bool GdbServerConnection::process_vpacket(char* payload) {
     // assume that this kill request is being made because
     // a "vRun" restart is coming right up.  We know how
     // to implement vRun, so we'll ignore this one.
-    LOG(debug) << "gdb asks us to kill tracee(s); ignoring";
+    LOG(debug) << "debugger asks us to kill tracee(s); ignoring";
     write_packet("OK");
     return false;
   }
@@ -1062,7 +1062,7 @@ bool GdbServerConnection::process_vpacket(char* payload) {
       *args++ = '\0';
     }
     if (strlen(filename)) {
-      FATAL() << "gdb wants us to run the exe image `" << filename
+      FATAL() << "debugger wants us to run the exe image `" << filename
               << "', but we don't support that.";
     }
     if (!args) {
@@ -1163,7 +1163,7 @@ bool GdbServerConnection::process_vpacket(char* payload) {
     }
   }
 
-  UNHANDLED_REQ() << "Unhandled gdb vpacket: v" << name;
+  UNHANDLED_REQ() << "Unhandled debugger vpacket: v" << name;
   return false;
 }
 
@@ -1188,7 +1188,7 @@ bool GdbServerConnection::process_packet() {
                               inbuf.data() + packetend));
 
   if (INTERRUPT_CHAR == inbuf[0]) {
-    LOG(debug) << "gdb requests interrupt";
+    LOG(debug) << "debugger requests interrupt";
     req = GdbRequest(DREQ_INTERRUPT);
     inbuf.erase(inbuf.begin());
     return true;
@@ -1205,21 +1205,21 @@ bool GdbServerConnection::process_packet() {
       ret = process_bpacket(payload);
       break;
     case 'c':
-      LOG(debug) << "gdb is asking to continue";
+      LOG(debug) << "debugger is asking to continue";
       req = GdbRequest(DREQ_CONT);
       req.cont().run_direction = RUN_FORWARD;
       req.cont().actions.push_back(GdbContAction(ACTION_CONTINUE));
       ret = true;
       break;
     case 'D':
-      LOG(debug) << "gdb is detaching from us";
+      LOG(debug) << "debugger is detaching from us";
       req = GdbRequest(DREQ_DETACH);
       ret = true;
       break;
     case 'g':
       req = GdbRequest(DREQ_GET_REGS);
       req.target = query_thread;
-      LOG(debug) << "gdb requests registers";
+      LOG(debug) << "debugger requests registers";
       ret = true;
       break;
     case 'G':
@@ -1239,12 +1239,12 @@ bool GdbServerConnection::process_packet() {
       req.target = parse_threadid(payload, &payload);
       parser_assert('\0' == *payload);
 
-      LOG(debug) << "gdb selecting " << req.target;
+      LOG(debug) << "debugger selecting " << req.target;
 
       ret = true;
       break;
     case 'k':
-      LOG(info) << "gdb requests kill, exiting";
+      LOG(info) << "debugger requests kill, exiting";
       write_packet("OK");
       exit(0);
     case 'm':
@@ -1255,7 +1255,7 @@ bool GdbServerConnection::process_packet() {
       req.mem().len = strtoul(payload, &payload, 16);
       parser_assert('\0' == *payload);
 
-      LOG(debug) << "gdb requests memory (addr=" << HEX(req.mem().addr)
+      LOG(debug) << "debugger requests memory (addr=" << HEX(req.mem().addr)
                  << ", len=" << req.mem().len << ")";
 
       ret = true;
@@ -1273,7 +1273,7 @@ bool GdbServerConnection::process_packet() {
       req.target = query_thread;
       req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
       parser_assert('\0' == *payload);
-      LOG(debug) << "gdb requests register value (" << req.reg().name << ")";
+      LOG(debug) << "debugger requests register value (" << req.reg().name << ")";
       ret = true;
       break;
     case 'P':
@@ -1298,7 +1298,7 @@ bool GdbServerConnection::process_packet() {
       req = GdbRequest(DREQ_GET_IS_THREAD_ALIVE);
       req.target = parse_threadid(payload, &payload);
       parser_assert('\0' == *payload);
-      LOG(debug) << "gdb wants to know if " << req.target << " is alive";
+      LOG(debug) << "debugger wants to know if " << req.target << " is alive";
       ret = true;
       break;
     case 'v':
@@ -1315,7 +1315,7 @@ bool GdbServerConnection::process_packet() {
                        req.mem().data);
       parser_assert(req.mem().len == req.mem().data.size());
 
-      LOG(debug) << "gdb setting memory (addr=" << HEX(req.mem().addr)
+      LOG(debug) << "debugger setting memory (addr=" << HEX(req.mem().addr)
                  << ", len=" << req.mem().len
                  << ", data=" << to_string(req.mem().data, 32) << ")";
 
@@ -1359,7 +1359,7 @@ bool GdbServerConnection::process_packet() {
       }
       parser_assert('\0' == *payload);
 
-      LOG(debug) << "gdb requests " << ('Z' == request ? "set" : "remove")
+      LOG(debug) << "debugger requests " << ('Z' == request ? "set" : "remove")
                  << "breakpoint (addr=" << HEX(req.watch().addr)
                  << ", len=" << req.watch().kind << ")";
 
@@ -1367,18 +1367,18 @@ bool GdbServerConnection::process_packet() {
       break;
     }
     case '!':
-      LOG(debug) << "gdb requests extended mode";
+      LOG(debug) << "debugger requests extended mode";
       write_packet("OK");
       ret = false;
       break;
     case '?':
-      LOG(debug) << "gdb requests stop reason";
+      LOG(debug) << "debugger requests stop reason";
       req = GdbRequest(DREQ_GET_STOP_REASON);
       req.target = query_thread;
       ret = true;
       break;
     default:
-      UNHANDLED_REQ() << "Unhandled gdb request '" << inbuf[1] << "'";
+      UNHANDLED_REQ() << "Unhandled debugger request '" << inbuf[1] << "'";
       ret = false;
   }
   /* Erase the newly processed packet from the input buffer. The checksum
@@ -1402,7 +1402,7 @@ void GdbServerConnection::notify_no_such_thread(const GdbRequest& req) {
    * didn't notify gdb.  Either way, the user should restart
    * their debugging session. */
   LOG(error) << "Targeted thread no longer exists; this is the result of "
-                "either a gdb or\n"
+                "either a debugger or\n"
                 "rr bug.  Please restart your debugging session and avoid "
                 "doing whatever\n"
                 "triggered this bug.";
@@ -1443,7 +1443,7 @@ GdbRequest GdbServerConnection::get_request() {
 #endif
 
   if (!sniff_packet() && req.is_resume_request()) {
-    /* There's no new request data available and gdb has
+    /* There's no new request data available and the debugger has
      * already asked us to resume.  OK, do that (or keep
      * doing that) now. */
     return req;
@@ -1452,7 +1452,7 @@ GdbRequest GdbServerConnection::get_request() {
   while (true) {
     /* There's either new request data, or we have nothing
      * to do.  Either way, block until we read a complete
-     * packet from gdb. */
+     * packet from the debugger. */
     read_packet();
 
     if (!connection_alive_) {
@@ -1464,7 +1464,7 @@ GdbRequest GdbServerConnection::get_request() {
        * so the target has to do something. */
       return req;
     }
-    /* The packet we got was "internal", gdb details.
+    /* The packet we got was "internal", debugger details.
      * Nothing for the target to do yet.  Keep waiting. */
   }
 }
