@@ -35,3 +35,10 @@ share/
 libbrotli*
 extra_version_string.h
 git_revision.h
+third-party/zen-pmu-workaround/.*
+third-party/zen-pmu-workaround/*.ko
+third-party/zen-pmu-workaround/*.o
+third-party/zen-pmu-workaround/*.mod
+third-party/zen-pmu-workaround/*.mod.c
+third-party/zen-pmu-workaround/Module.symvers
+third-party/zen-pmu-workaround/modules.order
