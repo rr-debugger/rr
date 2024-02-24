@@ -890,6 +890,11 @@ bool GdbServerConnection::set_var(char* payload) {
     return false;
   }
 
+  if (!strcmp(name, "ThreadSuffixSupported")) {
+    write_packet("OK");
+    return false;
+  }
+
   UNHANDLED_REQ() << "Unhandled debugger set: Q" << name;
   return false;
 }
@@ -1181,6 +1186,18 @@ static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
   return ss.str();
 }
 
+// LLDB QThreadSuffixSupported extension
+static void parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
+  char* semicolon = strchr(payload, ';');
+  if (!semicolon) {
+    return;
+  }
+  parser_assert(!strncmp(semicolon + 1, "thread:", 7));
+  char* endptr;
+  *out = parse_threadid(semicolon + 8, &endptr);
+  *semicolon = 0;
+}
+
 bool GdbServerConnection::process_packet() {
   parser_assert(
       INTERRUPT_CHAR == inbuf[0] ||
@@ -1219,7 +1236,9 @@ bool GdbServerConnection::process_packet() {
     case 'g':
       req = GdbRequest(DREQ_GET_REGS);
       req.target = query_thread;
-      LOG(debug) << "debugger requests registers";
+      parse_thread_suffix_threadid(payload, &req.target);
+      LOG(debug) << "debugger requests registers in thread "
+          << req.target;
       ret = true;
       break;
     case 'G':
@@ -1271,20 +1290,25 @@ bool GdbServerConnection::process_packet() {
     case 'p':
       req = GdbRequest(DREQ_GET_REG);
       req.target = query_thread;
+      parse_thread_suffix_threadid(payload, &req.target);
       req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
       parser_assert('\0' == *payload);
-      LOG(debug) << "debugger requests register value (" << req.reg().name << ")";
+      LOG(debug) << "debugger requests register value (" << req.reg().name
+          << ") in thread " << req.target;
       ret = true;
       break;
     case 'P':
       req = GdbRequest(DREQ_SET_REG);
       req.target = query_thread;
+      parse_thread_suffix_threadid(payload, &req.target);
       req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
       parser_assert('=' == *payload++);
 
       read_reg_value(&payload, &req.reg());
 
       parser_assert('\0' == *payload);
+      LOG(debug) << "debugger requests set register value (" << req.reg().name
+          << ") in thread " << req.target;
 
       ret = true;
       break;
