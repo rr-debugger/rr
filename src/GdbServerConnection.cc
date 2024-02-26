@@ -847,6 +847,12 @@ bool GdbServerConnection::query(char* payload) {
     return false;
   }
 
+  if (!strcmp(name, "HostInfo")) {
+    // LLDB sends this, but so far there is no benefit for handling it.
+    write_packet("");
+    return false;
+  }
+
   UNHANDLED_REQ() << "Unhandled debugger query: q" << name;
   return false;
 }
