@@ -852,6 +852,11 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
+  if (!strcmp(name, "VAttachOrWaitSupported")) {
+    // We don't handle vAttach and variants.
+    write_packet("");
+    return false;
+  }
 
   UNHANDLED_REQ() << "Unhandled debugger query: q" << name;
   return false;
