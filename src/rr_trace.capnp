@@ -52,6 +52,15 @@ enum ChaosMode {
   knownFalse @2;
 }
 
+struct UtsName {
+  sysname @0 :CString;
+  nodename @1 :CString;
+  release @2 :CString;
+  version @3 :CString;
+  machine @4 :CString;
+  domainname @5 :CString;
+}
+
 # The 'version' file contains an ASCII version number followed by a newline.
 # The version number is currently 85 and increments only when there's a
 # backwards-incompatible change. See TRACE_VERSION.
@@ -134,6 +143,8 @@ struct Header {
   syscallbufFdsDisabledSize @25 :UInt32 = 1024;
   # sizeof(syscallbuf_hdr) during recording
   syscallbufHdrSize @26 :UInt32 = 30;
+  # Result of uname(2). Possibly useful for diagnostics or LLDB qHostInfo.
+  uname @27 :UtsName;
 }
 
 # A file descriptor belonging to a task

@@ -1,5 +1,10 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#ifndef _GNU_SOURCE
+// For utsname::domainname
+#define _GNU_SOURCE 1
+#endif
+
 #include "TraceStream.h"
 
 #include <capnp/message.h>
@@ -8,6 +13,7 @@
 #include <limits.h>
 #include <sched.h>
 #include <sys/file.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <sysexits.h>
 #include <dirent.h>
@@ -1467,6 +1473,21 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setRuntimePageSize(page_size());
   header.setPreloadLibraryPageSize(PRELOAD_LIBRARY_PAGE_SIZE);
 
+  {
+    struct utsname uname_buf;
+    int ret = uname(&uname_buf);
+    if (ret) {
+      FATAL() << "uname failed";
+    }
+    auto uname_msg = header.initUname();
+    uname_msg.setSysname(str_to_data(uname_buf.sysname));
+    uname_msg.setNodename(str_to_data(uname_buf.nodename));
+    uname_msg.setRelease(str_to_data(uname_buf.release));
+    uname_msg.setVersion(str_to_data(uname_buf.version));
+    uname_msg.setMachine(str_to_data(uname_buf.machine));
+    uname_msg.setDomainname(str_to_data(uname_buf.domainname));
+  }
+
   try {
     writePackedMessageToFd(version_fd, header_msg);
   } catch (...) {
@@ -1674,6 +1695,14 @@ TraceReader::TraceReader(const string& dir)
   exclusion_range_ = MemoryRange(remote_ptr<void>(header.getExclusionRangeStart()),
                                  remote_ptr<void>(header.getExclusionRangeEnd()));
 
+  const auto& uname = header.getUname();
+  uname_.sysname = data_to_str(uname.getSysname());
+  uname_.nodename = data_to_str(uname.getNodename());
+  uname_.release = data_to_str(uname.getRelease());
+  uname_.version = data_to_str(uname.getVersion());
+  uname_.machine = data_to_str(uname.getMachine());
+  uname_.domainname = data_to_str(uname.getDomainname());
+
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
   global_time = 0;
@@ -1702,6 +1731,7 @@ TraceReader::TraceReader(const TraceReader& other)
   chaos_mode_ = other.chaos_mode_;
   chaos_mode_known_ = other.chaos_mode_known_;
   exclusion_range_ = other.exclusion_range_;
+  uname_ = other.uname_;
   quirks_ = other.quirks_;
   clear_fip_fdp_ = other.clear_fip_fdp_;
   required_forward_compatibility_version_ = other.required_forward_compatibility_version_;

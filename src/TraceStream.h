@@ -325,6 +325,15 @@ private:
   bool chaos_mode;
 };
 
+struct TraceUtsName {
+  std::string sysname;
+  std::string nodename;
+  std::string release;
+  std::string version;
+  std::string machine;
+  std::string domainname;
+};
+
 class TraceReader : public TraceStream {
 public:
   /**
@@ -492,6 +501,8 @@ public:
 
   int required_forward_compatibility_version() const { return required_forward_compatibility_version_; }
 
+  const TraceUtsName& uname() const { return uname_; }
+
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -504,6 +515,7 @@ private:
   double monotonic_time_;
   std::unique_ptr<TraceUuid> uuid_;
   MemoryRange exclusion_range_;
+  TraceUtsName uname_;
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
   bool clear_fip_fdp_;
