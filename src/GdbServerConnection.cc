@@ -857,11 +857,6 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "EnableErrorStrings")) {
-    // We don't support human-readable error strings.
-    write_packet("");
-    return false;
-  }
 
   UNHANDLED_REQ() << "Unhandled debugger query: q" << name;
   return false;
@@ -908,6 +903,11 @@ bool GdbServerConnection::set_var(char* payload) {
 
   if (!strcmp(name, "ThreadSuffixSupported")) {
     write_packet("OK");
+    return false;
+  }
+  if (!strcmp(name, "EnableErrorStrings")) {
+    // We don't support human-readable error strings.
+    write_packet("");
     return false;
   }
 
