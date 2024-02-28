@@ -51,6 +51,7 @@ GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t)
       last_continue_tuid(t->tuid()),
       last_query_tuid(t->tuid()),
       final_event(UINT32_MAX),
+      failed_restart(false),
       stop_replaying_to_target(false),
       interrupt_pending(false),
       exit_sigkill_pending(false),
