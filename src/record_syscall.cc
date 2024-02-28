@@ -6582,6 +6582,12 @@ static void rec_process_syscall_arch(RecordTask* t,
       remote_ptr<void> old_brk = ceil_page_size(t->vm()->current_brk());
       remote_ptr<void> new_brk = ceil_page_size(t->regs().syscall_result());
       KernelMapping km;
+      // This should be a nop.
+      // Otherwise we end up writing a redundant (though seemingly benign) zero length mapped region in the trace.
+      if (old_brk == new_brk) {
+        LOG(debug) << "brk(" << new_brk << "). Unchanged from old brk, so doing nothing";
+        break;
+      }
       if (old_brk < new_brk) {
         // Read the kernel's mapping. There doesn't seem to be any other way to
         // get the correct prot bits for heaps. Usually it's READ|WRITE but
