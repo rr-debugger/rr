@@ -65,6 +65,7 @@ public:
       : target(target),
         final_event(UINT32_MAX),
         in_debuggee_end_state(false),
+        failed_restart(false),
         stop_replaying_to_target(false),
         interrupt_pending(false),
         exit_sigkill_pending(false),
