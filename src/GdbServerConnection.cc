@@ -737,11 +737,6 @@ bool GdbServerConnection::query(char* payload) {
     req.target = query_thread;
     return true;
   }
-  if ('P' == name[0]) {
-    /* The docs say not to use this packet ... */
-    write_packet("");
-    return false;
-  }
   if (!strcmp(name, "Supported")) {
     /* TODO process these */
     LOG(debug) << "debugger supports " << args;
@@ -847,6 +842,11 @@ bool GdbServerConnection::query(char* payload) {
     return false;
   }
 
+  if (!strcmp(name, "P")) {
+    /* The docs say not to use this packet ... */
+    write_packet("");
+    return false;
+  }
   if (!strcmp(name, "HostInfo")) {
     // LLDB sends this, but so far there is no benefit for handling it.
     write_packet("");
@@ -854,6 +854,12 @@ bool GdbServerConnection::query(char* payload) {
   }
   if (!strcmp(name, "VAttachOrWaitSupported")) {
     // We don't handle vAttach and variants.
+    write_packet("");
+    return false;
+  }
+  if (!strcmp(name, "ProcessInfo")) {
+    // Currently we don't have the parent PID or uids, so we're
+    // not going to handle this.
     write_packet("");
     return false;
   }
