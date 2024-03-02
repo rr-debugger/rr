@@ -854,7 +854,7 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
   check_pmu(pmu_index);
 
   auto &perf_attr = perf_attrs[pmu_index];
-  if (ticks_period == 0 && !always_recreate_counters(perf_attr)) {
+  if (ticks_period == 0) {
     // We can't switch a counter between sampling and non-sampling via
     // PERF_EVENT_IOC_PERIOD so just turn 0 into a very big number.
     ticks_period = uint64_t(1) << 60;
@@ -992,6 +992,7 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
 Ticks PerfCounters::read_ticks(Task* t) {
   ASSERT(t, opened);
   ASSERT(t, counting);
+  ASSERT(t, counting_period > 0);
 
   if (fd_ticks_in_transaction.is_open()) {
     uint64_t transaction_ticks = read_counter(fd_ticks_in_transaction);
@@ -1035,7 +1036,7 @@ Ticks PerfCounters::read_ticks(Task* t) {
       interrupt_val -= minus_measure_val;
     }
     if (t->session().is_recording()) {
-      if (counting_period && interrupt_val > adjusted_counting_period) {
+      if (interrupt_val > adjusted_counting_period) {
         LOG(warn) << "Recorded ticks of " << interrupt_val
           << " overshot requested ticks target by " << interrupt_val - counting_period
           << " ticks.\n"
@@ -1045,7 +1046,7 @@ Ticks PerfCounters::read_ticks(Task* t) {
            "or sightings of this warning on non-AMD systems.";
       }
     } else {
-      ASSERT(t, !counting_period || interrupt_val <= adjusted_counting_period)
+      ASSERT(t, interrupt_val <= adjusted_counting_period)
           << "Detected " << interrupt_val << " ticks, expected no more than "
           << adjusted_counting_period;
     }
@@ -1062,12 +1063,12 @@ Ticks PerfCounters::read_ticks(Task* t) {
     // being used).
     LOG(debug) << "Measured too many ticks; measure=" << measure_val
                << ", interrupt=" << interrupt_val;
-    ASSERT(t, !counting_period || interrupt_val <= adjusted_counting_period)
+    ASSERT(t, interrupt_val <= adjusted_counting_period)
         << "Detected " << interrupt_val << " ticks, expected no more than "
         << adjusted_counting_period;
     return interrupt_val;
   }
-  ASSERT(t, !counting_period || measure_val <= adjusted_counting_period)
+  ASSERT(t, measure_val <= adjusted_counting_period)
       << "Detected " << measure_val << " ticks, expected no more than "
       << adjusted_counting_period;
   return measure_val;
