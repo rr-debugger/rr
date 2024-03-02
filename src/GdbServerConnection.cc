@@ -848,7 +848,13 @@ bool GdbServerConnection::query(char* payload) {
     return false;
   }
   if (!strcmp(name, "HostInfo")) {
-    // LLDB sends this, but so far there is no benefit for handling it.
+    // lldb-server sends a reply like
+    // triple:7838365f36342d2d6c696e75782d676e75;ptrsize:8;distribution_id:6665646f7261;
+    // watchpoint_exceptions_received:after;endian:little;os_version:6.6.13;
+    // os_build:362e362e31332d3230302e666333392e7838365f3634;
+    // os_kernel:233120534d5020505245454d50545f44594e414d494320536174204a616e2032302031383a30333a3238205554432032303234;
+    // hostname:6c6f63616c686f73742e6c6f63616c646f6d61696e
+    // So far there is no benefit for handling it AFAICT.
     write_packet("");
     return false;
   }
@@ -858,6 +864,9 @@ bool GdbServerConnection::query(char* payload) {
     return false;
   }
   if (!strcmp(name, "ProcessInfo")) {
+    // lldb-server sends a reply like
+    // pid:3663df;parent-pid:3663de;real-uid:3e8;real-gid:3e8;effective-uid:3e8;effective-gid:3e8;
+    // triple:7838365f36342d2d6c696e75782d676e75;ostype:linux;endian:little;ptrsize:8
     // Currently we don't have the parent PID or uids, so we're
     // not going to handle this.
     write_packet("");
