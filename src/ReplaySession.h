@@ -107,7 +107,10 @@ enum ReplayStatus {
   // Some execution was replayed. replay_step() can be called again.
   REPLAY_CONTINUE,
   // All tracees are dead. replay_step() should not be called again.
-  REPLAY_EXITED
+  REPLAY_EXITED,
+  // Replay failed and this session is dead, but trying again with a
+  // new session might work.
+  REPLAY_TRANSIENT_ERROR,
 };
 
 struct ReplayResult {
@@ -243,6 +246,7 @@ public:
       , share_private_mappings(false)
       , replay_stops_at_first_execve(false)
       , cpu_unbound(false)
+      , transient_errors_fatal(false)
       , intel_pt_start_checking_event(-1) {}
     Flags(const Flags&) = default;
     bool redirect_stdio;
@@ -250,6 +254,7 @@ public:
     bool share_private_mappings;
     bool replay_stops_at_first_execve;
     bool cpu_unbound;
+    bool transient_errors_fatal;
     FrameTime intel_pt_start_checking_event;
   };
 
@@ -353,6 +358,11 @@ public:
    */
   void reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_tracee_socket_receiver);
 
+  void notify_detected_transient_error() { detected_transient_error_ = true; }
+
+  void set_suppress_stdio_before_event(FrameTime event) { suppress_stdio_before_event_ = event; }
+  bool echo_stdio() const;
+
 private:
   ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);
@@ -409,11 +419,14 @@ private:
   FastForwardStatus fast_forward_status;
   bool skip_next_execution_event;
   bool replay_stops_at_first_execve_;
+  bool detected_transient_error_;
 
   // The clock_gettime(CLOCK_MONOTONIC) timestamp of the first trace event, used
   // during 'replay' to calculate the elapsed time between the first event and
   // all other recorded events in the timeline during the 'record' phase.
   double trace_start_time;
+
+  FrameTime suppress_stdio_before_event_;
 
   std::shared_ptr<AddressSpace> syscall_bp_vm;
   remote_code_ptr syscall_bp_addr;

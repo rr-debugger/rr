@@ -73,6 +73,8 @@ ReplayCommand ReplayCommand::singleton(
     "  --intel-pt-start-checking-event   verify control flow using Intel PT\n"
     "                             (used for debugging rr)\n"
     "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n"
+    "  --retry-transient-errors   If we detect a transient error that might resolve\n"
+    "                             by retrying, retry it\n"
     "  --stats=<N>                display brief stats every N steps (eg 10000).\n"
     "  --serve-files              Serve all files from the trace rather than\n"
     "                             assuming they exist on disk. Debugging will\n"
@@ -129,6 +131,8 @@ struct ReplayFlags {
   // to test the corresponding code.
   bool share_private_mappings;
 
+  bool retry_transient_errors;
+
   // When nonzero, display statistics every N steps.
   uint32_t dump_interval;
 
@@ -153,6 +157,7 @@ struct ReplayFlags {
         redirect(true),
         cpu_unbound(false),
         share_private_mappings(false),
+        retry_transient_errors(false),
         dump_interval(0),
         serve_files(false),
         intel_pt_start_checking_event(-1) {}
@@ -170,12 +175,14 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 'k', "keep-listening", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
     { 'g', "goto", HAS_PARAMETER },
+    { 'i', "interpreter", HAS_PARAMETER },
     { 'o', "debugger-option", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
     { 'q', "no-redirect-output", NO_PARAMETER },
     { 'h', "dbghost", HAS_PARAMETER },
     { 's', "dbgport", HAS_PARAMETER },
     { 't', "trace", HAS_PARAMETER },
+    { 'u', "cpu-unbound", NO_PARAMETER },
     { 'x', "gdb-x", HAS_PARAMETER },
     { 0, "share-private-mappings", NO_PARAMETER },
     { 1, "fullname", NO_PARAMETER },
@@ -183,8 +190,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 3, "serve-files", NO_PARAMETER },
     { 4, "tty", HAS_PARAMETER },
     { 5, "intel-pt-start-checking-event", HAS_PARAMETER },
-    { 'u', "cpu-unbound", NO_PARAMETER },
-    { 'i', "interpreter", HAS_PARAMETER }
+    { 6, "retry-transient-errors", NO_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -214,6 +220,10 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
         return false;
       }
       flags.goto_event = opt.int_value;
+      break;
+    case 'i':
+      flags.gdb_options.push_back("-i");
+      flags.gdb_options.push_back(opt.value);
       break;
     case 'k':
       flags.keep_listening = true;
@@ -252,6 +262,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       }
       flags.singlestep_to_event = opt.int_value;
       break;
+    case 'u':
+      flags.cpu_unbound = true;
+      break;
     case 'x':
       flags.gdb_options.push_back("-x");
       flags.gdb_options.push_back(opt.value);
@@ -280,12 +293,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       }
       flags.intel_pt_start_checking_event = opt.int_value;
       break;
-    case 'u':
-      flags.cpu_unbound = true;
-      break;
-    case 'i':
-      flags.gdb_options.push_back("-i");
-      flags.gdb_options.push_back(opt.value);
+    case 6:
+      flags.retry_transient_errors = true;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
@@ -351,13 +360,14 @@ static bool pid_execs(const string& trace_dir, pid_t pid) {
 // This needs to be global because it's used by a signal handler.
 static pid_t waiting_for_child;
 
-static ReplaySession::Flags session_flags(const ReplayFlags& flags) {
+static ReplaySession::Flags session_flags(const ReplayFlags& flags, bool can_retry_transient_errors) {
   ReplaySession::Flags result;
   result.redirect_stdio = flags.redirect;
   result.redirect_stdio_file = flags.tty;
   result.share_private_mappings = flags.share_private_mappings;
   result.cpu_unbound = flags.cpu_unbound;
   result.intel_pt_start_checking_event = flags.intel_pt_start_checking_event;
+  result.transient_errors_fatal = !can_retry_transient_errors || !flags.retry_transient_errors;
   return result;
 }
 
@@ -368,12 +378,13 @@ static uint64_t to_microseconds(const struct timeval& tv) {
 static void serve_replay_no_debugger(const string& trace_dir,
                                      const ReplayFlags& flags) {
   ReplaySession::shr_ptr replay_session =
-    ReplaySession::create(trace_dir, session_flags(flags));
+    ReplaySession::create(trace_dir, session_flags(flags, true));
   uint32_t step_count = 0;
   struct timeval last_dump_time;
   double last_dump_rectime = 0;
   Session::Statistics last_stats;
   gettimeofday(&last_dump_time, NULL);
+  FrameTime printed_stdio_up_to_event = 0;
 
   while (true) {
     RunCommand cmd = RUN_CONTINUE;
@@ -392,8 +403,23 @@ static void serve_replay_no_debugger(const string& trace_dir,
     auto result = replay_session->replay_step(cmd);
     FrameTime after_time = replay_session->trace_reader().time();
     DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
-    if (!last_dump_rectime)
+
+    if (result.status == REPLAY_TRANSIENT_ERROR) {
+      // Restart the replay from the beginning
+      LOG(warn) << "Transient error while replaying event "
+        << after_time << ", re-replaying execution from the beginning";
+      replay_session =
+        ReplaySession::create(trace_dir, session_flags(flags, true));
+      replay_session->set_suppress_stdio_before_event(printed_stdio_up_to_event + 1);
+      continue;
+    }
+
+    if (!last_dump_rectime) {
       last_dump_rectime = replay_session->trace_reader().recording_time();
+    }
+    if (after_time > before_time && before_time > printed_stdio_up_to_event) {
+      printed_stdio_up_to_event = before_time;
+    }
 
     ++step_count;
     if (flags.dump_interval > 0 && step_count % flags.dump_interval == 0) {
@@ -479,7 +505,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     if (target.event == numeric_limits<decltype(target.event)>::max()) {
       serve_replay_no_debugger(trace_dir, flags);
     } else {
-      auto session = ReplaySession::create(trace_dir, session_flags(flags));
+      auto session = ReplaySession::create(trace_dir, session_flags(flags, false));
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
@@ -507,7 +533,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0);
 
       ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
-      auto session = ReplaySession::create(trace_dir, session_flags(flags));
+      auto session = ReplaySession::create(trace_dir, session_flags(flags, false));
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
@@ -618,6 +644,21 @@ int ReplayCommand::run(vector<string>& args) {
   }
   if (flags.dump_interval > 0 && !flags.dont_launch_debugger) {
     fprintf(stderr, "--stats requires -a\n");
+    print_help(stderr);
+    return 2;
+  }
+  if (flags.retry_transient_errors && flags.dump_interval) {
+    fprintf(stderr, "--retry-transient-errors is not compatible with --dump-interval");
+    print_help(stderr);
+    return 2;
+  }
+  if (flags.retry_transient_errors && flags.singlestep_to_event) {
+    fprintf(stderr, "--retry-transient-errors is not compatible with --singlestep-to-event");
+    print_help(stderr);
+    return 2;
+  }
+  if (flags.retry_transient_errors && !flags.dont_launch_debugger) {
+    fprintf(stderr, "--retry-transient-errors requires -a (for now)");
     print_help(stderr);
     return 2;
   }

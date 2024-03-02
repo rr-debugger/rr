@@ -136,6 +136,12 @@ enum CpuMicroarch {
  */
 #define PMU_TICKS_TAKEN_BRANCHES (1<<3)
 
+/*
+ * Set if this CPU is known to have essentially unbounded skid,
+ * i.e. the provided skid value is exceeded in rare cases.
+ */
+#define PMU_SKID_UNBOUNDED (1<<4)
+
 struct PmuConfig {
   CpuMicroarch uarch;
   const char* name;
@@ -186,7 +192,7 @@ static const PmuConfig pmu_configs[] = {
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
   // Both counters are available on Zen, Zen+ and Zen2.
-  { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB },
+  { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
   // Performance cores from ARM from cortex-a76 on (including neoverse-n1 and later)
   // have the following counters that are reliable enough for us.
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
@@ -948,12 +954,12 @@ void PerfCounters::close() {
   fd_ticks_in_transaction.close();
 }
 
-Ticks PerfCounters::stop(Task* t) {
+Ticks PerfCounters::stop(Task* t, Error* error) {
   if (!counting) {
     return 0;
   }
 
-  Ticks ticks = read_ticks(t);
+  Ticks ticks = read_ticks(t, error);
   counting = false;
   if (pt_state) {
     pt_thread_state->stop_copying(pt_state.get());
@@ -989,7 +995,7 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
   return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
 
-Ticks PerfCounters::read_ticks(Task* t) {
+Ticks PerfCounters::read_ticks(Task* t, Error* error) {
   ASSERT(t, opened);
   ASSERT(t, counting);
   ASSERT(t, counting_period > 0);
@@ -1030,6 +1036,7 @@ Ticks PerfCounters::read_ticks(Task* t) {
       counting_period +
       (t->session().is_recording() ? recording_skid_size() : skid_size());
   uint64_t interrupt_val = read_counter(fd_ticks_interrupt);
+  uint64_t ret;
   if (!fd_ticks_measure.is_open()) {
     if (fd_minus_ticks_measure.is_open()) {
       uint64_t minus_measure_val = read_counter(fd_minus_ticks_measure);
@@ -1045,33 +1052,37 @@ Ticks PerfCounters::read_ticks(Task* t) {
            "received after this warning, any conditions that reliably reproduce it,\n"
            "or sightings of this warning on non-AMD systems.";
       }
-    } else {
-      ASSERT(t, interrupt_val <= adjusted_counting_period)
-          << "Detected " << interrupt_val << " ticks, expected no more than "
-          << adjusted_counting_period;
     }
-    return interrupt_val;
+    ret = interrupt_val;
+  } else {
+    uint64_t measure_val = read_counter(fd_ticks_measure);
+    if (measure_val > interrupt_val) {
+      // There is some kind of kernel or hardware bug that means we sometimes
+      // see more events with IN_TXCP set than without. These are clearly
+      // spurious events :-(. For now, work around it by returning the
+      // interrupt_val. That will work if HLE hasn't been used in this interval.
+      // Note that interrupt_val > measure_val is valid behavior (when HLE is
+      // being used).
+      LOG(debug) << "Measured too many ticks; measure=" << measure_val
+                 << ", interrupt=" << interrupt_val;
+      ret = interrupt_val;
+    } else {
+      ret = measure_val;
+    }
   }
-
-  uint64_t measure_val = read_counter(fd_ticks_measure);
-  if (measure_val > interrupt_val) {
-    // There is some kind of kernel or hardware bug that means we sometimes
-    // see more events with IN_TXCP set than without. These are clearly
-    // spurious events :-(. For now, work around it by returning the
-    // interrupt_val. That will work if HLE hasn't been used in this interval.
-    // Note that interrupt_val > measure_val is valid behavior (when HLE is
-    // being used).
-    LOG(debug) << "Measured too many ticks; measure=" << measure_val
-               << ", interrupt=" << interrupt_val;
-    ASSERT(t, interrupt_val <= adjusted_counting_period)
-        << "Detected " << interrupt_val << " ticks, expected no more than "
-        << adjusted_counting_period;
-    return interrupt_val;
+  if (ret > adjusted_counting_period) {
+    if (error && (perf_attrs[pmu_index].pmu_flags & PMU_SKID_UNBOUNDED)) {
+      *error = Error::Transient;
+    } else {
+      ASSERT(t, false) << "Detected " << ret
+          << " ticks, expected no more than " << adjusted_counting_period;
+    }
+  } else {
+    if (error) {
+      *error = Error::None;
+    }
   }
-  ASSERT(t, measure_val <= adjusted_counting_period)
-      << "Detected " << measure_val << " ticks, expected no more than "
-      << adjusted_counting_period;
-  return measure_val;
+  return ret;
 }
 
 } // namespace rr

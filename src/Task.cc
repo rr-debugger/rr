@@ -2224,6 +2224,12 @@ bool Task::did_waitpid(WaitStatus status) {
     if (!was_stopped && !registers_dirty) {
       LOG(debug) << "Requesting registers from tracee " << tid;
       NativeArch::user_regs_struct ptrace_regs;
+      PerfCounters::Error error_state;
+      PerfCounters::Error* detect_transient_error = nullptr;
+      ReplaySession* replay_session = session().as_replay();
+      if (replay_session && !replay_session->flags().transient_errors_fatal) {
+        detect_transient_error = &error_state;
+      }
 
 #if defined(__i386__) || defined(__x86_64__)
       if (ptrace_if_stopped(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
@@ -2247,14 +2253,14 @@ bool Task::did_waitpid(WaitStatus status) {
         // For example if the task is already reaped we don't have new
         // register values and we don't want to read a ticks value
         // that mismatches our registers.
-        more_ticks = hpc.stop(this);
+        more_ticks = hpc.stop(this, detect_transient_error);
       }
 #elif defined(__aarch64__)
       struct iovec vec = { &ptrace_regs,
                           sizeof(ptrace_regs) };
       if (ptrace_if_stopped(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
         registers.set_from_ptrace(ptrace_regs);
-        more_ticks = hpc.stop(this);
+        more_ticks = hpc.stop(this, detect_transient_error);
       }
 #else
 #error detect architecture here
@@ -2268,6 +2274,10 @@ bool Task::did_waitpid(WaitStatus status) {
         set_stopped(false);
         in_unexpected_exit = true;
         return false;
+      }
+      if (detect_transient_error &&
+        *detect_transient_error == PerfCounters::Error::Transient) {
+        session().as_replay()->notify_detected_transient_error();
       }
     }
   }

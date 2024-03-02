@@ -94,12 +94,22 @@ public:
    */
   void start(Task* t, Ticks ticks_period);
 
+  enum class Error {
+    // Everything ok
+    None,
+    // A transient error was detected. Retrying might succeed.
+    Transient,
+  };
+
   /**
    * Suspend counting until the next start.
    * Returns the current value of the ticks counter.
    * `t` is used for debugging purposes.
+   * If `error` is non-null and a transient error is detected,
+   * `*error` will be set to `Error::Transient`. If `error` is null
+   * and a transient error is detected, it will be treated as fatal.
    */
-  Ticks stop(Task* t);
+  Ticks stop(Task* t, Error* error = nullptr);
 
   /**
    * Close the perfcounter fds (if open). They will be automatically reopened if/when
@@ -174,7 +184,7 @@ private:
    */
   uint32_t recording_skid_size() { return skid_size() * 5; }
 
-  Ticks read_ticks(Task* t);
+  Ticks read_ticks(Task* t, Error* error);
 
   // Only valid while 'counting' is true
   Ticks counting_period;

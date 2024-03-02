@@ -798,4 +798,8 @@ void Session::do_bind_cpu() {
   }
 }
 
+bool Session::mark_stdio() const {
+  return visible_execution_ && Flags::get().mark_stdio;
+}
+
 } // namespace rr

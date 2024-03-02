@@ -318,7 +318,8 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 
 function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
-        $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+        $RR_EXE $GLOBAL_OPTIONS replay --retry-transient-errors -a \
+        $replayflags 1> replay.out 2> replay.err
 }
 
 function rerun { rerunflags=$1

@@ -169,7 +169,9 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       flags_(flags),
       skip_next_execution_event(false),
       replay_stops_at_first_execve_(flags.replay_stops_at_first_execve),
-      trace_start_time(0) {
+      detected_transient_error_(false),
+      trace_start_time(0),
+      suppress_stdio_before_event_(0) {
   if (trace_in.required_forward_compatibility_version() > FORWARD_COMPATIBILITY_VERSION) {
     CLEAN_FATAL()
       << "This rr build is too old to replay the trace (we support forward compatibility version "
@@ -233,7 +235,9 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       fast_forward_status(other.fast_forward_status),
       skip_next_execution_event(other.skip_next_execution_event),
       replay_stops_at_first_execve_(other.replay_stops_at_first_execve_),
-      trace_start_time(other.trace_start_time) {}
+      detected_transient_error_(other.detected_transient_error_),
+      trace_start_time(other.trace_start_time),
+      suppress_stdio_before_event_(other.suppress_stdio_before_event_) {}
 
 ReplaySession::~ReplaySession() {
   // We won't permanently leak any OS resources by not ensuring
@@ -1916,8 +1920,10 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   finish_initializing();
 
   ReplayResult result(REPLAY_CONTINUE);
-
-  ReplayTask* t = current_task();
+  if (detected_transient_error_) {
+    result.status = REPLAY_TRANSIENT_ERROR;
+    return result;
+  }
 
   if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
     result.status = REPLAY_EXITED;
@@ -1927,6 +1933,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   /* If we restored from a checkpoint, the steps might have been
    * computed already in which case step.action will not be TSTEP_NONE.
    */
+  ReplayTask* t = current_task();
   if (current_step.action == TSTEP_NONE) {
     t = setup_replay_one_trace_frame(t);
     if (current_step.action == TSTEP_NONE) {
@@ -1946,7 +1953,12 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   result.break_status.task_context = TaskContext(t);
 
   /* Advance towards fulfilling |current_step|. */
-  if (try_one_trace_step(t, constraints) == INCOMPLETE) {
+  Completion complete = try_one_trace_step(t, constraints);
+  if (detected_transient_error_) {
+    result.status = REPLAY_TRANSIENT_ERROR;
+    return result;
+  }
+  if (complete == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -2146,6 +2158,11 @@ void ReplaySession::reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_trac
     t->clear_wait_status();
     t->open_mem_fd();
   }
+}
+
+bool ReplaySession::echo_stdio() const {
+  return flags().redirect_stdio &&
+    current_frame_time() >= suppress_stdio_before_event_;
 }
 
 } // namespace rr
