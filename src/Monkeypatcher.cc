@@ -1534,13 +1534,14 @@ void Monkeypatcher::patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
   uint8_t *impl_start = impl;
   t->read_bytes(addr, impl);
   if (X64EndBr::match(impl) || X86EndBr::match(impl)) {
-    static_assert(X64EndBr::size == X86EndBr::size);
+    static_assert(X64EndBr::size == X86EndBr::size, "EndBr patch size mismatch");
     LOG(debug) << "Starts with endbr, skipping";
     addr += X64EndBr::size;
     impl_start += X64EndBr::size;
   }
 
-  static_assert(X64DLRuntimeResolve::size == X64DLRuntimeResolve2::size);
+  static_assert(X64DLRuntimeResolve::size == X64DLRuntimeResolve2::size,
+                "DLRuntimeResolve patch size mismatch");
   if (!X64DLRuntimeResolve::match(impl_start) &&
       !X64DLRuntimeResolve2::match(impl_start)) {
     LOG(warn) << "_dl_runtime_resolve implementation doesn't look right";
