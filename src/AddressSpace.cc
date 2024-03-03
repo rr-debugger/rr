@@ -354,6 +354,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
         map(t, rr_page_start() - offset_bytes, offset_bytes, prot, flags,
             0, file_name,
             fstat.st_dev, fstat.st_ino);
+        mapping_flags_of(rr_page_start() - offset_bytes) = Mapping::IS_RR_VDSO_PAGE;
       }
     }
   }
@@ -1373,9 +1374,15 @@ void AddressSpace::update_syscall_ips(Task* t) {
   }
 }
 
-void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
+void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
                                   ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
+
+  if (MemoryRange(addr, num_bytes).contains(RR_DL_RUNTIME_RESOLVE_CLEAR_FIP) &&
+      monkeypatch_state) {
+    monkeypatch_state->unpatch_dl_runtime_resolves(
+      static_cast<RecordTask*>(t));
+  }
 
   auto unmapper = [this](Mapping m, MemoryRange rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";

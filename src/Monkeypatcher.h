@@ -14,6 +14,7 @@
 
 namespace rr {
 
+class ElfReader;
 class RecordTask;
 class ScopedFd;
 class Task;
@@ -131,6 +132,8 @@ public:
   // if we are on the exit path in the jump stub
   remote_code_ptr get_jump_stub_exit_breakpoint(remote_code_ptr ip, RecordTask *t);
 
+  void unpatch_dl_runtime_resolves(RecordTask* t);
+
   struct patched_syscall {
     // Pointer to hook inside the syscall_hooks array, which gets initialized
     // once and is fixed afterwards.
@@ -146,6 +149,12 @@ public:
   std::map<remote_ptr<uint8_t>, patched_syscall> syscallbuf_stubs;
 
 private:
+  void patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
+                                uintptr_t elf_addr,
+                                remote_ptr<void> map_start,
+                                size_t map_size,
+                                size_t map_offset);
+
   /**
    * `ip` is the address of the instruction that triggered the syscall or trap
    */
@@ -165,6 +174,8 @@ private:
    * instructions that we've tried (or are currently trying) to patch.
    */
   std::unordered_set<remote_code_ptr> tried_to_patch_syscall_addresses;
+
+  std::map<remote_ptr<uint8_t>, std::vector<uint8_t>> saved_dl_runtime_resolve_code;
 };
 
 } // namespace rr

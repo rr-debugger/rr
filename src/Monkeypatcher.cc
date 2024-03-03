@@ -1516,11 +1516,11 @@ static void set_and_record_bytes(RecordTask* t, ElfReader& reader,
  * register so that CPU-specific behaviors involving that register don't leak
  * into stack memory.
  */
-static void patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
-                                     uintptr_t elf_addr,
-                                     remote_ptr<void> map_start,
-                                     size_t map_size,
-                                     size_t map_offset) {
+void Monkeypatcher::patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
+                                             uintptr_t elf_addr,
+                                             remote_ptr<void> map_start,
+                                             size_t map_size,
+                                             size_t map_offset) {
   if (t->arch() != x86_64) {
     return;
   }
@@ -1534,25 +1534,26 @@ static void patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
   uint8_t *impl_start = impl;
   t->read_bytes(addr, impl);
   if (X64EndBr::match(impl) || X86EndBr::match(impl)) {
-    assert(X64EndBr::size == X86EndBr::size);
+    static_assert(X64EndBr::size == X86EndBr::size);
     LOG(debug) << "Starts with endbr, skipping";
     addr += X64EndBr::size;
     impl_start += X64EndBr::size;
   }
 
+  static_assert(X64DLRuntimeResolve::size == X64DLRuntimeResolve2::size);
   if (!X64DLRuntimeResolve::match(impl_start) &&
       !X64DLRuntimeResolve2::match(impl_start)) {
     LOG(warn) << "_dl_runtime_resolve implementation doesn't look right";
     return;
   }
 
-  uint8_t call_patch[X64AbsoluteIndirectCallMonkeypatch::size];
-  // We're patching in a relative call, so we need to compute the offset from
-  // the end of the call to our actual destination.
+  vector<uint8_t> bytes(impl_start, impl_start + X64DLRuntimeResolve::size);
   auto call_patch_start = addr.cast<uint8_t>();
+  saved_dl_runtime_resolve_code[call_patch_start] = std::move(bytes);
 
+  uint8_t call_patch[X64AbsoluteIndirectCallMonkeypatch::size];
   X64AbsoluteIndirectCallMonkeypatch::substitute(call_patch,
-      RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE);
+      RR_DL_RUNTIME_RESOLVE_CLEAR_FIP);
   write_and_record_bytes(t, call_patch_start, call_patch);
 
   // pad with NOPs to the next instruction
@@ -1561,6 +1562,28 @@ static void patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
   memset(nops, NOP, sizeof(nops));
   write_and_record_mem(t, call_patch_start + sizeof(call_patch), nops,
                        sizeof(nops));
+}
+
+void Monkeypatcher::unpatch_dl_runtime_resolves(RecordTask* t) {
+  for (auto entry : saved_dl_runtime_resolve_code) {
+    remote_ptr<uint8_t> addr = entry.first;
+    uint8_t impl[X64DLRuntimeResolve::size];
+    bool ok = true;
+    t->read_bytes_helper(addr, sizeof(impl), impl, &ok);
+    if (!ok) {
+      LOG(warn) << "dl_runtime_resolve code has gone!";
+      continue;
+    }
+    uint8_t call_patch[X64AbsoluteIndirectCallMonkeypatch::size];
+    X64AbsoluteIndirectCallMonkeypatch::substitute(call_patch,
+      RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE);
+    if (memcmp(impl, call_patch, sizeof(call_patch))) {
+      LOG(warn) << "dl_runtime_resolve code has changed!";
+      continue;
+    }
+    write_and_record_mem(t, addr, entry.second.data(), entry.second.size());
+  }
+  saved_dl_runtime_resolve_code.clear();
 }
 
 static bool file_may_need_instrumentation(const AddressSpace::Mapping& map) {

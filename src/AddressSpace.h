@@ -302,7 +302,9 @@ public:
       // This mapping is used for syscallbuf patch stubs
       IS_PATCH_STUBS = 0x4,
       // This mapping is the rr page
-      IS_RR_PAGE = 0x8
+      IS_RR_PAGE = 0x8,
+      // This mapping is the rr vdso page
+      IS_RR_VDSO_PAGE = 0x10,
     };
     uint32_t flags;
   };

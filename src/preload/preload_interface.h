@@ -145,6 +145,8 @@ static inline const char* extract_file_name(const char* s) {
 /* Not ABI stable - in record page only */
 #define RR_PAGE_FF_BYTES RR_PAGE_BREAKPOINT_VALUE
 
+#define RR_DL_RUNTIME_RESOLVE_CLEAR_FIP (RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE)
+
 /* PRELOAD_THREAD_LOCALS_ADDR should not change.
  * Tools depend on this address. */
 #define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PRELOAD_LIBRARY_PAGE_SIZE)
