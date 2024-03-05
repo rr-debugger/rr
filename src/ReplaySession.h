@@ -361,6 +361,7 @@ public:
   void notify_detected_transient_error() { detected_transient_error_ = true; }
 
   void set_suppress_stdio_before_event(FrameTime event) { suppress_stdio_before_event_ = event; }
+  bool mark_stdio() const override;
   bool echo_stdio() const;
 
 private:

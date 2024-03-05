@@ -2160,6 +2160,11 @@ void ReplaySession::reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_trac
   }
 }
 
+bool ReplaySession::mark_stdio() const {
+  return Session::mark_stdio() &&
+    current_frame_time() >= suppress_stdio_before_event_;
+}
+
 bool ReplaySession::echo_stdio() const {
   return flags().redirect_stdio &&
     current_frame_time() >= suppress_stdio_before_event_;

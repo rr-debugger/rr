@@ -2139,6 +2139,26 @@ void Task::set_aarch64_tls_register(uintptr_t val) {
      we tried to set. */
 }
 
+static FrameTime simulate_error_at_event() {
+  const char* s = getenv("RR_SIMULATE_ERROR_AT_EVENT");
+  if (s) {
+    return atoi(s);
+  }
+  return INT64_MAX;
+}
+
+static bool simulate_transient_error(Task* t) {
+  static bool simulated_error = false;
+  static FrameTime simulate_error_at_event_ = simulate_error_at_event();
+
+  if (simulated_error || !t->session().is_replaying() ||
+      static_cast<ReplayTask*>(t)->session().trace_stream()->time() < simulate_error_at_event_) {
+    return false;
+  }
+  simulated_error = true;
+  return true;
+}
+
 bool Task::did_waitpid(WaitStatus status) {
   if (is_detached_proxy() &&
       (status.stop_sig() == SIGSTOP || status.stop_sig() == SIGCONT)) {
@@ -2274,6 +2294,9 @@ bool Task::did_waitpid(WaitStatus status) {
         set_stopped(false);
         in_unexpected_exit = true;
         return false;
+      }
+      if (simulate_transient_error(this)) {
+        error_state = PerfCounters::Error::Transient;
       }
       if (detect_transient_error &&
         *detect_transient_error == PerfCounters::Error::Transient) {

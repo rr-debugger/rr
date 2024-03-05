@@ -1704,6 +1704,7 @@ set(TESTS_WITHOUT_PROGRAM
   trace_version
   term_trace_cpu
   trace_events
+  transient_fault_replay_all
   tty
   unmap_vdso
   unwind_on_signal

@@ -425,7 +425,7 @@ public:
      or replay. */
   bool intel_pt_enabled() const { return intel_pt_; }
 
-  bool mark_stdio() const;
+  virtual bool mark_stdio() const;
 
 protected:
   Session();
