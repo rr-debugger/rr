@@ -544,6 +544,30 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_search_mem(found, addr);
       return;
     }
+    case DREQ_MEM_INFO: {
+      ASSERT(target, req.mem().len == 1);
+      if (target->vm()->has_mapping(req.mem().addr)) {
+        AddressSpace::Mapping m = target->vm()->mapping_of(req.mem().addr);
+        dbg->reply_mem_info(m.recorded_map, m.recorded_map.prot(),
+                            m.recorded_map.fsname());
+      } else {
+        AddressSpace::Maps maps = target->vm()->maps();
+        remote_ptr<void> last_end;
+        remote_ptr<void> next_start;
+        for (auto it : maps) {
+          if (it.recorded_map.start() > req.mem().addr) {
+            next_start = it.recorded_map.start();
+            break;
+          }
+          last_end = it.recorded_map.end();
+        }
+        if (next_start.is_null()) {
+          next_start = usable_address_space_end(target->arch());
+        }
+        dbg->reply_mem_info(MemoryRange(last_end, next_start), 0, string());
+      }
+      return;
+    }
     case DREQ_GET_REG: {
       GdbRegisterValue reg =
           get_reg(target->regs(), target->extra_regs(), req.reg().name);

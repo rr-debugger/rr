@@ -2207,25 +2207,6 @@ void AddressSpace::populate_address_space(Task* t) {
   ASSERT(t, found_stacks == 1);
 }
 
-static int addr_bits(SupportedArch arch) {
-  switch (arch) {
-    default:
-      DEBUG_ASSERT(0 && "Unknown architecture");
-      RR_FALLTHROUGH;
-    case x86:
-      return 32;
-    // Current x86-64 systems have only 48 bits of virtual address space,
-    // and only the bottom half is usable by user space
-    case x86_64:
-      return 47;
-    // Aarch64 has 48 bit address space, with user and kernel each getting
-    // their own 48 bits worth of address space at opposite end of the full
-    // 64-bit address space.
-    case aarch64:
-      return 48;
-  }
-}
-
 static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   remote_ptr<void> start = km.start();
   if (km.flags() & MAP_GROWSDOWN) {
@@ -2283,15 +2264,6 @@ MemoryRange AddressSpace::get_global_exclusion_range(const RecordSession* sessio
   return global_exclusion_range;
 }
 
-static remote_ptr<void> usable_address_space_end(Task* t) {
-  auto addr_end = remote_ptr<void>((uint64_t(1) << addr_bits(t->arch())) - page_size());
-#if defined(__i386)
-  // Further limit address space in 32-bit rr to avoid interfering with kernel space.
-  addr_end = min(addr_end, remote_ptr<void>(0xc0000000 - page_size()));
-#endif
-  return addr_end;
-}
-
 static const remote_ptr<void> addr_space_start(0x40000);
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
@@ -2334,7 +2306,8 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
   // Reserve 3 pages at the end of userspace in case Monkeypatcher wants
   // to allocate something there.
   uint64_t reserve_area_for_monkeypatching = 3 * page_size();
-  remote_ptr<void> addr_space_end = usable_address_space_end(t) - reserve_area_for_monkeypatching;
+  remote_ptr<void> addr_space_end =
+    usable_address_space_end(t->arch()) - reserve_area_for_monkeypatching;
   // Clamp start so that we're in the usable address space.
   start = max(start, addr_space_start);
   start = min(start, addr_space_end - len);
@@ -2412,7 +2385,7 @@ remote_ptr<void> AddressSpace::find_free_memory(Task* t,
     // every time.
     after = last_free_memory;
   }
-  remote_ptr<void> addr_space_end = usable_address_space_end(t);
+  remote_ptr<void> addr_space_end = usable_address_space_end(t->arch());
   ASSERT(t, required_space < UINT64_MAX - addr_space_end.as_int());
 
   bool started_from_beginning = after.is_null();

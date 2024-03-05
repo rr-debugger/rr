@@ -12,6 +12,7 @@
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -579,6 +580,34 @@ string prot_flags_string(int prot) {
     ret << " (" << HEX(prot) << ")";
   }
   return ret.str();
+}
+
+int addr_bits(SupportedArch arch) {
+  switch (arch) {
+    default:
+      DEBUG_ASSERT(0 && "Unknown architecture");
+      RR_FALLTHROUGH;
+    case x86:
+      return 32;
+    // Current x86-64 systems have only 48 bits of virtual address space,
+    // and only the bottom half is usable by user space
+    case x86_64:
+      return 47;
+    // Aarch64 has 48 bit address space, with user and kernel each getting
+    // their own 48 bits worth of address space at opposite end of the full
+    // 64-bit address space.
+    case aarch64:
+      return 48;
+  }
+}
+
+remote_ptr<void> usable_address_space_end(SupportedArch arch) {
+  auto addr_end = remote_ptr<void>((uint64_t(1) << addr_bits(arch)) - page_size());
+#if defined(__i386)
+  // Further limit address space in 32-bit rr to avoid interfering with kernel space.
+  addr_end = min(addr_end, remote_ptr<void>(0xc0000000 - page_size()));
+#endif
+  return addr_end;
 }
 
 } // namespace rr

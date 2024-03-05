@@ -9,6 +9,7 @@
 #include <string>
 
 #include "kernel_abi.h"
+#include "remote_ptr.h"
 
 namespace rr {
 
@@ -79,7 +80,20 @@ bool is_coredumping_signal(int signo);
 NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
     const void* data, size_t size);
 
+/**
+ * Stringify the prot bits.
+ */
 std::string prot_flags_string(int prot);
+
+/**
+ * Return the number of usable address space bits for this arch.
+ */
+int addr_bits(SupportedArch arch);
+
+/**
+ * Return the end of the usable address space for this arch.
+ */
+remote_ptr<void> usable_address_space_end(SupportedArch arch);
 
 } // namespace rr
 

@@ -100,8 +100,9 @@ enum GdbRequestType {
   // Uses .mem for offset/len.
   DREQ_READ_SIGINFO,
   DREQ_SEARCH_MEM,
+  DREQ_MEM_INFO,
   DREQ_MEM_FIRST = DREQ_GET_MEM,
-  DREQ_MEM_LAST = DREQ_SEARCH_MEM,
+  DREQ_MEM_LAST = DREQ_MEM_INFO,
 
   DREQ_REMOVE_SW_BREAK,
   DREQ_REMOVE_HW_BREAK,
@@ -487,6 +488,12 @@ public:
    * |addr|.
    */
   void reply_search_mem(bool found, remote_ptr<void> addr);
+
+  /**
+   * Reply to the DREQ_MEM_INFO request.
+   */
+  void reply_mem_info(MemoryRange range, int prot,
+                      const std::string& fs_name);
 
   /**
    * Reply to the DREQ_GET_OFFSETS request.

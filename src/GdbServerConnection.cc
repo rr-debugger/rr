@@ -6,6 +6,8 @@
  * Much of this implementation is based on the documentation at
  *
  * http://sourceware.org/gdb/onlinedocs/gdb/Packets.html
+ * See also
+ * https://github.com/llvm/llvm-project/blob/main/lldb/docs/lldb-gdb-remote.txt
  */
 
 #include "GdbServerConnection.h"
@@ -268,6 +270,16 @@ void GdbServerConnection::write_binary_packet(const char* pfx, const uint8_t* da
   LOG(debug) << " ***** NOTE: writing binary data, upcoming debug output may "
                 "be truncated";
   return write_packet_bytes(buf.data(), buf_num_bytes);
+}
+
+static string string_to_hex(const string& s) {
+  stringstream sstr;
+  for (char ch : s) {
+    char buf[16];
+    sprintf(buf, "%02x", ch);
+    sstr << buf;
+  }
+  return sstr.str();
 }
 
 void GdbServerConnection::write_hex_bytes_packet(const char* prefix,
@@ -840,6 +852,16 @@ bool GdbServerConnection::query(char* payload) {
     }
     write_packet("");
     return false;
+  }
+  if (!strcmp(name, "MemoryRegionInfo") && args) {
+    req = GdbRequest(DREQ_MEM_INFO);
+    req.target = query_thread;
+    req.mem().addr = strtoul(args, &args, 16);
+    parser_assert(!*args);
+    req.mem().len = 1;
+    LOG(debug) << "debugger requesting mem info (addr="
+        << HEX(req.mem().addr) << ")";
+    return true;
   }
 
   if (!strcmp(name, "P")) {
@@ -1807,6 +1829,36 @@ void GdbServerConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
     write_packet("0");
   }
 
+  consume_request();
+}
+
+void GdbServerConnection::reply_mem_info(MemoryRange range,
+                                         int prot,
+                                         const string& fs_name) {
+  DEBUG_ASSERT(DREQ_MEM_INFO == req.type);
+
+  stringstream sstr;
+  sstr << hex << "start:" << range.start().as_int()
+    << ";size:" << range.size() << ";";
+
+  string permissions;
+  if (prot & PROT_READ) {
+    permissions += 'r';
+  }
+  if (prot & PROT_WRITE) {
+    permissions += 'w';
+  }
+  if (prot & PROT_EXEC) {
+    permissions += 'x';
+  }
+  if (!permissions.empty()) {
+    sstr << "permissions:" << permissions << ";";
+  }
+  if (!fs_name.empty()) {
+    sstr << "name:" << string_to_hex(fs_name) << ";";
+  }
+
+  write_packet(sstr.str().c_str());
   consume_request();
 }
 
