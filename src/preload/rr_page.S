@@ -68,9 +68,6 @@
 PAGE_ALIGN
 .fill PRELOAD_LIBRARY_PAGE_SIZE, 1, 0xff
 
-.section .vdso.text, "a", @progbits
-PAGE_ALIGN
-
 #include "rr_vdso.S"
 
 .section .record.text, "a", @progbits
