@@ -176,19 +176,33 @@ struct GdbRequest {
   GdbRequest(const GdbRequest& other)
       : type(other.type),
         target(other.target),
-        suppress_debugger_stop(other.suppress_debugger_stop),
-        mem_(other.mem_),
-        watch_(other.watch_),
-        reg_(other.reg_),
-        restart_(other.restart_),
-        cont_(other.cont_),
-        rr_cmd_(other.rr_cmd_),
-        tls_(other.tls_),
-        sym_(other.sym_),
-        file_setfs_(other.file_setfs_),
-        file_open_(other.file_open_),
-        file_pread_(other.file_pread_),
-        file_close_(other.file_close_) {}
+        suppress_debugger_stop(other.suppress_debugger_stop) {
+    if (type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST) {
+      mem_ = other.mem_;
+    } else if (type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST) {
+      watch_ = other.watch_;
+    } else if (type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST) {
+      reg_ = other.reg_;
+    } else if (type == DREQ_RESTART) {
+      restart_ = other.restart_;
+    } else if (type == DREQ_CONT) {
+      cont_ = other.cont_;
+    } else if (type == DREQ_RR_CMD) {
+      rr_cmd_ = other.rr_cmd_;
+    } else if (type == DREQ_TLS) {
+      tls_ = other.tls_;
+    } else if (type == DREQ_QSYMBOL) {
+      sym_ = other.sym_;
+    } else if (type == DREQ_FILE_SETFS) {
+      file_setfs_ = other.file_setfs_;
+    } else if (type == DREQ_FILE_OPEN) {
+      file_open_ = other.file_open_;
+    } else if (type == DREQ_FILE_PREAD) {
+      file_pread_ = other.file_pread_;
+    } else if (type == DREQ_FILE_CLOSE) {
+      file_close_ = other.file_close_;
+    }
+  }
   GdbRequest& operator=(const GdbRequest& other) {
     this->~GdbRequest();
     new (this) GdbRequest(other);
