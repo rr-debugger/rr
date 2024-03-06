@@ -115,7 +115,7 @@ enum ReplayStatus {
 
 struct ReplayResult {
   ReplayResult(ReplayStatus status = REPLAY_CONTINUE)
-      : status(status), did_fast_forward(false) {}
+      : status(status), did_fast_forward(false), incomplete_fast_forward(false) {}
   ReplayStatus status;
   BreakStatus break_status;
   // True if we did a fast-forward operation, in which case
