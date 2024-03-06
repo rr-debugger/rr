@@ -214,57 +214,57 @@ struct GdbRequest {
   bool suppress_debugger_stop;
 
   struct Mem {
-    uintptr_t addr;
-    size_t len;
+    uintptr_t addr = 0;
+    size_t len = 0;
     // For SET_MEM requests, the |len| raw bytes that are to be written.
     // For SEARCH_MEM requests, the bytes to search for.
     std::vector<uint8_t> data;
   } mem_;
   struct Watch {
-    uintptr_t addr;
-    int kind;
+    uintptr_t addr = 0;
+    int kind = 0;
     std::vector<std::vector<uint8_t>> conditions;
   } watch_;
   GdbRegisterValue reg_;
   struct Restart {
-    int64_t param;
+    int64_t param = 0;
     std::string param_str;
-    GdbRestartType type;
+    GdbRestartType type = RESTART_FROM_PREVIOUS;
   } restart_;
   struct Cont {
-    RunDirection run_direction;
+    RunDirection run_direction = RUN_FORWARD;
     std::vector<GdbContAction> actions;
   } cont_;
   struct RRCmd {
     std::string name;
-    pid_t target_tid;
+    pid_t target_tid = -1;
     std::vector<std::string> args;  
   } rr_cmd_;
   struct Tls {
-    size_t offset;
+    size_t offset = 0;
     remote_ptr<void> load_module;
   } tls_;
   struct Symbol {
-    bool has_address;
+    bool has_address = false;
     remote_ptr<void> address;
     std::string name;
   } sym_;
   struct FileSetfs {
-    pid_t pid;
+    pid_t pid  = -1;
   } file_setfs_;
   struct FileOpen {
     std::string file_name;
     // In system format, not gdb's format
-    int flags;
-    int mode;
+    int flags = 0;
+    int mode = 0;
   } file_open_;
   struct FilePread {
-    int fd;
-    size_t size;
-    uint64_t offset;
+    int fd = -1;
+    size_t size = 0;
+    uint64_t offset = 0;
   } file_pread_;
   struct FileClose {
-    int fd;
+    int fd = -1;
   } file_close_;
 
   Mem& mem() {
