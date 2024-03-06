@@ -266,7 +266,7 @@ public:
    * to notify this session that the objects are dying.
    */
   void on_destroy(AddressSpace* vm);
-  virtual void on_destroy(Task* t);
+  void on_destroy(Task* t);
   void on_create(ThreadGroup* tg);
   void on_destroy(ThreadGroup* tg);
 

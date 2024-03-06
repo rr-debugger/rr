@@ -261,6 +261,8 @@ RecordTask::~RecordTask() {
 
   // If this was stopped, notify the scheduler.
   set_stopped(false);
+
+  session().on_destroy_record_task(this);
 }
 
 void RecordTask::record_exit_event(WriteChildTid write_child_tid) {

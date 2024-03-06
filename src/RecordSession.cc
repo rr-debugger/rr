@@ -2794,15 +2794,6 @@ void RecordSession::on_create(Task* t) {
   scheduler().on_create(static_cast<RecordTask*>(t));
 }
 
-void RecordSession::on_destroy(Task* t) {
-  RecordTask *rt = static_cast<RecordTask*>(t);
-  scheduler().on_destroy(rt);
-  if (rt->detached_proxy) {
-    detached_task_map.erase(rt->tid);
-  }
-  Session::on_destroy(t);
-}
-
 RecordTask* RecordSession::find_task(pid_t rec_tid) const {
   return static_cast<RecordTask*>(Session::find_task(rec_tid));
 }
@@ -2820,6 +2811,13 @@ void RecordSession::on_proxy_detach(RecordTask *t, pid_t new_tid) {
   Session::on_destroy(t);
   task_map[new_tid] = t;
   detached_task_map[t->tid] = t;
+}
+
+void RecordSession::on_destroy_record_task(RecordTask* t) {
+  if (t->detached_proxy) {
+    detached_task_map.erase(t->tid);
+  }
+  scheduler().on_destroy(t);
 }
 
 uint64_t RecordSession::rr_signal_mask() const {

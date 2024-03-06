@@ -143,8 +143,6 @@ public:
 
   TraceWriter& trace_writer() { return trace_out; }
 
-  virtual void on_destroy(Task* t) override;
-
   Scheduler& scheduler() { return scheduler_; }
 
   SeccompFilterRewriter& seccomp_filter_rewriter() {
@@ -208,6 +206,8 @@ public:
    * Forward SIGTERM to initial task
    */
   void forward_SIGTERM();
+
+  void on_destroy_record_task(RecordTask* t);
 
 private:
   RecordSession(const std::string& exe_path,
