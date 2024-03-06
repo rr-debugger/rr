@@ -29,7 +29,7 @@ struct XSaveLayout;
 class ExtraRegisters {
 public:
   // Create empty (uninitialized/unknown registers) value
-  ExtraRegisters(SupportedArch arch = SupportedArch(-1))
+  ExtraRegisters(SupportedArch arch = x86)
       : format_(NONE), arch_(arch) {}
   enum Format { NONE,
   /**
