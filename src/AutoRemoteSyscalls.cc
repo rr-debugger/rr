@@ -531,7 +531,7 @@ struct fd_message {
   }
   remote_ptr<int> remote_cmsgdata() {
     return REMOTE_PTR_FIELD(remote_this(), cmsgbuf).as_int() +
-      (uintptr_t)Arch::cmsg_data(NULL);
+      sizeof(typename Arch::cmsghdr);
   }
 };
 
