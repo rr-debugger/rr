@@ -1359,7 +1359,10 @@ TraceWriter::TraceWriter(const std::string& file_name,
       has_cpuid_faulting_(false),
       xsave_fip_fdp_quirk_(false),
       fdp_exception_only_quirk_(false),
-      clear_fip_fdp_(false) {
+      clear_fip_fdp_(false),
+      supports_file_data_cloning_(false),
+      chaos_mode(false)
+       {
   this->ticks_semantics_ = ticks_semantics_;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
