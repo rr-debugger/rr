@@ -116,6 +116,10 @@ enum _ptrace_get_syscall_info_op {
 #define SYS_SECCOMP 1
 #endif
 
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
 #ifndef PR_GET_SPECULATION_CTRL
 #define PR_GET_SPECULATION_CTRL 52
 #endif
