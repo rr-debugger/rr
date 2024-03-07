@@ -53,6 +53,8 @@ class TraceFrame;
 class RecordTask;
 class ReplayTask;
 
+typedef int BindCPU;
+
 enum Completion { COMPLETE, INCOMPLETE };
 
 /**
@@ -496,7 +498,7 @@ bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip);
  * UNBOUND_CPU means not binding to a particular CPU.
  * A non-negative value means binding to the specific CPU number.
  */
-enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
+enum { BIND_CPU = -2, UNBOUND_CPU = -1 };
 
 /* Get the path of the cpu lock file */
 std::string get_cpu_lock_file();
