@@ -669,8 +669,10 @@ TraceFrame TraceReader::read_frame(FrameTime skip_before) {
       auto mprotect_records = event.getSyscallbufFlush().getMprotectRecords();
       auto& records = ret.ev.SyscallbufFlush().mprotect_records;
       records.resize(mprotect_records.size() / sizeof(mprotect_record));
-      memcpy(records.data(), mprotect_records.begin(),
-             records.size() * sizeof(mprotect_record));
+      if (records.data()) {
+        memcpy(records.data(), mprotect_records.begin(),
+               records.size() * sizeof(mprotect_record));
+      }
       break;
     }
     case trace::Frame::Event::SYSCALL: {
