@@ -86,10 +86,12 @@ static vector<uint8_t> flatten_vector(const vector<vector<uint8_t>>& data) {
     total_size += d.size();
   }
   ret.resize(total_size);
-  size_t offset = 0;
-  for (const auto& d : data) {
-    memcpy(ret.data() + offset, d.data(), d.size());
-    offset += d.size();
+  if (total_size) {
+    size_t offset = 0;
+    for (const auto& d : data) {
+      memcpy(ret.data() + offset, d.data(), d.size());
+      offset += d.size();
+    }
   }
   return ret;
 }

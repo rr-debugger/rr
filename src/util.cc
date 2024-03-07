@@ -334,9 +334,11 @@ vector<uint8_t> read_pt_data(Task* t, FrameTime global_time) {
   while (true) {
     char buf[1024*1024];
     size_t bytes_read = fread(buf, 1, sizeof(buf), dump_file);
-    size_t current_size = result.size();
-    result.resize(current_size + bytes_read);
-    memcpy(result.data() + current_size, buf, bytes_read);
+    if (bytes_read) {
+      size_t current_size = result.size();
+      result.resize(current_size + bytes_read);
+      memcpy(result.data() + current_size, buf, bytes_read);
+    }
     if (bytes_read < sizeof(buf)) {
       break;
     }

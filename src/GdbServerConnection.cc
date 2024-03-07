@@ -237,10 +237,10 @@ void GdbServerConnection::write_packet(const char* data) {
 }
 
 void GdbServerConnection::write_binary_packet(const char* pfx, const uint8_t* data,
-                                        ssize_t num_bytes) {
+                                              ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
   vector<uint8_t> buf;
-  buf.resize(2 * num_bytes + pfx_num_chars);
+  buf.resize(2 * num_bytes + pfx_num_chars + 1);
   ssize_t buf_num_bytes = 0;
   int i;
 
