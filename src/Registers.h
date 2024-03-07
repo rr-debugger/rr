@@ -55,7 +55,7 @@ class Registers {
 public:
   enum { MAX_SIZE = 16 };
 
-  Registers(SupportedArch a = SupportedArch(-1)) : arch_(a) {
+  Registers(SupportedArch a = x86) : arch_(a) {
     memset(&u, 0, sizeof(u));
   }
 
