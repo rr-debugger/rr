@@ -1330,6 +1330,12 @@ bool GdbServerConnection::process_packet() {
 
       ret = true;
       break;
+    case 'j':
+      // Prefer to avoid implementing any JSON-formatted-output
+      // packets unless we have to
+      write_packet("");
+      ret = false;
+      break;
     case 'k':
       LOG(info) << "debugger requests kill, exiting";
       write_packet("OK");
