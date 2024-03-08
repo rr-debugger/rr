@@ -1396,7 +1396,18 @@ bool GdbServerConnection::process_packet() {
     case 'v':
       ret = process_vpacket(payload);
       break;
-    case 'X': {
+    case 'x':
+      req = GdbRequest(DREQ_GET_MEM_BINARY);
+      req.target = query_thread;
+      req.mem().addr = strtoul(payload, &payload, 16);
+      parser_assert(',' == *payload++);
+      req.mem().len = strtoul(payload, &payload, 16);
+      parser_assert(!*payload);
+      LOG(debug) << "debugger requests binary memory (addr=" << HEX(req.mem().addr)
+                 << ", len=" << req.mem().len << ")";
+      ret = true;
+      break;
+    case 'X':
       req = GdbRequest(DREQ_SET_MEM_BINARY);
       req.target = query_thread;
       req.mem().addr = strtoul(payload, &payload, 16);
@@ -1413,7 +1424,6 @@ bool GdbServerConnection::process_packet() {
 
       ret = true;
       break;
-    }
     case 'z':
     case 'Z': {
       int type = strtol(payload, &payload, 16);
@@ -1852,6 +1862,21 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
     write_packet("E01");
   } else {
     write_hex_bytes_packet(mem.data(), mem.size());
+  }
+
+  consume_request();
+}
+
+void GdbServerConnection::reply_get_mem_binary(const vector<uint8_t>& mem) {
+  DEBUG_ASSERT(DREQ_GET_MEM_BINARY == req.type);
+  DEBUG_ASSERT(mem.size() <= req.mem().len);
+
+  if (!req.mem().len) {
+    write_packet("OK");
+  } else if (!mem.size()) {
+    write_packet("E01");
+  } else {
+    write_binary_packet("", mem.data(), mem.size());
   }
 
   consume_request();

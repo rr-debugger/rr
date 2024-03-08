@@ -92,6 +92,7 @@ enum GdbRequestType {
 
   /* These use params.mem. */
   DREQ_GET_MEM,
+  DREQ_GET_MEM_BINARY,
   DREQ_SET_MEM_BINARY,
   // gdb wants to read the current siginfo_t for a stopped
   // tracee.  More importantly, this packet arrives at the very
@@ -495,6 +496,12 @@ public:
    * |mem.size()| must be less than or equal to the length of the request.
    */
   void reply_get_mem(const std::vector<uint8_t>& mem);
+
+  /**
+   * The first |mem.size()| bytes of the request were read into |mem|.
+   * |mem.size()| must be less than or equal to the length of the request.
+   */
+  void reply_get_mem_binary(const std::vector<uint8_t>& mem);
 
   /**
    * |ok| is true if a SET_MEM_BINARY request succeeded, false otherwise.  This
