@@ -441,12 +441,19 @@ public:
    */
   void notify_exit_signal(int sig);
 
+  struct ThreadInfo {
+    GdbThreadId id;
+    uintptr_t pc;
+  };
+
   /**
    * Notify the host that a resume request has "finished", i.e., the
    * target has stopped executing for some reason.  |sig| is the signal
    * that stopped execution, or 0 if execution stopped otherwise.
    */
-  void notify_stop(GdbThreadId which, int sig, const char *reason=nullptr);
+  void notify_stop(GdbThreadId which, int sig,
+                   const std::vector<ThreadInfo>& threads,
+                   const char *reason);
 
   /** Notify the debugger that a restart request failed. */
   void notify_restart_failed();
@@ -533,7 +540,8 @@ public:
   /**
    * Reply to the DREQ_GET_STOP_REASON request.
    */
-  void reply_get_stop_reason(GdbThreadId which, int sig);
+  void reply_get_stop_reason(GdbThreadId which, int sig,
+                             const std::vector<ThreadInfo>& threads);
 
   /**
    * |threads| contains the list of live threads, of which there are
@@ -655,8 +663,9 @@ public:
   */
   bool is_connection_alive();
 
-  bool hwbreak_supported() { return hwbreak_supported_; }
-  bool swbreak_supported() { return swbreak_supported_; }
+  bool hwbreak_supported() const { return hwbreak_supported_; }
+  bool swbreak_supported() const { return swbreak_supported_; }
+  bool multiprocess_supported() const { return multiprocess_supported_; }
 
   bool is_pass_signal(int sig);
 
@@ -727,8 +736,10 @@ private:
   bool process_packet();
   void consume_request();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
+                              const std::vector<ThreadInfo>& threads,
                               const char *reason);
   void send_file_error_reply(int system_errno);
+  std::string format_thread_id(GdbThreadId thread);
 
   // Current request to be processed.
   GdbRequest req;
@@ -757,6 +768,7 @@ private:
   bool multiprocess_supported_; // client supports multiprocess extension
   bool hwbreak_supported_; // client supports hwbreak extension
   bool swbreak_supported_; // client supports swbreak extension
+  bool list_threads_in_stop_reply_; // client requested threads: and thread-pcs: in stop replies
 };
 
 } // namespace rr

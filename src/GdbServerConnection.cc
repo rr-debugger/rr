@@ -63,7 +63,11 @@ GdbServerConnection::GdbServerConnection(pid_t tgid, const Features& features)
       cpu_features_(0),
       no_ack(false),
       features_(features),
-      connection_alive_(true) {
+      connection_alive_(true),
+      multiprocess_supported_(false),
+      hwbreak_supported_(false),
+      swbreak_supported_(false),
+      list_threads_in_stop_reply_(false) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -914,7 +918,6 @@ bool GdbServerConnection::set_var(char* payload) {
     no_ack = true;
     return false;
   }
-
   if (!strncmp(name, "PassSignals", sizeof("PassSignals"))) {
     pass_signals.clear();
     while (*args != '\0') {
@@ -935,6 +938,11 @@ bool GdbServerConnection::set_var(char* payload) {
     }
 
     write_packet("OK");
+    return false;
+  }
+  if (!strcmp(name, "ListThreadsInStopReply")) {
+    write_packet("OK");
+    list_threads_in_stop_reply_ = true;
     return false;
   }
 
@@ -1657,24 +1665,53 @@ static int to_gdb_signum(int sig) {
 }
 
 void GdbServerConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
-                                           const char *reason) {
+                                                 const vector<ThreadInfo>& threads,
+                                                 const char *reason) {
   if (sig < 0) {
     write_packet("E01");
     return;
   }
-  char buf[PATH_MAX];
-  if (multiprocess_supported_) {
-    snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;%s",
-           to_gdb_signum(sig), thread.pid, thread.tid, reason);
-  } else {
-    snprintf(buf, sizeof(buf) - 1, "T%02xthread:%02x;%s",
-           to_gdb_signum(sig), thread.tid, reason);
+  stringstream sstr;
+  sstr << "T" << std::setfill('0') << std::setw(2) << std::hex
+      << to_gdb_signum(sig) << std::setw(0);
+  sstr << "thread:" << format_thread_id(thread) << ";";
+  if (reason) {
+    sstr << reason;
   }
-  write_packet(buf);
+  if (list_threads_in_stop_reply_) {
+    sstr << "threads:";
+    bool first = true;
+    for (const auto& thread : threads) {
+      if (thread.id.pid != tgid) {
+        continue;
+      }
+      if (!first) {
+        sstr << ",";
+      }
+      first = false;
+      sstr << thread.id.tid;
+    }
+    sstr << ";thread-pcs:";
+    first = true;
+    for (const auto& thread : threads) {
+      if (thread.id.pid != tgid) {
+        continue;
+      }
+      if (!first) {
+        sstr << ",";
+      }
+      first = false;
+      sstr << thread.pc;
+    }
+    sstr << ";";
+  }
+
+  write_packet(sstr.str().c_str());
 }
 
 void GdbServerConnection::notify_stop(GdbThreadId thread, int sig,
-                                const char *reason) {
+                                      const vector<ThreadInfo>& threads,
+                                      const char *reason) {
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
   // don't pass this signal to gdb if it is specified not to
@@ -1696,7 +1733,7 @@ void GdbServerConnection::notify_stop(GdbThreadId thread, int sig,
   if (!reason) {
     reason = "";
   }
-  send_stop_reply_packet(thread, sig, reason);
+  send_stop_reply_packet(thread, sig, threads, reason);
 
   // This isn't documented in the gdb remote protocol, but if we
   // don't do this, gdb will sometimes continue to send requests
@@ -1726,17 +1763,20 @@ void GdbServerConnection::notify_restart_failed() {
   consume_request();
 }
 
+string GdbServerConnection::format_thread_id(GdbThreadId thread) {
+  char buf[32];
+  if (multiprocess_supported_) {
+    snprintf(buf, sizeof(buf), "p%x.%x", thread.pid, thread.tid);
+  } else {
+    snprintf(buf, sizeof(buf), "%x", thread.tid);
+  }
+  return buf;
+}
+
 void GdbServerConnection::reply_get_current_thread(GdbThreadId thread) {
   DEBUG_ASSERT(DREQ_GET_CURRENT_THREAD == req.type);
 
-  char buf[1024];
-  if (multiprocess_supported_) {
-    snprintf(buf, sizeof(buf), "QCp%02x.%02x", thread.pid, thread.tid);
-  } else {
-    snprintf(buf, sizeof(buf), "QC%02x", thread.tid);
-  }
-  write_packet(buf);
-
+  write_packet(("QC" + format_thread_id(thread)).c_str());
   consume_request();
 }
 
@@ -1913,10 +1953,11 @@ void GdbServerConnection::reply_set_reg(bool ok) {
   consume_request();
 }
 
-void GdbServerConnection::reply_get_stop_reason(GdbThreadId which, int sig) {
+void GdbServerConnection::reply_get_stop_reason(GdbThreadId which, int sig,
+                                                const std::vector<ThreadInfo>& threads) {
   DEBUG_ASSERT(DREQ_GET_STOP_REASON == req.type);
 
-  send_stop_reply_packet(which, sig, "");
+  send_stop_reply_packet(which, sig, threads, nullptr);
 
   consume_request();
 }

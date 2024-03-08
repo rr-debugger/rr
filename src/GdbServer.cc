@@ -294,6 +294,23 @@ void GdbServer::maybe_intercept_mem_request(Task* target, const GdbRequest& req,
   }
 }
 
+static vector<GdbServerConnection::ThreadInfo> thread_info(const Session& session) {
+  vector<GdbServerConnection::ThreadInfo> threads;
+  for (auto& kv : session.tasks()) {
+    threads.push_back({
+      get_threadid(session, kv.second->tuid()),
+      kv.second->regs().ip().register_value()
+    });
+  }
+  return threads;
+}
+
+void GdbServer::notify_stop_internal(const Session& session,
+                                     GdbThreadId which, int sig,
+                                     const char *reason) {
+  dbg->notify_stop(which, sig, thread_info(session), reason);
+}
+
 void GdbServer::dispatch_debugger_request(Session& session,
                                           const GdbRequest& req,
                                           ReportState state) {
@@ -326,7 +343,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       ASSERT(t, session.is_diversion())
           << "Replay interrupts should be handled at a higher level";
       DEBUG_ASSERT(!t || t->thread_group()->tguid() == debuggee_tguid);
-      dbg->notify_stop(t ? get_threadid(t) : GdbThreadId(), 0);
+      notify_stop_internal(session, t ? get_threadid(t) : GdbThreadId(), 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       if (t) {
         last_query_tuid = last_continue_tuid = t->tuid();
@@ -602,7 +619,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
     }
     case DREQ_GET_STOP_REASON: {
       dbg->reply_get_stop_reason(get_threadid(session, last_continue_tuid),
-                                 stop_siginfo.si_signo);
+                                 stop_siginfo.si_signo,
+                                 thread_info(session));
       return;
     }
     case DREQ_SET_SW_BREAK: {
@@ -876,7 +894,8 @@ static Task* is_in_exec(ReplayTimeline& timeline) {
              : nullptr;
 }
 
-void GdbServer::maybe_notify_stop(const GdbRequest& req,
+void GdbServer::maybe_notify_stop(const Session& session,
+                                  const GdbRequest& req,
                                   const BreakStatus& break_status) {
   bool do_stop = false;
   remote_ptr<void> watch_addr;
@@ -958,8 +977,8 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
   if (do_stop && t->thread_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg->notify_stop(get_threadid(t), stop_siginfo.si_signo,
-                     watch);
+    notify_stop_internal(session, get_threadid(t), stop_siginfo.si_signo,
+                         watch);
     last_query_tuid = last_continue_tuid = t->tuid();
   }
 }
@@ -1046,7 +1065,8 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     if (req.cont().run_direction == RUN_BACKWARD) {
       // We don't support reverse execution in a diversion. Just issue
       // an immediate stop.
-      dbg->notify_stop(get_threadid(*diversion_session, last_continue_tuid), 0);
+      notify_stop_internal(*diversion_session,
+          get_threadid(*diversion_session, last_continue_tuid), 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       last_query_tuid = last_continue_tuid;
       continue;
@@ -1063,7 +1083,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
-      maybe_notify_stop(req, result.break_status);
+      maybe_notify_stop(*diversion_session, req, result.break_status);
       if (timeline.is_running()) {
         // gdb assumes that the process is gone and all its
         // breakpoints have gone with it. It will set new breakpoints.
@@ -1075,7 +1095,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
     DEBUG_ASSERT(result.status == DiversionSession::DIVERSION_CONTINUE);
 
-    maybe_notify_stop(req, result.break_status);
+    maybe_notify_stop(*diversion_session, req, result.break_status);
   }
 
   LOG(debug) << "... ending debugging diversion";
@@ -1178,7 +1198,7 @@ void GdbServer::try_lazy_reverse_singlesteps(GdbRequest& req) {
     break_status.task_context = TaskContext(t);
     break_status.singlestep_complete = true;
     LOG(debug) << "  using lazy reverse-singlestep";
-    maybe_notify_stop(req, break_status);
+    maybe_notify_stop(timeline.current_session(), req, break_status);
 
     while (true) {
       req = dbg->get_request();
@@ -1272,7 +1292,8 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     Task* t = timeline.current_session().current_task();
     if (t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
-      dbg->notify_stop(get_threadid(t), in_debuggee_end_state ? SIGKILL : 0);
+      notify_stop_internal(timeline.current_session(),
+          get_threadid(t), in_debuggee_end_state ? SIGKILL : 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       return CONTINUE_DEBUGGING;
     }
@@ -1283,7 +1304,8 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     if (t->thread_group()->tguid() == debuggee_tguid) {
       exit_sigkill_pending = false;
       if (req.cont().run_direction == RUN_FORWARD) {
-        dbg->notify_stop(get_threadid(t), SIGKILL);
+        notify_stop_internal(timeline.current_session(),
+            get_threadid(t), SIGKILL);
         memset(&stop_siginfo, 0, sizeof(stop_siginfo));
         return CONTINUE_DEBUGGING;
       }
@@ -1356,7 +1378,8 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     }
   }
   if (!req.suppress_debugger_stop) {
-    maybe_notify_stop(req, result.break_status);
+    maybe_notify_stop(timeline.current_session(),
+        req, result.break_status);
   }
   if (req.cont().run_direction == RUN_FORWARD &&
       is_last_thread_exit(result.break_status) &&

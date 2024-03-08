@@ -169,8 +169,13 @@ private:
    * If |break_status| indicates a stop that we should report to gdb,
    * report it. |req| is the resume request that generated the stop.
    */
-  void maybe_notify_stop(const GdbRequest& req,
+  void maybe_notify_stop(const Session& session,
+                         const GdbRequest& req,
                          const BreakStatus& break_status);
+
+  void notify_stop_internal(const Session& session,
+                            GdbThreadId which, int sig,
+                            const char *reason = nullptr);
 
   /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there
