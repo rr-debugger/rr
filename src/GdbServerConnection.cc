@@ -868,6 +868,8 @@ bool GdbServerConnection::query(char* payload) {
     return true;
   }
 
+  // Packets that we intentionally don't support
+
   if (!strcmp(name, "P")) {
     /* The docs say not to use this packet ... */
     write_packet("");
@@ -895,6 +897,11 @@ bool GdbServerConnection::query(char* payload) {
     // triple:7838365f36342d2d6c696e75782d676e75;ostype:linux;endian:little;ptrsize:8
     // Currently we don't have the parent PID or uids, so we're
     // not going to handle this.
+    write_packet("");
+    return false;
+  }
+  if (!strcmp(name, "StructuredDataPlugins")) {
+    // This isn't documented and lldb-server doesn't support it
     write_packet("");
     return false;
   }
