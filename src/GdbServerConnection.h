@@ -497,18 +497,18 @@ public:
   void reply_get_mem(const std::vector<uint8_t>& mem);
 
   /**
-   * |ok| is true if a SET_MEM request succeeded, false otherwise.  This
-   * function *must* be called whenever a SET_MEM request is made,
+   * |ok| is true if a SET_MEM_BINARY request succeeded, false otherwise.  This
+   * function *must* be called whenever a SET_MEM_BINARY request is made,
    * regardless of success/failure or special interpretation.
    */
-  void reply_set_mem(bool ok);
+  void reply_set_mem_binary(bool ok);
 
   /**
    * Reply to the DREQ_SEARCH_MEM_BINARY request.
    * |found| is true if we found the searched-for bytes starting at address
    * |addr|.
    */
-  void reply_search_mem(bool found, remote_ptr<void> addr);
+  void reply_search_mem_binary(bool found, remote_ptr<void> addr);
 
   /**
    * Reply to the DREQ_MEM_INFO request.

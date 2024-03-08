@@ -1857,7 +1857,7 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
   consume_request();
 }
 
-void GdbServerConnection::reply_set_mem(bool ok) {
+void GdbServerConnection::reply_set_mem_binary(bool ok) {
   DEBUG_ASSERT(DREQ_SET_MEM_BINARY == req.type);
 
   write_packet(ok ? "OK" : "E01");
@@ -1865,7 +1865,8 @@ void GdbServerConnection::reply_set_mem(bool ok) {
   consume_request();
 }
 
-void GdbServerConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
+void GdbServerConnection::reply_search_mem_binary(
+      bool found, remote_ptr<void> addr) {
   DEBUG_ASSERT(DREQ_SEARCH_MEM_BINARY == req.type);
 
   if (found) {
