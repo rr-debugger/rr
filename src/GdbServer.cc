@@ -520,7 +520,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_get_mem(mem);
       return;
     }
-    case DREQ_SET_MEM: {
+    case DREQ_SET_MEM_BINARY: {
       // gdb has been observed to send requests of length 0 at
       // odd times
       // (e.g. before sending the magic write to create a checkpoint)

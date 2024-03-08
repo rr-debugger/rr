@@ -92,7 +92,7 @@ enum GdbRequestType {
 
   /* These use params.mem. */
   DREQ_GET_MEM,
-  DREQ_SET_MEM,
+  DREQ_SET_MEM_BINARY,
   // gdb wants to read the current siginfo_t for a stopped
   // tracee.  More importantly, this packet arrives at the very
   // beginning of a |call foo()| experiment.

@@ -1397,7 +1397,7 @@ bool GdbServerConnection::process_packet() {
       ret = process_vpacket(payload);
       break;
     case 'X': {
-      req = GdbRequest(DREQ_SET_MEM);
+      req = GdbRequest(DREQ_SET_MEM_BINARY);
       req.target = query_thread;
       req.mem().addr = strtoul(payload, &payload, 16);
       parser_assert(',' == *payload++);
@@ -1858,7 +1858,7 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
 }
 
 void GdbServerConnection::reply_set_mem(bool ok) {
-  DEBUG_ASSERT(DREQ_SET_MEM == req.type);
+  DEBUG_ASSERT(DREQ_SET_MEM_BINARY == req.type);
 
   write_packet(ok ? "OK" : "E01");
 
