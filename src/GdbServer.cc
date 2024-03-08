@@ -553,7 +553,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_set_mem(true);
       return;
     }
-    case DREQ_SEARCH_MEM: {
+    case DREQ_SEARCH_MEM_BINARY: {
       remote_ptr<void> addr;
       bool found =
           search_memory(target, MemoryRange(req.mem().addr, req.mem().len),

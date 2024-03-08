@@ -841,7 +841,7 @@ bool GdbServerConnection::query(char* payload) {
       *args++ = '\0';
     }
     if (!strcmp(name, "memory") && args) {
-      req = GdbRequest(DREQ_SEARCH_MEM);
+      req = GdbRequest(DREQ_SEARCH_MEM_BINARY);
       req.target = query_thread;
       req.mem().addr = strtoul(args, &args, 16);
       parser_assert(';' == *args++);
@@ -1866,7 +1866,7 @@ void GdbServerConnection::reply_set_mem(bool ok) {
 }
 
 void GdbServerConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
-  DEBUG_ASSERT(DREQ_SEARCH_MEM == req.type);
+  DEBUG_ASSERT(DREQ_SEARCH_MEM_BINARY == req.type);
 
   if (found) {
     char buf[256];

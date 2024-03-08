@@ -99,7 +99,7 @@ enum GdbRequestType {
   //
   // Uses .mem for offset/len.
   DREQ_READ_SIGINFO,
-  DREQ_SEARCH_MEM,
+  DREQ_SEARCH_MEM_BINARY,
   DREQ_MEM_INFO,
   DREQ_MEM_FIRST = DREQ_GET_MEM,
   DREQ_MEM_LAST = DREQ_MEM_INFO,
@@ -504,7 +504,7 @@ public:
   void reply_set_mem(bool ok);
 
   /**
-   * Reply to the DREQ_SEARCH_MEM request.
+   * Reply to the DREQ_SEARCH_MEM_BINARY request.
    * |found| is true if we found the searched-for bytes starting at address
    * |addr|.
    */
