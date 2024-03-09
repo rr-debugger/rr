@@ -905,6 +905,11 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
+  if (!strcmp(name, "ShlibInfoAddr")) {
+    // This isn't documented and lldb-server doesn't seem to support it
+    write_packet("");
+    return false;
+  }
 
   UNHANDLED_REQ() << "Unhandled debugger query: q" << name;
   return false;
