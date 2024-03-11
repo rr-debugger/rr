@@ -126,7 +126,7 @@ typedef enum BrotliEncoderOperation {
    *          before it is depleted with other operations.
    *
    * Stream is soft-flushed before metadata block is emitted. Metadata block
-   * @b MUST be no longer than than 16MiB.
+   * @b MUST be no longer than 16MiB.
    */
   BROTLI_OPERATION_EMIT_METADATA = 3
 } BrotliEncoderOperation;
