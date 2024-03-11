@@ -24,7 +24,7 @@ int main(void) {
   test_assert(filefd == -1);
 
   // openat2 was introduced by Linux 5.6
-  // if the syscall isn't supported, return immediatly
+  // if the syscall isn't supported, return immediately
   if (errno == ENOSYS) {
     atomic_puts("EXIT-SUCCESS");
     return 0;

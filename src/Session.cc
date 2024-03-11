@@ -221,7 +221,7 @@ void Session::kill_all_tasks() {
     /* We delete tasks in two passes. First, we kill
      * every non-thread-group-leader, then we kill every group leader.
      * Linux expects threads group leaders to survive until the last
-     * member of the thread group has exited, so we accomodate that.
+     * member of the thread group has exited, so we accommodate that.
      */
     for (auto& v : task_map) {
       Task* t = v.second;

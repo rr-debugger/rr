@@ -501,7 +501,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 static void process_brk(ReplayTask* t) {
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
-  // Zero flags means it's an an unmap, or no change.
+  // Zero flags means it's an unmap, or no change.
   if (km.flags()) {
     AutoRemoteSyscalls remote(t);
     ASSERT(t, data.source == TraceReader::SOURCE_ZERO);

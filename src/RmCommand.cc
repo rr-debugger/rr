@@ -101,7 +101,7 @@ static int rm(const string& trace, const RmFlags& flags, FILE* out) {
   if (!flags.force && !is_trace(trace_path)) {
     fprintf(stderr,
             "\n"
-            "rr: Could not idenfity '%s' as a trace, use -f to remove anyway"
+            "rr: Could not identify '%s' as a trace, use -f to remove anyway"
             " (errno %d).\n"
             "\n",
             trace_path.c_str(), errno);

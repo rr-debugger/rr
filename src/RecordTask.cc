@@ -1738,7 +1738,7 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   bool ok = true;
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes, &ok);
   if (!ok) {
-    // Tracee probably died unexpectely. This should only happen
+    // Tracee probably died unexpectedly. This should only happen
     // due to SIGKILL racing with our PTRACE_CONT.
     if (!vm()->find_other_thread_group(this) &&
         vm()->range_is_private_mapping(MemoryRange(addr, num_bytes))) {
