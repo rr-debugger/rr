@@ -182,11 +182,6 @@ private:
    * isn't one.
    */
   ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
-  /**
-   * Delete the checkpoint stored as |checkpoint_id| if it exists, or do
-   * nothing if it doesn't exist.
-   */
-  void delete_checkpoint(int checkpoint_id);
 
   /**
    * Handle GDB file open requests. If we can serve this read request, add
