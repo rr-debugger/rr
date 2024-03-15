@@ -179,6 +179,11 @@ enum GdbRequestType {
   DREQ_FILE_PREAD,
   // vFile:close packet, uses params.file_close.
   DREQ_FILE_CLOSE,
+
+  // Uses params.mem_alloc
+  DREQ_MEM_ALLOC,
+  // Uses params.mem_free
+  DREQ_MEM_FREE,
 };
 
 enum GdbRestartType {
@@ -235,6 +240,10 @@ struct GdbRequest {
       file_pread_ = other.file_pread_;
     } else if (type == DREQ_FILE_CLOSE) {
       file_close_ = other.file_close_;
+    } else if (type == DREQ_MEM_ALLOC) {
+      mem_alloc_ = other.mem_alloc_;
+    } else if (type == DREQ_MEM_FREE) {
+      mem_free_ = other.mem_free_;
     }
   }
   GdbRequest& operator=(const GdbRequest& other) {
@@ -300,6 +309,13 @@ struct GdbRequest {
   struct FileClose {
     int fd = -1;
   } file_close_;
+  struct MemAlloc {
+    size_t size;
+    int prot;
+  } mem_alloc_;
+  struct MemFree {
+    remote_ptr<void> address;
+  } mem_free_;
 
   Mem& mem() {
     DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -396,6 +412,22 @@ struct GdbRequest {
   const FileClose& file_close() const {
     DEBUG_ASSERT(type == DREQ_FILE_CLOSE);
     return file_close_;
+  }
+  MemAlloc& mem_alloc() {
+    DEBUG_ASSERT(type == DREQ_MEM_ALLOC);
+    return mem_alloc_;
+  }
+  const MemAlloc& mem_alloc() const {
+    DEBUG_ASSERT(type == DREQ_MEM_ALLOC);
+    return mem_alloc_;
+  }
+  MemFree& mem_free() {
+    DEBUG_ASSERT(type == DREQ_MEM_FREE);
+    return mem_free_;
+  }
+  const MemFree& mem_free() const {
+    DEBUG_ASSERT(type == DREQ_MEM_FREE);
+    return mem_free_;
   }
 
   /**
@@ -549,6 +581,16 @@ public:
    */
   void reply_mem_info(MemoryRange range, int prot,
                       const std::string& fs_name);
+
+  /**
+   * Reply to the DREQ_MEM_ALLOC request.
+   */
+  void reply_mem_alloc(remote_ptr<void> addr);
+
+  /**
+   * Reply to the DREQ_MEM_FREE request.
+   */
+  void reply_mem_free(bool ok);
 
   /**
    * Reply to the DREQ_GET_OFFSETS request.
@@ -753,6 +795,11 @@ private:
    * false if we already handled the packet internally.
    */
   bool set_var(char* payload);
+  /**
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
+   */
+  bool process_underscore(char* payload);
   /**
    * Return true if we need to do something in a debugger request,
    * false if we already handled the packet internally.

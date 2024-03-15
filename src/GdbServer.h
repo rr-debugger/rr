@@ -6,7 +6,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
+#include "AddressSpace.h"
 #include "DiversionSession.h"
 #include "GdbServerConnection.h"
 #include "ReplaySession.h"
@@ -174,6 +177,51 @@ private:
    */
   int open_file(Session& session, Task *continue_task, const std::string& file_name);
 
+  /**
+   * Allocates debugger-owned memory region.
+   * We pretend this memory exists in all sessions, but it actually only
+   * exists in diversion sessions. When there is no diversion session,
+   * we divert reads and writes to it to our internal storage.
+   * During a diversion, the diversion session is the source of truth
+   * and all reads and writes should go directly to the session.
+   * If the diversion exits normally we update the memory values from
+   * the diversion session, but if it crashes, we don't.
+   */
+  remote_ptr<void> allocate_debugger_mem(ThreadGroupUid tguid,
+                                         size_t size, int prot);
+  /**
+   * Frees a debugger-owned memory region. Returns 0
+   * if there is no such region, otherwise returns the size
+   * of the freed region.
+   */
+  size_t free_debugger_mem(ThreadGroupUid tguid, remote_ptr<void> addr);
+  // If the address is in debugger memory, return its size and prot and
+  // return true.
+  // Otherwise returns false.
+  bool debugger_mem_region(ThreadGroupUid tguid, remote_ptr<void> addr, int* prot,
+                           MemoryRange* mem_range);
+  // Read from debugger memory. Returns false if the range is not in debugger memory.
+  // Fatal error if the range partially overlaps debugger memory.
+  // Don't call this if the session is a diversion, read from the diversion directly
+  // since it has the values.
+  bool read_debugger_mem(ThreadGroupUid tguid, MemoryRange range, uint8_t* values);
+  // Write to debugger memory. Returns false if the range is not in debugger memory.
+  // Fatal error if the range partially overlaps debugger memory.
+  // Don't call this if the session is a diversion, write to the diversion directly
+  // since it has the values.
+  bool write_debugger_mem(ThreadGroupUid tguid, MemoryRange range, const uint8_t* values);
+  // Add mappings of the debugger memory to the session.
+  // If `addr` is null then all mappings are added, otherwise only mappings
+  // at that address are added.
+  void map_debugger_mem(DiversionSession& session, ThreadGroupUid tguid,
+                        remote_ptr<void> addr);
+  // Unmap mapping of a specific debugger memory region from the session.
+  void unmap_debugger_mem(DiversionSession& session,
+                          ThreadGroupUid tguid, remote_ptr<void> addr,
+                          size_t size);
+  // Read back the contents of all debugger memory regions from the session.
+  void read_back_debugger_mem(DiversionSession& session);
+
   // dbg is never null.
   std::unique_ptr<GdbServerConnection> dbg;
   // The ThreadGroupUid of the task being debugged.
@@ -244,6 +292,22 @@ private:
   std::map<int, FileId> memory_files;
   // The pid for gdb's last vFile:setfs
   pid_t file_scope_pid;
+
+  // LLDB wants to allocate memory in tracees. Instead of modifying tracee ReplaySessions,
+  // we store the memory outside the session and copy it into DiversionSessions as needed.
+  struct DebuggerMemRegion {
+    std::vector<uint8_t> values;
+    int prot;
+  };
+  struct DebuggerMem {
+    std::map<MemoryRange, DebuggerMemRegion, MappingComparator> regions;
+    // Virtual memory ranges that are never used by any tracee, also excluding
+    // memory used by debugger_mem and guard pages.
+    ReplaySession::MemoryRanges free_memory;
+    bool did_get_accurate_free_memory;
+  };
+  // Maps from tgid to the DebuggerMem.
+  std::unordered_map<ThreadGroupUid, DebuggerMem> debugger_mem;
 };
 
 } // namespace rr

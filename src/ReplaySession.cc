@@ -57,8 +57,8 @@ static void split_at_address(ReplaySession::MemoryRanges& ranges,
   }
 }
 
-static void delete_range(ReplaySession::MemoryRanges& ranges,
-                         const MemoryRange& r) {
+void ReplaySession::delete_range(ReplaySession::MemoryRanges& ranges,
+                                 const MemoryRange& r) {
   split_at_address(ranges, r.start());
   split_at_address(ranges, r.end());
   auto first = ranges.lower_bound(MemoryRange(r.start(), r.start() + 1));
@@ -66,16 +66,22 @@ static void delete_range(ReplaySession::MemoryRanges& ranges,
   ranges.erase(first, last);
 }
 
-ReplaySession::MemoryRanges ReplaySession::always_free_address_space(
-    const TraceReader& reader) {
-  MemoryRanges result;
+const ReplaySession::MemoryRanges& ReplaySession::always_free_address_space(
+    PerfTradeoff perf_tradeoff) {
+  shared_ptr<MemoryRanges>& result =
+      perf_tradeoff == ACCURATE ? always_free_address_space_accurate :
+        always_free_address_space_fast;
+  if (!result->empty()) {
+    return *result;
+  }
+
   remote_ptr<void> addressable_min = remote_ptr<void>(64 * 1024);
   // Assume 64-bit address spaces with the 47-bit user-space limitation,
   // for now.
   remote_ptr<void> addressable_max = uintptr_t(
       sizeof(void*) == 8 ? uint64_t(1) << 47 : (uint64_t(1) << 32) - page_size());
-  result.insert(MemoryRange(addressable_min, addressable_max));
-  TraceReader tmp_reader(reader);
+  result->insert(MemoryRange(addressable_min, addressable_max));
+  TraceReader tmp_reader(trace_reader());
   bool found;
   while (true) {
     KernelMapping km = tmp_reader.read_mapped_region(
@@ -83,11 +89,46 @@ ReplaySession::MemoryRanges ReplaySession::always_free_address_space(
     if (!found) {
       break;
     }
-    delete_range(result, km);
+    // We can use PROT_NONE space, since any access of it by the application
+    // would have triggered a SIGSEGV.
+    // This is important when processing traces recorded with sanitizers compiled
+    // in.
+    // If it's mapped PROT_NONE but later mprotect() is used to make it usable, that
+    // is handled below. In FAST mode we don't use this memory, since we don't
+    // want to scan the trace frames.
+    if (perf_tradeoff == ACCURATE && km.prot() == PROT_NONE) {
+      continue;
+    }
+    delete_range(*result, km);
   }
-  delete_range(result, MemoryRange(AddressSpace::rr_page_start(),
-                                   AddressSpace::rr_page_end()));
-  return result;
+  while (perf_tradeoff == ACCURATE && !tmp_reader.at_end()) {
+    auto frame = tmp_reader.read_frame();
+    auto event = frame.event();
+    // If a region was ever mprotected to something that's not PROT_NONE,
+    // we need to delete it as well.
+    if (event.is_syscall_event()) {
+      auto syscall_event = event.Syscall();
+      if (is_mprotect_syscall(syscall_event.number, syscall_event.arch()) ||
+          is_pkey_mprotect_syscall(syscall_event.number, syscall_event.arch())) {
+        auto regs = frame.regs();
+        if (regs.arg3() != PROT_NONE) {
+          remote_ptr<void> start = regs.arg1();
+          size_t size = regs.arg2();
+          delete_range(*result, MemoryRange(start, size));
+        }
+      }
+    } else if (event.is_syscallbuf_flush_event()) {
+      auto syscallbuf_flush_event = event.SyscallbufFlush();
+      for (auto& record : syscallbuf_flush_event.mprotect_records) {
+        if (record.prot != PROT_NONE) {
+          delete_range(*result, MemoryRange(record.start, record.size));
+        }
+      }
+    }
+  }
+  delete_range(*result, MemoryRange(AddressSpace::rr_page_start(),
+                                    AddressSpace::rr_page_end()));
+  return *result;
 }
 
 static bool tracee_xsave_enabled(const TraceReader& trace_in) {
@@ -171,7 +212,9 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       replay_stops_at_first_execve_(flags.replay_stops_at_first_execve),
       detected_transient_error_(false),
       trace_start_time(0),
-      suppress_stdio_before_event_(0) {
+      suppress_stdio_before_event_(0),
+      always_free_address_space_fast(make_shared<MemoryRanges>()),
+      always_free_address_space_accurate(make_shared<MemoryRanges>()) {
   if (trace_in.required_forward_compatibility_version() > FORWARD_COMPATIBILITY_VERSION) {
     CLEAN_FATAL()
       << "This rr build is too old to replay the trace (we support forward compatibility version "
@@ -237,7 +280,9 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       replay_stops_at_first_execve_(other.replay_stops_at_first_execve_),
       detected_transient_error_(other.detected_transient_error_),
       trace_start_time(other.trace_start_time),
-      suppress_stdio_before_event_(other.suppress_stdio_before_event_) {}
+      suppress_stdio_before_event_(other.suppress_stdio_before_event_),
+      always_free_address_space_fast(other.always_free_address_space_fast),
+      always_free_address_space_accurate(other.always_free_address_space_accurate) {}
 
 ReplaySession::~ReplaySession() {
   // We won't permanently leak any OS resources by not ensuring

@@ -503,10 +503,22 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_GET_MEM:
     case DREQ_GET_MEM_BINARY: {
       vector<uint8_t> mem;
+      uintptr_t end = req.mem().addr + req.mem().len;
+      if (end < req.mem().addr) {
+        // Overflow
+        dbg->reply_get_mem(mem);
+        return;
+      }
       mem.resize(req.mem().len);
-      ssize_t nread = target->read_bytes_fallible(req.mem().addr, req.mem().len,
-                                                  mem.data());
-      mem.resize(max(ssize_t(0), nread));
+
+      if (!session.is_diversion() &&
+          read_debugger_mem(target->thread_group()->tguid(),
+              MemoryRange(req.mem().addr, req.mem().len), mem.data())) {
+      } else {
+        ssize_t nread = target->read_bytes_fallible(req.mem().addr, req.mem().len,
+                                                    mem.data());
+        mem.resize(max(ssize_t(0), nread));
+      }
       target->vm()->replace_breakpoints_with_original_values(
           mem.data(), mem.size(), req.mem().addr);
       maybe_intercept_mem_request(target, req, &mem);
@@ -522,6 +534,12 @@ void GdbServer::dispatch_debugger_request(Session& session,
         dbg->reply_set_mem(true);
         return;
       }
+      uintptr_t end = req.mem().addr + req.mem().len;
+      if (end < req.mem().addr) {
+        // Overflow
+        dbg->reply_set_mem(false);
+        return;
+      }
       // If an address is recognised as belonging to a SystemTap semaphore it's
       // because it was detected by the audit library during recording and
       // pre-incremented.
@@ -535,6 +553,13 @@ void GdbServer::dispatch_debugger_request(Session& session,
       // Arbitrary writes to replay sessions cause
       // divergence.
       if (!session.is_diversion()) {
+        if (write_debugger_mem(target->thread_group()->tguid(),
+                MemoryRange(req.mem().addr, req.mem().len),
+                req.mem().data.data())) {
+          dbg->reply_set_mem(true);
+          return;
+        }
+
         LOG(error) << "Attempt to write memory outside diversion session";
         dbg->reply_set_mem(false);
         return;
@@ -557,6 +582,13 @@ void GdbServer::dispatch_debugger_request(Session& session,
     }
     case DREQ_MEM_INFO: {
       ASSERT(target, req.mem().len == 1);
+      MemoryRange range;
+      int prot;
+      if (debugger_mem_region(target->thread_group()->tguid(), req.mem().addr,
+          &prot, &range)) {
+        dbg->reply_mem_info(range, prot, "");
+        return;
+      }
       if (target->vm()->has_mapping(req.mem().addr)) {
         AddressSpace::Mapping m = target->vm()->mapping_of(req.mem().addr);
         dbg->reply_mem_info(m.recorded_map, m.recorded_map.prot(),
@@ -577,6 +609,25 @@ void GdbServer::dispatch_debugger_request(Session& session,
         }
         dbg->reply_mem_info(MemoryRange(last_end, next_start), 0, string());
       }
+      return;
+    }
+    case DREQ_MEM_ALLOC: {
+      remote_ptr<void> addr = allocate_debugger_mem(target->thread_group()->tguid(),
+          req.mem_alloc().size, req.mem_alloc().prot);
+      if (!addr.is_null() && session.is_diversion()) {
+        map_debugger_mem(*session.as_diversion(), target->thread_group()->tguid(),
+            addr);
+      }
+      dbg->reply_mem_alloc(addr);
+      return;
+    }
+    case DREQ_MEM_FREE: {
+      size_t size = free_debugger_mem(target->thread_group()->tguid(), req.mem_free().address);
+      if (size && session.is_diversion()) {
+        unmap_debugger_mem(*session.as_diversion(), target->thread_group()->tguid(),
+            req.mem_free().address, size);
+      }
+      dbg->reply_mem_free(size);
       return;
     }
     case DREQ_GET_REG: {
@@ -1066,8 +1117,20 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
   uint32_t diversion_refcount = 1;
   ExtendedTaskId saved_query_task = last_query_task;
   ExtendedTaskId saved_continue_task = last_continue_task;
-  while (diverter_process_debugger_requests(*diversion_session,
-                                            diversion_refcount, &req)) {
+
+  for (const auto& dbg_mem : debugger_mem) {
+    for (const auto& region : dbg_mem.second.regions) {
+      map_debugger_mem(*diversion_session, dbg_mem.first, region.first.start());
+    }
+  }
+
+  while (true) {
+    if (!diverter_process_debugger_requests(*diversion_session,
+                                           diversion_refcount, &req)) {
+      read_back_debugger_mem(*diversion_session);
+      break;
+    }
+
     DEBUG_ASSERT(req.is_resume_request());
 
     if (req.cont().run_direction == RUN_BACKWARD) {
@@ -1097,6 +1160,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
         timeline_->remove_breakpoints_and_watchpoints();
       }
       req = GdbRequest(DREQ_NONE);
+      // Deliberately not reading back debugger mem
       break;
     }
 
@@ -1950,6 +2014,240 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
   }
   files.insert(make_pair(ret_fd, std::move(contents)));
   return ret_fd;
+}
+
+static void remove_trailing_guard_pages(ReplaySession::MemoryRanges& ranges) {
+  remote_ptr<void> ptr;
+  while (true) {
+    auto it = ranges.lower_bound(MemoryRange(ptr, 1));
+    if (it == ranges.end()) {
+      return;
+    }
+    MemoryRange r = *it;
+    ranges.erase(it);
+    remote_ptr<void> end = floor_page_size(r.end() - 1);
+    if (end > r.start()) {
+      ranges.insert(MemoryRange(r.start(), end));
+    }
+    ptr = end;
+  }
+}
+
+remote_ptr<void> GdbServer::allocate_debugger_mem(ThreadGroupUid tguid, size_t size,
+    int prot) {
+  if (!timeline_) {
+    return nullptr;
+  }
+
+  auto it = debugger_mem.find(tguid);
+  if (it == debugger_mem.end()) {
+    it = debugger_mem.insert(make_pair(tguid, DebuggerMem())).first;
+    it->second.free_memory = timeline_->current_session().
+        always_free_address_space(ReplaySession::FAST);
+    remove_trailing_guard_pages(it->second.free_memory);
+    it->second.did_get_accurate_free_memory = false;
+  }
+  DebuggerMem& dbg_mem = it->second;
+
+  if (size >= (1 << 30)) {
+    return nullptr;
+  }
+  size = ceil_page_size(size);
+  while (true) {
+    for (auto it = dbg_mem.free_memory.begin();
+         it != dbg_mem.free_memory.end(); ++it) {
+      if (it->size() >= size + page_size()) {
+        MemoryRange r = *it;
+        dbg_mem.free_memory.erase(it);
+        // Skip guard page
+        remote_ptr<void> result = r.start() + page_size();
+        if (r.end() > result + size) {
+          dbg_mem.free_memory.insert(MemoryRange(result + size, r.end()));
+        }
+        DebuggerMemRegion& region =
+            dbg_mem.regions[MemoryRange(result, size)];
+        region.values.resize(size, 0);
+        region.prot = prot;
+        return result;
+      }
+    }
+
+    if (dbg_mem.did_get_accurate_free_memory) {
+      LOG(warn) << "Can't allocate free memory for debugger";
+      return nullptr;
+    }
+    dbg_mem.did_get_accurate_free_memory = true;
+    dbg_mem.free_memory = timeline_->current_session().
+        always_free_address_space(ReplaySession::ACCURATE);
+    for (const auto& kv : dbg_mem.regions) {
+      ReplaySession::delete_range(dbg_mem.free_memory,
+          MemoryRange(kv.first.start() - page_size(),
+                      kv.second.values.size() + page_size()));
+    }
+  }
+}
+
+static void coalesce_free_memory(ReplaySession::MemoryRanges& ranges,
+                                 remote_ptr<void> addr) {
+  if (addr.is_null()) {
+    return;
+  }
+  auto before = ranges.find(MemoryRange(addr - 1, 1));
+  if (before == ranges.end() || before->end() != addr) {
+    return;
+  }
+  MemoryRange before_range = *before;
+  ranges.erase(before);
+
+  auto after = ranges.find(MemoryRange(addr, 1));
+  if (after == ranges.end()) {
+    return;
+  }
+  MemoryRange after_range = *after;
+  ranges.erase(after);
+
+  ranges.insert(MemoryRange(before_range.start(), after_range.end()));
+}
+
+size_t GdbServer::free_debugger_mem(ThreadGroupUid tguid, remote_ptr<void> addr) {
+  auto it = debugger_mem.find(tguid);
+  if (it == debugger_mem.end()) {
+    return 0;
+  }
+  DebuggerMem& dbg_mem = it->second;
+  auto region_it = dbg_mem.regions.find(MemoryRange(addr, 1));
+  if (region_it == dbg_mem.regions.end() || region_it->first.start() != addr) {
+    return 0;
+  }
+
+  size_t ret = region_it->first.size();
+  MemoryRange freed(addr - page_size(), region_it->first.end());
+  dbg_mem.free_memory.insert(freed);
+  coalesce_free_memory(dbg_mem.free_memory, freed.start());
+  coalesce_free_memory(dbg_mem.free_memory, freed.end());
+
+  dbg_mem.regions.erase(region_it);
+  return ret;
+}
+
+bool GdbServer::read_debugger_mem(ThreadGroupUid tguid, MemoryRange range,
+    uint8_t* values) {
+  auto it = debugger_mem.find(tguid);
+  if (it == debugger_mem.end()) {
+    return false;
+  }
+  DebuggerMem& dbg_mem = it->second;
+  auto region_it = dbg_mem.regions.lower_bound(range);
+  if (region_it == dbg_mem.regions.end() || range.end() <= region_it->first.start()) {
+    return false;
+  }
+  if (!region_it->first.contains(range)) {
+    FATAL() << "Debugger read beyond bounds of region, no idea what's going on";
+  }
+  size_t offset = range.start() - region_it->first.start();
+  memcpy(values, region_it->second.values.data() + offset, range.size());
+  return true;
+}
+
+bool GdbServer::write_debugger_mem(ThreadGroupUid tguid, MemoryRange range,
+    const uint8_t* values) {
+  auto it = debugger_mem.find(tguid);
+  if (it == debugger_mem.end()) {
+    return false;
+  }
+  DebuggerMem& dbg_mem = it->second;
+  auto region_it = dbg_mem.regions.lower_bound(range);
+  if (region_it == dbg_mem.regions.end() || range.end() <= region_it->first.start()) {
+    return false;
+  }
+  if (!region_it->first.contains(range)) {
+    FATAL() << "Debugger write beyond bounds of region, no idea what's going on";
+  }
+  size_t offset = range.start() - region_it->first.start();
+  memcpy(region_it->second.values.data() + offset, values, range.size());
+  return true;
+}
+
+void GdbServer::map_debugger_mem(DiversionSession& session,
+                                 ThreadGroupUid tguid, remote_ptr<void> addr) {
+  for (const auto& dbg_mem : debugger_mem) {
+    if (!addr.is_null() && tguid != dbg_mem.first) {
+      continue;
+    }
+    ThreadGroup* tg = session.find_thread_group(dbg_mem.first);
+    if (!tg || tg->task_set().empty()) {
+      // Threadgroup doesn't exist or is somehow empty at this point in time
+      continue;
+    }
+
+    Task* t = *tg->task_set().begin();
+    AddressSpace::shr_ptr vm = (*tg->task_set().begin())->vm();
+    AutoRemoteSyscalls remote(t);
+    for (const auto& region : dbg_mem.second.regions) {
+      remote_ptr<void> start = region.first.start();
+      if (!addr.is_null() && addr != start) {
+        continue;
+      }
+      size_t size = region.second.values.size();
+      // Mask debugger-provided prot bits here just in case someone
+      // tries to do something silly/dangerous/malicious.
+      int prot = region.second.prot & (PROT_READ | PROT_WRITE | PROT_EXEC);
+      int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+      remote.infallible_mmap_syscall_if_alive(start, size, prot, flags, -1, 0);
+      vm->map(t, start, size, prot, flags, 0, "");
+      t->write_bytes_helper(start, size, region.second.values.data());
+    }
+  }
+}
+
+void GdbServer::unmap_debugger_mem(DiversionSession& session,
+                                   ThreadGroupUid tguid, remote_ptr<void> addr,
+                                   size_t size) {
+  ThreadGroup* tg = session.find_thread_group(tguid);
+  if (!tg || tg->task_set().empty()) {
+    // Threadgroup doesn't exist or is somehow empty at this point in time
+    return;
+  }
+
+  Task* t = *tg->task_set().begin();
+  AddressSpace::shr_ptr vm = (*tg->task_set().begin())->vm();
+  AutoRemoteSyscalls remote(t);
+  remote.infallible_munmap_syscall_if_alive(addr, size);
+  vm->unmap(t, addr, size);
+}
+
+void GdbServer::read_back_debugger_mem(DiversionSession& session) {
+  for (auto& dbg_mem : debugger_mem) {
+    ThreadGroup* tg = session.find_thread_group(dbg_mem.first);
+    if (!tg || tg->task_set().empty()) {
+      // Threadgroup doesn't exist or is somehow empty at this point in time
+      continue;
+    }
+
+    Task* t = *tg->task_set().begin();
+    AddressSpace::shr_ptr vm = (*tg->task_set().begin())->vm();
+    for (auto& region : dbg_mem.second.regions) {
+      remote_ptr<void> start = region.first.start();
+      size_t size = region.second.values.size();
+      t->read_bytes_helper(start, size, region.second.values.data());
+    }
+  }
+}
+
+bool GdbServer::debugger_mem_region(ThreadGroupUid tguid, remote_ptr<void> addr,
+    int* prot, MemoryRange* mem_range) {
+  auto it = debugger_mem.find(tguid);
+  if (it == debugger_mem.end()) {
+    return false;
+  }
+  DebuggerMem& dbg_mem = it->second;
+  auto region_it = dbg_mem.regions.find(MemoryRange(addr, 1));
+  if (region_it == dbg_mem.regions.end()) {
+    return false;
+  }
+  *prot = region_it->second.prot;
+  *mem_range = region_it->first;
+  return true;
 }
 
 } // namespace rr

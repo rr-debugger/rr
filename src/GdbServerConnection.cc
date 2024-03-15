@@ -967,6 +967,46 @@ bool GdbServerConnection::set_var(char* payload) {
   return false;
 }
 
+bool GdbServerConnection::process_underscore(char* payload) {
+  char* args = payload + 1;
+
+  switch (payload[0]) {
+    case 'M': {
+      char* end = nullptr;
+      req = GdbRequest(DREQ_MEM_ALLOC);
+      req.mem_alloc().size = strtol(args, &end, 16);
+      parser_assert(*end == ',');
+      int prot = 0;
+      ++end;
+      if (*end == 'r') {
+        prot |= PROT_READ;
+        ++end;
+      }
+      if (*end == 'w') {
+        prot |= PROT_WRITE;
+        ++end;
+      }
+      if (*end == 'x') {
+        prot |= PROT_EXEC;
+      }
+      req.mem_alloc().prot = prot;
+      return true;
+    }
+    case 'm': {
+      char* end = nullptr;
+      req = GdbRequest(DREQ_MEM_FREE);
+      req.mem_free().address = strtol(args, &end, 16);
+      parser_assert(!*end);
+      return true;
+    }
+    default:
+      break;
+  }
+
+  UNHANDLED_REQ() << "Unhandled debugger request: _" << payload;
+  return false;
+}
+
 void GdbServerConnection::consume_request() {
   req = GdbRequest();
   write_flush();
@@ -1182,7 +1222,7 @@ bool GdbServerConnection::process_vpacket(char* payload) {
     char* operation = payload + 5;
     if (operation == strstr(operation, "open:")) {
       char* file_name_end = strchr(operation + 5, ',');
-      parser_assert(file_name_end != NULL);
+      parser_assert(file_name_end != nullptr);
       *file_name_end = 0;
       req = GdbRequest(DREQ_FILE_OPEN);
       req.file_open().file_name = decode_ascii_encoded_hex_str(operation + 5);
@@ -1493,6 +1533,9 @@ bool GdbServerConnection::process_packet() {
       req = GdbRequest(DREQ_GET_STOP_REASON);
       req.target = query_thread;
       ret = true;
+      break;
+    case '_':
+      ret = process_underscore(payload);
       break;
     default:
       UNHANDLED_REQ() << "Unhandled debugger request '" << inbuf[1] << "'";
@@ -1895,6 +1938,28 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
 
 void GdbServerConnection::reply_set_mem(bool ok) {
   DEBUG_ASSERT(DREQ_SET_MEM == req.type || DREQ_SET_MEM_BINARY == req.type);
+
+  write_packet(ok ? "OK" : "E01");
+
+  consume_request();
+}
+
+void GdbServerConnection::reply_mem_alloc(remote_ptr<void> addr) {
+  DEBUG_ASSERT(DREQ_MEM_ALLOC == req.type);
+
+  if (addr.is_null()) {
+    write_packet("E01");
+  } else {
+    char buf[256];
+    sprintf(buf, "%llx", (long long)addr.as_int());
+    write_packet(buf);
+  }
+
+  consume_request();
+}
+
+void GdbServerConnection::reply_mem_free(bool ok) {
+  DEBUG_ASSERT(DREQ_MEM_FREE == req.type);
 
   write_packet(ok ? "OK" : "E01");
 

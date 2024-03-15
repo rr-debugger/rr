@@ -372,6 +372,9 @@ struct Event {
     return event_type == EV_SCHED;
   }
   bool is_syscall_event() const;
+  bool is_syscallbuf_flush_event() const {
+    return event_type == EV_SYSCALLBUF_FLUSH;
+  }
 
   /** Return a string describing this. */
   std::string str() const;

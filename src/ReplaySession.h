@@ -313,11 +313,23 @@ public:
   const Flags& flags() const { return flags_; }
 
   typedef std::set<MemoryRange, MappingComparator> MemoryRanges;
+  enum PerfTradeoff {
+    FAST,
+    ACCURATE,
+  };
   /**
    * Returns an ordered set of MemoryRanges representing the address space
    * that is never allocated by any process in the whole lifetime of the trace.
+   * When `perf_tradeoff` is `FAST`, we try to quickly return whatever we can.
+   * When it's `ACCURATE`, we do a much slower pass that can identify more memory.
+   * `ACCURATE` will always identify a superset of the memory identified by
+   * `FAST`.
+   * This memoizes its results so it's fast to call many times.
    */
-  static MemoryRanges always_free_address_space(const TraceReader& reader);
+  const MemoryRanges& always_free_address_space(
+    PerfTradeoff perf_tradeoff = ACCURATE);
+  static void delete_range(ReplaySession::MemoryRanges& ranges,
+                           const MemoryRange& r);
 
   double get_trace_start_time();
 
@@ -431,6 +443,9 @@ private:
 
   std::shared_ptr<AddressSpace> syscall_bp_vm;
   remote_code_ptr syscall_bp_addr;
+
+  std::shared_ptr<MemoryRanges> always_free_address_space_fast;
+  std::shared_ptr<MemoryRanges> always_free_address_space_accurate;
 };
 
 void emergency_check_intel_pt(ReplayTask* t, std::ostream& stream);

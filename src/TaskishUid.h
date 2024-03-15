@@ -78,4 +78,12 @@ private:
 
 } // namespace rr
 
+namespace std {
+  template <typename T> struct hash<rr::TaskishUid<T>> {
+    std::size_t operator()(const rr::TaskishUid<T>& k) const {
+      return k.serial();
+    }
+  };
+}
+
 #endif // RR_TASKISH_UID_H_
