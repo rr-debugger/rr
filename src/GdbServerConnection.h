@@ -17,13 +17,22 @@
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
+#include "TaskishUid.h"
 #include "core.h"
 
 namespace rr {
 
 /**
- * Descriptor for task.  Note: on linux, we can uniquely identify any thread
- * by its |tid| (in rr's pid namespace).
+ * Descriptor for task, that carries both the pid (thread-group ID)
+ * and the thread ID. On Linux the thread ID is unique in rr's pid namespace
+ * *at a specific point in time*. Thread IDs can potentially be reused
+ * over long periods of time.
+ * Also has special `ANY` and `ALL` values used by the debugger protocol.
+ * These values can be passed from the debugger so the task might not
+ * actually exist.
+ * Because of the special values and the fact that thread IDs can be
+ * reused, this is more like a pattern that can match specific tasks than
+ * a unique task ID.
  */
 struct GdbThreadId {
   GdbThreadId(pid_t pid = -1, pid_t tid = -1) : pid(pid), tid(tid) {}
@@ -41,6 +50,29 @@ struct GdbThreadId {
 
 inline std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
   o << t.pid << "." << t.tid;
+  return o;
+}
+
+/**
+ * A really-unique `TaskUid` and its `ThreadGroupUid`. This always corresponds
+ * to a specific task that exist(ed) somewhere in the recording, unless
+ * tguid and tuid are zero.
+ */
+struct ExtendedTaskId {
+  ThreadGroupUid tguid;
+  TaskUid tuid;
+
+  ExtendedTaskId(ThreadGroupUid tguid, TaskUid tuid)
+    : tguid(tguid), tuid(tuid) {}
+  ExtendedTaskId() {}
+
+  GdbThreadId to_debugger_thread_id() const {
+    return GdbThreadId(tguid.tid(), tuid.tid());
+  }
+};
+
+inline std::ostream& operator<<(std::ostream& o, const ExtendedTaskId& t) {
+  o << t.tguid.tid() << "." << t.tuid.tid();
   return o;
 }
 
@@ -389,9 +421,9 @@ public:
    * a unique port based on |start_port| will be searched for.  Otherwise,
    * if |port| is already bound, this function will fail.
    *
-   * Pass the |tgid| of the task on which this debug-connection request
+   * Pass the `Task` on which this debug-connection request
    * is being made.  The remaining debugging session will be limited to
-   * traffic regarding |tgid|, but clients don't need to and shouldn't
+   * traffic regarding this task, but clients don't need to and shouldn't
    * need to assume that.
    *
    * If we're opening this connection on behalf of a known client, pass
@@ -443,7 +475,7 @@ public:
   void notify_exit_signal(int sig);
 
   struct ThreadInfo {
-    GdbThreadId id;
+    ExtendedTaskId id;
     uintptr_t pc;
   };
 
@@ -452,7 +484,7 @@ public:
    * target has stopped executing for some reason.  |sig| is the signal
    * that stopped execution, or 0 if execution stopped otherwise.
    */
-  void notify_stop(GdbThreadId which, int sig,
+  void notify_stop(ExtendedTaskId which, int sig,
                    const std::vector<ThreadInfo>& threads,
                    const char *reason);
 
@@ -462,7 +494,7 @@ public:
   /**
    * Tell the host that |thread| is the current thread.
    */
-  void reply_get_current_thread(GdbThreadId thread);
+  void reply_get_current_thread(ExtendedTaskId thread);
 
   /**
    * Reply with the target thread's |auxv| pairs. |auxv.empty()|
@@ -547,14 +579,14 @@ public:
   /**
    * Reply to the DREQ_GET_STOP_REASON request.
    */
-  void reply_get_stop_reason(GdbThreadId which, int sig,
+  void reply_get_stop_reason(ExtendedTaskId which, int sig,
                              const std::vector<ThreadInfo>& threads);
 
   /**
    * |threads| contains the list of live threads, of which there are
    * |len|.
    */
-  void reply_get_thread_list(const std::vector<GdbThreadId>& threads);
+  void reply_get_thread_list(const std::vector<ExtendedTaskId>& threads);
 
   /**
    * |ok| is true if the request was successfully applied, false if
@@ -657,7 +689,7 @@ public:
   void set_cpu_features(uint32_t features) { cpu_features_ = features; }
   uint32_t cpu_features() const { return cpu_features_; }
 
-  GdbServerConnection(pid_t tgid, const Features& features);
+  GdbServerConnection(ThreadGroupUid tguid, const Features& features);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
@@ -742,11 +774,11 @@ private:
    */
   bool process_packet();
   void consume_request();
-  void send_stop_reply_packet(GdbThreadId thread, int sig,
+  void send_stop_reply_packet(ExtendedTaskId thread, int sig,
                               const std::vector<ThreadInfo>& threads,
                               const char *reason);
   void send_file_error_reply(int system_errno);
-  std::string format_thread_id(GdbThreadId thread);
+  std::string format_thread_id(ExtendedTaskId thread);
 
   // Current request to be processed.
   GdbRequest req;
@@ -757,7 +789,7 @@ private:
   // gdb and rr don't work well together in multi-process and
   // multi-exe-image debugging scenarios, so we pretend only
   // this thread group exists when interfacing with gdb
-  pid_t tgid;
+  ThreadGroupUid tguid;
   uint32_t cpu_features_;
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.

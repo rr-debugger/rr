@@ -120,7 +120,7 @@ string invoke_checkpoint(GdbServer& gdb_server, Task*,
     e = GdbServer::Checkpoint::NOT_EXPLICIT;
   }
   gdb_server.checkpoints[checkpoint_id] = GdbServer::Checkpoint(
-      gdb_server.timeline, gdb_server.last_continue_tuid, e, where);
+      gdb_server.timeline, gdb_server.last_continue_task, e, where);
   return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
 }
 static SimpleGdbCommand checkpoint(

@@ -58,8 +58,8 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 #endif
 
-GdbServerConnection::GdbServerConnection(pid_t tgid, const Features& features)
-    : tgid(tgid),
+GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid, const Features& features)
+    : tguid(tguid),
       cpu_features_(0),
       no_ack(false),
       features_(features),
@@ -107,29 +107,10 @@ static uint32_t get_cpu_features(SupportedArch arch) {
   return cpu_features;
 }
 
-/**
- * Wait for exactly one debugger host to connect to this remote target on
- * the specified IP address |host|, port |port|.  If |probe| is nonzero,
- * a unique port based on |start_port| will be searched for.  Otherwise,
- * if |port| is already bound, this function will fail.
- *
- * Pass the |tgid| of the task on which this debug-connection request
- * is being made.  The remaining debugging session will be limited to
- * traffic regarding |tgid|, but clients don't need to and shouldn't
- * need to assume that.
- *
- * If we're opening this connection on behalf of a known client, pass
- * an fd in |client_params_fd|; we'll write the allocated port and |exe_image|
- * through the fd before waiting for a connection. |exe_image| is the
- * process that will be debugged by the client, or null ptr if there isn't
- * a client.
- *
- * This function is infallible: either it will return a valid
- * debugging context, or it won't return.
- */
 unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
     Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
-  auto dbg = unique_ptr<GdbServerConnection>(new GdbServerConnection(t->tgid(), features));
+  auto dbg = unique_ptr<GdbServerConnection>(
+    new GdbServerConnection(t->thread_group()->tguid(), features));
   dbg->set_cpu_features(get_cpu_features(t->arch()));
   dbg->await_debugger(listen_fd);
   return dbg;
@@ -1692,7 +1673,7 @@ static int to_gdb_signum(int sig) {
   }
 }
 
-void GdbServerConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
+void GdbServerConnection::send_stop_reply_packet(ExtendedTaskId thread, int sig,
                                                  const vector<ThreadInfo>& threads,
                                                  const char *reason) {
   if (sig < 0) {
@@ -1710,19 +1691,19 @@ void GdbServerConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
     sstr << "threads:";
     bool first = true;
     for (const auto& thread : threads) {
-      if (thread.id.pid != tgid) {
+      if (thread.id.tguid != tguid) {
         continue;
       }
       if (!first) {
         sstr << ",";
       }
       first = false;
-      sstr << thread.id.tid;
+      sstr << thread.id.tuid.tid();
     }
     sstr << ";thread-pcs:";
     first = true;
     for (const auto& thread : threads) {
-      if (thread.id.pid != tgid) {
+      if (thread.id.tguid != tguid) {
         continue;
       }
       if (!first) {
@@ -1737,7 +1718,7 @@ void GdbServerConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
   write_packet(sstr.str().c_str());
 }
 
-void GdbServerConnection::notify_stop(GdbThreadId thread, int sig,
+void GdbServerConnection::notify_stop(ExtendedTaskId thread, int sig,
                                       const vector<ThreadInfo>& threads,
                                       const char *reason) {
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
@@ -1750,9 +1731,9 @@ void GdbServerConnection::notify_stop(GdbThreadId thread, int sig,
     return;
   }
 
-  if (tgid != thread.pid) {
+  if (tguid != thread.tguid) {
     LOG(debug) << "ignoring stop of " << thread
-               << " because we're debugging tgid " << tgid;
+               << " because we're debugging tgid " << tguid.tid();
     // Re-use the existing continue request to advance to
     // the next stop we're willing to tell gdb about.
     return;
@@ -1775,7 +1756,7 @@ void GdbServerConnection::notify_stop(GdbThreadId thread, int sig,
   } else {
     LOG(debug) << "Setting query/resume_thread to " << thread
                << " after forward continue or interrupt";
-    query_thread = resume_thread = thread;
+    query_thread = resume_thread = thread.to_debugger_thread_id();
   }
 
   consume_request();
@@ -1791,17 +1772,18 @@ void GdbServerConnection::notify_restart_failed() {
   consume_request();
 }
 
-string GdbServerConnection::format_thread_id(GdbThreadId thread) {
+string GdbServerConnection::format_thread_id(ExtendedTaskId thread) {
   char buf[32];
   if (multiprocess_supported_) {
-    snprintf(buf, sizeof(buf), "p%x.%x", thread.pid, thread.tid);
+    snprintf(buf, sizeof(buf), "p%x.%x", thread.tguid.tid(),
+             thread.tuid.tid());
   } else {
-    snprintf(buf, sizeof(buf), "%x", thread.tid);
+    snprintf(buf, sizeof(buf), "%x", thread.tuid.tid());
   }
   return buf;
 }
 
-void GdbServerConnection::reply_get_current_thread(GdbThreadId thread) {
+void GdbServerConnection::reply_get_current_thread(ExtendedTaskId thread) {
   DEBUG_ASSERT(DREQ_GET_CURRENT_THREAD == req.type);
 
   write_packet(("QC" + format_thread_id(thread)).c_str());
@@ -1997,7 +1979,7 @@ void GdbServerConnection::reply_set_reg(bool ok) {
   consume_request();
 }
 
-void GdbServerConnection::reply_get_stop_reason(GdbThreadId which, int sig,
+void GdbServerConnection::reply_get_stop_reason(ExtendedTaskId which, int sig,
                                                 const std::vector<ThreadInfo>& threads) {
   DEBUG_ASSERT(DREQ_GET_STOP_REASON == req.type);
 
@@ -2006,7 +1988,7 @@ void GdbServerConnection::reply_get_stop_reason(GdbThreadId which, int sig,
   consume_request();
 }
 
-void GdbServerConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
+void GdbServerConnection::reply_get_thread_list(const vector<ExtendedTaskId>& threads) {
   DEBUG_ASSERT(DREQ_GET_THREAD_LIST == req.type);
   if (threads.empty()) {
     write_packet("l");
@@ -2014,15 +1996,15 @@ void GdbServerConnection::reply_get_thread_list(const vector<GdbThreadId>& threa
     stringstream sstr;
     sstr << 'm';
     for (size_t i = 0; i < threads.size(); ++i) {
-      const GdbThreadId& t = threads[i];
-      if (tgid != t.pid) {
+      const ExtendedTaskId& t = threads[i];
+      if (tguid != t.tguid) {
         continue;
       }
       if (multiprocess_supported_) {
-        sstr << 'p' << setw(2) << setfill('0') << hex << t.pid << dec << '.'
-            << setw(2) << setfill('0') << hex << t.tid << ',';
+        sstr << 'p' << setw(2) << setfill('0') << hex << t.tguid.tid() << dec << '.'
+            << setw(2) << setfill('0') << hex << t.tuid.tid() << ',';
       } else {
-        sstr << setw(2) << setfill('0') << hex << t.tid << ',';
+        sstr << setw(2) << setfill('0') << hex << t.tuid.tid() << ',';
       }
     }
 

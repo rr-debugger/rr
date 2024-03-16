@@ -61,18 +61,7 @@ public:
   /**
    * Create a gdbserver serving the replay of 'session'.
    */
-  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
-      : target(target),
-        final_event(UINT32_MAX),
-        in_debuggee_end_state(false),
-        failed_restart(false),
-        stop_replaying_to_target(false),
-        interrupt_pending(false),
-        exit_sigkill_pending(false),
-        timeline(std::move(session)),
-        emergency_debug_session(nullptr) {
-    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
-  }
+  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target);
 
   /**
    * Actually run the server. Returns only when the debugger disconnects.
@@ -174,7 +163,7 @@ private:
                          const BreakStatus& break_status);
 
   void notify_stop_internal(const Session& session,
-                            GdbThreadId which, int sig,
+                            ExtendedTaskId which, int sig,
                             const char *reason = nullptr);
 
   /**
@@ -202,10 +191,10 @@ private:
 #ifdef PROC_SERVICE_H
   std::unique_ptr<ThreadDb> thread_db;
 #endif
-  // The TaskUid of the last continued task.
-  TaskUid last_continue_tuid;
-  // The TaskUid of the last queried task.
-  TaskUid last_query_tuid;
+  // The last continued task.
+  ExtendedTaskId last_continue_task;
+  // The last queried task.
+  ExtendedTaskId last_query_task;
   FrameTime final_event;
   // siginfo for last notified stop.
   siginfo_t stop_siginfo;
@@ -225,9 +214,9 @@ private:
 
   struct Checkpoint {
     enum Explicit { EXPLICIT, NOT_EXPLICIT };
-    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e,
+    Checkpoint(ReplayTimeline& timeline, ExtendedTaskId last_continue_task, Explicit e,
                const std::string& where)
-        : last_continue_tuid(last_continue_tuid), is_explicit(e), where(where) {
+        : last_continue_task(last_continue_task), is_explicit(e), where(where) {
       if (e == EXPLICIT) {
         mark = timeline.add_explicit_checkpoint();
       } else {
@@ -236,7 +225,7 @@ private:
     }
     Checkpoint() : is_explicit(NOT_EXPLICIT) {}
     ReplayTimeline::Mark mark;
-    TaskUid last_continue_tuid;
+    ExtendedTaskId last_continue_task;
     Explicit is_explicit;
     std::string where;
   };

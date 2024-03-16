@@ -45,17 +45,36 @@ GdbServer::ConnectionFlags::ConnectionFlags()
     serve_files(false),
     debugger_params_write_pipe(nullptr) {}
 
+static ExtendedTaskId extended_task_id(Task* t) {
+  return ExtendedTaskId(t->thread_group()->tguid(), t->tuid());
+}
+
 GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t)
     : dbg(std::move(dbg)),
       debuggee_tguid(t->thread_group()->tguid()),
-      last_continue_tuid(t->tuid()),
-      last_query_tuid(t->tuid()),
+      last_continue_task(extended_task_id(t)),
+      last_query_task(extended_task_id(t)),
       final_event(UINT32_MAX),
+      in_debuggee_end_state(false),
       failed_restart(false),
       stop_replaying_to_target(false),
       interrupt_pending(false),
       exit_sigkill_pending(false),
       emergency_debug_session(&t->session()),
+      file_scope_pid(0) {
+  memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+}
+
+GdbServer::GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
+    : target(target),
+      final_event(UINT32_MAX),
+      in_debuggee_end_state(false),
+      failed_restart(false),
+      stop_replaying_to_target(false),
+      interrupt_pending(false),
+      exit_sigkill_pending(false),
+      timeline(std::move(session)),
+      emergency_debug_session(nullptr),
       file_scope_pid(0) {
   memset(&stop_siginfo, 0, sizeof(stop_siginfo));
 }
@@ -116,25 +135,14 @@ GdbRegisterValue GdbServer::get_reg(const Registers& regs,
   return reg;
 }
 
-static GdbThreadId get_threadid(const Session& session, const TaskUid& tuid) {
-  Task* t = session.find_task(tuid);
-  pid_t pid = t ? t->tgid() : GdbThreadId::ANY.pid;
-  return GdbThreadId(pid, tuid.tid());
-}
-
-static GdbThreadId get_threadid(Task* t) {
-  return GdbThreadId(t->tgid(), t->rec_tid);
-}
-
-static bool matches_threadid(const GdbThreadId& tid,
+static bool matches_threadid(const ExtendedTaskId& tid,
                              const GdbThreadId& target) {
-  return (target.pid <= 0 || target.pid == tid.pid) &&
-         (target.tid <= 0 || target.tid == tid.tid);
+  return (target.pid <= 0 || target.pid == tid.tguid.tid()) &&
+         (target.tid <= 0 || target.tid == tid.tuid.tid());
 }
 
 static bool matches_threadid(Task* t, const GdbThreadId& target) {
-  GdbThreadId tid = get_threadid(t);
-  return matches_threadid(tid, target);
+  return matches_threadid(extended_task_id(t), target);
 }
 
 static WatchType watchpoint_type(GdbRequestType req) {
@@ -174,7 +182,8 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     *req = GdbRequest(DREQ_CONT);
     req->suppress_debugger_stop = true;
     req->cont().actions.push_back(
-        GdbContAction(ACTION_STEP, get_threadid(t->session(), t->tuid())));
+        GdbContAction(ACTION_STEP,
+          extended_task_id(t).to_debugger_thread_id()));
   }
 }
 
@@ -298,7 +307,7 @@ static vector<GdbServerConnection::ThreadInfo> thread_info(const Session& sessio
   vector<GdbServerConnection::ThreadInfo> threads;
   for (auto& kv : session.tasks()) {
     threads.push_back({
-      get_threadid(session, kv.second->tuid()),
+      extended_task_id(kv.second),
       kv.second->regs().ip().register_value()
     });
   }
@@ -306,7 +315,7 @@ static vector<GdbServerConnection::ThreadInfo> thread_info(const Session& sessio
 }
 
 void GdbServer::notify_stop_internal(const Session& session,
-                                     GdbThreadId which, int sig,
+                                     ExtendedTaskId which, int sig,
                                      const char *reason) {
   dbg->notify_stop(which, sig, thread_info(session), reason);
 }
@@ -322,34 +331,27 @@ void GdbServer::dispatch_debugger_request(Session& session,
       DEBUG_ASSERT(false);
       return; // unreached
     case DREQ_GET_CURRENT_THREAD:
-      dbg->reply_get_current_thread(get_threadid(session, last_continue_tuid));
+      dbg->reply_get_current_thread(last_continue_task);
       return;
     case DREQ_GET_OFFSETS:
       /* TODO */
       dbg->reply_get_offsets();
       return;
     case DREQ_GET_THREAD_LIST: {
-      vector<GdbThreadId> tids;
+      vector<ExtendedTaskId> tids;
       if (state != REPORT_THREADS_DEAD && !failed_restart) {
         for (auto& kv : session.tasks()) {
-          tids.push_back(get_threadid(session, kv.second->tuid()));
+          tids.push_back(extended_task_id(kv.second));
         }
       }
       dbg->reply_get_thread_list(tids);
       return;
     }
-    case DREQ_INTERRUPT: {
-      Task* t = session.find_task(last_continue_tuid);
-      ASSERT(t, session.is_diversion())
-          << "Replay interrupts should be handled at a higher level";
-      DEBUG_ASSERT(!t || t->thread_group()->tguid() == debuggee_tguid);
-      notify_stop_internal(session, t ? get_threadid(t) : GdbThreadId(), 0);
+    case DREQ_INTERRUPT:
+      notify_stop_internal(session, last_continue_task, 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
-      if (t) {
-        last_query_tuid = last_continue_tuid = t->tuid();
-      }
+      last_query_task = last_continue_task;
       return;
-    }
     case DREQ_GET_EXEC_FILE: {
       // We shouldn't normally receive this since we try to pass the exe file
       // name on gdb's command line, but the user might start gdb manually
@@ -362,7 +364,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
           t = *tg->task_set().begin();
         }
       } else {
-        t = session.find_task(last_continue_tuid);
+        t = session.find_task(last_continue_task.tuid);
       }
       if (t) {
         dbg->reply_get_exec_file(t->vm()->exe_image());
@@ -379,7 +381,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_FILE_OPEN:
       // We only support reading files
       if (req.file_open().flags == O_RDONLY) {
-        Task* t = session.find_task(last_continue_tuid);
+        Task* t = session.find_task(last_continue_task.tuid);
         int fd = open_file(session, t, req.file_open().file_name);
         dbg->reply_open(fd, fd >= 0 ? 0 : ENOENT);
       } else {
@@ -468,12 +470,12 @@ void GdbServer::dispatch_debugger_request(Session& session,
   Task* target =
       req.target.tid > 0
           ? session.find_task(req.target.tid)
-          : session.find_task(is_query ? last_query_tuid : last_continue_tuid);
+          : session.find_task(is_query ? last_query_task.tuid : last_continue_task.tuid);
   if (target) {
     if (is_query) {
-      last_query_tuid = target->tuid();
+      last_query_task = extended_task_id(target);
     } else {
-      last_continue_tuid = target->tuid();
+      last_continue_task = extended_task_id(target);
     }
   }
   // These requests query or manipulate which task is the
@@ -630,8 +632,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_GET_STOP_REASON: {
-      dbg->reply_get_stop_reason(get_threadid(session, last_continue_tuid),
-                                 stop_siginfo.si_signo,
+      dbg->reply_get_stop_reason(last_continue_task, stop_siginfo.si_signo,
                                  thread_info(session));
       return;
     }
@@ -771,12 +772,10 @@ void GdbServer::dispatch_debugger_request(Session& session,
   }
 }
 
-static bool any_action_targets_match(const Session& session,
-                                     const TaskUid& tuid,
+static bool any_action_targets_match(const ExtendedTaskId& thread,
                                      const vector<GdbContAction>& actions) {
-  GdbThreadId tid = get_threadid(session, tuid);
-  return any_of(actions.begin(), actions.end(), [tid](GdbContAction action) {
-    return matches_threadid(tid, action.target);
+  return any_of(actions.begin(), actions.end(), [&thread](GdbContAction action) {
+    return matches_threadid(thread, action.target);
   });
 }
 
@@ -807,8 +806,7 @@ bool GdbServer::diverter_process_debugger_requests(
       // code; selecting any other task runs the risk of resuming
       // replay, denying the diverted code an opportunity to complete
       // and end the diversion session.
-      if (!any_action_targets_match(diversion_session, last_continue_tuid,
-                                    actions)) {
+      if (!any_action_targets_match(last_continue_task, actions)) {
         // If none of the resumption targets match the task last
         // resumed, we simply choose any matching task. This ensures
         // that GDB (and the user) can choose an arbitrary thread to
@@ -820,7 +818,7 @@ bool GdbServer::diverter_process_debugger_requests(
         Task* task =
             find_first_task_matching_target(diversion_session, actions);
         DEBUG_ASSERT(task != nullptr);
-        last_continue_tuid = task->tuid();
+        last_continue_task = extended_task_id(task);
       }
       return diversion_refcount > 0;
     }
@@ -846,7 +844,7 @@ bool GdbServer::diverter_process_debugger_requests(
         if (req->target.tid) {
           Task* next = diversion_session.find_task(req->target.tid);
           if (next) {
-            last_query_tuid = next->tuid();
+            last_query_task = extended_task_id(next);
           }
         }
         break;
@@ -864,7 +862,7 @@ bool GdbServer::diverter_process_debugger_requests(
 
       case DREQ_RR_CMD: {
         DEBUG_ASSERT(req->type == DREQ_RR_CMD);
-        Task* task = diversion_session.find_task(last_continue_tuid);
+        Task* task = diversion_session.find_task(last_continue_task.tuid);
         if (task) {
           std::string reply =
               GdbCommandHandler::process_command(*this, task, req->rr_cmd());
@@ -989,9 +987,9 @@ void GdbServer::maybe_notify_stop(const Session& session,
   if (do_stop && t->thread_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    notify_stop_internal(session, get_threadid(t), stop_siginfo.si_signo,
+    notify_stop_internal(session, extended_task_id(t), stop_siginfo.si_signo,
                          watch);
-    last_query_tuid = last_continue_tuid = t->tuid();
+    last_query_task = last_continue_task = extended_task_id(t);
   }
 }
 
@@ -1067,8 +1065,8 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
   }
   DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
   uint32_t diversion_refcount = 1;
-  TaskUid saved_query_tuid = last_query_tuid;
-  TaskUid saved_continue_tuid = last_continue_tuid;
+  ExtendedTaskId saved_query_task = last_query_task;
+  ExtendedTaskId saved_continue_task = last_continue_task;
 
   while (diverter_process_debugger_requests(*diversion_session,
                                             diversion_refcount, &req)) {
@@ -1077,14 +1075,13 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     if (req.cont().run_direction == RUN_BACKWARD) {
       // We don't support reverse execution in a diversion. Just issue
       // an immediate stop.
-      notify_stop_internal(*diversion_session,
-          get_threadid(*diversion_session, last_continue_tuid), 0);
+      notify_stop_internal(*diversion_session, last_continue_task, 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
-      last_query_tuid = last_continue_tuid;
+      last_query_task = last_continue_task;
       continue;
     }
 
-    Task* t = diversion_session->find_task(last_continue_tuid);
+    Task* t = diversion_session->find_task(last_continue_task.tuid);
     DEBUG_ASSERT(t != nullptr);
 
     int signal_to_deliver;
@@ -1115,8 +1112,8 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
   diversion_session->kill_all_tasks();
 
-  last_query_tuid = saved_query_tuid;
-  last_continue_tuid = saved_continue_tuid;
+  last_query_task = saved_query_task;
+  last_continue_task = saved_continue_task;
   return req;
 }
 
@@ -1153,7 +1150,7 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
     }
 
     if (req.is_resume_request()) {
-      Task* t = current_session().find_task(last_continue_tuid);
+      Task* t = current_session().find_task(last_continue_task.tuid);
       if (t) {
         maybe_singlestep_for_event(t, &req);
       }
@@ -1305,7 +1302,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     if (t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
       notify_stop_internal(timeline.current_session(),
-          get_threadid(t), in_debuggee_end_state ? SIGKILL : 0);
+          extended_task_id(t), in_debuggee_end_state ? SIGKILL : 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       return CONTINUE_DEBUGGING;
     }
@@ -1317,7 +1314,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       exit_sigkill_pending = false;
       if (req.cont().run_direction == RUN_FORWARD) {
         notify_stop_internal(timeline.current_session(),
-            get_threadid(t), SIGKILL);
+            extended_task_id(t), SIGKILL);
         memset(&stop_siginfo, 0, sizeof(stop_siginfo));
         return CONTINUE_DEBUGGING;
       }
@@ -1375,10 +1372,10 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
         result = timeline.reverse_continue(stop_filter, interrupt_check);
         break;
       case RUN_SINGLESTEP: {
-        Task* t = timeline.current_session().find_task(last_continue_tuid);
+        Task* t = timeline.current_session().find_task(last_continue_task.tuid);
         DEBUG_ASSERT(t);
         result = timeline.reverse_singlestep(
-            last_continue_tuid, t->tick_count(), stop_filter, interrupt_check);
+            last_continue_task.tuid, t->tick_count(), stop_filter, interrupt_check);
         break;
       }
       default:
@@ -1489,7 +1486,7 @@ void GdbServer::activate_debugger() {
   target.require_exec = false;
   target.event = completed_event;
 
-  last_query_tuid = last_continue_tuid = t->tuid();
+  last_query_task = last_continue_task = extended_task_id(t);
 
   // Have the "checkpoint" be the original replay
   // session, and then switch over to using the cloned
@@ -1499,9 +1496,9 @@ void GdbServer::activate_debugger() {
   const char* where = "???";
   if (timeline.can_add_checkpoint()) {
     debugger_restart_checkpoint =
-        Checkpoint(timeline, last_continue_tuid, Checkpoint::EXPLICIT, where);
+        Checkpoint(timeline, last_continue_task, Checkpoint::EXPLICIT, where);
   } else {
-    debugger_restart_checkpoint = Checkpoint(timeline, last_continue_tuid,
+    debugger_restart_checkpoint = Checkpoint(timeline, last_continue_task,
                                              Checkpoint::NOT_EXPLICIT, where);
   }
 }
@@ -1601,8 +1598,8 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   if (checkpoint_to_restore.mark) {
     timeline.seek_to_mark(checkpoint_to_restore.mark);
-    last_query_tuid = last_continue_tuid =
-        checkpoint_to_restore.last_continue_tuid;
+    last_query_task = last_continue_task =
+        checkpoint_to_restore.last_continue_task;
     if (debugger_restart_checkpoint.is_explicit == Checkpoint::EXPLICIT) {
       timeline.remove_explicit_checkpoint(debugger_restart_checkpoint.mark);
     }
