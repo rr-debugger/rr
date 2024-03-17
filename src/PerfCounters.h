@@ -105,9 +105,10 @@ public:
    * Suspend counting until the next start.
    * Returns the current value of the ticks counter.
    * `t` is used for debugging purposes.
-   * If `error` is non-null and a transient error is detected,
-   * `*error` will be set to `Error::Transient`. If `error` is null
-   * and a transient error is detected, it will be treated as fatal.
+   * If `error` is non-null,`*error` will be set to `Error::Transient`
+   * if a transient error is detected, otherwise `Error::None`.
+   * If `error` is null and a transient error is detected, it will be
+   * treated as fatal.
    */
   Ticks stop(Task* t, Error* error = nullptr);
 
@@ -184,6 +185,12 @@ private:
    */
   uint32_t recording_skid_size() { return skid_size() * 5; }
 
+  /**
+   * If `error` is non-null,`*error` will be set to `Error::Transient`
+   * if a transient error is detected, otherwise `Error::None`.
+   * If `error` is null and a transient error is detected, it will be
+   * treated as fatal.
+   */
   Ticks read_ticks(Task* t, Error* error);
 
   // Only valid while 'counting' is true

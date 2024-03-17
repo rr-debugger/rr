@@ -956,6 +956,9 @@ void PerfCounters::close() {
 
 Ticks PerfCounters::stop(Task* t, Error* error) {
   if (!counting) {
+    if (error) {
+      *error = Error::None;
+    }
     return 0;
   }
 
@@ -996,6 +999,10 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
 }
 
 Ticks PerfCounters::read_ticks(Task* t, Error* error) {
+  if (error) {
+    *error = Error::None;
+  }
+
   ASSERT(t, opened);
   ASSERT(t, counting);
   ASSERT(t, counting_period > 0);
@@ -1076,10 +1083,6 @@ Ticks PerfCounters::read_ticks(Task* t, Error* error) {
     } else {
       ASSERT(t, false) << "Detected " << ret
           << " ticks, expected no more than " << adjusted_counting_period;
-    }
-  } else {
-    if (error) {
-      *error = Error::None;
     }
   }
   return ret;
