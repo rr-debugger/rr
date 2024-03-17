@@ -2359,7 +2359,7 @@ bool RecordTask::try_grow_map(remote_ptr<void> addr) {
   remote_ptr<void> limit_bottom;
 #if defined (__i386__)
   struct rlimit stack_limit;
-  int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
+  int ret = prlimit(tid, RLIMIT_STACK, NULL, &stack_limit);
 #else
   struct rlimit64 stack_limit;
   int ret = syscall(__NR_prlimit64, tid, RLIMIT_STACK, (void*)0, &stack_limit);
