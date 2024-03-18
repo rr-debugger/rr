@@ -1,5 +1,7 @@
 source `dirname $0`/util.sh
 
+skip_if_rr_32_bit_with_shell_64_bit
+
 RECORD_ARGS=-M
 just_record seq "1 100"
 RR_SIMULATE_ERROR_AT_EVENT=300 replay -M
