@@ -120,11 +120,11 @@ ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {
   return ProtoMark(current_mark_key());
 }
 
-shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
+shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() const {
   auto it = marks.find(current_mark_key());
   // Avoid creating an entry in 'marks' if it doesn't already exist
   if (it != marks.end()) {
-    for (shared_ptr<InternalMark>& m : it->second) {
+    for (const shared_ptr<InternalMark>& m : it->second) {
       if (m->equal_states(*current)) {
         return m;
       }

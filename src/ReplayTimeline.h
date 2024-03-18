@@ -31,10 +31,7 @@ private:
 
 public:
   ReplayTimeline(std::shared_ptr<ReplaySession> session);
-  ReplayTimeline() : breakpoints_applied(false) {}
   ~ReplayTimeline();
-
-  bool is_running() const { return current != nullptr; }
 
   /**
    * An estimate of how much progress a session has made. This should roughly
@@ -110,7 +107,7 @@ public:
   /**
    * Returns true if it's safe to add a checkpoint here.
    */
-  bool can_add_checkpoint() { return current->can_clone(); }
+  bool can_add_checkpoint() const { return current->can_clone(); }
 
   /**
    * Ensure that the current session is explicitly checkpointed.
@@ -127,7 +124,7 @@ public:
   /**
    * Return true if we're currently at the given mark.
    */
-  bool at_mark(const Mark& mark) { return current_mark() == mark.ptr; }
+  bool at_mark(const Mark& mark) const { return current_mark() == mark.ptr; }
 
   // Add/remove breakpoints and watchpoints. Use these APIs instead
   // of operating on the task directly, so that ReplayTimeline can track
@@ -391,7 +388,7 @@ private:
   void seek_to_proto_mark(const ProtoMark& pmark);
 
   // Returns a shared pointer to the mark if there is one for the current state.
-  std::shared_ptr<InternalMark> current_mark();
+  std::shared_ptr<InternalMark> current_mark() const;
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
   enum ForceProgress { FORCE_PROGRESS, DONT_FORCE_PROGRESS };
@@ -460,6 +457,7 @@ private:
    */
   void evaluate_conditions(ReplayResult& result);
 
+  // Never null.
   ReplaySession::shr_ptr current;
   // current is known to be at or after this mark
   std::shared_ptr<InternalMark> current_at_or_after_mark;

@@ -59,17 +59,15 @@ public:
   };
 
   /**
-   * Create a gdbserver serving the replay of 'session'.
+   * Serve the replay of 'session'.
    * When `stop_replaying_to_target` is non-null, setting it to true
    * (e.g. in a signal handler) will interrupt the replay.
+   * Returns only when the debugger disconnects.
    */
-  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target,
-            volatile bool* stop_replaying_to_target);
-
-  /**
-   * Actually run the server. Returns only when the debugger disconnects.
-   */
-  void serve_replay(const ConnectionFlags& flags);
+  static void serve_replay(std::shared_ptr<ReplaySession> session,
+                           const Target& target,
+                           volatile bool* stop_replaying_to_target,
+                           const ConnectionFlags& flags);
 
   /**
    * Return the register |which|, which may not have a defined value.
@@ -78,19 +76,21 @@ public:
                                   const ExtraRegisters& extra_regs,
                                   GdbRegister which);
 
-  ReplayTimeline& get_timeline() { return timeline; }
+  // Null if this is an emergency debug session.
+  ReplayTimeline* timeline() { return timeline_; }
 
   static void serve_emergency_debugger(
         std::unique_ptr<GdbServerConnection> dbg, Task* t) {
-    GdbServer(dbg, t).process_debugger_requests();
+    GdbServer(dbg, t, nullptr, Target()).process_debugger_requests();
   }
 
 private:
-  GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t);
+  GdbServer(std::unique_ptr<GdbServerConnection>& connection, Task* t,
+            ReplayTimeline* timeline, const Target& target);
 
   Session& current_session() {
-    return timeline.is_running() ? timeline.current_session()
-                                 : *emergency_debug_session;
+    return timeline_ ? timeline_->current_session() :
+        *emergency_debug_session;
   }
 
   void dispatch_regs_request(const Registers& regs,
@@ -107,7 +107,6 @@ private:
    */
   void dispatch_debugger_request(Session& session, const GdbRequest& req,
                                  ReportState state);
-  bool at_target(ReplayResult& result);
   void activate_debugger();
   void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(ReportState state = REPORT_NORMAL);
@@ -175,14 +174,14 @@ private:
    */
   int open_file(Session& session, Task *continue_task, const std::string& file_name);
 
-  Target target;
-  // dbg is initially null. Once the debugger connection is established, it
-  // never changes.
+  // dbg is never null.
   std::unique_ptr<GdbServerConnection> dbg;
-  // When dbg is non-null, the ThreadGroupUid of the task being debugged. Never
-  // changes once the connection is established --- we don't currently
-  // support switching gdb between debuggee processes.
+  // The ThreadGroupUid of the task being debugged.
+  // This should really not be needed and should go away so we can debug
+  // multiple processes.
   ThreadGroupUid debuggee_tguid;
+  // What we were trying to reach.
+  Target target;
   // ThreadDb for debuggee ThreadGroup
 #ifdef PROC_SERVICE_H
   std::unique_ptr<ThreadDb> thread_db;
@@ -205,7 +204,8 @@ private:
   // True when a user has run to exit before attaching the debugger.
   bool exit_sigkill_pending;
 
-  ReplayTimeline timeline;
+  // Exactly one of the following two pointers is null.
+  ReplayTimeline* timeline_;
   Session* emergency_debug_session;
 
   struct Checkpoint {

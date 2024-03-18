@@ -510,7 +510,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       conn_flags.keep_listening = flags.keep_listening;
       conn_flags.serve_files = flags.serve_files;
-      GdbServer(session, target, &stop_replaying_to_target).serve_replay(conn_flags);
+      GdbServer::serve_replay(session, target, &stop_replaying_to_target, conn_flags);
     }
 
     // Everything should have been cleaned up by now.
@@ -542,7 +542,6 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
         // of the first process (rather than the first exit of a process).
         target.pid = session->trace_reader().peek_frame().tid();
       }
-      GdbServer server(session, target, &stop_replaying_to_target);
 
       struct sigaction sa;
       memset(&sa, 0, sizeof(sa));
@@ -552,7 +551,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
         FATAL() << "Couldn't set sigaction for SIGINT.";
       }
 
-      server.serve_replay(conn_flags);
+      GdbServer::serve_replay(session, target, &stop_replaying_to_target, conn_flags);
     }
     // Everything should have been cleaned up by now.
     check_for_leaks();

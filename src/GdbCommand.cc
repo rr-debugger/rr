@@ -62,6 +62,9 @@ static std::vector<ReplayTimeline::Mark> forward_stack;
 static SimpleGdbCommand rr_history_push(
     "rr-history-push", "Push an entry into the rr history.",
     [](GdbServer& gdb_server, Task* t, const vector<string>&) {
+      if (!gdb_server.timeline()) {
+        return string("Command requires a full debugging session.");
+      }
       if (!t->session().is_replaying()) {
         // Don't create new history state inside a diversion
         return string();
@@ -69,13 +72,16 @@ static SimpleGdbCommand rr_history_push(
       if (current_history_cp) {
         back_stack.push_back(current_history_cp);
       }
-      current_history_cp = gdb_server.get_timeline().mark();
+      current_history_cp = gdb_server.timeline()->mark();
       forward_stack.clear();
       return string();
     });
 static SimpleGdbCommand back(
     "back", "Go back one entry in the rr history.",
     [](GdbServer& gdb_server, Task* t, const vector<string>&) {
+      if (!gdb_server.timeline()) {
+        return string("Command requires a full debugging session.");
+      }
       if (!t->session().is_replaying()) {
         return GdbCommandHandler::cmd_end_diversion();
       }
@@ -85,12 +91,15 @@ static SimpleGdbCommand back(
       forward_stack.push_back(current_history_cp);
       current_history_cp = back_stack.back();
       back_stack.pop_back();
-      gdb_server.get_timeline().seek_to_mark(current_history_cp);
+      gdb_server.timeline()->seek_to_mark(current_history_cp);
       return string();
     });
 static SimpleGdbCommand forward(
     "forward", "Go forward one entry in the rr history.",
     [](GdbServer& gdb_server, Task* t, const vector<string>&) {
+      if (!gdb_server.timeline()) {
+        return string("Command requires a full debugging session.");
+      }
       if (!t->session().is_replaying()) {
         return GdbCommandHandler::cmd_end_diversion();
       }
@@ -100,7 +109,7 @@ static SimpleGdbCommand forward(
       back_stack.push_back(current_history_cp);
       current_history_cp = forward_stack.back();
       forward_stack.pop_back();
-      gdb_server.get_timeline().seek_to_mark(current_history_cp);
+      gdb_server.timeline()->seek_to_mark(current_history_cp);
       return string();
     });
 
@@ -108,19 +117,22 @@ static int gNextCheckpointId = 0;
 
 string invoke_checkpoint(GdbServer& gdb_server, Task*,
                          const vector<string>& args) {
+  if (!gdb_server.timeline()) {
+    return string("Command requires a full debugging session.");
+  }
   const string& where = args[0];
   if (gdb_server.in_debuggee_end_state) {
     return string("The program is not being run.");
   }
   int checkpoint_id = ++gNextCheckpointId;
   GdbServer::Checkpoint::Explicit e;
-  if (gdb_server.timeline.can_add_checkpoint()) {
+  if (gdb_server.timeline()->can_add_checkpoint()) {
     e = GdbServer::Checkpoint::EXPLICIT;
   } else {
     e = GdbServer::Checkpoint::NOT_EXPLICIT;
   }
   gdb_server.checkpoints[checkpoint_id] = GdbServer::Checkpoint(
-      gdb_server.timeline, gdb_server.last_continue_task, e, where);
+      *gdb_server.timeline(), gdb_server.last_continue_task, e, where);
   return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
 }
 static SimpleGdbCommand checkpoint(
@@ -134,11 +146,14 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
   if (args.size() < 1) {
     return "'delete checkpoint' requires an argument";
   }
+  if (!gdb_server.timeline()) {
+    return string("Command requires a full debugging session.");
+  }
   int id = stoi(args[0]);
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
     if (it->second.is_explicit == GdbServer::Checkpoint::EXPLICIT) {
-      gdb_server.timeline.remove_explicit_checkpoint(it->second.mark);
+      gdb_server.timeline()->remove_explicit_checkpoint(it->second.mark);
     }
     gdb_server.checkpoints.erase(it);
     return string("Deleted checkpoint ") + to_string(id) + ".";
