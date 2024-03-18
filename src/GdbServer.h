@@ -60,20 +60,16 @@ public:
 
   /**
    * Create a gdbserver serving the replay of 'session'.
+   * When `stop_replaying_to_target` is non-null, setting it to true
+   * (e.g. in a signal handler) will interrupt the replay.
    */
-  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target);
+  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target,
+            volatile bool* stop_replaying_to_target);
 
   /**
    * Actually run the server. Returns only when the debugger disconnects.
    */
   void serve_replay(const ConnectionFlags& flags);
-
-  /**
-   * Called from a signal handler (or other thread) during serve_replay,
-   * this will cause the replay-to-target phase to be interrupted and
-   * debugging started wherever the replay happens to be.
-   */
-  void interrupt_replay_to_target() { stop_replaying_to_target = true; }
 
   /**
    * Return the register |which|, which may not have a defined value.
@@ -201,8 +197,8 @@ private:
   bool in_debuggee_end_state;
   // True when a restart was attempted but didn't succeed.
   bool failed_restart;
-  // True when the user has interrupted replaying to a target event.
-  volatile bool stop_replaying_to_target;
+  // Set to true when the user has interrupted replaying to a target event.
+  volatile bool* stop_replaying_to_target;
   // True when a DREQ_INTERRUPT has been received but not handled, or when
   // we've restarted and want the first continue to be interrupted immediately.
   bool interrupt_pending;

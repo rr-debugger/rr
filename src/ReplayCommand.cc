@@ -473,13 +473,11 @@ static void handle_SIGINT_in_parent(int sig) {
   // Just ignore it.
 }
 
-static GdbServer* server_ptr = nullptr;
+static volatile bool stop_replaying_to_target;
 
 static void handle_SIGINT_in_child(int sig) {
   DEBUG_ASSERT(sig == SIGINT);
-  if (server_ptr) {
-    server_ptr->interrupt_replay_to_target();
-  }
+  stop_replaying_to_target = true;
 }
 
 static int replay(const string& trace_dir, const ReplayFlags& flags) {
@@ -512,7 +510,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       conn_flags.keep_listening = flags.keep_listening;
       conn_flags.serve_files = flags.serve_files;
-      GdbServer(session, target).serve_replay(conn_flags);
+      GdbServer(session, target, &stop_replaying_to_target).serve_replay(conn_flags);
     }
 
     // Everything should have been cleaned up by now.
@@ -544,9 +542,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
         // of the first process (rather than the first exit of a process).
         target.pid = session->trace_reader().peek_frame().tid();
       }
-      GdbServer server(session, target);
+      GdbServer server(session, target, &stop_replaying_to_target);
 
-      server_ptr = &server;
       struct sigaction sa;
       memset(&sa, 0, sizeof(sa));
       sa.sa_flags = SA_RESTART;

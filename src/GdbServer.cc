@@ -57,7 +57,7 @@ GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t)
       final_event(UINT32_MAX),
       in_debuggee_end_state(false),
       failed_restart(false),
-      stop_replaying_to_target(false),
+      stop_replaying_to_target(nullptr),
       interrupt_pending(false),
       exit_sigkill_pending(false),
       emergency_debug_session(&t->session()),
@@ -65,12 +65,13 @@ GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& dbg, Task* t)
   memset(&stop_siginfo, 0, sizeof(stop_siginfo));
 }
 
-GdbServer::GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
+GdbServer::GdbServer(std::shared_ptr<ReplaySession> session, const Target& target,
+                     volatile bool* stop_replaying_to_target)
     : target(target),
       final_event(UINT32_MAX),
       in_debuggee_end_state(false),
       failed_restart(false),
-      stop_replaying_to_target(false),
+      stop_replaying_to_target(stop_replaying_to_target),
       interrupt_pending(false),
       exit_sigkill_pending(false),
       timeline(std::move(session)),
@@ -1421,7 +1422,7 @@ bool GdbServer::at_target(ReplayResult& result) {
   if (!(timeline.can_add_checkpoint() || target_is_exit)) {
     return false;
   }
-  if (stop_replaying_to_target) {
+  if (stop_replaying_to_target && *stop_replaying_to_target) {
     return true;
   }
   // When we decide to create the debugger, we may end up
@@ -1455,7 +1456,7 @@ void GdbServer::activate_debugger() {
   FrameTime completed_event = next_frame.time() - 1;
   Task* t = timeline.current_session().current_task();
   if (target.event || target.pid) {
-    if (stop_replaying_to_target) {
+    if (stop_replaying_to_target && *stop_replaying_to_target) {
       fprintf(stderr, "\a\n"
                       "--------------------------------------------------\n"
                       " ---> Interrupted; attached to NON-TARGET process %d at event %llu.\n"
@@ -1609,8 +1610,6 @@ void GdbServer::restart_session(const GdbRequest& req) {
     }
     return;
   }
-
-  stop_replaying_to_target = false;
 
   if (req.restart().type == RESTART_FROM_EVENT) {
     // Note that we don't reset the target pid; we intentionally keep targeting
