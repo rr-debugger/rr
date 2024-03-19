@@ -1,8 +1,10 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include <dirent.h>
+#include <spawn.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <set>
 #include <tuple>
 #include <unordered_map>
@@ -12,7 +14,8 @@
 
 #include "Command.h"
 #include "ElfReader.h"
-#include "RecordSession.h"
+#include "Flags.h"
+#include "ReplaySession.h"
 #include "TraceStream.h"
 #include "core.h"
 #include "cpp_supplement.h"
@@ -66,7 +69,10 @@ SourcesCommand SourcesCommand::singleton(
     "                             in the library's DW_AT_comp_dir property\n"
     "                             for all compilation units.\n"
     "                             LIBRARY is the basename of the original file name,\n"
-    "                             e.g. libc-2.32.so\n");
+    "                             e.g. libc-2.32.so\n"
+    "  --gdb-script=SCRIPT        Runs the provided gdb script in a (very basic)\n"
+    "                             emulator, and gives it a chance to change paths\n"
+    "                             for symbol loading/etc\n");
 
 class ExplicitSourcesCommand : public Command {
 public:
@@ -89,6 +95,11 @@ ExplicitSourcesCommand ExplicitSourcesCommand::singleton(
     "                             for all compilation units.\n"
     "                             LIBRARY is the basename of the original file name,\n"
     "                             e.g. libc-2.32.so\n");
+
+struct SourcesFlags {
+  map<string, string> comp_dir_substitutions;
+  string gdb_script;
+};
 
 static void dir_name(string& s) {
   size_t p = s.rfind('/');
@@ -129,6 +140,197 @@ struct DirExistsCache {
     return exists;
   }
 };
+
+struct DebugDirs {
+  vector<string> debug_file_directories;
+  vector<string> source_directories;
+};
+
+class DebugDirManager {
+public:
+  DebugDirManager(const string& program, const string& gdb_script);
+  ~DebugDirManager();
+
+  DebugDirs initial_directories() {
+    return read_result();
+  }
+  DebugDirs process_one_binary(const string& binary_path);
+
+private:
+  DebugDirManager(const DebugDirManager&) = delete;
+  DebugDirManager& operator=(const DebugDirManager&) = delete;
+
+  void synchronize();
+  DebugDirs read_result();
+
+  int pipe_fd;
+  pid_t pid;
+  FILE* output_file;
+};
+
+DebugDirManager::~DebugDirManager() {
+  if (pipe_fd < 0) {
+    return;
+  }
+
+  close(pipe_fd);
+
+  int status;
+  if (waitpid(pid, &status, 0) == -1) {
+    FATAL() << "Failed to wait on gdb script host";
+  }
+
+  if (!(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
+    FATAL() << "gdb script host in unexpected state " << HEX(status);
+  }
+}
+
+DebugDirManager::DebugDirManager(const string& program, const string& gdb_script)
+  : pipe_fd(-1), pid(-1), output_file(NULL)
+{
+  if (gdb_script.empty()) {
+    return;
+  }
+
+  TempFile output_file = create_temporary_file("rr-gdb-script-host-output-XXXXXX");
+
+  int stdin_pipe_fds[2];
+  if (pipe(stdin_pipe_fds) == -1) {
+    FATAL();
+  }
+
+  posix_spawn_file_actions_t file_actions;
+  int ret = posix_spawn_file_actions_init(&file_actions);
+  if (ret != 0) {
+    FATAL() << "posix_spawn_file_actions_init failed with " << ret;
+  }
+
+  // Close unused write end in the child.
+  ret = posix_spawn_file_actions_addclose(&file_actions, stdin_pipe_fds[1]);
+  if (ret != 0) {
+    FATAL() << "posix_spawn_file_actions_addclose failed with " << ret;
+  }
+
+  // Replace child's stdin with the read end.
+  ret = posix_spawn_file_actions_adddup2(&file_actions, stdin_pipe_fds[0], 0);
+  if (ret != 0) {
+    FATAL() << "posix_spawn_file_actions_adddup2 failed with " << ret;
+  }
+
+  string gdb_script_host_path = resource_path() + "bin/rr-gdb-script-host.py";
+  pid_t pid;
+  char* gdb_script_host_argv[] = {
+    strdup(gdb_script_host_path.c_str()),
+    strdup(output_file.name.c_str()),
+    strdup(gdb_script.c_str()),
+    strdup(program.c_str()),
+    NULL,
+  };
+  ret = posix_spawn(&pid, gdb_script_host_path.c_str(), &file_actions, NULL,
+                    gdb_script_host_argv, environ);
+  if (ret != 0) {
+    FATAL() << "posix_spawn failed with " << ret;
+  }
+
+  // Ignore the return values during cleanup.
+  posix_spawn_file_actions_destroy(&file_actions);
+
+  close(stdin_pipe_fds[0]);
+
+  this->pid = pid;
+  this->pipe_fd = stdin_pipe_fds[1];
+  this->output_file = fopen(output_file.name.c_str(), "r");
+  if (!this->output_file) {
+    FATAL() << "Failed to open gdb script host result file " << output_file.name;
+  }
+
+  synchronize();
+}
+
+DebugDirs DebugDirManager::process_one_binary(const string& binary_path) {
+  if (pipe_fd < 0) {
+    return DebugDirs();
+  }
+
+  auto len = binary_path.length();
+  size_t written = write(pipe_fd, binary_path.c_str(), len);
+  if (written != len) {
+    FATAL() << "Failed to write filename";
+  }
+  written = write(pipe_fd, "\n", 1);
+  if (written != 1) {
+    FATAL() << "Failed to write trailing newline";
+  }
+
+  synchronize();
+  return read_result();
+}
+
+DebugDirs DebugDirManager::read_result() {
+  char buf[4096];
+  DebugDirs result;
+  size_t index;
+  const char delimiter[2] = ":";
+
+  if (pipe_fd < 0) {
+    return result;
+  }
+
+  if (!fgets(buf, sizeof(buf) - 1, output_file)) {
+    FATAL() << "Failed to read gdb script output";
+  }
+  index = strcspn(buf, "\n");
+  buf[index] = 0;
+
+  char* token = strtok(buf, delimiter);
+  while (token != NULL) {
+    char* buf = realpath(token, NULL);
+    if (buf) {
+      auto s = string(buf);
+      result.debug_file_directories.push_back(s);
+      LOG(debug) << "gdb script added debug dir '" << s << "'";
+      free(buf);
+    } else {
+      LOG(debug) << "realpath(" << token << ") = " << strerror(errno);
+    }
+    token = strtok(NULL, delimiter);
+  }
+
+  if (!fgets(buf, sizeof(buf) - 1, output_file)) {
+    FATAL() << "Failed to read gdb script output";
+  }
+  index = strcspn(buf, "\n");
+  buf[index] = 0;
+
+  token = strtok(buf, delimiter);
+  while (token != NULL) {
+    char* buf = realpath(token, NULL);
+    if (buf) {
+      auto s = string(buf);
+      result.source_directories.push_back(s);
+      LOG(debug) << "gdb script added source dir '" << s << "'";
+      free(buf);
+    } else {
+      LOG(debug) << "realpath(" << token << ") = " << strerror(errno);
+    }
+    token = strtok(NULL, delimiter);
+  }
+
+  return result;
+}
+
+void DebugDirManager::synchronize() {
+  int status;
+  if (waitpid(pid, &status, WUNTRACED) == -1) {
+    FATAL() << "Failed to wait on gdb script host";
+  }
+
+  if (!(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP)) {
+    FATAL() << "gdb script host in unexpected state " << HEX(status);
+  }
+
+  kill(pid, SIGCONT);
+}
 
 // Resolve a file name relative to a compilation directory and relative directory.
 // file_name cannot be null, but the others can be.
@@ -208,11 +410,19 @@ struct DwoInfo {
   uint64_t id;
 };
 
+struct OutputCompDirSubstitution {
+  string trace_relative_name;
+  string substitution;
+};
+
 static bool process_compilation_units(ElfFileReader& reader,
                                       ElfFileReader* sup_reader,
                                       const string& trace_relative_name,
                                       const string& original_file_name,
                                       const string& comp_dir_substitution,
+                                      vector<OutputCompDirSubstitution>& comp_dir_substitutions,
+                                      const string* debug_file_directory,
+                                      const string* debug_src_directory,
                                       set<string>* file_names, vector<DwoInfo>* dwos,
                                       DirExistsCache& dir_exists_cache) {
   string build_id = reader.read_buildid();
@@ -264,14 +474,26 @@ static bool process_compilation_units(ElfFileReader& reader,
     } else {
       cu.set_str_offsets_base(0);
     }
-    const char* original_comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);;
-    const char* comp_dir;
+    const char* original_comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);
+    string comp_dir;
     if (!comp_dir_substitution.empty()) {
-      comp_dir = comp_dir_substitution.c_str();
+      comp_dir = comp_dir_substitution;
     } else {
-      comp_dir = original_comp_dir;
       if (!ok) {
         continue;
+      }
+      if (original_comp_dir) {
+        comp_dir = original_comp_dir;
+      }
+      if (debug_src_directory && !is_absolute(comp_dir)) {
+        prepend_path(debug_src_directory->c_str(), comp_dir);
+        if (std::find_if(comp_dir_substitutions.begin(), comp_dir_substitutions.end(), [trace_relative_name](OutputCompDirSubstitution& s) {
+          return s.trace_relative_name == trace_relative_name;
+        }) == comp_dir_substitutions.end()) {
+          comp_dir_substitutions.push_back({ trace_relative_name, comp_dir });
+        }
+      } else if (debug_file_directory) {
+        prepend_path(debug_file_directory->c_str(), comp_dir);
       }
     }
     const char* dwo_name = cu.die().string_attr(cu, DW_AT_GNU_dwo_name, debug_strs, &ok);
@@ -295,11 +517,8 @@ static bool process_compilation_units(ElfFileReader& reader,
       }
       if (has_dwo_id) {
         string full_name;
-        if (resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, nullptr, dwo_name, dir_exists_cache, full_name)) {
-          string c;
-          if (comp_dir) {
-            c = comp_dir;
-          }
+        if (resolve_file_name(original_file_name.c_str(), comp_dir.c_str(), original_comp_dir, comp_dir_substitution, nullptr, dwo_name, dir_exists_cache, full_name)) {
+          string c = comp_dir;
           dwos->push_back({ dwo_name, trace_relative_name, build_id, std::move(c), full_name, dwo_id });
         } else {
           FATAL() << "DWO missing due to relative path " << full_name;
@@ -314,7 +533,7 @@ static bool process_compilation_units(ElfFileReader& reader,
     }
     if (source_file_name) {
       string full_name;
-      if (resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, nullptr, source_file_name, dir_exists_cache, full_name)) {
+      if (resolve_file_name(original_file_name.c_str(), comp_dir.c_str(), original_comp_dir, comp_dir_substitution, nullptr, source_file_name, dir_exists_cache, full_name)) {
         file_names->insert(full_name);
       }
     }
@@ -333,7 +552,7 @@ static bool process_compilation_units(ElfFileReader& reader,
       }
       const char* dir = lines.directories()[f.directory_index];
       string full_name;
-      if (resolve_file_name(original_file_name.c_str(), comp_dir, original_comp_dir, comp_dir_substitution, dir, f.file_name, dir_exists_cache, full_name)) {
+      if (resolve_file_name(original_file_name.c_str(), comp_dir.c_str(), original_comp_dir, comp_dir_substitution, dir, f.file_name, dir_exists_cache, full_name)) {
         file_names->insert(full_name);
       }
     }
@@ -366,7 +585,8 @@ struct ExternalDebugInfo {
 static unique_ptr<ElfFileReader>
 find_auxiliary_file(const string& original_file_name,
                     const string& aux_file_name,
-                    string& full_file_name) {
+                    string& full_file_name,
+                    const vector<string>& dirs) {
   if (aux_file_name.empty()) {
     return nullptr;
   }
@@ -425,6 +645,17 @@ find_auxiliary_file(const string& original_file_name,
     }
     LOG(info) << "Can't find external debuginfo file " << full_file_name;
 
+    // Try in an appropriate subdirectory of the provided debug dirs
+    for (auto& d : dirs) {
+      full_file_name = d + original_file_dir + "/" + aux_file_name;
+      normalize_file_name(full_file_name);
+      fd = ScopedFd(full_file_name.c_str(), O_RDONLY);
+      if (fd.is_open()) {
+        goto found;
+      }
+      LOG(info) << "Can't find external debuginfo file " << full_file_name;
+    }
+
     // On Ubuntu 20.04 there's both a /lib/x86_64-linux-gnu/libc-2.31.so and a
     // /usr/lib/x86_64-linux-gnu/libc-2.31.so. They are hardlinked to the same inode,
     // and glibc debuginfo is present in the location corresponding to
@@ -456,7 +687,9 @@ found:
 }
 
 static unique_ptr<ElfFileReader>
-find_auxiliary_file_by_buildid(ElfFileReader& trace_file_reader, string& full_file_name) {
+find_auxiliary_file_by_buildid(ElfFileReader& trace_file_reader,
+                               string& full_file_name,
+                               const vector<string>& dirs) {
   string build_id = trace_file_reader.read_buildid();
   if (build_id.empty()) {
     LOG(warn) << "Main ELF binary has no build ID!";
@@ -467,10 +700,22 @@ find_auxiliary_file_by_buildid(ElfFileReader& trace_file_reader, string& full_fi
     return nullptr;
   }
 
-  string path = "/usr/lib/debug/.build-id/" + build_id.substr(0, 2) + "/" + build_id.substr(2) + ".debug";
+  string filename = build_id.substr(0, 2) + "/" + build_id.substr(2) + ".debug";
+  string path = "/usr/lib/debug/.build-id/" + filename;
   ScopedFd fd(path.c_str(), O_RDONLY);
   if (!fd.is_open()) {
     LOG(info) << "Can't find external debuginfo file " << path;
+    for (auto &d : dirs) {
+      path = d + "/.build-id/" + filename;
+      fd = ScopedFd(path.c_str(), O_RDONLY);
+      if (fd.is_open()) {
+        break;
+      }
+      LOG(info) << "Can't find external debuginfo file " << path;
+    }
+  }
+
+  if (!fd.is_open()) {
     return nullptr;
   }
 
@@ -493,7 +738,10 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
                                    set<string>* file_names,
                                    const string& full_aux_file_name,
                                    const char* file_type,
-                                   const map<string, string>& comp_dir_substitutions,
+                                   map<string, string> comp_dir_substitutions,
+                                   vector<OutputCompDirSubstitution>& output_comp_dir_substitutions,
+                                   const string* chosen_debug_dir,
+                                   const string* chosen_src_dir,
                                    vector<DwoInfo>* dwos,
                                    set<ExternalDebugInfo>* external_debug_info,
                                    bool already_used_file,
@@ -512,12 +760,16 @@ static bool process_auxiliary_file(ElfFileReader& trace_file_reader,
     LOG(debug) << "\tFound comp_dir substitution " << it->second;
     did_work = process_compilation_units(aux_file_reader, alt_file_reader,
                                          trace_relative_name, original_file_name,
-                                         it->second, file_names, dwos, dir_exists_cache);
+                                         it->second, output_comp_dir_substitutions,
+                                         chosen_debug_dir, chosen_src_dir,
+                                         file_names, dwos, dir_exists_cache);
   } else {
     LOG(debug) << "\tNo comp_dir substitution found";
     did_work = process_compilation_units(aux_file_reader, alt_file_reader,
                                          trace_relative_name, original_file_name,
-                                         {}, file_names, dwos, dir_exists_cache);
+                                         {}, output_comp_dir_substitutions,
+                                         chosen_debug_dir, chosen_src_dir,
+                                         file_names, dwos, dir_exists_cache);
   }
 
   if (!did_work) {
@@ -537,37 +789,63 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
                                const string& trace_relative_name,
                                const string& original_file_name,
                                set<string>* file_names, const string& aux_file_name,
-                               const map<string, string>& comp_dir_substitutions,
+                               map<string, string>& comp_dir_substitutions,
+                               vector<OutputCompDirSubstitution>& output_comp_dir_substitutions,
+                               unique_ptr<DebugDirManager>& debug_dirs,
+                               DebugDirs& dd,
                                vector<DwoInfo>* dwos,
                                set<ExternalDebugInfo>* external_debug_info,
                                DirExistsCache& dir_exists_cache) {
   string full_file_name;
   auto reader = find_auxiliary_file(original_file_name, aux_file_name,
-                                    full_file_name);
+                                    full_file_name, dd.debug_file_directories);
   if (!reader) {
-    reader = find_auxiliary_file_by_buildid(trace_file_reader, full_file_name);
+    reader = find_auxiliary_file_by_buildid(trace_file_reader, full_file_name, dd.debug_file_directories);
     if (!reader) {
+      dd.debug_file_directories.clear();
+      dd.source_directories.clear();
       return false;
     }
+  }
+
+  if (debug_dirs) {
+    dd = debug_dirs->process_one_binary(full_file_name);
   }
 
   /* A debuglink file can have its own debugaltlink */
   string full_altfile_name;
   Debugaltlink debugaltlink = reader->read_debugaltlink();
   auto altlink_reader = find_auxiliary_file(original_file_name, debugaltlink.file_name,
-                                            full_altfile_name);
+                                            full_altfile_name, dd.debug_file_directories);
+
+  // Notify a gdb script about the main binary before processing CUs.
+  if (debug_dirs) {
+    dd = debug_dirs->process_one_binary(original_file_name);
+  }
+
+  const string* chosen_debug_dir = NULL;
+  if (!dd.debug_file_directories.empty()) {
+    // XXXkhuey what do we do if there's more than one directory?
+    chosen_debug_dir = &dd.debug_file_directories.back();
+  }
+  const string* chosen_src_dir = NULL;
+  if (!dd.source_directories.empty()) {
+    chosen_src_dir = &dd.source_directories.back();
+  }
 
   bool has_source_files = process_auxiliary_file(trace_file_reader, *reader, altlink_reader.get(),
                                                  trace_relative_name, original_file_name,
                                                  file_names, full_file_name, DEBUGLINK,
-                                                 comp_dir_substitutions,
+                                                 comp_dir_substitutions, output_comp_dir_substitutions,
+                                                 chosen_debug_dir, chosen_src_dir,
                                                  dwos, external_debug_info, false, dir_exists_cache);
 
   if (altlink_reader) {
     has_source_files |= process_auxiliary_file(trace_file_reader, *altlink_reader, nullptr,
                                                trace_relative_name, original_file_name,
                                                file_names, full_altfile_name, DEBUGALTLINK,
-                                               comp_dir_substitutions,
+                                               comp_dir_substitutions, output_comp_dir_substitutions,
+                                               chosen_debug_dir, chosen_src_dir,
                                                dwos, external_debug_info, has_source_files, dir_exists_cache);
   }
   return has_source_files;
@@ -751,12 +1029,11 @@ static bool starts_with(const string& s, const string& prefix) {
   return strncmp(s.c_str(), prefix.c_str(), prefix.size()) == 0;
 }
 
-struct OutputCompDirSubstitution {
-  string trace_relative_name;
-  string substitution;
-};
-
-static int sources(const map<string, string>& binary_file_names, const map<string, string>& comp_dir_substitutions, bool is_explicit) {
+template<class iterable>
+static int sources(const iterable& binary_file_names,
+                   map<string, string>& comp_dir_substitutions,
+                   unique_ptr<DebugDirManager>& debug_dirs,
+                   bool is_explicit) {
   vector<string> relevant_binary_names;
   // Must be absolute.
   set<string> file_names;
@@ -764,6 +1041,11 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
   vector<DwoInfo> dwos;
   vector<OutputCompDirSubstitution> output_comp_dir_substitutions;
   DirExistsCache dir_exists_cache;
+  DebugDirs dd;
+  if (debug_dirs) {
+    dd = debug_dirs->initial_directories();
+  }
+
   for (auto& pair : binary_file_names) {
     string trace_relative_name = pair.first;
     string original_name = pair.second;
@@ -786,7 +1068,7 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
 
     string full_altfile_name;
     auto altlink_reader = find_auxiliary_file(pair.second, debugaltlink.file_name,
-                                              full_altfile_name);
+                                              full_altfile_name, dd.debug_file_directories);
 
     bool has_source_files;
     auto dwo_count = dwos.size();
@@ -797,12 +1079,16 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
       output_comp_dir_substitutions.push_back({ trace_relative_name, it->second });
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
-                                                   it->second, &file_names, &dwos, dir_exists_cache);
+                                                   it->second, output_comp_dir_substitutions,
+                                                   NULL, NULL, &file_names, &dwos,
+                                                   dir_exists_cache);
     } else {
       LOG(debug) << "\tNo comp_dir substitution found";
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
-                                                   {}, &file_names, &dwos, dir_exists_cache);
+                                                   {}, output_comp_dir_substitutions,
+                                                   NULL, NULL, &file_names, &dwos,
+                                                   dir_exists_cache);
     }
     /* If the original binary had source files, force the inclusion of any debugaltlink
      * file, even if it does not itself have compilation units (it may have relevant strings)
@@ -812,14 +1098,18 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
     Debuglink debuglink = reader.read_debuglink();
     has_source_files |= try_debuglink_file(reader, trace_relative_name, pair.second,
                                            &file_names, debuglink.file_name,
-                                           comp_dir_substitutions, &dwos,
+                                           comp_dir_substitutions, output_comp_dir_substitutions, debug_dirs, dd, &dwos,
                                            &external_debug_info, dir_exists_cache);
+
+    if (dd.debug_file_directories.empty() && debug_dirs) {
+      dd = debug_dirs->process_one_binary(pair.first);
+    }
 
     if (altlink_reader) {
       has_source_files |= process_auxiliary_file(reader, *altlink_reader, nullptr,
                                                  trace_relative_name, pair.second,
                                                  &file_names, full_altfile_name,
-                                                 DEBUGALTLINK, comp_dir_substitutions,
+                                                 DEBUGALTLINK, comp_dir_substitutions, output_comp_dir_substitutions, NULL, NULL,
                                                  &dwos, &external_debug_info,
                                                  original_had_source_files, dir_exists_cache);
     }
@@ -962,13 +1252,14 @@ static int sources(const map<string, string>& binary_file_names, const map<strin
   return 0;
 }
 
-static bool parse_sources_option(vector<string>& args, map<string, string>& comp_dir_substitutions) {
+static bool parse_sources_option(vector<string>& args, SourcesFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
 
   static const OptionSpec options[] = {
-    { 0, "substitute", HAS_PARAMETER }
+    { 0, "substitute", HAS_PARAMETER },
+    { 1, "gdb-script", HAS_PARAMETER }
   };
 
   ParsedOption opt;
@@ -982,8 +1273,12 @@ static bool parse_sources_option(vector<string>& args, map<string, string>& comp
       if (pos != string::npos) {
         auto k = opt.value.substr(0, pos);
         auto v = opt.value.substr(pos+1);
-        comp_dir_substitutions.insert(std::pair<string, string>(k, v));
+        flags.comp_dir_substitutions.insert(std::pair<string, string>(k, v));
       }
+      break;
+    }
+    case 1: {
+      flags.gdb_script = opt.value;
       break;
     }
   }
@@ -992,8 +1287,12 @@ static bool parse_sources_option(vector<string>& args, map<string, string>& comp
 }
 
 int SourcesCommand::run(vector<string>& args) {
-  map<string, string> comp_dir_substitutions;
-  while (parse_sources_option(args, comp_dir_substitutions)) {
+  // Various "cannot replay safely..." warnings cannot affect us since
+  // we only replay to the first execve.
+  Flags::get_for_init().suppress_environment_warnings = true;
+
+  SourcesFlags flags;
+  while (parse_sources_option(args, flags)) {
   }
 
   // (Trace file name, original file name) pairs
@@ -1024,12 +1323,46 @@ int SourcesCommand::run(vector<string>& args) {
     }
   }
 
-  return sources(binary_file_names, comp_dir_substitutions, false);
+  string program;
+  {
+    ReplaySession::Flags flags;
+    flags.redirect_stdio = false;
+    flags.share_private_mappings = false;
+    flags.replay_stops_at_first_execve = true;
+    flags.cpu_unbound = true;
+
+    ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, flags);
+    while (true) {
+      auto result = replay_session->replay_step(RUN_CONTINUE);
+      if (replay_session->done_initial_exec()) {
+        program = replay_session->vms()[0]->exe_image();
+        break;
+      }
+
+      if (result.status == REPLAY_EXITED) {
+        break;
+      }
+    }
+  }
+
+  std::vector<std::pair<string, string>> binary_file_names_ordered;
+  auto i = binary_file_names.find(program);
+  if (i != binary_file_names.end()) {
+    binary_file_names_ordered.push_back(*i);
+    binary_file_names.erase(program);
+  }
+  std::copy(binary_file_names.begin(), binary_file_names.end(), std::back_inserter(binary_file_names_ordered));
+  auto debug_dirs = make_unique<DebugDirManager>(program, flags.gdb_script);
+  return sources(binary_file_names_ordered, flags.comp_dir_substitutions, debug_dirs, false);
 }
 
 int ExplicitSourcesCommand::run(vector<string>& args) {
-  map<string, string> comp_dir_substitutions;
-  while (parse_sources_option(args, comp_dir_substitutions)) {
+  // Various "cannot replay safely..." warnings cannot affect us since
+  // we only replay to the first execve.
+  Flags::get_for_init().suppress_environment_warnings = true;
+
+  SourcesFlags flags;
+  while (parse_sources_option(args, flags)) {
   }
 
   // (Trace file name, original file name) pairs
@@ -1059,7 +1392,8 @@ int ExplicitSourcesCommand::run(vector<string>& args) {
     binary_file_names.insert(make_pair(std::move(buildid), arg));
   }
 
-  return sources(binary_file_names, comp_dir_substitutions, true);
+  unique_ptr<DebugDirManager> debug_dirs;
+  return sources(binary_file_names, flags.comp_dir_substitutions, debug_dirs, true);
 }
 
 } // namespace rr
