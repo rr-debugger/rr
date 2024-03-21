@@ -163,17 +163,17 @@ private:
   void synchronize();
   DebugDirs read_result();
 
-  int pipe_fd;
+  ScopedFd pipe_fd;
   pid_t pid;
   FILE* output_file;
 };
 
 DebugDirManager::~DebugDirManager() {
-  if (pipe_fd < 0) {
+  if (!pipe_fd.is_open()) {
     return;
   }
 
-  close(pipe_fd);
+  pipe_fd.close();
 
   int status;
   if (waitpid(pid, &status, 0) == -1) {
@@ -186,7 +186,7 @@ DebugDirManager::~DebugDirManager() {
 }
 
 DebugDirManager::DebugDirManager(const string& program, const string& gdb_script)
-  : pipe_fd(-1), pid(-1), output_file(nullptr)
+  : pid(-1), output_file(nullptr)
 {
   if (gdb_script.empty()) {
     return;
@@ -238,7 +238,7 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
   close(stdin_pipe_fds[0]);
 
   this->pid = pid;
-  this->pipe_fd = stdin_pipe_fds[1];
+  this->pipe_fd = ScopedFd(stdin_pipe_fds[1]);
   this->output_file = fopen(output_file.name.c_str(), "r");
   if (!this->output_file) {
     FATAL() << "Failed to open gdb script host result file " << output_file.name;
@@ -248,7 +248,7 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
 }
 
 DebugDirs DebugDirManager::process_one_binary(const string& binary_path) {
-  if (pipe_fd < 0) {
+  if (!pipe_fd.is_open()) {
     return DebugDirs();
   }
 
@@ -272,7 +272,7 @@ DebugDirs DebugDirManager::read_result() {
   size_t index;
   const char delimiter[2] = ":";
 
-  if (pipe_fd < 0) {
+  if (!pipe_fd.is_open()) {
     return result;
   }
 
