@@ -16,6 +16,7 @@
 #include "ElfReader.h"
 #include "Flags.h"
 #include "ReplaySession.h"
+#include "StringVectorToCharArray.h"
 #include "TraceStream.h"
 #include "core.h"
 #include "cpp_supplement.h"
@@ -219,15 +220,10 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
 
   string gdb_script_host_path = resource_path() + "bin/rr-gdb-script-host.py";
   pid_t pid;
-  char* gdb_script_host_argv[] = {
-    strdup(gdb_script_host_path.c_str()),
-    strdup(output_file.name.c_str()),
-    strdup(gdb_script.c_str()),
-    strdup(program.c_str()),
-    nullptr,
-  };
+  vector<string> gdb_script_host_argv_vec = { gdb_script_host_path, output_file.name, gdb_script, program };
+  StringVectorToCharArray gdb_script_host_argv(gdb_script_host_argv_vec);
   ret = posix_spawn(&pid, gdb_script_host_path.c_str(), &file_actions, nullptr,
-                    gdb_script_host_argv, environ);
+                    gdb_script_host_argv.get(), environ);
   if (ret != 0) {
     FATAL() << "posix_spawn failed with " << ret;
   }
