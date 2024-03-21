@@ -284,15 +284,10 @@ DebugDirs DebugDirManager::read_result() {
 
   char* token = strtok(buf, delimiter);
   while (token != nullptr) {
-    char* buf = realpath(token, nullptr);
-    if (buf) {
-      auto s = string(buf);
-      result.debug_file_directories.push_back(s);
-      LOG(debug) << "gdb script added debug dir '" << s << "'";
-      free(buf);
-    } else {
-      LOG(debug) << "realpath(" << token << ") = " << strerror(errno);
-    }
+    string s(token);
+    s = real_path(s);
+    result.debug_file_directories.push_back(s);
+    LOG(debug) << "gdb script added debug dir '" << s << "'";
     token = strtok(nullptr, delimiter);
   }
 
