@@ -186,7 +186,7 @@ DebugDirManager::~DebugDirManager() {
 }
 
 DebugDirManager::DebugDirManager(const string& program, const string& gdb_script)
-  : pipe_fd(-1), pid(-1), output_file(NULL)
+  : pipe_fd(-1), pid(-1), output_file(nullptr)
 {
   if (gdb_script.empty()) {
     return;
@@ -224,9 +224,9 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
     strdup(output_file.name.c_str()),
     strdup(gdb_script.c_str()),
     strdup(program.c_str()),
-    NULL,
+    nullptr,
   };
-  ret = posix_spawn(&pid, gdb_script_host_path.c_str(), &file_actions, NULL,
+  ret = posix_spawn(&pid, gdb_script_host_path.c_str(), &file_actions, nullptr,
                     gdb_script_host_argv, environ);
   if (ret != 0) {
     FATAL() << "posix_spawn failed with " << ret;
@@ -283,8 +283,8 @@ DebugDirs DebugDirManager::read_result() {
   buf[index] = 0;
 
   char* token = strtok(buf, delimiter);
-  while (token != NULL) {
-    char* buf = realpath(token, NULL);
+  while (token != nullptr) {
+    char* buf = realpath(token, nullptr);
     if (buf) {
       auto s = string(buf);
       result.debug_file_directories.push_back(s);
@@ -293,7 +293,7 @@ DebugDirs DebugDirManager::read_result() {
     } else {
       LOG(debug) << "realpath(" << token << ") = " << strerror(errno);
     }
-    token = strtok(NULL, delimiter);
+    token = strtok(nullptr, delimiter);
   }
 
   if (!fgets(buf, sizeof(buf) - 1, output_file)) {
@@ -303,8 +303,8 @@ DebugDirs DebugDirManager::read_result() {
   buf[index] = 0;
 
   token = strtok(buf, delimiter);
-  while (token != NULL) {
-    char* buf = realpath(token, NULL);
+  while (token != nullptr) {
+    char* buf = realpath(token, nullptr);
     if (buf) {
       auto s = string(buf);
       result.source_directories.push_back(s);
@@ -313,7 +313,7 @@ DebugDirs DebugDirManager::read_result() {
     } else {
       LOG(debug) << "realpath(" << token << ") = " << strerror(errno);
     }
-    token = strtok(NULL, delimiter);
+    token = strtok(nullptr, delimiter);
   }
 
   return result;
@@ -823,12 +823,12 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
     dd = debug_dirs->process_one_binary(original_file_name);
   }
 
-  const string* chosen_debug_dir = NULL;
+  const string* chosen_debug_dir = nullptr;
   if (!dd.debug_file_directories.empty()) {
     // XXXkhuey what do we do if there's more than one directory?
     chosen_debug_dir = &dd.debug_file_directories.back();
   }
-  const string* chosen_src_dir = NULL;
+  const string* chosen_src_dir = nullptr;
   if (!dd.source_directories.empty()) {
     chosen_src_dir = &dd.source_directories.back();
   }
@@ -1080,14 +1080,14 @@ static int sources(const iterable& binary_file_names,
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
                                                    it->second, output_comp_dir_substitutions,
-                                                   NULL, NULL, &file_names, &dwos,
+                                                   nullptr, nullptr, &file_names, &dwos,
                                                    dir_exists_cache);
     } else {
       LOG(debug) << "\tNo comp_dir substitution found";
       has_source_files = process_compilation_units(reader, altlink_reader.get(),
                                                    trace_relative_name, pair.second,
                                                    {}, output_comp_dir_substitutions,
-                                                   NULL, NULL, &file_names, &dwos,
+                                                   nullptr, nullptr, &file_names, &dwos,
                                                    dir_exists_cache);
     }
     /* If the original binary had source files, force the inclusion of any debugaltlink
@@ -1109,8 +1109,8 @@ static int sources(const iterable& binary_file_names,
       has_source_files |= process_auxiliary_file(reader, *altlink_reader, nullptr,
                                                  trace_relative_name, pair.second,
                                                  &file_names, full_altfile_name,
-                                                 DEBUGALTLINK, comp_dir_substitutions, output_comp_dir_substitutions, NULL, NULL,
-                                                 &dwos, &external_debug_info,
+                                                 DEBUGALTLINK, comp_dir_substitutions, output_comp_dir_substitutions,
+                                                 nullptr, nullptr, &dwos, &external_debug_info,
                                                  original_had_source_files, dir_exists_cache);
     }
 
