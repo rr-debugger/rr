@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """ rr-gdb-script-host.py <output> <user-gdb-script> <primary binary name>"""
+# Performs a limited emulation of the runtime environment of gdb scripts so that
+# we can run them for `rr sources` to locate debug information.
 from typing import Optional, List, Callable
 import logging
 import os
