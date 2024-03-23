@@ -513,12 +513,13 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_get_mem(mem);
       return;
     }
+    case DREQ_SET_MEM:
     case DREQ_SET_MEM_BINARY: {
       // gdb has been observed to send requests of length 0 at
       // odd times
       // (e.g. before sending the magic write to create a checkpoint)
       if (req.mem().len == 0) {
-        dbg->reply_set_mem_binary(true);
+        dbg->reply_set_mem(true);
         return;
       }
       // If an address is recognised as belonging to a SystemTap semaphore it's
@@ -526,7 +527,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       // pre-incremented.
       if (target->vm()->is_stap_semaphore(req.mem().addr)) {
         LOG(info) << "Suppressing write to SystemTap semaphore";
-        dbg->reply_set_mem_binary(true);
+        dbg->reply_set_mem(true);
         return;
       }
       // We only allow the debugger to write memory if the
@@ -535,7 +536,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       // divergence.
       if (!session.is_diversion()) {
         LOG(error) << "Attempt to write memory outside diversion session";
-        dbg->reply_set_mem_binary(false);
+        dbg->reply_set_mem(false);
         return;
       }
       LOG(debug) << "Writing " << req.mem().len << " bytes to "
@@ -543,7 +544,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       // TODO fallible
       target->write_bytes_helper(req.mem().addr, req.mem().len,
                                  req.mem().data.data());
-      dbg->reply_set_mem_binary(true);
+      dbg->reply_set_mem(true);
       return;
     }
     case DREQ_SEARCH_MEM_BINARY: {

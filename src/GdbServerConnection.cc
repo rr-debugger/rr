@@ -398,6 +398,20 @@ void GdbServerConnection::read_packet() {
   }
 }
 
+static void read_hex_data(const char* payload, const char* payload_end,
+                          vector<uint8_t>& data) {
+  data.clear();
+  char buf[3] = { 0, 0, 0 };
+  while (payload + 2 <= payload_end) {
+    buf[0] = *payload++;
+    buf[1] = *payload++;
+    char* endp;
+    int value = strtol(buf, &endp, 16);
+    parser_assert(endp == buf + 2);
+    data.push_back(value);
+  }
+}
+
 static void read_binary_data(const uint8_t* payload, const uint8_t* payload_end,
                              vector<uint8_t>& data) {
   data.clear();
@@ -1340,12 +1354,21 @@ bool GdbServerConnection::process_packet() {
       ret = true;
       break;
     case 'M':
-      /* We can't allow the debugger to write arbitrary data
-       * to memory, or the replay may diverge. */
-      // TODO: parse this packet in case some oddball gdb
-      // decides to send it instead of 'X'
-      write_packet("");
-      ret = false;
+      req = GdbRequest(DREQ_SET_MEM);
+      req.target = query_thread;
+      req.mem().addr = strtoul(payload, &payload, 16);
+      parser_assert(',' == *payload++);
+      req.mem().len = strtoul(payload, &payload, 16);
+      parser_assert(':' == *payload++);
+      read_hex_data(payload, reinterpret_cast<const char*>(inbuf.data() + packetend),
+                    req.mem().data);
+      parser_assert(req.mem().len == req.mem().data.size());
+
+      LOG(debug) << "debugger setting memory (addr=" << HEX(req.mem().addr)
+                 << ", len=" << req.mem().len
+                 << ", data=" << to_string(req.mem().data, 32) << ")";
+
+      ret = true;
       break;
     case 'p':
       req = GdbRequest(DREQ_GET_REG);
@@ -1870,8 +1893,8 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
   consume_request();
 }
 
-void GdbServerConnection::reply_set_mem_binary(bool ok) {
-  DEBUG_ASSERT(DREQ_SET_MEM_BINARY == req.type);
+void GdbServerConnection::reply_set_mem(bool ok) {
+  DEBUG_ASSERT(DREQ_SET_MEM == req.type || DREQ_SET_MEM_BINARY == req.type);
 
   write_packet(ok ? "OK" : "E01");
 

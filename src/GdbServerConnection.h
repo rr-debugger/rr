@@ -125,6 +125,7 @@ enum GdbRequestType {
   /* These use params.mem. */
   DREQ_GET_MEM,
   DREQ_GET_MEM_BINARY,
+  DREQ_SET_MEM,
   DREQ_SET_MEM_BINARY,
   // gdb wants to read the current siginfo_t for a stopped
   // tracee.  More importantly, this packet arrives at the very
@@ -530,11 +531,11 @@ public:
   void reply_get_mem(const std::vector<uint8_t>& mem);
 
   /**
-   * |ok| is true if a SET_MEM_BINARY request succeeded, false otherwise.  This
-   * function *must* be called whenever a SET_MEM_BINARY request is made,
+   * |ok| is true if a SET_MEM(_BINARY) request succeeded, false otherwise.  This
+   * function *must* be called whenever a SET_MEM(_BINARY) request is made,
    * regardless of success/failure or special interpretation.
    */
-  void reply_set_mem_binary(bool ok);
+  void reply_set_mem(bool ok);
 
   /**
    * Reply to the DREQ_SEARCH_MEM_BINARY request.
