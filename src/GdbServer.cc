@@ -500,18 +500,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_get_auxv(target->vm()->saved_auxv());
       return;
     }
-    case DREQ_GET_MEM: {
-      vector<uint8_t> mem;
-      mem.resize(req.mem().len);
-      ssize_t nread = target->read_bytes_fallible(req.mem().addr, req.mem().len,
-                                                  mem.data());
-      mem.resize(max(ssize_t(0), nread));
-      target->vm()->replace_breakpoints_with_original_values(
-          mem.data(), mem.size(), req.mem().addr);
-      maybe_intercept_mem_request(target, req, &mem);
-      dbg->reply_get_mem(mem);
-      return;
-    }
+    case DREQ_GET_MEM:
     case DREQ_GET_MEM_BINARY: {
       vector<uint8_t> mem;
       mem.resize(req.mem().len);
@@ -521,7 +510,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       target->vm()->replace_breakpoints_with_original_values(
           mem.data(), mem.size(), req.mem().addr);
       maybe_intercept_mem_request(target, req, &mem);
-      dbg->reply_get_mem_binary(mem);
+      dbg->reply_get_mem(mem);
       return;
     }
     case DREQ_SET_MEM_BINARY: {

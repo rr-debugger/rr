@@ -1848,28 +1848,23 @@ void GdbServerConnection::reply_select_thread(bool ok) {
 }
 
 void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
-  DEBUG_ASSERT(DREQ_GET_MEM == req.type);
+  DEBUG_ASSERT(DREQ_GET_MEM == req.type || DREQ_GET_MEM_BINARY == req.type);
   DEBUG_ASSERT(mem.size() <= req.mem().len);
 
-  if (req.mem().len > 0 && mem.size() == 0) {
-    write_packet("E01");
+  if (DREQ_GET_MEM == req.type) {
+    if (req.mem().len > 0 && mem.size() == 0) {
+      write_packet("E01");
+    } else {
+      write_hex_bytes_packet(mem.data(), mem.size());
+    }
   } else {
-    write_hex_bytes_packet(mem.data(), mem.size());
-  }
-
-  consume_request();
-}
-
-void GdbServerConnection::reply_get_mem_binary(const vector<uint8_t>& mem) {
-  DEBUG_ASSERT(DREQ_GET_MEM_BINARY == req.type);
-  DEBUG_ASSERT(mem.size() <= req.mem().len);
-
-  if (!req.mem().len) {
-    write_packet("OK");
-  } else if (!mem.size()) {
-    write_packet("E01");
-  } else {
-    write_binary_packet("", mem.data(), mem.size());
+    if (!req.mem().len) {
+      write_packet("OK");
+    } else if (!mem.size()) {
+      write_packet("E01");
+    } else {
+      write_binary_packet("", mem.data(), mem.size());
+    }
   }
 
   consume_request();

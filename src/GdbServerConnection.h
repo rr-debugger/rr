@@ -530,12 +530,6 @@ public:
   void reply_get_mem(const std::vector<uint8_t>& mem);
 
   /**
-   * The first |mem.size()| bytes of the request were read into |mem|.
-   * |mem.size()| must be less than or equal to the length of the request.
-   */
-  void reply_get_mem_binary(const std::vector<uint8_t>& mem);
-
-  /**
    * |ok| is true if a SET_MEM_BINARY request succeeded, false otherwise.  This
    * function *must* be called whenever a SET_MEM_BINARY request is made,
    * regardless of success/failure or special interpretation.
