@@ -910,15 +910,27 @@ bool GdbServerConnection::query(char* payload) {
   return false;
 }
 
-bool GdbServerConnection::set_var(char* payload) {
-  const char* name;
-  char* args;
+// LLDB QThreadSuffixSupported extension
+static void parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
+  char* semicolon = strchr(payload, ';');
+  if (!semicolon) {
+    return;
+  }
+  parser_assert(!strncmp(semicolon + 1, "thread:", 7));
+  char* endptr;
+  *out = parse_threadid(semicolon + 8, &endptr);
+  *semicolon = 0;
+}
 
-  args = strchr(payload, ':');
+bool GdbServerConnection::set_var(char* payload) {
+  GdbThreadId target = query_thread;
+  parse_thread_suffix_threadid(payload, &target);  
+
+  char* args = strchr(payload, ':');
   if (args) {
     *args++ = '\0';
   }
-  name = payload;
+  const char* name = payload;
 
   if (!strcmp(name, "StartNoAckMode")) {
     write_packet("OK");
@@ -961,6 +973,19 @@ bool GdbServerConnection::set_var(char* payload) {
     // We don't support human-readable error strings.
     write_packet("");
     return false;
+  }
+  if (!strcmp(name, "SaveRegisterState")) {
+    req = GdbRequest(DREQ_SAVE_REGISTER_STATE);
+    req.target = target;
+    return true;
+  }
+  if (!strcmp(name, "RestoreRegisterState")) {
+    req = GdbRequest(DREQ_RESTORE_REGISTER_STATE);
+    req.target = target;
+    char* end;
+    req.restore_register_state().state_index = strtol(args, &end, 16);
+    parser_assert(!*end || *end == ';');
+    return true;
   }
 
   UNHANDLED_REQ() << "Unhandled debugger set: Q" << name;
@@ -1292,18 +1317,6 @@ static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
     ss << buf;
   }
   return ss.str();
-}
-
-// LLDB QThreadSuffixSupported extension
-static void parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
-  char* semicolon = strchr(payload, ';');
-  if (!semicolon) {
-    return;
-  }
-  parser_assert(!strncmp(semicolon + 1, "thread:", 7));
-  char* endptr;
-  *out = parse_threadid(semicolon + 8, &endptr);
-  *semicolon = 0;
 }
 
 bool GdbServerConnection::process_packet() {
@@ -2291,6 +2304,28 @@ void GdbServerConnection::send_file_error_reply(int system_errno) {
   char buf[32];
   sprintf(buf, "F-01,%x", gdb_err);
   write_packet(buf);
+}
+
+void GdbServerConnection::reply_save_register_state(bool ok, int state_index) {
+  DEBUG_ASSERT(DREQ_SAVE_REGISTER_STATE == req.type);
+
+  if (ok) {
+    char buf[256];
+    sprintf(buf, "%llx", (long long)state_index);
+    write_packet(buf);
+  } else {
+    write_packet("E01");
+  }
+
+  consume_request();
+}
+
+void GdbServerConnection::reply_restore_register_state(bool ok) {
+  DEBUG_ASSERT(DREQ_RESTORE_REGISTER_STATE == req.type);
+
+  write_packet(ok ? "OK" : "E01");
+
+  consume_request();
 }
 
 bool GdbServerConnection::is_connection_alive() { return connection_alive_; }

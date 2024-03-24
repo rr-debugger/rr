@@ -308,6 +308,12 @@ private:
   };
   // Maps from tgid to the DebuggerMem.
   std::unordered_map<ThreadGroupUid, DebuggerMem> debugger_mem;
+
+  struct SavedRegisters {
+    Registers regs;
+    ExtraRegisters extra_regs;
+  };
+  std::unordered_map<int, SavedRegisters> saved_register_states;
 };
 
 } // namespace rr

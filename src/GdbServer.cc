@@ -38,6 +38,12 @@ using namespace std;
 
 namespace rr {
 
+/**
+ * The "outermost" saved register state is associated with the diversion.
+ * "Restoring" it exits the diversion and restores all state of the tracee.
+ */
+const int DIVERSION_SAVED_REGISTER_STATE = 1;
+
 GdbServer::ConnectionFlags::ConnectionFlags()
   : dbg_port(-1),
     dbg_host(localhost_addr),
@@ -755,6 +761,36 @@ void GdbServer::dispatch_debugger_request(Session& session,
       LOG(warn) << "WRITE_SIGINFO request outside of diversion session";
       dbg->reply_write_siginfo();
       return;
+    case DREQ_SAVE_REGISTER_STATE: {
+      int state_index = DIVERSION_SAVED_REGISTER_STATE + 1;
+      while (saved_register_states.find(state_index) != saved_register_states.end()) {
+        ++state_index;
+      }
+      SavedRegisters& regs = saved_register_states[state_index];
+      regs.regs = target->regs();
+      regs.extra_regs = target->extra_regs();
+      dbg->reply_save_register_state(true, state_index);
+      return;
+    }
+    case DREQ_RESTORE_REGISTER_STATE: {
+      if (!session.is_diversion()) {
+        LOG(error) << "RESTORE_REGISTER_STATE request outside of diversion session";
+        dbg->reply_restore_register_state(false);
+        return;
+      }
+      int state_index = req.restore_register_state().state_index;
+      auto it = saved_register_states.find(state_index);
+      if (it == saved_register_states.end()) {
+        LOG(error) << "Unknown register state";
+        dbg->reply_restore_register_state(false);
+        return;
+      }
+      target->set_regs(it->second.regs);
+      target->set_extra_regs(it->second.extra_regs);
+      saved_register_states.erase(it);
+      dbg->reply_restore_register_state(true);
+      return;
+    }
     case DREQ_RR_CMD:
       dbg->reply_rr_cmd(
           GdbCommandHandler::process_command(*this, target, req.rr_cmd()));
@@ -885,6 +921,18 @@ bool GdbServer::diverter_process_debugger_requests(
         memset(si_bytes.data(), 0, si_bytes.size());
         dbg->reply_read_siginfo(si_bytes);
         continue;
+      }
+
+      case DREQ_RESTORE_REGISTER_STATE: {
+        int state_index = req->restore_register_state().state_index;
+        if (state_index == DIVERSION_SAVED_REGISTER_STATE) {
+          diversion_refcount = 0;
+          dbg->reply_restore_register_state(true);
+          // This request does not need to be retried outside the diversion
+          *req = GdbRequest(DREQ_NONE);
+          return false;
+        }
+        break;
       }
 
       case DREQ_SET_QUERY_THREAD: {
@@ -1206,6 +1254,16 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
       // siginfo and then incorrectly start a diversion and go haywire :-(.
       // Ideally we'd come up with a better way to detect diversions so that
       // "print $_siginfo" works.
+      req = divert(timeline_->current_session());
+      if (req.type == DREQ_NONE) {
+        continue;
+      }
+      // Carry on to process the request that was rejected by
+      // the diversion session
+    }
+
+    if (req.type == DREQ_SAVE_REGISTER_STATE && timeline_) {
+      dbg->reply_save_register_state(true, DIVERSION_SAVED_REGISTER_STATE);
       req = divert(timeline_->current_session());
       if (req.type == DREQ_NONE) {
         continue;

@@ -184,6 +184,10 @@ enum GdbRequestType {
   DREQ_MEM_ALLOC,
   // Uses params.mem_free
   DREQ_MEM_FREE,
+
+  DREQ_SAVE_REGISTER_STATE,
+  // Uses params.restore_register_state
+  DREQ_RESTORE_REGISTER_STATE,
 };
 
 enum GdbRestartType {
@@ -244,6 +248,8 @@ struct GdbRequest {
       mem_alloc_ = other.mem_alloc_;
     } else if (type == DREQ_MEM_FREE) {
       mem_free_ = other.mem_free_;
+    } else if (type == DREQ_RESTORE_REGISTER_STATE) {
+      restore_register_state_ = other.restore_register_state_;
     }
   }
   GdbRequest& operator=(const GdbRequest& other) {
@@ -310,12 +316,15 @@ struct GdbRequest {
     int fd = -1;
   } file_close_;
   struct MemAlloc {
-    size_t size;
-    int prot;
+    size_t size = 0;
+    int prot = 0;
   } mem_alloc_;
   struct MemFree {
     remote_ptr<void> address;
   } mem_free_;
+  struct RestoreRegisterState {
+    int state_index = 0;
+  } restore_register_state_;
 
   Mem& mem() {
     DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -428,6 +437,14 @@ struct GdbRequest {
   const MemFree& mem_free() const {
     DEBUG_ASSERT(type == DREQ_MEM_FREE);
     return mem_free_;
+  }
+  RestoreRegisterState& restore_register_state() {
+    DEBUG_ASSERT(type == DREQ_RESTORE_REGISTER_STATE);
+    return restore_register_state_;
+  }
+  const RestoreRegisterState& restore_register_state() const {
+    DEBUG_ASSERT(type == DREQ_RESTORE_REGISTER_STATE);
+    return restore_register_state_;
   }
 
   /**
@@ -690,6 +707,16 @@ public:
    * Respond to a vFile:close
    */
   void reply_close(int err);
+
+  /**
+   * Respond to a QSaveRegisterState.
+   * -1 for failure.
+   */
+  void reply_save_register_state(bool ok, int state_index);
+  /**
+   * Respond to a QRestoreRegisterState.
+   */
+  void reply_restore_register_state(bool ok);
 
   /**
    * Create a checkpoint of the given Session with the given id. Delete the
