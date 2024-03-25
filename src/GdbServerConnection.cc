@@ -912,11 +912,20 @@ bool GdbServerConnection::query(char* payload) {
 
 // LLDB QThreadSuffixSupported extension
 static void parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
-  char* semicolon = strchr(payload, ';');
+  char* semicolon = strrchr(payload, ';');
   if (!semicolon) {
     return;
   }
-  parser_assert(!strncmp(semicolon + 1, "thread:", 7));
+  if (!semicolon[1]) {
+    semicolon[0] = 0;
+    semicolon = strrchr(payload, ';');
+    if (!semicolon) {
+      return;
+    }
+  }
+  if (strncmp(semicolon + 1, "thread:", 7)) {
+    return;
+  }
   char* endptr;
   *out = parse_threadid(semicolon + 8, &endptr);
   *semicolon = 0;
@@ -924,7 +933,7 @@ static void parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
 
 bool GdbServerConnection::set_var(char* payload) {
   GdbThreadId target = query_thread;
-  parse_thread_suffix_threadid(payload, &target);  
+  parse_thread_suffix_threadid(payload, &target);
 
   char* args = strchr(payload, ':');
   if (args) {
