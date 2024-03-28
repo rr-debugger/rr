@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" rr-gdb-script-host.py <output> <user-gdb-script> <primary binary name>"""
+""" rr-gdb-script-host.py <user-gdb-script> <primary binary name>"""
 # Performs a limited emulation of the runtime environment of gdb scripts so that
 # we can run them for `rr sources` to locate debug information.
 from typing import Optional, List, Callable
@@ -157,36 +157,28 @@ class GdbApiRoot(GdbApiObject):
             self._events = GdbApiEvents(self.gdb)
         return self._events
 
-def synchronize():
-    os.kill(os.getpid(), signal.SIGSTOP)
-
 if __name__ == '__main__':
-    with open(sys.argv[1], 'w') as output:
-        with open(sys.argv[2], 'r') as user_script_file:
-            user_script = user_script_file.read()
-            host = GdbScriptHost(sys.argv[3])
-            try:
-                host.execute_script(user_script)
-            except NameError as e:
-                if getattr(e, "name", None) == "python" or e == "NameError: name 'python' is not defined":
-                    # This might be a gdb script that wraps a python script.
-                    start = user_script.find("python") + len("python")
-                    end = user_script.find("end")
-                    if end == -1:
-                        raise(e)
-                    user_script = user_script[start:end]
-                    try:
-                        host.execute_script(user_script)
-                    except:
-                        raise(e)
+    with open(sys.argv[1], 'r') as user_script_file:
+        user_script = user_script_file.read()
+        host = GdbScriptHost(sys.argv[2])
+        try:
+            host.execute_script(user_script)
+        except NameError as e:
+            if getattr(e, "name", None) == "python" or e == "NameError: name 'python' is not defined":
+                # This might be a gdb script that wraps a python script.
+                start = user_script.find("python") + len("python")
+                end = user_script.find("end")
+                if end == -1:
+                    raise(e)
+                user_script = user_script[start:end]
+                try:
+                    host.execute_script(user_script)
+                except:
+                    raise(e)
 
-            print(host.debug_file_directory, file=output, flush=True)
-            print(host._dir, file=output, flush=True)
-            synchronize()
-            for line in sys.stdin:
-                line = line.rstrip()
-                logging.debug("Processing %s"%line)
-                host.new_objfile(line)
-                print(host.debug_file_directory, file=output, flush=True)
-                print(host._dir, file=output, flush=True)
-                synchronize()
+        print("%s\n%s" % (host.debug_file_directory, host._dir), flush=True)
+        for line in sys.stdin:
+            line = line.rstrip()
+            logging.debug("Processing %s"%line)
+            host.new_objfile(line)
+            print("%s\n%s" % (host.debug_file_directory, host._dir), flush=True)

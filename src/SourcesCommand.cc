@@ -148,8 +148,8 @@ struct DebugDirs {
 };
 
 /// Manages integration with rr-gdb-script-host.py to allow a gdb script to
-/// control which directories we search. If pipe_fd is open we have a
-/// python child process. If pipe_fd is closed then everything here
+/// control which directories we search. If input_pipe_fd is open we have a
+/// python child process. If input_pipe_fd is closed then everything here
 /// becomes a no-op.
 class DebugDirManager {
 public:
@@ -165,42 +165,40 @@ private:
   DebugDirManager(const DebugDirManager&) = delete;
   DebugDirManager& operator=(const DebugDirManager&) = delete;
 
-  void synchronize();
   DebugDirs read_result();
 
-  ScopedFd pipe_fd;
+  ScopedFd input_pipe_fd;
+  ScopedFd output_pipe_fd;
   pid_t pid;
-  FILE* output_file;
 };
 
 DebugDirManager::~DebugDirManager() {
-  if (!pipe_fd.is_open()) {
+  if (!input_pipe_fd.is_open()) {
     return;
   }
 
-  pipe_fd.close();
+  input_pipe_fd.close();
+  output_pipe_fd.close();
 
   int status;
   if (waitpid(pid, &status, 0) == -1) {
     FATAL() << "Failed to wait on gdb script host";
   }
-
-  if (!(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
-    FATAL() << "gdb script host in unexpected state " << HEX(status);
-  }
 }
 
 DebugDirManager::DebugDirManager(const string& program, const string& gdb_script)
-  : pid(-1), output_file(nullptr)
+  : pid(-1)
 {
   if (gdb_script.empty()) {
     return;
   }
 
-  TempFile output_file = create_temporary_file("rr-gdb-script-host-output-XXXXXX");
-
   int stdin_pipe_fds[2];
   if (pipe(stdin_pipe_fds) == -1) {
+    FATAL();
+  }
+  int stdout_pipe_fds[2];
+  if (pipe(stdout_pipe_fds) == -1) {
     FATAL();
   }
 
@@ -216,15 +214,27 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
     FATAL() << "posix_spawn_file_actions_addclose failed with " << ret;
   }
 
+  // Close unused read end in the child.
+  ret = posix_spawn_file_actions_addclose(&file_actions, stdout_pipe_fds[0]);
+  if (ret != 0) {
+    FATAL() << "posix_spawn_file_actions_addclose failed with " << ret;
+  }
+
   // Replace child's stdin with the read end.
   ret = posix_spawn_file_actions_adddup2(&file_actions, stdin_pipe_fds[0], 0);
   if (ret != 0) {
     FATAL() << "posix_spawn_file_actions_adddup2 failed with " << ret;
   }
 
+  // Replace child's stdout with the write end.
+  ret = posix_spawn_file_actions_adddup2(&file_actions, stdout_pipe_fds[1], 1);
+  if (ret != 0) {
+    FATAL() << "posix_spawn_file_actions_adddup2 failed with " << ret;
+  }
+
   string gdb_script_host_path = resource_path() + "bin/rr-gdb-script-host.py";
   pid_t pid;
-  vector<string> gdb_script_host_argv_vec = { gdb_script_host_path, output_file.name, gdb_script, program };
+  vector<string> gdb_script_host_argv_vec = { gdb_script_host_path, gdb_script, program };
   StringVectorToCharArray gdb_script_host_argv(gdb_script_host_argv_vec);
   ret = posix_spawn(&pid, gdb_script_host_path.c_str(), &file_actions, nullptr,
                     gdb_script_host_argv.get(), environ);
@@ -236,33 +246,28 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
   posix_spawn_file_actions_destroy(&file_actions);
 
   close(stdin_pipe_fds[0]);
+  close(stdout_pipe_fds[1]);
 
   this->pid = pid;
-  this->pipe_fd = ScopedFd(stdin_pipe_fds[1]);
-  this->output_file = fopen(output_file.name.c_str(), "r");
-  if (!this->output_file) {
-    FATAL() << "Failed to open gdb script host result file " << output_file.name;
-  }
-
-  synchronize();
+  this->input_pipe_fd = ScopedFd(stdin_pipe_fds[1]);
+  this->output_pipe_fd = ScopedFd(stdout_pipe_fds[0]);
 }
 
 DebugDirs DebugDirManager::process_one_binary(const string& binary_path) {
-  if (!pipe_fd.is_open()) {
+  if (!input_pipe_fd.is_open()) {
     return DebugDirs();
   }
 
   auto len = binary_path.length();
-  size_t written = write(pipe_fd, binary_path.c_str(), len);
+  size_t written = write(input_pipe_fd, binary_path.c_str(), len);
   if (written != len) {
     FATAL() << "Failed to write filename";
   }
-  written = write(pipe_fd, "\n", 1);
+  written = write(input_pipe_fd, "\n", 1);
   if (written != 1) {
     FATAL() << "Failed to write trailing newline";
   }
 
-  synchronize();
   return read_result();
 }
 
@@ -271,12 +276,26 @@ DebugDirs DebugDirManager::read_result() {
   DebugDirs result;
   size_t index;
   const char delimiter[2] = ":";
+  int output_fd;
+  FILE* output = NULL;
 
-  if (!pipe_fd.is_open()) {
+  if (!input_pipe_fd.is_open()) {
     return result;
   }
 
-  if (!fgets(buf, sizeof(buf) - 1, output_file)) {
+  // Convert our fd to a FILE so we can use fgets instead of writing
+  // our own buffering code.
+  output_fd = dup(output_pipe_fd);
+  if (output_fd < 0) {
+    FATAL() << "Failed to dup output_pipe_fd";
+  }
+
+  output = fdopen(output_fd, "r");
+  if (!output) {
+    FATAL() << "Failed to fdopen(output_fd)";
+  }
+
+  if (!fgets(buf, sizeof(buf) - 1, output)) {
     FATAL() << "Failed to read gdb script output";
   }
   index = strcspn(buf, "\n");
@@ -291,7 +310,7 @@ DebugDirs DebugDirManager::read_result() {
     token = strtok(nullptr, delimiter);
   }
 
-  if (!fgets(buf, sizeof(buf) - 1, output_file)) {
+  if (!fgets(buf, sizeof(buf) - 1, output)) {
     FATAL() << "Failed to read gdb script output";
   }
   index = strcspn(buf, "\n");
@@ -311,20 +330,8 @@ DebugDirs DebugDirManager::read_result() {
     token = strtok(nullptr, delimiter);
   }
 
+  fclose(output);
   return result;
-}
-
-void DebugDirManager::synchronize() {
-  int status;
-  if (waitpid(pid, &status, WUNTRACED) == -1) {
-    FATAL() << "Failed to wait on gdb script host";
-  }
-
-  if (!(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP)) {
-    FATAL() << "gdb script host in unexpected state " << HEX(status);
-  }
-
-  kill(pid, SIGCONT);
 }
 
 // Resolve a file name relative to a compilation directory and relative directory.
