@@ -541,7 +541,7 @@ DwarfSpan ElfReader::dwarf_section(const char* name, bool known_to_be_compressed
   offsets.compressed |= known_to_be_compressed;
   if (offsets.start && offsets.compressed) {
     auto decompressed = impl().decompress_section(offsets);
-    return DwarfSpan(&decompressed->front(), &decompressed->back());
+    return DwarfSpan(decompressed->data(), decompressed->data() + decompressed->size());
   }
   return DwarfSpan(map + offsets.start, map + offsets.end);
 }
