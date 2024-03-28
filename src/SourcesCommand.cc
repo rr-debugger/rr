@@ -148,7 +148,7 @@ struct DebugDirs {
 };
 
 /// Manages integration with rr-gdb-script-host.py to allow a gdb script to
-/// controll which directories we search. If pipe_fd is open we have a
+/// control which directories we search. If pipe_fd is open we have a
 /// python child process. If pipe_fd is closed then everything here
 /// becomes a no-op.
 class DebugDirManager {
