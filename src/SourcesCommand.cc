@@ -168,7 +168,7 @@ private:
   DebugDirs read_result();
 
   ScopedFd input_pipe_fd;
-  ScopedFd output_pipe_fd;
+  FILE* output_file;
   pid_t pid;
 };
 
@@ -178,7 +178,7 @@ DebugDirManager::~DebugDirManager() {
   }
 
   input_pipe_fd.close();
-  output_pipe_fd.close();
+  fclose(output_file);
 
   int status;
   if (waitpid(pid, &status, 0) == -1) {
@@ -250,7 +250,10 @@ DebugDirManager::DebugDirManager(const string& program, const string& gdb_script
 
   this->pid = pid;
   this->input_pipe_fd = ScopedFd(stdin_pipe_fds[1]);
-  this->output_pipe_fd = ScopedFd(stdout_pipe_fds[0]);
+  this->output_file = fdopen(stdout_pipe_fds[0], "r");
+  if (!this->output_file) {
+    FATAL() << "Failed to fdopen(stdout_pipe_fds[0])";
+  }
 }
 
 DebugDirs DebugDirManager::process_one_binary(const string& binary_path) {
@@ -276,26 +279,12 @@ DebugDirs DebugDirManager::read_result() {
   DebugDirs result;
   size_t index;
   const char delimiter[2] = ":";
-  int output_fd;
-  FILE* output = NULL;
 
   if (!input_pipe_fd.is_open()) {
     return result;
   }
 
-  // Convert our fd to a FILE so we can use fgets instead of writing
-  // our own buffering code.
-  output_fd = dup(output_pipe_fd);
-  if (output_fd < 0) {
-    FATAL() << "Failed to dup output_pipe_fd";
-  }
-
-  output = fdopen(output_fd, "r");
-  if (!output) {
-    FATAL() << "Failed to fdopen(output_fd)";
-  }
-
-  if (!fgets(buf, sizeof(buf) - 1, output)) {
+  if (!fgets(buf, sizeof(buf) - 1, output_file)) {
     FATAL() << "Failed to read gdb script output";
   }
   index = strcspn(buf, "\n");
@@ -310,7 +299,7 @@ DebugDirs DebugDirManager::read_result() {
     token = strtok(nullptr, delimiter);
   }
 
-  if (!fgets(buf, sizeof(buf) - 1, output)) {
+  if (!fgets(buf, sizeof(buf) - 1, output_file)) {
     FATAL() << "Failed to read gdb script output";
   }
   index = strcspn(buf, "\n");
@@ -330,7 +319,6 @@ DebugDirs DebugDirManager::read_result() {
     token = strtok(nullptr, delimiter);
   }
 
-  fclose(output);
   return result;
 }
 
