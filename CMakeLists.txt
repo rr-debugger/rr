@@ -793,6 +793,9 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/src/preload/rr_page.ld"
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/rr-collect-symbols.py"
                "${CMAKE_CURRENT_BINARY_DIR}/bin/rr-collect-symbols.py"
                COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/rr-gdb-script-host.py"
+               "${CMAKE_CURRENT_BINARY_DIR}/bin/rr-gdb-script-host.py"
+               COPYONLY)
 
 install(PROGRAMS scripts/signal-rr-recording.sh
                  scripts/rr-collect-symbols.py
