@@ -26,8 +26,6 @@ class GdbScriptHost:
 
     new_objfile_events: List[GdbNewObjfileEventCallback] = []
 
-    COMMAND_USER: int = 13
-
     def __init__(self, *args, **kwargs):
         self._filename = args[0]
 
@@ -158,6 +156,14 @@ class GdbApiRoot(GdbApiObject):
         if self._events == None:
             self._events = GdbApiEvents(self.gdb)
         return self._events
+
+    @property
+    def COMMAND_USER(self) -> int:
+        return 13
+
+    @property
+    def Command(self) -> object:
+        return object()
 
 if __name__ == '__main__':
     with open(sys.argv[1], 'r') as user_script_file:
