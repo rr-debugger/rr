@@ -26,6 +26,8 @@ class GdbScriptHost:
 
     new_objfile_events: List[GdbNewObjfileEventCallback] = []
 
+    COMMAND_USER: int = 13
+
     def __init__(self, *args, **kwargs):
         self._filename = args[0]
 
