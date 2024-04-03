@@ -16,6 +16,10 @@ def strip_prefix(s: str, needle: str) -> Optional[str]:
 
 GdbNewObjfileEventCallback = Callable[[object], None]
 
+class GdbCommand:
+    def __init__(self, *args, **kwargs):
+        logging.debug("GdbCommand(%s, %s)" % (args, kwargs))
+
 class GdbScriptHost:
     """ The filename of the main symbol file """
     _filename: str = ""
@@ -105,7 +109,7 @@ class GdbApiRoot(GdbApiObject):
     _current_progspace: Optional[GdbProgspace] = None
 
     def execute(self, command: str, from_tty: bool = False, to_string: bool = False) -> Optional[str]:
-        logging.debug("gdb.execute(\"%s\", from_tty=%s, to_string=%s)"%(command, str(from_tty), str(to_string)))
+        logging.debug("gdb.execute(\"%s\", from_tty=%s, to_string=%s)" % (command, str(from_tty), str(to_string)))
         if from_tty:
             logging.warning("Unsupported gdb.execute with from_tty == True")
             return None
@@ -162,8 +166,8 @@ class GdbApiRoot(GdbApiObject):
         return 13
 
     @property
-    def Command(self) -> object:
-        return object()
+    def Command(self) -> GdbCommand:
+        return GdbCommand
 
 if __name__ == '__main__':
     with open(sys.argv[1], 'r') as user_script_file:
