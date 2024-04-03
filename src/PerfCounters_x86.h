@@ -91,6 +91,8 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelRaptorlake;
     case 0x806f0:
       return IntelSapphireRapid;
+    case 0xc06f0:
+      return IntelEmeraldRapid;
     case 0x30f00:
       return AMDF15R30;
     case 0x00f10: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
