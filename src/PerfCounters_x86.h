@@ -88,6 +88,7 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelAlderlake;
     case 0xb0670:
     case 0xb06a0:
+    case 0xb06f0:
       return IntelRaptorlake;
     case 0x806f0:
       return IntelSapphireRapid;
