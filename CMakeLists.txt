@@ -1081,6 +1081,7 @@ set(BASIC_TESTS
   keyctl
   kill_newborn
   kill_ptracee
+  landlock
   large_hole
   large_write_deadlock
   legacy_ugid
