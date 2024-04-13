@@ -1846,7 +1846,7 @@ if(BUILD_TESTS)
 
   # Check if we're running on KNL. If so, we allot more time to tests, due to
   # reduced single-core performance.
-  exec_program(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
+  execute_process(COMMAND cat /proc/cpuinfo OUTPUT_VARIABLE CPUINFO)
   string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
   if(NOT "${CPU_MODEL_PHI}" STREQUAL "")
     set(TEST_MONITOR_DEFAULT_TIMEOUT 480)
