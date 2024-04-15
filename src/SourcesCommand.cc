@@ -502,11 +502,13 @@ static bool process_compilation_units(ElfFileReader& reader,
       if (!has_dwo_id) {
         dwo_id = cu.die().unsigned_attr(DW_AT_GNU_dwo_id, &has_dwo_id, &ok);
         if (!ok) {
+          LOG(warn) << "Have DWO name " << dwo_name << " but can't get DWO id";
           continue;
         }
       }
       if (has_dwo_id) {
         string full_name;
+        LOG(debug) << "Have DWO name " << dwo_name << " id " << HEX(dwo_id);
         if (resolve_file_name(original_file_name.c_str(), comp_dir.c_str(), original_comp_dir, comp_dir_substitution, nullptr, dwo_name, dir_exists_cache, full_name)) {
           string c = comp_dir;
           dwos->push_back({ dwo_name, trace_relative_name, build_id, std::move(c), full_name, dwo_id });
