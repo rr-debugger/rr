@@ -13,7 +13,7 @@ namespace rr {
 Switchable StdioMonitor::will_write(Task* t) {
   if (t->session().mark_stdio()) {
     char buf[256];
-    snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), t->trace_time());
+    snprintf(buf, sizeof(buf) - 1, "[rr %d %ld]", t->tgid(), t->trace_time());
     ssize_t len = strlen(buf);
     if (write(original_fd, buf, len) != len) {
       ASSERT(t, false) << "Couldn't write to " << original_fd;

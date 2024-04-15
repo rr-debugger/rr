@@ -1974,7 +1974,7 @@ const string& Task::trace_dir() const {
   return trace->dir();
 }
 
-uint32_t Task::trace_time() const {
+FrameTime Task::trace_time() const {
   const TraceStream* trace = trace_stream();
   return trace ? trace->time() : 0;
 }
