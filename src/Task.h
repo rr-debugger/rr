@@ -704,7 +704,7 @@ public:
    * events.  |task_time()| returns that "time" wrt this task
    * only.
    */
-  uint32_t trace_time() const;
+  FrameTime trace_time() const;
 
   /**
    * Call this to reset syscallbuf_hdr->num_rec_bytes and zero out the data
