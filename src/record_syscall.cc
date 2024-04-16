@@ -6763,6 +6763,9 @@ static void rec_process_syscall_arch(RecordTask* t,
         case Arch::openat2:
           flags = t->read_mem(remote_ptr<int64_t>(r.arg3()));
           break;
+        default:
+          DEBUG_ASSERT(0 && "Unknown syscallno");
+          __builtin_unreachable();
         }
 
         string pathname = handle_opened_file(t, fd, flags);
