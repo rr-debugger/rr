@@ -5,12 +5,12 @@
 
 namespace rr {
 
-class Task;
+class ReplayTask;
 
 class BreakpointCondition {
 public:
   virtual ~BreakpointCondition() {}
-  virtual bool evaluate(Task* t) const = 0;
+  virtual bool evaluate(ReplayTask* t) const = 0;
 };
 
 } // namespace rr

@@ -2602,10 +2602,14 @@ static void prepare_ptrace_legacy(RecordTask* t,
       if (tracee) {
         auto data =
             syscall_state.reg_parameter<typename Arch::user_fpregs_struct>(4);
-        auto regs = tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
-        ASSERT(t, regs.size() == data.referent_size());
-        t->write_bytes_helper(data, regs.size(), regs.data());
-        syscall_state.emulate_result(0);
+        if (auto extra_regs = tracee->extra_regs_fallible()) {
+          auto regs = extra_regs->get_user_fpregs_struct(Arch::arch());
+          ASSERT(t, regs.size() == data.referent_size());
+          t->write_bytes_helper(data, regs.size(), regs.data());
+          syscall_state.emulate_result(0);
+        } else {
+          syscall_state.emulate_result(-ESRCH);
+        }
       }
       break;
     }
@@ -2619,9 +2623,13 @@ static void prepare_ptrace_legacy(RecordTask* t,
       if (tracee) {
         auto data =
             syscall_state.reg_parameter<X86Arch::user_fpxregs_struct>(4);
-        auto regs = tracee->extra_regs().get_user_fpxregs_struct();
-        t->write_mem(data, regs);
-        syscall_state.emulate_result(0);
+        if (auto extra_regs = tracee->extra_regs_fallible()) {
+          auto regs = extra_regs->get_user_fpxregs_struct();
+          t->write_mem(data, regs);
+          syscall_state.emulate_result(0);
+        } else {
+          syscall_state.emulate_result(-ESRCH);
+        }
       }
       break;
     }
@@ -2776,9 +2784,13 @@ static Switchable prepare_ptrace(RecordTask* t,
         case NT_PRFPREG: {
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
-            auto regs =
-                tracee->extra_regs().get_user_fpregs_struct(tracee->arch());
-            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+            if (auto extra_regs = tracee->extra_regs_fallible()) {
+              auto regs =
+                  extra_regs->get_user_fpregs_struct(tracee->arch());
+              ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+            } else {
+              syscall_state.emulate_result(-ESRCH);
+            }
           }
           break;
         }
@@ -2823,14 +2835,17 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
-            switch (tracee->extra_regs().format()) {
-              case ExtraRegisters::XSAVE:
-                ptrace_get_reg_set<Arch>(t, syscall_state,
-                                         tracee->extra_regs().data());
-                break;
-              default:
-                syscall_state.emulate_result(-EINVAL);
-                break;
+            if (auto extra_regs = tracee->extra_regs_fallible()) {
+              switch (extra_regs->format()) {
+                case ExtraRegisters::XSAVE:
+                  ptrace_get_reg_set<Arch>(t, syscall_state, extra_regs->data());
+                  break;
+                default:
+                  syscall_state.emulate_result(-EINVAL);
+                  break;
+              }
+            } else {
+              syscall_state.emulate_result(-ESRCH);
             }
           }
           break;
@@ -2898,14 +2913,18 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
-            switch (tracee->extra_regs().format()) {
-              case ExtraRegisters::XSAVE:
-                ptrace_verify_set_reg_set<Arch>(
-                    t, tracee->extra_regs().data_size(), syscall_state);
-                break;
-              default:
-                syscall_state.emulate_result(-EINVAL);
-                break;
+            if (auto extra_regs = tracee->extra_regs_fallible()) {
+              switch (extra_regs->format()) {
+                case ExtraRegisters::XSAVE:
+                  ptrace_verify_set_reg_set<Arch>(
+                      t, extra_regs->data_size(), syscall_state);
+                  break;
+                default:
+                  syscall_state.emulate_result(-EINVAL);
+                  break;
+              }
+            } else {
+              syscall_state.emulate_result(-ESRCH);
             }
           }
           break;

@@ -217,7 +217,7 @@ static uint64_t seg_reg(const Registers& regs, uint8_t index) {
   }
 }
 
-static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
+static void print_regs(ReplayTask* t, FrameTime event, uint64_t instruction_count,
                        const RerunFlags& flags, const vector<TraceField>& fields, FILE* out) {
   if (fields.empty()) {
     return;
@@ -587,7 +587,7 @@ static const uint64_t sentinel_ret_address = 9;
 static void run_diversion_function(ReplaySession& replay, Task* task,
                                    const RerunFlags& flags) {
   DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
-  Task* t = diversion_session->find_task(task->tuid());
+  ReplayTask* t = ReplayTask::cast_or_null(diversion_session->find_task(task->tuid()));
   Registers regs = t->regs();
   // align stack
   auto sp = remote_ptr<uint64_t>(regs.sp().as_int() & ~uintptr_t(0xf)) - 1;
@@ -669,7 +669,8 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
   while (replay_session->trace_reader().time() < flags.trace_end) {
     RunCommand cmd = RUN_CONTINUE;
 
-    Task* old_task = replay_session->current_task();
+    auto old_task_p = replay_session->current_task();
+    ReplayTask* old_task = old_task_p ? ReplayTask::cast_or_null(old_task_p) : nullptr;
     auto old_task_tuid = old_task ? old_task->tuid() : TaskUid();
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
     FrameTime before_time = replay_session->trace_reader().time();
@@ -702,7 +703,8 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     if (cmd != RUN_CONTINUE) {
       // The old_task may have exited (and been deallocated) in the `replay_session->replay_step(cmd)` above.
       // So we need to try and obtain it from the session again to make sure it still exists.
-      Task* old_task = old_task_tuid.tid() ? replay_session->find_task(old_task_tuid) : nullptr;
+      Task* old_task_p = old_task_tuid.tid() ? replay_session->find_task(old_task_tuid) : nullptr;
+      ReplayTask* old_task = old_task_p ? ReplayTask::cast_or_null(old_task_p) : nullptr;
       remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
       DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
 

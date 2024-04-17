@@ -544,17 +544,21 @@ static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registe
     case Arch::PTRACE_SETFPREGS: {
       auto data = t->read_mem(
           remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
-      auto r = tracee->extra_regs();
-      r.set_user_fpregs_struct(t, Arch::arch(), &data, sizeof(data));
-      tracee->set_extra_regs(r);
+      if (auto r_ptr = tracee->extra_regs_fallible()) {
+        ExtraRegisters r = *r_ptr;
+        r.set_user_fpregs_struct(t, Arch::arch(), &data, sizeof(data));
+        tracee->set_extra_regs(r);
+      }
       break;
     }
     case Arch::PTRACE_SETFPXREGS: {
       auto data =
           t->read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
-      auto r = tracee->extra_regs();
-      r.set_user_fpxregs_struct(t, data);
-      tracee->set_extra_regs(r);
+      if (auto r_ptr = tracee->extra_regs_fallible()) {
+        ExtraRegisters r = *r_ptr;
+        r.set_user_fpxregs_struct(t, data);
+        tracee->set_extra_regs(r);
+      }
       break;
     }
     case Arch::PTRACE_POKEUSR: {
@@ -749,10 +753,12 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
             case NT_PRFPREG: {
               auto set = ptrace_get_regs_set<Arch>(
                   this, regs, user_fpregs_struct_size(tracee->arch()));
-              ExtraRegisters r = tracee->extra_regs();
-              r.set_user_fpregs_struct(this, tracee->arch(), set.data(),
-                                       set.size());
-              tracee->set_extra_regs(r);
+              if (auto r_ptr = tracee->extra_regs_fallible()) {
+                ExtraRegisters r = *r_ptr;
+                r.set_user_fpregs_struct(this, tracee->arch(), set.data(),
+                                         set.size());
+                tracee->set_extra_regs(r);
+              }
               break;
             }
             case NT_ARM_SYSTEM_CALL: {
@@ -777,29 +783,31 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               break;
             }
             case NT_X86_XSTATE: {
-              switch (tracee->extra_regs().format()) {
-                case ExtraRegisters::XSAVE: {
-                  XSaveLayout layout;
-                  ReplaySession* replay = session().as_replay();
-                  if (replay) {
-                    layout = xsave_layout_from_trace(
-                        replay->trace_reader().cpuid_records());
-                  } else {
-                    layout = xsave_native_layout();
+              if (auto extra_regs = tracee->extra_regs_fallible()) {
+                switch (extra_regs->format()) {
+                  case ExtraRegisters::XSAVE: {
+                    XSaveLayout layout;
+                    ReplaySession* replay = session().as_replay();
+                    if (replay) {
+                      layout = xsave_layout_from_trace(
+                          replay->trace_reader().cpuid_records());
+                    } else {
+                      layout = xsave_native_layout();
+                    }
+                    auto set = ptrace_get_regs_set<Arch>(this, regs, layout.full_size);
+                    ExtraRegisters r;
+                    bool ok =
+                        r.set_to_raw_data(tracee->arch(), ExtraRegisters::XSAVE,
+                                          set.data(), set.size(), layout);
+                    ASSERT(this, ok) << "Invalid XSAVE data";
+                    tracee->set_extra_regs(r);
+                    break;
                   }
-                  auto set = ptrace_get_regs_set<Arch>(this, regs, layout.full_size);
-                  ExtraRegisters r;
-                  bool ok =
-                      r.set_to_raw_data(tracee->arch(), ExtraRegisters::XSAVE,
-                                        set.data(), set.size(), layout);
-                  ASSERT(this, ok) << "Invalid XSAVE data";
-                  tracee->set_extra_regs(r);
-                  break;
+                  default:
+                    ASSERT(this, false) << "Unknown ExtraRegisters format; "
+                                           "Should have been caught during "
+                                           "prepare_ptrace";
                 }
-                default:
-                  ASSERT(this, false) << "Unknown ExtraRegisters format; "
-                                         "Should have been caught during "
-                                         "prepare_ptrace";
               }
               break;
             }
@@ -1043,7 +1051,7 @@ void Task::post_exec(const string& exe_file) {
 
   extra_registers = ExtraRegisters(registers.arch());
   extra_registers_known = false;
-  ExtraRegisters e = extra_regs();
+  ExtraRegisters e = *extra_regs_fallible();
   e.reset();
   set_extra_regs(e);
 
@@ -1172,13 +1180,6 @@ const ExtraRegisters* Task::extra_regs_fallible() {
     extra_registers_known = true;
   }
   return &extra_registers;
-}
-
-const ExtraRegisters& Task::extra_regs() {
-  if (!extra_regs_fallible()) {
-    ASSERT(this, false) << "Can't find task for infallible extra_regs";
-  }
-  return extra_registers;
 }
 
 #if defined(__i386__) || defined(__x86_64__)
@@ -2152,7 +2153,7 @@ static bool simulate_transient_error(Task* t) {
   static FrameTime simulate_error_at_event_ = simulate_error_at_event();
 
   if (simulated_error || !t->session().is_replaying() ||
-      static_cast<ReplayTask*>(t)->session().trace_stream()->time() < simulate_error_at_event_) {
+      ReplayTask::cast_or_null(t)->session().trace_stream()->time() < simulate_error_at_event_) {
     return false;
   }
   simulated_error = true;
@@ -2716,7 +2717,7 @@ Task::CapturedState Task::capture_state() {
   state.serial = serial;
   state.tguid = thread_group()->tguid();
   state.regs = regs();
-  state.extra_regs = extra_regs();
+  state.extra_regs = *extra_regs_fallible();
   state.prname = name();
   if (arch() == aarch64) {
     bool ok = read_aarch64_tls_register(&state.tls_register);

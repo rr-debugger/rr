@@ -2018,7 +2018,7 @@ void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
       registers = &regs();
     }
     if (ev.record_extra_regs()) {
-      extra_registers = &extra_regs();
+      extra_registers = extra_regs_fallible();
     }
   }
 

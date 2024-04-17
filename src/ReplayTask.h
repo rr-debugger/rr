@@ -78,6 +78,9 @@ public:
    */
   void set_real_tid_and_update_serial(pid_t tid);
 
+  /** Return the extra registers of this. Asserts if the task died. */
+  const ExtraRegisters& extra_regs();
+
   void note_sched_in_syscallbuf_syscall_hook() {
     seen_sched_in_syscallbuf_syscall_hook = true;
   }
@@ -85,6 +88,8 @@ public:
   std::string name() const override {
     return name_;
   }
+
+  static ReplayTask* cast_or_null(Task* t);
 
 private:
   template <typename Arch> void init_buffers_arch();

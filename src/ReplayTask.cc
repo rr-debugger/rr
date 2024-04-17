@@ -210,6 +210,20 @@ void ReplayTask::set_real_tid_and_update_serial(pid_t tid) {
   serial = session().next_task_serial();
 }
 
+/* static */ ReplayTask* ReplayTask::cast_or_null(Task* t) {
+  if (t->session().is_replaying() || t->session().is_diversion()) {
+    return static_cast<ReplayTask*>(t);
+  }
+  return nullptr;
+}
+
+const ExtraRegisters& ReplayTask::extra_regs() {
+  if (!extra_regs_fallible()) {
+    ASSERT(this, false) << "Can't find task for infallible extra_regs";
+  }
+  return extra_registers;
+}
+
 bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   if (Task::post_vm_clone(reason, flags, origin) &&
       reason == TRACEE_CLONE &&

@@ -26,7 +26,7 @@ static SimpleGdbCommand elapsed_time(
     });
 
 static SimpleGdbCommand when(
-    "when", "Print the numer of the last completely replayed rr event.",
+    "when", "Print the number of the last completely replayed rr event.",
     [](GdbServer&, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
         return GdbCommandHandler::cmd_end_diversion();

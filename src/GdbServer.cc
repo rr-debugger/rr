@@ -108,7 +108,7 @@ static bool set_reg(Task* target, const GdbRegisterValue& reg) {
     return true;
   }
 
-  ExtraRegisters extra_regs = target->extra_regs();
+  ExtraRegisters extra_regs = *target->extra_regs_fallible();
   if (extra_regs.write_register(reg.name, reg.value, reg.size)) {
     target->set_extra_regs(extra_regs);
     return true;
@@ -166,10 +166,10 @@ static WatchType watchpoint_type(GdbRequestType req) {
 }
 
 static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
-  if (!t->session().is_replaying()) {
+  ReplayTask* rt = ReplayTask::cast_or_null(t);
+  if (!rt) {
     return;
   }
-  auto rt = static_cast<ReplayTask*>(t);
   if (trace_instructions_up_to_event(
           rt->session().current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
@@ -218,7 +218,7 @@ public:
       expressions.push_back(GdbServerExpression(b.data(), b.size()));
     }
   }
-  virtual bool evaluate(Task* t) const override {
+  virtual bool evaluate(ReplayTask* t) const override {
     for (auto& e : expressions) {
       GdbServerExpression::Value v;
       // Break if evaluation fails or the result is nonzero
@@ -638,12 +638,12 @@ void GdbServer::dispatch_debugger_request(Session& session,
     }
     case DREQ_GET_REG: {
       GdbRegisterValue reg =
-          get_reg(target->regs(), target->extra_regs(), req.reg().name);
+          get_reg(target->regs(), *target->extra_regs_fallible(), req.reg().name);
       dbg->reply_get_reg(reg);
       return;
     }
     case DREQ_GET_REGS: {
-      dispatch_regs_request(target->regs(), target->extra_regs());
+      dispatch_regs_request(target->regs(), *target->extra_regs_fallible());
       return;
     }
     case DREQ_SET_REG: {
@@ -768,7 +768,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       }
       SavedRegisters& regs = saved_register_states[state_index];
       regs.regs = target->regs();
-      regs.extra_regs = target->extra_regs();
+      regs.extra_regs = *target->extra_regs_fallible();
       dbg->reply_save_register_state(true, state_index);
       return;
     }

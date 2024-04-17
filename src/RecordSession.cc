@@ -1649,9 +1649,11 @@ static bool inject_handled_signal(RecordTask* t) {
   // to 4.7 or thereabouts ptrace can still return stale values. Fix that here.
   // This also sets bit 0 of the XINUSE register to 1 to avoid issues where it
   // get set to 1 nondeterministically.
-  ExtraRegisters e = t->extra_regs();
-  e.reset();
-  t->set_extra_regs(e);
+  if (auto e_ptr = t->extra_regs_fallible()) {
+    ExtraRegisters e = *e_ptr;
+    e.reset();
+    t->set_extra_regs(e);
+  }
 
   return true;
 }

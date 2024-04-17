@@ -10,7 +10,7 @@
 
 namespace rr {
 
-class Task;
+class ReplayTask;
 
 /**
  * gdb has a simple bytecode language for writing expressions to be evaluated
@@ -31,7 +31,7 @@ public:
    * If evaluation succeeds, store the final result in *result and return true.
    * Otherwise return false.
    */
-  bool evaluate(Task* t, Value* result) const;
+  bool evaluate(ReplayTask* t, Value* result) const;
 
 private:
   /**

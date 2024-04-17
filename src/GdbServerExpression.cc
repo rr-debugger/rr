@@ -139,7 +139,7 @@ struct ExpressionState {
     push(stack[stack.size() - 1 - offset].i);
   }
 
-  void step(Task* t) {
+  void step(ReplayTask* t) {
     DEBUG_ASSERT(!error);
     BinaryOperands operands;
     switch (fetch<uint8_t>()) {
@@ -424,7 +424,7 @@ GdbServerExpression::GdbServerExpression(const uint8_t* data, size_t size) {
 }
 #endif
 
-bool GdbServerExpression::evaluate(Task* t, Value* result) const {
+bool GdbServerExpression::evaluate(ReplayTask* t, Value* result) const {
   if (bytecode_variants.empty()) {
     return false;
   }
