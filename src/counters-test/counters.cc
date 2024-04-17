@@ -358,6 +358,7 @@ static CpuMicroarch compute_cpu_microarch(void) {
     case 0x40f40: // Rembrandt (Zen 3+)
     case 0x60f10: // Raphael (Zen 4)
     case 0x70f40: // Phoenix (Zen 4)
+    case 0x70f50: // Hawk Point (Zen 4)
       if (ext_family == 0xa) {
         return AMDZen;
       }
