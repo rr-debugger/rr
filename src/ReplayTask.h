@@ -89,8 +89,6 @@ public:
     return name_;
   }
 
-  static ReplayTask* cast_or_null(Task* t);
-
 private:
   template <typename Arch> void init_buffers_arch();
 

@@ -139,6 +139,8 @@ class Task {
 public:
   typedef std::vector<WatchConfig> HardwareWatchpoints;
 
+  ReplayTask* as_replay();
+
   /**
    * Ptrace-detach the task.
    */

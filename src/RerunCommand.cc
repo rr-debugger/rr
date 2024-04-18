@@ -587,7 +587,7 @@ static const uint64_t sentinel_ret_address = 9;
 static void run_diversion_function(ReplaySession& replay, Task* task,
                                    const RerunFlags& flags) {
   DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
-  ReplayTask* t = ReplayTask::cast_or_null(diversion_session->find_task(task->tuid()));
+  ReplayTask* t = diversion_session->find_task(task->tuid())->as_replay();
   Registers regs = t->regs();
   // align stack
   auto sp = remote_ptr<uint64_t>(regs.sp().as_int() & ~uintptr_t(0xf)) - 1;
@@ -670,7 +670,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     RunCommand cmd = RUN_CONTINUE;
 
     auto old_task_p = replay_session->current_task();
-    ReplayTask* old_task = old_task_p ? ReplayTask::cast_or_null(old_task_p) : nullptr;
+    ReplayTask* old_task = old_task_p ? old_task_p->as_replay() : nullptr;
     auto old_task_tuid = old_task ? old_task->tuid() : TaskUid();
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
     FrameTime before_time = replay_session->trace_reader().time();
@@ -704,7 +704,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
       // The old_task may have exited (and been deallocated) in the `replay_session->replay_step(cmd)` above.
       // So we need to try and obtain it from the session again to make sure it still exists.
       Task* old_task_p = old_task_tuid.tid() ? replay_session->find_task(old_task_tuid) : nullptr;
-      ReplayTask* old_task = old_task_p ? ReplayTask::cast_or_null(old_task_p) : nullptr;
+      ReplayTask* old_task = old_task_p ? old_task_p->as_replay() : nullptr;
       remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
       DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
 

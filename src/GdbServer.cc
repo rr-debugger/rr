@@ -166,7 +166,7 @@ static WatchType watchpoint_type(GdbRequestType req) {
 }
 
 static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
-  ReplayTask* rt = ReplayTask::cast_or_null(t);
+  ReplayTask* rt = t->as_replay();
   if (!rt) {
     return;
   }

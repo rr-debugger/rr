@@ -392,7 +392,7 @@ static void serve_replay_no_debugger(const string& trace_dir,
         replay_session->trace_reader().time() >= flags.singlestep_to_event) {
       cmd = RUN_SINGLESTEP;
       fputs("Stepping from: ", stderr);
-      ReplayTask* t = ReplayTask::cast_or_null(replay_session->current_task());
+      ReplayTask* t = replay_session->current_task()->as_replay();
       t->regs().print_register_file_compact(stderr);
       fputc(' ', stderr);
       t->extra_regs().print_register_file_compact(stderr);

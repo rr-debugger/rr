@@ -110,6 +110,13 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
   memset(&thread_locals, 0, sizeof(thread_locals));
 }
 
+ReplayTask* Task::as_replay() {
+  if (session().is_replaying() || session().is_diversion()) {
+    return static_cast<ReplayTask*>(this);
+  }
+  return nullptr;
+}
+
 void Task::detach() {
   LOG(debug) << "detaching from Task " << tid << " (rec:" << rec_tid << ")";
 
@@ -2153,7 +2160,7 @@ static bool simulate_transient_error(Task* t) {
   static FrameTime simulate_error_at_event_ = simulate_error_at_event();
 
   if (simulated_error || !t->session().is_replaying() ||
-      ReplayTask::cast_or_null(t)->session().trace_stream()->time() < simulate_error_at_event_) {
+      t->as_replay()->session().trace_stream()->time() < simulate_error_at_event_) {
     return false;
   }
   simulated_error = true;
