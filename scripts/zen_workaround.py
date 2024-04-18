@@ -55,7 +55,7 @@ if not os.path.exists('/dev/cpu/0/msr'):
 def read_msr(cpu):
     try:
         msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_RDONLY)
-    except PermissionError:
+    except PermissionError as e:
         sys.stderr.write(str(e) + '\n')
         print("Permission denied opening MSR for reading.")
         print("Try running as root / with sudo.")
