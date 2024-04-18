@@ -108,7 +108,9 @@ static bool set_reg(Task* target, const GdbRegisterValue& reg) {
     return true;
   }
 
-  ExtraRegisters extra_regs = *target->extra_regs_fallible();
+  auto extra_regs_p = target->extra_regs_fallible();
+  ASSERT(target, extra_regs_p) << "Task died";
+  ExtraRegisters extra_regs = *extra_regs_p;
   if (extra_regs.write_register(reg.name, reg.value, reg.size)) {
     target->set_extra_regs(extra_regs);
     return true;
