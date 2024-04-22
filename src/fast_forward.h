@@ -60,6 +60,14 @@ bool maybe_at_or_after_x86_string_instruction(Task* t);
 /* Return true if the instruction at t->ip() is a string instruction */
 bool at_x86_string_instruction(Task* t);
 
+#if defined(__i386__) || defined(__x86_64__)
+bool is_x86_string_instruction_at(Task* t, remote_code_ptr ip);
+#else
+inline bool is_x86_string_instruction_at(Task*, remote_code_ptr) {
+  return false;
+}
+#endif
+
 } // namespace rr
 
 #endif // RR_FAST_FORWARD_H_

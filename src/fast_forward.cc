@@ -404,7 +404,8 @@ static int fallible_read_byte(Task* t, remote_ptr<uint8_t> ip) {
   return byte;
 }
 
-bool is_string_instruction_at(Task* t, remote_code_ptr ip) {
+#if defined(__i386__) || defined(__x86_64__)
+bool is_x86_string_instruction_at(Task* t, remote_code_ptr ip) {
   bool found_rep = false;
   remote_ptr<uint8_t> bare_ip = ip.to_data_ptr<uint8_t>();
   while (true) {
@@ -421,6 +422,7 @@ bool is_string_instruction_at(Task* t, remote_code_ptr ip) {
     ++bare_ip;
   }
 }
+#endif
 
 static bool is_string_instruction_before(Task* t, remote_code_ptr ip) {
   remote_ptr<uint8_t> bare_ip = ip.to_data_ptr<uint8_t>();
@@ -447,7 +449,7 @@ bool maybe_at_or_after_x86_string_instruction(Task* t) {
     return false;
   }
 
-  return is_string_instruction_at(t, t->ip()) ||
+  return is_x86_string_instruction_at(t, t->ip()) ||
          is_string_instruction_before(t, t->ip());
 }
 
@@ -456,7 +458,7 @@ bool at_x86_string_instruction(Task* t) {
     return false;
   }
 
-  return is_string_instruction_at(t, t->ip());
+  return is_x86_string_instruction_at(t, t->ip());
 }
 
 } // namespace rr
