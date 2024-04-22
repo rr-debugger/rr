@@ -237,6 +237,16 @@ if(NOT ANDROID)
   add_definitions(-DZSTD=1)
 endif()
 
+option(bpf "Enable bpf acceleration")
+
+if(bpf)
+  add_definitions(-DBPF=1)
+  set(REQUIRED_LIBS
+    ${REQUIRED_LIBS}
+    libbpf
+  )
+endif(bpf)
+
 foreach(required_lib ${REQUIRED_LIBS})
   string(TOUPPER ${required_lib} PKG)
   if(NOT SKIP_PKGCONFIG)
@@ -692,6 +702,19 @@ post_build_executable(rr)
 set(RR_BIN rr)
 add_dependencies(rr Generated)
 
+if(bpf)
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/share/rr/async_event_filter.o
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/bpf/async_event_filter.c
+    COMMAND clang -g -target bpf -Wall -O2 -c ${CMAKE_CURRENT_SOURCE_DIR}/src/bpf/async_event_filter.c -o ${CMAKE_CURRENT_BINARY_DIR}/share/rr/async_event_filter.o)
+
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/rr/async_event_filter.o
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/rr)
+
+  add_custom_target(BPF DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/share/rr/async_event_filter.o)
+
+  add_dependencies(rr BPF)
+endif()
+
 option(strip "Strip debug info from rr binary")
 
 set(RR_MAIN_LINKER_FLAGS ${LINKER_FLAGS})
@@ -724,6 +747,7 @@ endif()
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   ${ZLIB_LDFLAGS}
+  ${LIBBPF_LDFLAGS}
   brotli
 )
 
@@ -733,7 +757,7 @@ endif()
 
 if(staticlibs)
   # Urgh ... this might not work for everyone, but there doesn't seem to be
-  # a way to persuade pkg-confing/pkg_check_modules to produce the right flags
+  # a way to persuade pkg-config/pkg_check_modules to produce the right flags
   target_link_libraries(rr -L/home/roc/lib -l:libcapnp.a -l:libkj.a)
   # Note that this works for both clang++ and g++
   set(RR_MAIN_LINKER_FLAGS "-static-libstdc++ ${RR_MAIN_LINKER_FLAGS}")

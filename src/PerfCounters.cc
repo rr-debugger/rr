@@ -17,6 +17,11 @@
 #include <unistd.h>
 #include <time.h>
 
+#ifdef BPF
+#include <bpf/libbpf.h>
+#include <linux/hw_breakpoint.h>
+#endif
+
 #include <algorithm>
 #include <fstream>
 #include <limits>
@@ -981,6 +986,7 @@ void PerfCounters::close() {
   fd_minus_ticks_measure.close();
   fd_useless_counter.close();
   fd_ticks_in_transaction.close();
+  fd_async_signal_accelerator.close();
 }
 
 Ticks PerfCounters::stop(Task* t, Error* error) {
@@ -1007,6 +1013,7 @@ Ticks PerfCounters::stop(Task* t, Error* error) {
     if (pt_state) {
       infallible_perf_event_disable_if_open(pt_state->pt_perf_event_fd);
     }
+    infallible_perf_event_disable_if_open(fd_async_signal_accelerator);
   }
   return ticks;
 }
@@ -1119,5 +1126,184 @@ Ticks PerfCounters::read_ticks(Task* t, Error* error) {
   }
   return ret;
 }
+
+#ifdef BPF
+class BpfAccelerator {
+public:
+  static std::shared_ptr<BpfAccelerator> get_or_create();
+
+  ScopedFd create_counter(pid_t tid);
+  void match_regs_and_open_counter(const Registers& regs, ScopedFd& counter);
+  uint64_t skips() const {
+    return *bpf_skips;
+  }
+
+  // Can't be private because of make_shared.
+  BpfAccelerator(struct bpf_object* bpf_obj, int bpf_prog_fd,
+                 user_regs_struct* bpf_regs, uint64_t* bpf_skips)
+    : bpf_obj(bpf_obj), bpf_prog_fd(bpf_prog_fd), bpf_regs(bpf_regs), bpf_skips(bpf_skips)
+  {}
+
+  ~BpfAccelerator() {
+    munmap(bpf_skips, 4096);
+    munmap(bpf_regs, 4096);
+    bpf_object__close(bpf_obj);
+  }
+
+private:
+  static std::shared_ptr<BpfAccelerator> singleton;
+
+  struct perf_event_attr attr;
+  struct bpf_object* bpf_obj;
+  // Not a ScopedFd because the bpf_object maintains ownership.
+  int bpf_prog_fd;
+  user_regs_struct* bpf_regs;
+  uint64_t* bpf_skips;
+};
+
+std::shared_ptr<BpfAccelerator> BpfAccelerator::singleton;
+
+/* static */ std::shared_ptr<BpfAccelerator> BpfAccelerator::get_or_create() {
+  static int initialized;
+  if (BpfAccelerator::singleton) {
+    return BpfAccelerator::singleton;
+  }
+
+  if (!initialized) {
+    initialized = -1;
+
+    libbpf_set_strict_mode(LIBBPF_STRICT_DIRECT_ERRS);
+    string path = resource_path() + "share/rr/async_event_filter.o";
+    struct bpf_object* obj = bpf_object__open(path.c_str());
+    if ((intptr_t)obj <= 0) {
+      LOG(error) << "Failed to find bpf at " << path;
+      return nullptr;
+    }
+    if (bpf_object__load(obj) < 0) {
+      LOG(error) << "Failed to load bpf at " << path << " into the kernel. Do we have permissions?";
+      bpf_object__close(obj);
+      return nullptr;
+    }
+    int bpf_map_fd = bpf_object__find_map_fd_by_name(obj, "registers");
+    if (bpf_map_fd < 0) {
+      CLEAN_FATAL() << "rr's bpf at " << path << " is corrupt";
+      return nullptr;
+    }
+    struct bpf_program* prog = bpf_program__next(NULL, obj);
+    if (!prog) {
+      CLEAN_FATAL() << "rr's bpf at " << path << " is corrupt";
+      return nullptr;
+    }
+    int bpf_prog_fd = bpf_program__fd(prog);
+    if (bpf_prog_fd < 0) {
+      CLEAN_FATAL() << "rr's bpf at " << path << " is corrupt";
+      return nullptr;
+    }
+
+    auto bpf_regs = (struct user_regs_struct*)
+      mmap(NULL, 4096, PROT_READ | PROT_WRITE,
+           MAP_SHARED, bpf_map_fd, 0);
+    if (bpf_regs == MAP_FAILED) {
+      CLEAN_FATAL() << "Failed to mmap bpf maps";
+      return nullptr;
+    }
+
+    bpf_map_fd = bpf_object__find_map_fd_by_name(obj, "skips");
+    if (bpf_map_fd < 0) {
+      CLEAN_FATAL() << "rr's bpf at " << path << " is corrupt";
+      return nullptr;
+    }
+
+    auto bpf_skips = (uint64_t*)
+      mmap(NULL, 4096, PROT_READ | PROT_WRITE,
+           MAP_SHARED, bpf_map_fd, 0);
+    if (bpf_regs == MAP_FAILED) {
+      CLEAN_FATAL() << "Failed to mmap bpf maps";
+      return nullptr;
+    }
+
+    BpfAccelerator::singleton =
+      std::make_shared<BpfAccelerator>(obj, bpf_prog_fd, bpf_regs, bpf_skips);
+    memset(&singleton->attr, 0, sizeof(singleton->attr));
+    singleton->attr.type = PERF_TYPE_BREAKPOINT;
+    singleton->attr.size = sizeof(attr);
+    singleton->attr.bp_type = HW_BREAKPOINT_X;
+    singleton->attr.bp_len = sizeof(long);
+    singleton->attr.sample_period = 1;
+    singleton->attr.sample_type = PERF_SAMPLE_IP;
+    singleton->attr.pinned = 1;
+    singleton->attr.exclude_kernel = 1;
+    singleton->attr.exclude_hv = 1;
+    singleton->attr.wakeup_events = 1;
+    singleton->attr.precise_ip = 3;
+    singleton->attr.disabled = 1;
+    initialized = 1;
+  }
+
+  return BpfAccelerator::singleton;
+}
+
+ScopedFd BpfAccelerator::create_counter(pid_t tid) {
+  attr.bp_addr = 0;
+  ScopedFd fd = start_counter(tid, -1, &attr);
+
+  struct f_owner_ex own;
+  own.type = F_OWNER_TID;
+  own.pid = tid;
+  if (fcntl(fd, F_SETOWN_EX, &own)) {
+    FATAL() << "Failed to SETOWN_EX bpf-accelerated breakpoint fd";
+  }
+
+  make_counter_async(fd, SIGTRAP);
+
+  if (ioctl(fd, PERF_EVENT_IOC_SET_BPF, bpf_prog_fd)) {
+    FATAL() << "Failed PERF_EVENT_IOC_SET_BPF";
+  }
+
+  return fd;
+}
+
+void BpfAccelerator::match_regs_and_open_counter(const Registers& regs, ScopedFd& fd) {
+  attr.bp_addr = regs.ip().register_value();
+  if (ioctl(fd, PERF_EVENT_IOC_MODIFY_ATTRIBUTES, &attr)) {
+    FATAL() << "Failed PERF_EVENT_IOC_MODIFY_ATTRIBUTES";
+  }
+
+  auto r = regs.get_ptrace();
+  memcpy(bpf_regs, &r, sizeof(struct user_regs_struct));
+  *bpf_skips = 0;
+
+  infallible_perf_event_enable_if_open(fd);
+}
+
+bool PerfCounters::accelerate_async_signal(const Registers& regs) {
+  if (!fd_async_signal_accelerator.is_open()) {
+    if (!bpf) {
+      bpf = BpfAccelerator::get_or_create();
+    }
+
+    if (!bpf) {
+      return false;
+    }
+
+    fd_async_signal_accelerator = bpf->create_counter(tid);
+  }
+
+  if (!fd_async_signal_accelerator.is_open()) {
+    return false;
+  }
+
+  bpf->match_regs_and_open_counter(regs, fd_async_signal_accelerator);
+  return true;
+}
+
+uint64_t PerfCounters::bpf_skips() const {
+  if (!bpf) {
+    return 0;
+  }
+
+  return bpf->skips();
+}
+#endif
 
 } // namespace rr

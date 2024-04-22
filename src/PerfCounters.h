@@ -21,7 +21,9 @@
 
 namespace rr {
 
+class Registers;
 class Task;
+class BpfAccelerator;
 
 enum TicksSemantics {
   TICKS_RETIRED_CONDITIONAL_BRANCHES,
@@ -175,6 +177,21 @@ public:
    */
   static void start_pt_copy_thread();
 
+  /**
+   * Try to use BPF to accelerate async signal processing
+   */
+#ifdef BPF
+  bool accelerate_async_signal(const Registers& regs);
+  uint64_t bpf_skips() const;
+#else
+  bool accelerate_async_signal(const Registers&) {
+    return false;
+  }
+  uint64_t bpf_skips() const {
+    return 0;
+  }
+#endif
+
 private:
   template <typename Arch> void reset_arch_extras();
 
@@ -211,6 +228,11 @@ private:
 
   // aarch64 specific counter to detect use of ll/sc instructions
   ScopedFd fd_strex_counter;
+
+  // BPF-enabled hardware breakpoint for fast async signal emulation.
+  ScopedFd fd_async_signal_accelerator;
+
+  std::shared_ptr<BpfAccelerator> bpf;
 
   std::unique_ptr<PTState> pt_state;
 

@@ -982,6 +982,7 @@ Completion ReplaySession::emulate_async_signal(
    * be dealt with. */
   bool pending_SIGTRAP = false;
   bool did_set_internal_breakpoints = false;
+  bool did_set_bpf_breakpoint = false;
   RunCommand SIGTRAP_run_command = RUN_CONTINUE;
 
   /* Step 2: more slowly, find our way to the target ticks and
@@ -1042,17 +1043,21 @@ Completion ReplaySession::emulate_async_signal(
         // breakpoint instruction in the tracee would have triggered a
         // deterministic signal instead of an async one.
         // So we must have hit our internal breakpoint.
-        ASSERT(t, did_set_internal_breakpoints);
+        ASSERT(t, did_set_internal_breakpoints || did_set_bpf_breakpoint);
         // We didn't do an internal singlestep, and if we'd done a
         // user-requested singlestep we would have hit the above case.
         ASSERT(t, !trap_reasons.singlestep);
-        if (t->ip().undo_executed_bkpt(t->arch()) == in_syscallbuf_syscall_hook) {
-          t->vm()->remove_breakpoint(ip, BKPT_INTERNAL);
-          t->vm()->remove_breakpoint(in_syscallbuf_syscall_hook, BKPT_INTERNAL);
-          t->move_ip_before_breakpoint();
-          return COMPLETE;
+        if (did_set_internal_breakpoints) {
+          if (t->ip().undo_executed_bkpt(t->arch()) == in_syscallbuf_syscall_hook) {
+            t->vm()->remove_breakpoint(ip, BKPT_INTERNAL);
+            t->vm()->remove_breakpoint(in_syscallbuf_syscall_hook, BKPT_INTERNAL);
+            t->move_ip_before_breakpoint();
+            return COMPLETE;
+          }
+          ASSERT(t, regs.ip() == t->ip().undo_executed_bkpt(t->arch()));
+        } else {
+          LOG(debug) << "    fast-forwarded through " << t->hpc.bpf_skips() << " breakpoint hits with bpf";
         }
-        ASSERT(t, regs.ip() == t->ip().undo_executed_bkpt(t->arch()));
         /* Case (1) above: cover the tracks of
          * our internal breakpoint, and go
          * check again if we're at the
@@ -1060,7 +1065,9 @@ Completion ReplaySession::emulate_async_signal(
         LOG(debug) << "    trap was for target $ip";
 
         pending_SIGTRAP = false;
-        t->move_ip_before_breakpoint();
+        if (did_set_internal_breakpoints) {
+          t->move_ip_before_breakpoint();
+        }
         /* We just backed up the $ip, but
          * rewound it over an |int $3|
          * instruction, which couldn't have
@@ -1093,6 +1100,7 @@ Completion ReplaySession::emulate_async_signal(
       }
       did_set_internal_breakpoints = false;
     }
+    did_set_bpf_breakpoint = false;
 
     if (at_target) {
       /* Case (2) above: done. */
@@ -1117,11 +1125,16 @@ Completion ReplaySession::emulate_async_signal(
        * no slower than single-stepping our way to
        * the target execution point. */
       LOG(debug) << "    breaking on target $ip";
-      t->vm()->add_breakpoint(ip, BKPT_INTERNAL);
-      if (in_syscallbuf_syscall_hook) {
-        t->vm()->add_breakpoint(in_syscallbuf_syscall_hook, BKPT_INTERNAL);
+      if (is_x86_string_instruction_at(t, ip) || !t->hpc.accelerate_async_signal(regs)) {
+        t->vm()->add_breakpoint(ip, BKPT_INTERNAL);
+
+        if (in_syscallbuf_syscall_hook) {
+          t->vm()->add_breakpoint(in_syscallbuf_syscall_hook, BKPT_INTERNAL);
+        }
+        did_set_internal_breakpoints = true;
+      } else {
+        did_set_bpf_breakpoint = true;
       }
-      did_set_internal_breakpoints = true;
       continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
       SIGTRAP_run_command = constraints.command;
     } else {

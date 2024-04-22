@@ -1387,6 +1387,9 @@ TrapReasons Task::compute_trap_reasons() {
           << " expected breakpoint at " << ip_at_breakpoint << ", got siginfo "
           << si;
     }
+    // If we got a SIGTRAP via a FASYNC signal it must be our bpf-enabled
+    // hardware breakpoint.
+    reasons.breakpoint |= si.si_code == SI_SIGIO;
   }
   return reasons;
 }
