@@ -1,30 +1,16 @@
 from util import *
 
-send_gdb('b breakpoint')
-expect_gdb('Breakpoint 1')
+bp = set_breakpoint('breakpoint')
 
-send_gdb('c')
-expect_gdb('Breakpoint 1')
-send_gdb('watch -l *p2')
-expect_gdb('Hardware watchpoint 2')
-send_gdb('c')
-expect_gdb('watchpoint 2')
-send_gdb('delete 2')
+def test():
+    for type in ['uint16_t', 'uint32_t', 'uint64_t']:
+        send_gdb('c')
+        expect_gdb(f'Breakpoint {bp}')
+        wp = set_watchpoint(f'-l *({type} *)wp_addr')
+        send_gdb('c')
+        expect_gdb(f'watchpoint {wp}')
+        send_gdb(f'delete {wp}')
 
-send_gdb('c')
-expect_gdb('Breakpoint 1')
-send_gdb('watch -l *p4')
-expect_gdb('Hardware watchpoint 3')
-send_gdb('c')
-expect_gdb('watchpoint 3')
-send_gdb('delete 3')
-
-send_gdb('c')
-expect_gdb('Breakpoint 1')
-send_gdb('watch -l *p8')
-expect_gdb('Hardware watchpoint 4')
-send_gdb('c')
-expect_gdb('watchpoint 4')
-send_gdb('delete 4')
-
+test()
+test()
 ok()
