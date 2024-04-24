@@ -36,6 +36,11 @@ int main(__attribute__((unused)) int argc, __attribute__((unused)) char** argv) 
     char *probe_map = mmap(NULL, PROBE_REGION_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     test_assert(probe_map != MAP_FAILED);
     ret = madvise(probe_map, PROBE_REGION_SIZE, MADV_HUGEPAGE);
+    if (ret == -1 && errno == EINVAL) {
+        atomic_puts("Skipping test: CONFIG_TRANSPARENT_HUGEPAGE is disabled");
+        atomic_puts("EXIT-SUCCESS");
+        return 77;
+    }
     test_assert(ret == 0);
     ret = madvise(probe_map, PROBE_REGION_SIZE, MADV_DONTDUMP);
     test_assert(ret == 0);
