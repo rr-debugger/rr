@@ -3,7 +3,7 @@ import pexpect, re, signal, sys, time
 __all__ = [ 'expect_gdb', 'send_gdb','expect_rr', 'expect_list',
             'restart_replay', 'interrupt_gdb', 'ok',
             'failed', 'iterlines_both', 'last_match', 'get_exe_arch',
-            'get_gdb_version' ]
+            'get_gdb_version', 'set_breakpoint', 'set_watchpoint' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -34,6 +34,18 @@ def interrupt_gdb():
     except Exception as e:
         failed('interrupting gdb', e)
     expect_gdb('stopped.')
+
+def set_breakpoint(args):
+    send_gdb(f'b {args}')
+    expect_gdb(r'Breakpoint ([0-9]+)[^0-9]')
+    global child
+    return child.match.group(1)
+
+def set_watchpoint(args):
+    send_gdb(f'watch {args}')
+    expect_gdb(r'atchpoint ([0-9]+)[^0-9]')
+    global child
+    return child.match.group(1)
 
 def iterlines_both():
     return child
