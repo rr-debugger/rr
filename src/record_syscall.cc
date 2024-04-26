@@ -4383,8 +4383,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case Arch::memfd_create: {
-      string name = t->read_c_str(remote_ptr<char>(regs.arg1()));
-      if (is_blacklisted_memfd(name.c_str())) {
+      bool ok = true;
+      string name = t->read_c_str(remote_ptr<char>(regs.arg1()), &ok);
+      if (!ok) {
+        syscall_state.expect_errno = EFAULT;
+      } else if (is_blacklisted_memfd(name.c_str())) {
         LOG(warn) << "Cowardly refusing to memfd_create " << name;
         Registers r = regs;
         r.set_arg1(0);
