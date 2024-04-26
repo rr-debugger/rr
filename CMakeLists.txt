@@ -1096,6 +1096,7 @@ set(BASIC_TESTS
   map_shared_syscall
   membarrier
   memfd_create
+  memfd_create_efault
   memfd_create_shared
   memfd_create_shared_huge
   mincore
