@@ -13,4 +13,5 @@ def test():
 
 test()
 test()
+test()
 ok()
