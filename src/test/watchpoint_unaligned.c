@@ -20,11 +20,7 @@ int main(void) {
   uintptr_t aligned_addr = ((uintptr_t)m | 0xff) + 1;
   test(aligned_addr - 1, aligned_addr - 1);
   test(aligned_addr + 16, aligned_addr + 15);
-
-  /* FIXME: Currently fails on arm64. */
-  if (0) {
-    test(aligned_addr + 15, aligned_addr + 16);
-  }
+  test(aligned_addr + 15, aligned_addr + 16);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

@@ -1295,20 +1295,18 @@ bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
          watchpoint_triggered(debug_status,
                               it.second.debug_regs_for_exec_read);
     } else {
-      // The reported address may not match our watchpoint exactly.
-      // The ARM manual says:
-      //   The address recorded is within an address range of the size defined by the
-      //   DCZID_EL0.BS field. The start of the range is aligned to the size defined
-      //   by the DCZID_EL0.BS field and its end is not greater than the address that
-      //   triggered the watchpoint.
-      // So we construct a range spanning the whole block, then test that the range
-      // intersects a watchpoint range *and* that hit_addr is not past the first byte
-      // of the watched region.
+      // The reported address may not match our watchpoint exactly. The ARM
+      // manual specifies a number of conditions that apply to the address for
+      // various types of instructions (see D2.10.5, "Determining the memory
+      // location that caused a Watchpoint exception"), but at a minimum it is
+      // required that the reported address is in the same block as one of the
+      // addresses monitored by the watchpoint, where the block size is defined
+      // by DCZID_EL0.BS. So we construct a range spanning the whole block, then
+      // test that the range intersects a watchpoint range.
       auto block_size = dczid_el0_block_size();
       auto slop = hit_addr.as_int() % block_size;
       auto hit_range = MemoryRange(hit_addr - slop, block_size);
-      watchpoint_in_range = it.first.intersects(hit_range) &&
-        it.first.start() >= hit_addr;
+      watchpoint_in_range = it.first.intersects(hit_range);
     }
     if (write_triggered || read_triggered || exec_triggered || watchpoint_in_range) {
       it.second.changed = true;
