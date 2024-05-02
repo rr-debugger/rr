@@ -533,6 +533,10 @@ int main(void) {
     atomic_printf("flags is %d\n", req->ifr_ifru.ifru_flags);
   }
 
+  if (GENERIC_REQUEST_BY_NAME(SIOCGMIIREG)) {
+    atomic_printf("flags is %d\n", req->ifr_ifru.ifru_flags);
+  }
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
