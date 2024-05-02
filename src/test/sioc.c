@@ -118,6 +118,10 @@ static int generic_request_by_name(int sockfd, struct ifreq* req, int nr,
       atomic_printf("(errno:%d/%s)\n", errno, strerror(errno));
       return 0;
     }
+    if (errno == EPERM) {
+      atomic_printf("(errno:%d/%s)\n", errno, strerror(errno));
+      return 0;
+    }
   }
 
   test_assert(0 == ret);
@@ -523,6 +527,10 @@ int main(void) {
     test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err || ENODEV == err || ENOTTY == err);
   } else {
     atomic_printf("wireless ESSID:%s\n", buf);
+  }
+
+  if (GENERIC_REQUEST_BY_NAME(SIOCGMIIPHY)) {
+    atomic_printf("flags is %d\n", req->ifr_ifru.ifru_flags);
   }
 
   atomic_puts("EXIT-SUCCESS");
