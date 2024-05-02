@@ -1713,6 +1713,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SIOCGIFMETRIC:
     case SIOCGIFMAP:
     case SIOCGMIIPHY:
+    case SIOCGMIIREG:
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
