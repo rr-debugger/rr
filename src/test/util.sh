@@ -548,7 +548,7 @@ function checkpoint_test { exe=$1; min=$2; max=$3;
 
 function wait_for_complete {
     local record_dir=${1:-"${workdir}/latest-trace"}
-    for ((i = 0; i < TIMEOUT * 10; i++)); do
+    for ((i = 0; i < $TIMEOUT * 10; i++)); do
         [[ -f "$record_dir/incomplete" ]] || break
         sleep 0.1
     done
