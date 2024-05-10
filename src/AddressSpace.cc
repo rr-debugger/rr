@@ -666,8 +666,12 @@ static const char* stringify_flags(int flags) {
       return " [thread_locals]";
     case AddressSpace::Mapping::IS_PATCH_STUBS:
       return " [patch_stubs]";
+    case AddressSpace::Mapping::IS_RR_PAGE:
+      return " [rr_page]";
+    case AddressSpace::Mapping::IS_RR_VDSO_PAGE:
+      return " [rr_vdso_page]";
     default:
-      return "[unknown_flags]";
+      return " [unknown_flags]";
   }
 }
 
