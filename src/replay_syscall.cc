@@ -1138,6 +1138,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       case Arch::pkey_mprotect:
       case Arch::sigreturn:
       case Arch::rt_sigreturn:
+      case Arch::prctl:
         break;
       default:
         return;
@@ -1209,11 +1210,13 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       RR_FALLTHROUGH;
     case Arch::prctl: {
       auto arg1 = t->regs().arg1();
-      if (sys == Arch::prctl && (Arch::arch() != aarch64 ||
-          arg1 != PR_SET_SPECULATION_CTRL)) {
+      if (sys == Arch::prctl &&
+          (Arch::arch() != aarch64 || arg1 != PR_SET_SPECULATION_CTRL) &&
+          (unsigned long)t->regs().arg1() != PR_SET_VMA) {
         // On aarch64 PR_SET_SPECULATION_CTRL affects the pstate
         // register during the system call, so we need to replay
         // it, otherwise we'll get a mismatch there.
+        // We want to replay PR_SET_VMA as well.
         return;
       }
     }

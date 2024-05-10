@@ -243,6 +243,21 @@ AddressSpace::Mapping::Mapping(const Mapping& other)
 
 AddressSpace::Mapping::~Mapping() {}
 
+AddressSpace::Mapping AddressSpace::Mapping::subrange(MemoryRange range,
+    std::function<KernelMapping(const KernelMapping&)> f) {
+  Mapping mapping(
+        f(map.subrange(range.start(), range.end())),
+        f(recorded_map.subrange(range.start(), range.end())),
+        emu_file, clone_stat(mapped_file_stat),
+        local_addr ? local_addr + (range.start() - map.start()) : 0,
+        monitored_shared_memory
+            ? monitored_shared_memory->subrange(range.start() - map.start(),
+                                                range.size())
+            : nullptr);
+  mapping.flags = flags;
+  return mapping;
+}
+
 AddressSpace::~AddressSpace() {
   for (auto& m : mem) {
     if (m.second.local_addr) {
@@ -953,47 +968,26 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
     // If the first segment we protect underflows the
     // region, remap the underflow region with previous
     // prot.
-    auto monitored = m.monitored_shared_memory;
     if (m.map.start() < new_start) {
-      Mapping underflow(
-          m.map.subrange(m.map.start(), rem.start()),
-          m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
-          m.emu_file, clone_stat(m.mapped_file_stat), m.local_addr,
-          std::move(monitored));
-      underflow.flags = m.flags;
+      Mapping underflow = m.subrange(MemoryRange(m.map.start(), new_start),
+          [](const KernelMapping& km) { return km; });
       add_to_map(underflow);
     }
     // Remap the overlapping region with the new prot.
     remote_ptr<void> new_end = min(rem.end(), m.map.end());
 
     int new_prot = prot & (PROT_READ | PROT_WRITE | PROT_EXEC);
-    Mapping overlap(
-        m.map.subrange(new_start, new_end).set_prot(new_prot),
-        m.recorded_map.subrange(new_start, new_end).set_prot(new_prot),
-        m.emu_file, clone_stat(m.mapped_file_stat),
-        m.local_addr ? m.local_addr + (new_start - m.map.start()) : 0,
-        m.monitored_shared_memory
-            ? m.monitored_shared_memory->subrange(new_start - m.map.start(),
-                                                  new_end - new_start)
-            : nullptr);
-    overlap.flags = m.flags;
+    Mapping overlap = m.subrange(MemoryRange(new_start, new_end),
+        [new_prot](const KernelMapping& km) { return km.set_prot(new_prot); });
     add_to_map(overlap);
     last_overlap = overlap.map;
 
     // If the last segment we protect overflows the
     // region, remap the overflow region with previous
     // prot.
-    if (rem.end() < m.map.end()) {
-      Mapping overflow(
-          m.map.subrange(rem.end(), m.map.end()),
-          m.recorded_map.subrange(rem.end(), m.map.end()), m.emu_file,
-          clone_stat(m.mapped_file_stat),
-          m.local_addr ? m.local_addr + (rem.end() - m.map.start()) : 0,
-          m.monitored_shared_memory
-              ? m.monitored_shared_memory->subrange(rem.end() - m.map.start(),
-                                                    m.map.end() - rem.end())
-              : nullptr);
-      overflow.flags = m.flags;
+    if (new_end < m.map.end()) {
+      Mapping overflow = m.subrange(MemoryRange(new_end, m.map.end()),
+          [](const KernelMapping& km) { return km; });
       add_to_map(overflow);
     }
   };
@@ -1482,6 +1476,68 @@ void AddressSpace::did_fork_into(Task* t) {
       RecordTask* rt = static_cast<RecordTask*>(t);
       rt->record_remote(range);
     }
+  }
+}
+
+void AddressSpace::set_anon_name(Task* t, MemoryRange range, const std::string* name) {
+  bool saw_only_anonymous = true;
+  MemoryRange last_overlap;
+  auto setter = [this, t, &name, &saw_only_anonymous, &last_overlap](Mapping m, MemoryRange rem) {
+    if (!(m.map.flags() & MAP_ANONYMOUS) || !saw_only_anonymous) {
+      saw_only_anonymous = false;
+      return;
+    }
+    remove_from_map(m.map);
+
+    if (m.map.start() < rem.start()) {
+      Mapping underflow = m.subrange(MemoryRange(m.map.start(), rem.start()),
+          [](const KernelMapping& km) { return km; });
+      add_to_map(underflow);
+    }
+    // Remap the overlapping region with the new prot.
+    remote_ptr<void> new_end = min(rem.end(), m.map.end());
+
+    Mapping overlap;
+    if (!name && (m.map.flags() & MAP_SHARED)) {
+      // We're resetting the name to whatever the original name was.
+      string new_name = read_kernel_mapping(t, rem.start()).fsname();
+      overlap = m.subrange(MemoryRange(rem.start(), new_end),
+        [&new_name, t](const KernelMapping& km) {
+          if (km.fsname().empty() && !t->session().is_recording()) {
+            // record_map case
+            return km;
+          }
+          return km.set_fsname(new_name);
+        });
+    } else {
+      string new_name;
+      if (name) {
+        if (m.map.flags() & MAP_SHARED) {
+          new_name = "[anon_shmem:" + *name + "]";
+        } else {
+          new_name = "[anon:" + *name + "]";
+        }
+      }
+      overlap = m.subrange(MemoryRange(rem.start(), new_end),
+        [&new_name](const KernelMapping& km) { return km.set_fsname(new_name); });
+    }
+    add_to_map(overlap);
+    last_overlap = overlap.map;
+
+    // If the last segment we protect overflows the
+    // region, remap the overflow region with previous
+    // prot.
+    if (new_end < m.map.end()) {
+      Mapping overflow = m.subrange(MemoryRange(new_end, m.map.end()),
+          [](const KernelMapping& km) { return km; });
+      add_to_map(overflow);
+    }
+  };
+  for_each_in_range(range.start(), range.size(), setter, ITERATE_CONTIGUOUS);
+  if (last_overlap.size()) {
+    // All mappings that we altered which might need coalescing
+    // are adjacent to |last_overlap|.
+    coalesce_around(t, mem.find(last_overlap));
   }
 }
 

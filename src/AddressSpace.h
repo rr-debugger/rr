@@ -115,6 +115,10 @@ public:
     return KernelMapping(start(), end(), fsname_, device_, inode_, prot, flags_,
                          offset);
   }
+  KernelMapping set_fsname(const std::string& name) const {
+    return KernelMapping(start(), end(), name, device_, inode_, prot_, flags_,
+                         offset);
+  }
 
   /**
    * Dump a representation of |this| to a string in a format
@@ -273,6 +277,8 @@ public:
       new (this) Mapping(other);
       return *this;
     }
+    Mapping subrange(MemoryRange range,
+                     std::function<KernelMapping(const KernelMapping&)> f);
 
     const KernelMapping map;
     // The corresponding KernelMapping in the recording. During recording,
@@ -368,6 +374,10 @@ public:
 
   remote_ptr<void> interp_base() const { return interp_base_; }
   void set_interp_base(remote_ptr<void> base) { interp_base_ = base; }
+
+  // Set anonymous region name as per PR_SET_VMA_ANON_NAME.
+  // Stops at the first unmapped memory page.
+  void set_anon_name(Task* t, MemoryRange range, const std::string* name);
 
   /**
    * Assuming the last retired instruction has raised a SIGTRAP

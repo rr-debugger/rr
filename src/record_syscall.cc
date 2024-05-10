@@ -4784,12 +4784,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         }
 
         case PR_SET_VMA: {
-          switch (regs.arg2()) {
+          switch ((unsigned long)regs.arg2()) {
             case PR_SET_VMA_ANON_NAME:
-              // PR_SET_VMA_ANON_NAME is used to communicate additional details
-              // about the VMA to the kernel. VMAs with different anonymous
-              // names are not merged by the kernel. None of this affects rr,
-              // and this prctl has no outparams.
               break;
             default:
               syscall_state.expect_errno = EINVAL;

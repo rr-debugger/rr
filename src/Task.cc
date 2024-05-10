@@ -625,7 +625,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
   // note its usage here.
   if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())
-      && !is_pkey_mprotect_syscall(syscallno, regs.arch())) {
+      && !is_pkey_mprotect_syscall(syscallno, regs.arch())
+      && !is_prctl_syscall(syscallno, regs.arch())) {
     return;
   }
 
@@ -676,13 +677,43 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::prctl:
       switch ((int)regs.orig_arg1_signed()) {
         case PR_SET_SECCOMP:
+          if (regs.syscall_failed()) {
+            return;
+          }
           if (regs.arg2() == SECCOMP_MODE_FILTER && session().is_recording()) {
             seccomp_bpf_enabled = true;
           }
           break;
         case PR_SET_NAME:
+          if (regs.syscall_failed()) {
+            return;
+          }
           did_prctl_set_prname(regs.arg2());
           break;
+        case PR_SET_VMA: {
+          switch ((unsigned long)regs.arg2()) {
+            case PR_SET_VMA_ANON_NAME: {
+              if (regs.syscall_failed() &&
+                  regs.syscall_result_signed() != -ENOMEM &&
+                  regs.syscall_result_signed() != -EBADF) {
+                return;
+              }
+              remote_ptr<void> start = regs.arg3();
+              size_t size = regs.arg4();
+              remote_ptr<char> name_ptr = regs.arg5();
+              if (!name_ptr.is_null()) {
+                string name = read_c_str(name_ptr);
+                vm()->set_anon_name(this, MemoryRange(start, size), &name);
+              } else {
+                vm()->set_anon_name(this, MemoryRange(start, size), nullptr);
+              }
+              break;
+            }
+            default:
+              break;
+          }
+          break;
+        }
       }
       return;
 
