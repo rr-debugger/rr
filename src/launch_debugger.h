@@ -3,6 +3,8 @@
 #ifndef RR_LAUNCH_DEBUGGER_H_
 #define RR_LAUNCH_DEBUGGER_H_
 
+#include <limits.h>
+
 #include <string>
 #include <vector>
 
@@ -10,6 +12,13 @@
 #include "Task.h"
 
 namespace rr {
+
+struct DebuggerParams {
+  char exe_image[PATH_MAX];
+  int socket_domain;
+  char host[128];
+  short port;
+};
 
 /**
  * exec()'s the debuger using parameters read from params_pipe_fd.
@@ -20,7 +29,8 @@ void launch_debugger(ScopedFd& params_pipe_fd, const std::string& debugger_file_
 /**
  * Produces the command line needed to launch the debugger.
  */
-std::vector<std::string> debugger_launch_command(Task* t, const std::string& host,
+std::vector<std::string> debugger_launch_command(Task* t, int socket_domain,
+                                                 const std::string& host,
                                                  unsigned short port,
                                                  bool serve_files,
                                                  const std::string& debugger_name);

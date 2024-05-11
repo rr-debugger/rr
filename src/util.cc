@@ -15,6 +15,7 @@
 #include <linux/magic.h>
 #include <linux/prctl.h>
 #include <math.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/vfs.h>
 #include <unistd.h>
@@ -1639,16 +1641,58 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records) {
   return layout;
 }
 
-ScopedFd open_socket(const char* address, unsigned short* port,
-                     ProbePort probe) {
-  ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+static const char localhost_addr[] = "127.0.0.1";
+static const char localhost_addr_ipv6[] = "::1";
+
+// `addr` must be the right size for for the given domain
+static bool get_address(int domain, const string& host, struct sockaddr* addr) {
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = domain;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+
+  struct addrinfo* ret;
+  if (getaddrinfo(host.c_str(), nullptr, &hints, &ret) != 0) {
+    return false;
+  }
+  memcpy(addr, ret->ai_addr, ret->ai_addrlen);
+  freeaddrinfo(ret);
+  return true;
+}
+
+OpenedSocket open_socket(const string& host, unsigned short port,
+                         ProbePort probe) {
+  string host4 = host;
+  string host6 = host;
+  if (host.empty()) {
+    host4 = localhost_addr;
+    host6 = localhost_addr_ipv6;
+  }
+
+  struct sockaddr_in addr4;
+  bool ipv4_ok = get_address(AF_INET, host4, (struct sockaddr*)&addr4);
+  struct sockaddr_in6 addr6;
+  bool ipv6_ok = get_address(AF_INET6, host6, (struct sockaddr*)&addr6);
+
+  int domain = -1;
+  ScopedFd listen_fd;
+  if (ipv4_ok) {
+    listen_fd = ScopedFd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    if (listen_fd.is_open()) {
+      domain = AF_INET;
+    }
+  }
+  if (!listen_fd.is_open() && ipv6_ok) {
+    listen_fd = ScopedFd(socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    if (listen_fd.is_open()) {
+      domain = AF_INET6;
+    }
+  }
   if (!listen_fd.is_open()) {
     FATAL() << "Couldn't create socket";
   }
 
-  struct sockaddr_in addr;
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = inet_addr(address);
   int reuseaddr = 1;
   int ret = setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
                        sizeof(reuseaddr));
@@ -1656,37 +1700,61 @@ ScopedFd open_socket(const char* address, unsigned short* port,
     FATAL() << "Couldn't set SO_REUSEADDR";
   }
 
+  struct sockaddr* addr;
+  size_t addr_size;
+  in_port_t* addr_port;
+  string* host_out;
+  if (domain == AF_INET) {
+    addr = (struct sockaddr*)&addr4;
+    addr_size = sizeof(addr4);
+    addr_port = &addr4.sin_port;
+    addr4.sin_family = AF_INET;
+    host_out = &host4;
+  } else {
+    addr = (struct sockaddr*)&addr6;
+    addr_size = sizeof(addr6);
+    addr_port = &addr6.sin6_port;
+    addr6.sin6_family = AF_INET6;
+    host_out = &host6;
+  }
+
   do {
-    addr.sin_port = htons(*port);
-    ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
+    *addr_port = htons(port);
+    ret = ::bind(listen_fd, addr, addr_size);
     if (ret && probe == PROBE_PORT && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
-      *port = 0;
+      port = 0;
       continue;
     }
     if (ret) {
-      CLEAN_FATAL() << "Couldn't bind to port " << *port;
+      CLEAN_FATAL() << "Couldn't bind to port " << port;
     }
 
     ret = listen(listen_fd, 1 /*backlogged connection*/);
     if (ret && probe == PROBE_PORT && EADDRINUSE == errno) {
-      *port = 0;
+      port = 0;
       continue;
     }
     if (ret) {
-      FATAL() << "Couldn't listen on port " << *port;
+      FATAL() << "Couldn't listen on port " << port;
     }
-    if (*port == 0) {
-      socklen_t sa_size = sizeof(addr);
-      ret = getsockname(listen_fd, (struct sockaddr*)&addr, &sa_size);
+    if (port == 0) {
+      socklen_t sa_size = addr_size;
+      ret = getsockname(listen_fd, addr, &sa_size);
       if (ret) {
         FATAL() << "Could not get socket port";
       }
 
-      *port = ntohs(addr.sin_port);
+      port = ntohs(*addr_port);
     }
     break;
   } while (probe == PROBE_PORT);
-  return listen_fd;
+
+  OpenedSocket result;
+  result.fd = std::move(listen_fd);
+  result.domain = domain;
+  result.host = *host_out;
+  result.port = port;
+  return result;
 }
 
 void notifying_abort() {
@@ -2509,8 +2577,6 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
            overlap_end - overlap_start);
   }
 }
-
-const char localhost_addr[10] = "127.0.0.1";
 
 void base_name(string& s) {
   size_t p = s.rfind('/');

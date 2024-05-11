@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
 #include <limits.h>
 #include <memory>
@@ -151,12 +152,6 @@ static const string& lldb_rr_macros() {
   return s;
 }
 
-struct DebuggerParams {
-  char exe_image[PATH_MAX];
-  char host[16]; // INET_ADDRSTRLEN, omitted for header churn
-  short port;
-};
-
 static void push_default_gdb_options(vector<string>& vec, bool serve_files) {
   // The gdb protocol uses the "vRun" packet to reload
   // remote targets.  The packet is specified to be like
@@ -187,27 +182,48 @@ static void push_default_gdb_options(vector<string>& vec, bool serve_files) {
   }
 }
 
-static void push_gdb_target_remote_cmd(vector<string>& vec, const string& host,
+static void push_gdb_target_remote_cmd(vector<string>& vec, int socket_domain,
+                                       const string& host,
                                        unsigned short port) {
   vec.push_back("-ex");
   stringstream ss;
-  // If we omit the address, then gdb can try to resolve "localhost" which
-  // in some broken environments may not actually resolve to the local host
-  ss << "target extended-remote " << host << ":" << port;
+  switch (socket_domain) {
+    case AF_INET:
+      // If we omit the address, then gdb can try to resolve "localhost" which
+      // in some broken environments may not actually resolve to the local host
+      ss << "target extended-remote " << host << ":" << port;
+      break;
+    case AF_INET6:
+      ss << "target extended-remote tcp6:[" << host << "]:" << port;
+      break;
+    default:
+      FATAL() << "Unknown socket domain " << socket_domain;
+      break;
+  }
   vec.push_back(ss.str());
 }
 
-static void push_lldb_target_remote_cmd(vector<string>& vec, const string& host,
+static void push_lldb_target_remote_cmd(vector<string>& vec, int socket_domain,
+                                        const string& host,
                                         unsigned short port) {
   vec.push_back("-o");
   stringstream ss;
-  ss << "gdb-remote " << host << ":" << port;
+  switch (socket_domain) {
+    case AF_INET:
+    case AF_INET6:
+      ss << "gdb-remote [" << host << "]:" << port;
+      break;
+    default:
+      FATAL() << "Unknown socket domain " << socket_domain;
+      break;
+  }
   vec.push_back(ss.str());
 }
 
 string saved_debugger_launch_command;
 
-vector<string> debugger_launch_command(Task* t, const string& host,
+vector<string> debugger_launch_command(Task* t, int socket_domain,
+                                       const string& host,
                                        unsigned short port,
                                        bool serve_files,
                                        const string& debugger_name) {
@@ -216,11 +232,11 @@ vector<string> debugger_launch_command(Task* t, const string& host,
   switch (identify_debugger(debugger_name)) {
     case DebuggerType::GDB:
       push_default_gdb_options(cmd, serve_files);
-      push_gdb_target_remote_cmd(cmd, host, port);
+      push_gdb_target_remote_cmd(cmd, socket_domain, host, port);
       break;
     case DebuggerType::LLDB:
       cmd.push_back("--source-quietly");
-      push_lldb_target_remote_cmd(cmd, host, port);
+      push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
       break;
     default:
       FATAL() << "Unknown debugger type";
@@ -283,7 +299,8 @@ void launch_debugger(ScopedFd& params_pipe_fd,
   }
   DEBUG_ASSERT(nread == sizeof(params));
 
-  string host(params.host);
+  const string& host(params.host);
+  int socket_domain(params.socket_domain);
   uint16_t port(params.port);
 
   vector<string> cmd;
@@ -301,13 +318,13 @@ void launch_debugger(ScopedFd& params_pipe_fd,
       for (size_t i = 0; i < options.size(); ++i) {
         if (!did_set_remote && options[i] == "-ex" &&
             i + 1 < options.size() && needs_target(options[i + 1])) {
-          push_gdb_target_remote_cmd(cmd, host, port);
+          push_gdb_target_remote_cmd(cmd, socket_domain, host, port);
           did_set_remote = true;
         }
         cmd.push_back(options[i]);
       }
       if (!did_set_remote) {
-        push_gdb_target_remote_cmd(cmd, host, port);
+        push_gdb_target_remote_cmd(cmd, socket_domain, host, port);
       }
 
       env.push_back("GDB_UNDER_RR=1");
@@ -319,7 +336,7 @@ void launch_debugger(ScopedFd& params_pipe_fd,
       cmd.push_back("--source-before-file");
       cmd.push_back(lldb_command_file);
       cmd.insert(cmd.end(), options.begin(), options.end());
-      push_lldb_target_remote_cmd(cmd, host, port);
+      push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
       env.push_back("LLDB_UNDER_RR=1");
       break;
     }
@@ -356,8 +373,7 @@ void emergency_debug(Task* t) {
   // b) some gdb versions will fail if the user doesn't turn off async
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
-  unsigned short port = t->tid;
-  ScopedFd listen_fd = open_socket(localhost_addr, &port, PROBE_PORT);
+  OpenedSocket listen_socket = open_socket(string(), t->tid, PROBE_PORT);
 
   dump_rr_stack();
 
@@ -369,17 +385,19 @@ void emergency_debug(Task* t) {
     FILE* gdb_cmd = fopen("gdb_cmd", "w");
     if (gdb_cmd) {
       fputs(to_shell_string(
-          debugger_launch_command(t, localhost_addr, port, false, "gdb")).c_str(), gdb_cmd);
+          debugger_launch_command(t, listen_socket.domain,
+              listen_socket.host, listen_socket.port, false, "gdb")).c_str(), gdb_cmd);
       fclose(gdb_cmd);
     }
     kill(pid, SIGURG);
   } else {
-    vector<string> cmd = debugger_launch_command(t, localhost_addr, port,
+    vector<string> cmd = debugger_launch_command(t,
+        listen_socket.domain, listen_socket.host, listen_socket.port,
         false, "gdb");
     fprintf(stderr, "Launch debugger with\n  %s\n", to_shell_string(cmd).c_str());
   }
   unique_ptr<GdbServerConnection> dbg =
-      GdbServerConnection::await_connection(t, listen_fd, features);
+      GdbServerConnection::await_connection(t, listen_socket.fd, features);
   GdbServer::serve_emergency_debugger(std::move(dbg), t);
 }
 

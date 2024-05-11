@@ -46,7 +46,6 @@ const int DIVERSION_SAVED_REGISTER_STATE = 1;
 
 GdbServer::ConnectionFlags::ConnectionFlags()
   : dbg_port(-1),
-    dbg_host(localhost_addr),
     keep_listening(false),
     serve_files(false),
     debugger_params_write_pipe(nullptr) {}
@@ -1778,12 +1777,6 @@ void GdbServer::restart_session(const GdbRequest& req) {
   activate_debugger();
 }
 
-struct DebuggerParams {
-  char exe_image[PATH_MAX];
-  char host[16]; // INET_ADDRSTRLEN, omitted for header churn
-  short port;
-};
-
 void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
                              const Target& target,
                              volatile bool* stop_replaying_to_target,
@@ -1807,20 +1800,22 @@ void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
   // place).  So fail with a clearer error message.
   auto probe = flags.dbg_port > 0 ? DONT_PROBE : PROBE_PORT;
   Task* t = timeline.current_session().current_task();
-  ScopedFd listen_fd = open_socket(flags.dbg_host.c_str(), &port, probe);
+  OpenedSocket listen_socket = open_socket(flags.dbg_host, port, probe);
   if (flags.debugger_params_write_pipe) {
     DebuggerParams params;
     memset(&params, 0, sizeof(params));
     strncpy(params.exe_image, t->vm()->exe_image().c_str(),
             sizeof(params.exe_image) - 1);
-    strncpy(params.host, flags.dbg_host.c_str(), sizeof(params.host) - 1);
-    params.port = port;
+    params.socket_domain = listen_socket.domain;
+    strncpy(params.host, listen_socket.host.c_str(), sizeof(params.host) - 1);
+    params.port = listen_socket.port;
 
     ssize_t nwritten =
         write(*flags.debugger_params_write_pipe, &params, sizeof(params));
     DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
-    vector<string> cmd = debugger_launch_command(t, flags.dbg_host, port,
+    vector<string> cmd = debugger_launch_command(t, listen_socket.domain,
+        listen_socket.host, listen_socket.port,
         flags.serve_files, flags.debugger_name);
     fprintf(stderr, "Launch debugger with\n  %s\n", to_shell_string(cmd).c_str());
   }
@@ -1837,7 +1832,7 @@ void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
 
   do {
     LOG(debug) << "initializing debugger connection";
-    auto connection = GdbServerConnection::await_connection(t, listen_fd);
+    auto connection = GdbServerConnection::await_connection(t, listen_socket.fd);
 
     GdbServer server(connection, timeline.current_session().current_task(),
                      &timeline, target);

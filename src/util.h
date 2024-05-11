@@ -409,8 +409,22 @@ inline bool is_kernel_trap(int si_code) {
 
 enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
 
-ScopedFd open_socket(const char* address, unsigned short* port,
-                     ProbePort probe);
+struct OpenedSocket {
+  ScopedFd fd;
+  int domain;
+  std::string host;
+  unsigned short port;
+};
+
+// Open a socket bound to the given address and port.
+// If PROBE_PORT is set, probes for a usable port and sets it
+// in *port.
+// If `host` is empty, binds to localhost.
+// Returns the actual bound address, socket domain, and port.
+// Selects IPv4 or IPv6 automatically depending on what's in the
+// host address and what's available.
+OpenedSocket open_socket(const std::string& host, unsigned short port,
+                         ProbePort probe);
 
 /**
  * Like `abort`, but tries to wake up test-monitor for a snapshot if possible.
@@ -646,8 +660,6 @@ inline unsigned long long dczid_el0_block_size(void) {
  */
 void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
                        MemoryRange dst, uint8_t* dst_data);
-
-extern const char localhost_addr[10];
 
 // Strip any directory part from the filename `s`
 void base_name(std::string& s);

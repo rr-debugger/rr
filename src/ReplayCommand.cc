@@ -151,7 +151,6 @@ struct ReplayFlags {
         process_created_how(CREATED_NONE),
         dont_launch_debugger(false),
         dbg_port(-1),
-        dbg_host(localhost_addr),
         keep_listening(false),
         gdb_binary_file_path("gdb"),
         redirect(true),
