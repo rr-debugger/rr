@@ -1379,6 +1379,19 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state(
   return STOP_DEBUGGING;
 }
 
+ReplayTask* GdbServer::require_timeline_current_task() {
+  if (!timeline_) {
+    FATAL() << "Timeline required here";
+  }
+  ReplayTask* t = timeline_->current_session().current_task();
+  if (!t) {
+    FATAL() << "Expected current task but none found; expected task with tid "
+      << timeline_->current_session().current_trace_frame().tid()
+      << " at event " << timeline_->current_session().current_frame_time();
+  }
+  return t;
+}
+
 GdbServer::ContinueOrStop GdbServer::debug_one_step(
     GdbRequest& last_resume_request) {
   if (!timeline_) {
@@ -1428,7 +1441,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
   }
 
   if (interrupt_pending) {
-    Task* t = timeline_->current_session().current_task();
+    Task* t = require_timeline_current_task();
     if (t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
       notify_stop_internal(timeline_->current_session(),
@@ -1439,7 +1452,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
   }
 
   if (exit_sigkill_pending) {
-    Task* t = timeline_->current_session().current_task();
+    Task* t = require_timeline_current_task();
     if (t->thread_group()->tguid() == debuggee_tguid) {
       exit_sigkill_pending = false;
       if (req.cont().run_direction == RUN_FORWARD) {
@@ -1453,7 +1466,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
 
   if (req.cont().run_direction == RUN_FORWARD) {
     if (is_in_exec(timeline_) &&
-        timeline_->current_session().current_task()->thread_group()->tguid() ==
+        require_timeline_current_task()->thread_group()->tguid() ==
             debuggee_tguid) {
       // Don't go any further forward. maybe_notify_stop will generate a
       // stop.
@@ -1461,7 +1474,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     } else {
       int signal_to_deliver;
       RunCommand command = compute_run_command_from_actions(
-          timeline_->current_session().current_task(), req, &signal_to_deliver);
+          require_timeline_current_task(), req, &signal_to_deliver);
       // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
       result = timeline_->replay_step_forward(command);
     }
@@ -1591,7 +1604,7 @@ void GdbServer::activate_debugger() {
   }
   TraceFrame next_frame = timeline_->current_session().current_trace_frame();
   FrameTime completed_event = next_frame.time() - 1;
-  Task* t = timeline_->current_session().current_task();
+  Task* t = require_timeline_current_task();
   if (target.event || target.pid) {
     if (stop_replaying_to_target && *stop_replaying_to_target) {
       fprintf(stderr, "\a\n"

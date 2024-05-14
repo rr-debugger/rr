@@ -95,6 +95,7 @@ private:
     return timeline_ ? timeline_->current_session() :
         *emergency_debug_session;
   }
+  ReplayTask* require_timeline_current_task();
 
   void dispatch_regs_request(const Registers& regs,
                              const ExtraRegisters& extra_regs);
