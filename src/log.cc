@@ -32,6 +32,7 @@ ostream& operator<<(ostream& stream, const siginfo_t& siginfo) {
   stream << "{signo:" << rr::signal_name(siginfo.si_signo)
          << ",errno:" << rr::errno_name(siginfo.si_errno)
          << ",code:" << rr::sicode_name(siginfo.si_code, siginfo.si_signo);
+  bool show_pid = false;
   switch (siginfo.si_signo) {
     case SIGILL:
     case SIGFPE:
@@ -40,6 +41,23 @@ ostream& operator<<(ostream& stream, const siginfo_t& siginfo) {
     case SIGTRAP:
       stream << ",addr:" << siginfo.si_addr;
       break;
+    case SIGCHLD:
+      show_pid = true;
+      break;
+    default:
+      break;
+  }
+  switch (siginfo.si_code) {
+    case SI_USER:
+    case SI_QUEUE:
+    case SI_TKILL:
+      show_pid = true;
+      break;
+    default:
+      break;
+  }
+  if (show_pid) {
+    stream << ",pid:" << siginfo.si_pid;
   }
   stream << "}";
   return stream;
