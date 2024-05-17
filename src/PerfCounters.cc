@@ -291,6 +291,7 @@ static int64_t read_counter(ScopedFd& fd) {
   return val;
 }
 
+// Can return a closed fd if `tid > 0` and the task was just SIGKILLed.
 static ScopedFd start_counter(pid_t tid, int group_fd,
                               struct perf_event_attr* attr,
                               bool* disabled_txcp = nullptr) {
@@ -299,7 +300,7 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   }
   attr->pinned = group_fd == -1;
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, PERF_FLAG_FD_CLOEXEC);
-  if (0 >= fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
+  if (fd < 0 && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
       (attr->config & IN_TXCP)) {
     // The kernel might not support IN_TXCP, so try again without it.
     struct perf_event_attr tmp_attr = *attr;
@@ -320,16 +321,25 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
       }
     }
   }
-  if (0 >= fd) {
-    if (errno == EACCES) {
-      CLEAN_FATAL() << "Permission denied to use 'perf_event_open'; are hardware perf events "
-                 "available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
+  if (fd < 0) {
+    switch (errno) {
+      case EACCES:
+        CLEAN_FATAL() << "Permission denied to use 'perf_event_open'; are hardware perf events "
+                   "available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
+        break;
+      case ENOENT:
+        CLEAN_FATAL() << "Unable to open performance counter with 'perf_event_open'; "
+                   "are hardware perf events available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
+        break;
+      case ESRCH:
+        if (tid > 0) {
+          break;
+        }
+        RR_FALLTHROUGH;
+      default:
+        FATAL() << "Failed to initialize counter";
+        break;
     }
-    if (errno == ENOENT) {
-      CLEAN_FATAL() << "Unable to open performance counter with 'perf_event_open'; "
-                 "are hardware perf events available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
-    }
-    FATAL() << "Failed to initialize counter";
   }
   return ScopedFd(fd);
 }
@@ -751,6 +761,9 @@ void PerfCounters::PTState::open(pid_t tid) {
   init_perf_event_attr(&attr, event_type, 0);
   attr.aux_watermark = 8 * 1024 * 1024;
   pt_perf_event_fd = start_counter(tid, -1, &attr);
+  if (!pt_perf_event_fd.is_open()) {
+    return;
+  }
 
   size_t page_size = sysconf(_SC_PAGESIZE);
   void* base = mmap(NULL, page_size + PT_PERF_DATA_SIZE,
@@ -783,6 +796,10 @@ struct PerfEventAux {
 };
 
 size_t PerfCounters::PTState::flush() {
+  if (!mmap_header) {
+    return 0;
+  }
+
   uint64_t data_end = mmap_header->data_head;
   __sync_synchronize();
   volatile char* data_buf = reinterpret_cast<volatile char*>(mmap_header) +
@@ -889,13 +906,15 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
       fd_useless_counter = start_counter(tid, -1, &perf_attr.cycles);
     }
 
-    struct f_owner_ex own;
-    own.type = F_OWNER_TID;
-    own.pid = tid;
-    if (fcntl(fd_ticks_interrupt, F_SETOWN_EX, &own)) {
-      FATAL() << "Failed to SETOWN_EX ticks event fd";
+    if (fd_ticks_interrupt.is_open()) {
+      struct f_owner_ex own;
+      own.type = F_OWNER_TID;
+      own.pid = tid;
+      if (fcntl(fd_ticks_interrupt, F_SETOWN_EX, &own)) {
+        FATAL() << "Failed to SETOWN_EX ticks event fd";
+      }
+      make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
     }
-    make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
 
     if (pt_state) {
       pt_state->open(tid);
@@ -1044,7 +1063,10 @@ Ticks PerfCounters::read_ticks(Task* t, Error* error) {
   uint64_t adjusted_counting_period =
       counting_period +
       (t->session().is_recording() ? recording_skid_size() : skid_size());
-  uint64_t interrupt_val = read_counter(fd_ticks_interrupt);
+  uint64_t interrupt_val = 0;
+  if (fd_ticks_interrupt.is_open()) {
+    interrupt_val = read_counter(fd_ticks_interrupt);
+  }
   uint64_t ret;
   if (!fd_ticks_measure.is_open()) {
     if (fd_minus_ticks_measure.is_open()) {
