@@ -3296,6 +3296,7 @@ static void prepare_mmap_register_params(RecordTask* t) {
 #ifdef MAP_32BIT
   mask_flag |= MAP_32BIT;
 #endif
+  int flags = r.arg4_signed() & ~MAP_GROWSDOWN;
   if (t->enable_chaos_memory_allocations() && !(r.arg4_signed() & mask_flag)) {
     // Not MAP_FIXED. Randomize the allocation address.
     remote_ptr<void> hint = floor_page_size(r.arg1());
@@ -3312,18 +3313,18 @@ static void prepare_mmap_register_params(RecordTask* t) {
       t->set_regs(r);
       return;
     }
-    // We don't set MAP_FIXED. The new map *should* land at the address we request,
-    // because we tried to choose a free address.
-    // If that fails because there is something mapped there, that's an rr bug
-    // but we don't want to wipe out that mapping. Better to just carry on.
-    // This may mean the mapping lands in an area we tried to exclude; that's
-    // probably better than failing to record.
-    // We could use MAP_FIXED_NOREPLACE at some point (after the kernels
-    // that shipped the broken version (< 4.19) are no longer relevant).
     r.set_arg1(addr + len - orig_len);
+    // Force the kernel to allocate at our hint address.
+    // AddressSpace::chaos_mode_find_free_memory() will have guaranteed
+    // that this mapping doesn't overlap any existing mapping.
+    // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=efa7df3e3bb5da8e6abbe37727417f32a37fba47
+    // caused various kinds of rounding so our hint address is not always
+    // honoured without MAP_FIXED even when we ensure nothing is mapped
+    // overlapping that range.
+    flags |= MAP_FIXED;
     LOG(debug) << "Chaos mode selected address " << HEX(r.arg1());
   }
-  r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
+  r.set_arg4(flags);
   t->set_regs(r);
 }
 
