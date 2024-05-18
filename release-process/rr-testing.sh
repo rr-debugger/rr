@@ -37,6 +37,8 @@ ninja
 echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
 # Enable ptrace-attach to any process. This lets us get more data when tests fail.
 echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
+# Disable AppArmor restrictions on user namespaces, which our tests need to use
+(echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns) || true
 rm -rf /tmp/rr-* || true
 ctest -j`nproc` --verbose $ctest_options
     echo "For some reason I cannot figure out, bash drops the first four characters from the line following ctest"
