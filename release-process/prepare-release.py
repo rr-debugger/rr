@@ -25,7 +25,7 @@ parser.add_argument('version')
 parser.add_argument('keypair_pem_file')
 args = parser.parse_args()
 
-version_re = re.compile('(\d+)\.(\d+)\.(\d+)')
+version_re = re.compile(r'(\d+)\.(\d+)\.(\d+)')
 m = version_re.match(args.version)
 if not m:
     raise ValueError('version must have three numeric components, got %s' % args.version)
