@@ -1348,19 +1348,13 @@ static Switchable prepare_semctl(RecordTask* t, TaskSyscallState& syscall_state,
  * shared in multiple locations will be recorded once per location.
  * This doesn't handle mappings of the file into other address spaces.
  */
-static void record_file_change(RecordTask* t, int fd, uint64_t offset,
-                               uint64_t length) {
+static void record_v4l2_buffer_change(RecordTask* t, int fd, uint64_t cookie) {
   string file_name = t->file_name_of_fd(fd);
 
   for (const auto& m : t->vm()->maps()) {
-    if (m.map.fsname() == file_name) {
-      uint64_t start = max(offset, uint64_t(m.map.file_offset_bytes()));
-      uint64_t end = min(offset + length,
-                         uint64_t(m.map.file_offset_bytes()) + m.map.size());
-      if (start < end) {
-        t->record_remote(m.map.start() + (start - m.map.file_offset_bytes()),
-                         end - start);
-      }
+    if (m.map.fsname() == file_name &&
+        m.map.file_offset_bytes() == cookie) {
+      t->record_remote(m.map.start(), m.map.size());
     }
   };
 }
@@ -1372,8 +1366,7 @@ static void record_v4l2_buffer_contents(RecordTask* t) {
 
   switch (buf.memory) {
     case V4L2_MEMORY_MMAP:
-      record_file_change(t, (int)t->regs().arg1_signed(), buf.m.offset,
-                         buf.length);
+      record_v4l2_buffer_change(t, (int)t->regs().arg1_signed(), buf.m.offset);
       return;
 
     default:
