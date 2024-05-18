@@ -34,10 +34,12 @@ class Ec2Vm:
         self.ec2 = boto3.resource('ec2')
         self.ec2_client = boto3.client('ec2')
 
+        # For some reason adding MaxResults here causes AWS
+        # to return no results in some cases :-(
         response = self.ec2_client.describe_images(Owners=[distro_config['ami_owner']], Filters=[
             {'Name': 'architecture', 'Values': [architecture]},
             {'Name': 'name', 'Values': [distro_config['ami_name_pattern']]}
-        ], MaxResults=1000)
+        ])
         images = response['Images']
         if len(images) >= 1000:
             raise Exception('Too many AMIs match filter')
