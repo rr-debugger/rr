@@ -14,7 +14,7 @@ expect_gdb('Hardware[()/a-z ]+watchpoint 2')
 send_gdb('c')
 expect_gdb('Old value = 0')
 expect_gdb(re.compile('New value = ([0-9]+)'))
-value = eval(last_match().group(1))
+value = int(last_match().group(1))
 # gcc/gdb on Ubuntu 24 LTS Aarch64 produce 84 here.
 # I think it's a gdb bug, using the wrong frame base.
 # The value of i is also incorrect in gdb (always zero).

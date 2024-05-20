@@ -5,7 +5,7 @@ send_gdb('handle SIGKILL stop')
 
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks = eval(last_match().group(1));
+ticks = int(last_match().group(1));
 if ticks != 0:
     failed('ERROR in first "when-ticks"')
 
@@ -17,7 +17,7 @@ send_gdb('del 1')
 
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks2 = eval(last_match().group(1));
+ticks2 = int(last_match().group(1));
 if ticks2 < 0 or ticks2 > 1000000:
     failed('ERROR in second "when-ticks"')
 if ticks2 <= ticks:
@@ -27,7 +27,7 @@ send_gdb('c')
 
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks3 = eval(last_match().group(1));
+ticks3 = int(last_match().group(1));
 if ticks3 < 0 or ticks3 > 1000000:
     failed('ERROR in second "when-ticks"')
 if ticks3 <= ticks2:
@@ -37,7 +37,7 @@ send_gdb("seek-ticks %d" % ticks2)
 expect_gdb("Program stopped.")
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks4 = eval(last_match().group(1));
+ticks4 = int(last_match().group(1));
 if ticks4 != ticks2:
     failed('ERROR: Failed to seek back to ticks2')
 
@@ -45,7 +45,7 @@ send_gdb("seek-ticks %d" % ticks)
 expect_gdb("Program stopped.")
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks5 = eval(last_match().group(1));
+ticks5 = int(last_match().group(1));
 if ticks5 != ticks:
     failed('ERROR: Failed to seek back to ticks')
 
@@ -53,7 +53,7 @@ send_gdb("seek-ticks %d" % ticks2)
 expect_gdb("Program stopped.")
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
-ticks6 = eval(last_match().group(1));
+ticks6 = int(last_match().group(1));
 if ticks6 != ticks2:
     failed('ERROR: Failed to seek forwards to ticks2')
 
@@ -68,7 +68,7 @@ for i in range(len(tests)):
     expect_gdb("Program stopped.")
     send_gdb('when-ticks')
     expect_gdb(re.compile(r'Current tick: (\d+)'))
-    ticks8 = eval(last_match().group(1));
+    ticks8 = int(last_match().group(1));
     if ticks8 != ticks7:
         failed("ERROR: seek-ticks didn't go to correct tick on test %d" % i)
 
