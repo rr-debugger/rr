@@ -40,7 +40,7 @@ option(INSTALL_TESTSUITE "Install the testsuite")
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
 # is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 5)
-set(rr_VERSION_MINOR 7)
+set(rr_VERSION_MINOR 8)
 set(rr_VERSION_PATCH 0)
 
 if(ANDROID)
