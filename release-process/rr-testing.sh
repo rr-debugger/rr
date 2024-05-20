@@ -40,7 +40,8 @@ echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 # Disable AppArmor restrictions on user namespaces, which our tests need to use
 (echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns) || true
 rm -rf /tmp/rr-* || true
-ctest -j`nproc` --verbose $ctest_options
+let halfproc=`nproc`/2
+ctest -j$halfproc --verbose $ctest_options
     echo "For some reason I cannot figure out, bash drops the first four characters from the line following ctest"
 
 # Integration test deps are installed in parallel with our build.
