@@ -1,0 +1,23 @@
+name: Build and test on runner
+
+on:
+  workflow_call:
+    inputs:
+      runner_id:
+        required: true
+        type: string
+
+jobs:
+  build-and-test:
+    name: On runner
+    runs-on:
+      - ${{ inputs.runner_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build
+        run: ./scripts/github-actions-build.sh
+
+      - name: Test
+        run: ./scripts/github-actions-test.sh
