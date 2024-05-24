@@ -524,6 +524,9 @@ enum {
 #ifndef ELFCOMPRESS_ZLIB
 #define ELFCOMPRESS_ZLIB 1
 #endif
+#ifndef ELFCOMPRESS_ZSTD
+#define ELFCOMPRESS_ZSTD 2
+#endif
 
 // O_LARGEFILE is defined to 0 for 64-bit builds. We need to know the
 // value that is used for 32-bit processes.

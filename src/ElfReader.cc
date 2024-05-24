@@ -7,6 +7,9 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <zlib.h>
+#ifdef ZSTD
+#include <zstd.h>
+#endif
 
 #include "log.h"
 #include "util.h"
@@ -176,6 +179,8 @@ SectionOffsets ElfReaderImpl<Arch>::find_section_file_offsets(
 
 template <typename Arch>
 const vector<uint8_t>* ElfReaderImpl<Arch>::decompress_section(SectionOffsets offsets) {
+  bool zlib = false;
+  __attribute__((unused)) bool zstd = false;
   DEBUG_ASSERT(offsets.compressed);
   auto hdr = r.read<typename Arch::ElfChdr>(offsets.start);
   if (!hdr) {
@@ -185,15 +190,21 @@ const vector<uint8_t>* ElfReaderImpl<Arch>::decompress_section(SectionOffsets of
   }
 
   size_t decompressed_size = 0;
-  if (hdr->ch_type == ELFCOMPRESS_ZLIB) {
+  if (hdr->ch_type == ELFCOMPRESS_ZLIB || hdr->ch_type == ELFCOMPRESS_ZSTD) {
     decompressed_size = hdr->ch_size;
     offsets.start += sizeof(typename Arch::ElfChdr);
+    if (hdr->ch_type == ELFCOMPRESS_ZLIB) {
+      zlib = true;
+    } else {
+      zstd = true;
+    }
   } else {
     auto legacy_hdr = r.read_bytes(offsets.start, 4);
     if (!memcmp("ZLIB", legacy_hdr, 4)) {
       auto be_size = r.read<uint64_t>(offsets.start + 4);
       decompressed_size = be64toh(*be_size);
       offsets.start += 12;
+      zlib = true;
     } else {
       LOG(warn) << "section at " << offsets.start
                 << " is marked compressed but uses unrecognized"
@@ -205,28 +216,41 @@ const vector<uint8_t>* ElfReaderImpl<Arch>::decompress_section(SectionOffsets of
   unique_ptr<vector<uint8_t>> v(new vector<uint8_t>());
   v->resize(decompressed_size);
 
-  z_stream stream;
-  memset(&stream, 0, sizeof(stream));
-  int result = inflateInit(&stream);
-  if (result != Z_OK) {
-    FATAL() << "inflateInit failed!";
-    return nullptr;
-  }
+  if (zlib) {
+    z_stream stream;
+    memset(&stream, 0, sizeof(stream));
+    int result = inflateInit(&stream);
+    if (result != Z_OK) {
+      FATAL() << "inflateInit failed!";
+      return nullptr;
+    }
 
-  stream.avail_in = offsets.end - offsets.start;
-  stream.next_in = (unsigned char*)r.read_bytes(offsets.start, stream.avail_in);
-  stream.next_out = &v->front();
-  stream.avail_out = v->size();
-  result = inflate(&stream, Z_FINISH);
-  if (result != Z_STREAM_END) {
-    FATAL() << "inflate failed!";
-    return nullptr;
-  }
+    stream.avail_in = offsets.end - offsets.start;
+    stream.next_in = (unsigned char*)r.read_bytes(offsets.start, stream.avail_in);
+    stream.next_out = &v->front();
+    stream.avail_out = v->size();
+    result = inflate(&stream, Z_FINISH);
+    if (result != Z_STREAM_END) {
+      FATAL() << "inflate failed!";
+      return nullptr;
+    }
 
-  result = inflateEnd(&stream);
-  if (result != Z_OK) {
-    FATAL() << "inflateEnd failed!";
-    return nullptr;
+    result = inflateEnd(&stream);
+    if (result != Z_OK) {
+      FATAL() << "inflateEnd failed!";
+      return nullptr;
+    }
+#ifdef ZSTD
+  } else if (zstd) {
+    size_t compressed_size = offsets.end - offsets.start;
+    size_t size = ZSTD_decompress(&v->front(), v->size(),
+                                  r.read_bytes(offsets.start, compressed_size), compressed_size);
+    if (size != v->size()) {
+      FATAL() << "zstd decompression failed";
+    }
+#endif
+  } else {
+    FATAL() << "Unrecognized compression algorithm";
   }
 
   decompressed_sections.push_back(std::move(v));

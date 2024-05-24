@@ -227,6 +227,16 @@ set(REQUIRED_LIBS
   zlib
 )
 
+if(NOT ANDROID)
+  set(REQUIRED_LIBS
+    ${REQUIRED_LIBS}
+    # zstd is required to handle ELF compression, but isn't available on Android.
+    libzstd
+  )
+  set(ZSTD 1)
+  add_definitions(-DZSTD=1)
+endif()
+
 foreach(required_lib ${REQUIRED_LIBS})
   string(TOUPPER ${required_lib} PKG)
   if(NOT SKIP_PKGCONFIG)
@@ -715,6 +725,10 @@ target_link_libraries(rr
   ${ZLIB_LDFLAGS}
   brotli
 )
+
+if(ZSTD)
+  target_link_libraries(rr ${LIBZSTD_LDFLAGS})
+endif()
 
 if(staticlibs)
   # Urgh ... this might not work for everyone, but there doesn't seem to be
