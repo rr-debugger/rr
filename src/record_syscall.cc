@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <linux/auxvec.h>
+#include <linux/blkzoned.h>
 #include <linux/capability.h>
 #include <linux/cdrom.h>
 #include <linux/elf.h>
@@ -1800,6 +1801,16 @@ static Switchable prepare_ioctl(RecordTask* t,
     case BLKSECTGET:
     case BLKROTATIONAL:
       syscall_state.reg_parameter<typename Arch::unsigned_short>(3);
+      return PREVENT_SWITCH;
+
+    case BLKGETNRZONES:
+    case BLKGETZONESZ:
+    case BLKREPORTZONE:
+    case BLKCLOSEZONE:
+    case BLKOPENZONE:
+    case BLKRESETZONE:
+    case BLKFINISHZONE:
+      syscall_state.reg_parameter<typename Arch::signed_long>(3);
       return PREVENT_SWITCH;
 
     case TIOCGWINSZ:
