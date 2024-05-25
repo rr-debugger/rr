@@ -4,8 +4,9 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'restart_replay', 'interrupt_gdb', 'expect_gdb', 'send_gdb',
             'ok', 'failed', 'iterlines_both', 'last_match', 'get_exe_arch',
             'get_gdb_version', 'breakpoint_at_function',
-            'watchpoint_at_address', 'cont', 'backtrace',
-            'expect_breakpoint_stop', 'expect_watchpoint_stop' ]
+            'watchpoint_at_address', 'cont', 'backtrace', 'up',
+            'expect_breakpoint_stop', 'expect_watchpoint_stop',
+            'delete_watchpoint' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -88,8 +89,14 @@ def watchpoint_at_address(address, size):
     expect_debugger(r'atchpoint (\d+)')
     return int(last_match().group(1))
 
+def delete_watchpoint(watchpoint):
+    send_debugger(f'delete {watchpoint}', f'watchpoint delete {watchpoint}')
+
 def cont():
     send_debugger('continue', 'continue')
+
+def up():
+    send_debugger('up', 'up')
 
 def backtrace():
     send_debugger('bt', 'thread backtrace')
