@@ -1,6 +1,6 @@
 # Overview
 
-[![Build status](https://github.com/rr-debugger/rr/actions/workflows/build-and-test-main.yml/badge.svg)](https://github.com/rr-debugger/rr/actions/workflows/build-and-test-main.yml/badge.svg)
+[![Build and test status](https://github.com/rr-debugger/rr/actions/workflows/build-and-test-main.yml/badge.svg?branch=master)](https://github.com/rr-debugger/rr/actions)
 
 rr is a lightweight tool for recording, replaying and debugging execution of applications (trees of processes and threads).
 Debugging extends gdb with very efficient reverse-execution, which in combination with standard gdb/x86 features like hardware data watchpoints, makes debugging much more fun. More information about the project, including instructions on how to install, run, and build rr, is at [https://rr-project.org](https://rr-project.org). The best technical overview is currently the paper [Engineering Record And Replay For Deployability: Extended Technical Report](https://arxiv.org/pdf/1705.05937.pdf).
