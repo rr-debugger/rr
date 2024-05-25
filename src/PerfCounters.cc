@@ -96,7 +96,10 @@ enum CpuMicroarch {
   FirstAMD,
   AMDF15R30 = FirstAMD,
   AMDZen,
-  LastAMD = AMDZen,
+  AMDZen2,
+  AMDZen3,
+  AMDZen4,
+  LastAMD = AMDZen4,
   FirstARM,
   ARMNeoverseN1 = FirstARM,
   ARMNeoverseE1,
@@ -193,8 +196,11 @@ static const PmuConfig pmu_configs[] = {
   { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
-  // Both counters are available on Zen, Zen+ and Zen2.
+  // Both counters are available on all Zen microarchitecures so far.
   { AMDZen, "AMD Zen", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
+  { AMDZen2, "AMD Zen 2", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
+  { AMDZen3, "AMD Zen 3", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
+  { AMDZen4, "AMD Zen 4", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
   // Performance cores from ARM from cortex-a76 on (including neoverse-n1 and later)
   // have the following counters that are reliable enough for us.
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
