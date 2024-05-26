@@ -278,7 +278,7 @@ public:
       return *this;
     }
     Mapping subrange(MemoryRange range,
-                     std::function<KernelMapping(const KernelMapping&)> f);
+                     std::function<KernelMapping(const KernelMapping&)> f) const;
 
     const KernelMapping map;
     // The corresponding KernelMapping in the recording. During recording,
