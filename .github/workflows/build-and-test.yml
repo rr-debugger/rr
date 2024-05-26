@@ -6,6 +6,9 @@ on:
       runner_id:
         required: true
         type: string
+      architecture:
+        required: true
+        type: string
 
 jobs:
   build-and-test:
@@ -20,4 +23,12 @@ jobs:
         run: ./scripts/github-actions-build.sh
 
       - name: Test
+        id: test
         run: ./scripts/github-actions-test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.test.outcome == 'failure'
+        with:
+          name: failed-tests-${{ inputs.architecture }}
+          path: failed-tests/*
+          compression-level: 0

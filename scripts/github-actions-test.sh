@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set +x # echo commands
-set -e # default to exiting on error"
 
 # Enable perf events for rr
 echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid > /dev/null
@@ -12,3 +11,18 @@ echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope > /dev/null
 let halfproc=`nproc`/2
 cd obj
 ctest -j$halfproc --verbose
+
+STATUS=$?
+if [[ $STATUS != 0 ]]; then
+  mkdir $GITHUB_WORKSPACE/failed-tests
+  cd /tmp
+  rm rr-test-cpu-lock || true
+  for dir in rr-test-*; do
+    echo "Packing test /tmp/$dir"
+    $GITHUB_WORKSPACE/obj/bin/rr pack $dir/latest-trace
+    tar zcf $GITHUB_WORKSPACE/failed-tests/$dir.tar.gz $dir
+    rm -rf $dir
+  done
+fi
+
+exit $STATUS

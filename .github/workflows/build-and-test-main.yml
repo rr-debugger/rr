@@ -26,12 +26,14 @@ jobs:
     needs: setup
     with:
       runner_id: ${{ needs.setup.outputs.RUNNER_ID }}_x86_64
+      architecture: x86_64
 
   arm64:
     uses: ./.github/workflows/build-and-test.yml
     needs: setup
     with:
       runner_id: ${{ needs.setup.outputs.RUNNER_ID }}_arm64
+      architecture: arm64
 
   stop-runners:
     name: Stop runners

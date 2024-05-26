@@ -7,7 +7,7 @@ uname -a
 
 EXTRA_PACKAGES=
 MACHINE_TYPE=`uname -m`
-if [ ${MACHINE_TYPE} == 'x86_64' ]; then
+if [ $MACHINE_TYPE == 'x86_64' ]; then
   EXTRA_PACKAGES=g++-multilib
 fi
 
