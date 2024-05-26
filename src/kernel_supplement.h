@@ -496,6 +496,17 @@ enum {
 #define RR_RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT 2
 #define RR_RSEQ_CPU_ID_UNINITIALIZED -1
 
+// New in the 5.5 kernel
+#ifndef BLKOPENZONE
+#define BLKOPENZONE _IOW(0x12, 134, struct blk_zone_range)
+#endif
+#ifndef BLKCLOSEZONE
+#define BLKCLOSEZONE _IOW(0x12, 135, struct blk_zone_range)
+#endif
+#ifndef BLKFINISHZONE
+#define BLKFINISHZONE _IOW(0x12, 136, struct blk_zone_range)
+#endif
+
 // New in the 5.7 kernel
 #ifndef MREMAP_DONTUNMAP
 #define MREMAP_DONTUNMAP 4
