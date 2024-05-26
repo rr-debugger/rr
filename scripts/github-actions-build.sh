@@ -15,5 +15,5 @@ sudo apt-get install -y $EXTRA_PACKAGES cmake g++ pkg-config zlib1g-dev git pyth
 
 mkdir obj
 cd obj
-cmake -G Ninja -DCMAKE_BUILD_TYPE=RELEASE -Dstaticlibs=FALSE ..
+cmake -G Ninja -DCMAKE_BUILD_TYPE=DEBUG -Dstaticlibs=FALSE ..
 ninja
