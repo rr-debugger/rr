@@ -26,7 +26,8 @@ jobs:
         id: test
         run: ./scripts/github-actions-test.sh
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload failed-test artifacts
+        uses: actions/upload-artifact@v4
         if: failure() && steps.test.outcome == 'failure'
         with:
           name: failed-tests-${{ inputs.architecture }}
