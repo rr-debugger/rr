@@ -18,6 +18,16 @@ function generate(platform::Platform)
       tar -C / -xf DebianGlibc.v2.33.0.aarch64-linux-gnu.tar.gz
     fi
 
+    echo "--- Install zstd development package"
+    if [[ "$(platform.arch)" == "aarch64" ]]; then
+      dpkg -l | grep -E "libzstd"
+      curl "https://snapshot.debian.org/archive/debian/20220411T212101Z/pool/main/libz/libzstd/libzstd-dev_1.5.2%2Bdfsg-1_arm64.deb" -o /tmp/libzstd-dev_1.5.2+dfsg-1_arm64.deb
+      dpkg -i /tmp/libzstd-dev_1.5.2+dfsg-1_arm64.deb
+    else
+      apt update
+      apt install -y libzstd-dev
+    fi
+
     echo "--- Generate build environment"
     cmake --version
     rm -rf obj
