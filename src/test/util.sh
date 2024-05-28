@@ -337,6 +337,12 @@ function do_ps { psflags=$1
         $RR_EXE $GLOBAL_OPTIONS ps $psflags
 }
 
+#  debug <expect-script-name> [replay-args]
+function debug {
+    debug_gdb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+    debug_lldb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+}
+
 #  debug_lldb_only <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.

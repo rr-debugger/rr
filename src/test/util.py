@@ -6,7 +6,8 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'get_gdb_version', 'breakpoint_at_function',
             'watchpoint_at_address', 'cont', 'backtrace', 'up',
             'expect_breakpoint_stop', 'expect_watchpoint_stop',
-            'delete_watchpoint' ]
+            'delete_watchpoint', 'set_breakpoint_commands',
+            'expect_expression' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -112,6 +113,20 @@ def expect_watchpoint_stop(number):
         expect_debugger("atchpoint %d"%number)
     else:
         expect_debugger("stop reason = watchpoint %d"%number)
+
+def set_breakpoint_commands(number, commands):
+    if debugger_type == 'GDB':
+        send_gdb(f'commands {number}')
+        for command in commands:
+            send_gdb(command)
+        send_gdb('end')
+    else:
+        send_lldb(f'breakpoint command add {number}')
+        expect_debugger('Enter your debugger command')
+        for command in commands:
+            send_lldb(command)
+        send_lldb('DONE')
+        expect_debugger('(rr)')
 
 def send_debugger(gdb_cmd, lldb_cmd):
     if debugger_type == 'GDB':
