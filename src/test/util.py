@@ -6,8 +6,7 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'get_gdb_version', 'breakpoint_at_function',
             'watchpoint_at_address', 'cont', 'backtrace', 'up',
             'expect_breakpoint_stop', 'expect_watchpoint_stop',
-            'delete_watchpoint', 'set_breakpoint_commands',
-            'expect_expression' ]
+            'delete_watchpoint', 'set_breakpoint_commands' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
