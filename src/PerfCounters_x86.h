@@ -108,9 +108,11 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x10f10: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
     case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+) (UNTESTED)
     case 0x20f00: // Dali (Zen) (UNTESTED)
-    case 0x00f80: // Colfax, Pinnacle Ridge (Zen+) (UNTESTED)
+    case 0x00f80: // Colfax, Pinnacle Ridge (Zen+), Chagall (Zen3) (UNTESTED)
       if (ext_family == 8) {
         return AMDZen;
+      } else if (ext_family == 0xa) {
+        return AMDZen3;
       }
       break;
     case 0x30f10: // Rome, Castle Peak (Zen 2)
