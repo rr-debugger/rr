@@ -111,6 +111,8 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x00f80: // Colfax, Pinnacle Ridge (Zen+) (UNTESTED)
       if (ext_family == 8) {
         return AMDZen;
+      } else if (ext_family == 0xa) {
+        return AMDZen3;
       }
       break;
     case 0x30f10: // Rome, Castle Peak (Zen 2)
