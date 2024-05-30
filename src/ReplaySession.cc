@@ -2196,9 +2196,14 @@ void ReplaySession::reattach_tasks(ScopedFd new_tracee_socket, ScopedFd new_trac
     if (!t->wait()) {
       FATAL() << "Task " << t->tid << " killed unexpectedly";
     }
-    if (SIGSTOP != t->status().group_stop()) {
-      WaitStatus failed_status = t->status();
-      FATAL() << "Unexpected stop " << failed_status << " for " << t->tid;
+    WaitStatus status = t->status();
+    // Normally the SIGSTOP from detach_tasks() will have been delivered to the tracee
+    // while it was detached, putting it into a group stop, so we'll see the group stop
+    // status here. However it is possible for the SIGSTOP to be queued but not delivered
+    // because the tracee hasn't been scheduled yet. In that case we might see the
+    // SIGSTOP signal stop here instead.
+    if (status.group_stop() != SIGSTOP && status.stop_sig() != SIGSTOP) {
+      FATAL() << "Unexpected stop " << status << " for " << t->tid;
     }
     t->clear_wait_status();
     t->open_mem_fd();
