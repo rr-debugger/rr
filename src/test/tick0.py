@@ -23,8 +23,8 @@ send_gdb('c')
 if ticks_end < 99999:
     failed('End ticks too low')
 
-send_gdb("seek-ticks %d" % ticks_start)
-expect_gdb("Program stopped.")
+send_gdb(f'seek-ticks {ticks_start}')
+expect_gdb('Program stopped.')
 (event_exp, ticks_from_end) = get_when()
 if ticks_from_end != ticks_start:
     failed('ERROR: Failed to seek back to tick 0 from end')
@@ -37,8 +37,8 @@ for event in range(event_start-1, min(event_start+5, event_end-1)):
     expect_gdb(re.compile(r'(Thread \d+|Program) stopped'))
     
     
-    send_gdb("seek-ticks %d" % ticks_start)
-    expect_gdb("Program stopped.")
+    send_gdb(f'seek-ticks {ticks_start}')
+    expect_gdb('Program stopped.')
     
     (event, ticks) = get_when()
     if ticks != 0:

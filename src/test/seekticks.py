@@ -33,24 +33,24 @@ if ticks3 < 0 or ticks3 > 1000000:
 if ticks3 <= ticks2:
     failed('ERROR ... "when-ticks" failed to advance')
 
-send_gdb("seek-ticks %d" % ticks2)
-expect_gdb("Program stopped.")
+send_gdb(f'seek-ticks {ticks2}')
+expect_gdb('Program stopped.')
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
 ticks4 = int(last_match().group(1))
 if ticks4 != ticks2:
     failed('ERROR: Failed to seek back to ticks2')
 
-send_gdb("seek-ticks %d" % ticks)
-expect_gdb("Program stopped.")
+send_gdb(f'seek-ticks {ticks}')
+expect_gdb('Program stopped.')
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
 ticks5 = int(last_match().group(1))
 if ticks5 != ticks:
     failed('ERROR: Failed to seek back to ticks')
 
-send_gdb("seek-ticks %d" % ticks2)
-expect_gdb("Program stopped.")
+send_gdb(f'seek-ticks {ticks2}')
+expect_gdb('Program stopped.')
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
 ticks6 = int(last_match().group(1))
@@ -64,13 +64,13 @@ tests = [ticks2, ticks2, ticks2-2, 1, 1, 0, 0, 2, 0, 2, ticks2-2, ticks2-1, tick
 
 for i in range(len(tests)):
     ticks7 = tests[i]
-    send_gdb("seek-ticks %d" % ticks7)
-    expect_gdb("Program stopped.")
+    send_gdb(f'seek-ticks {ticks7}')
+    expect_gdb('Program stopped.')
     send_gdb('when-ticks')
     expect_gdb(re.compile(r'Current tick: (\d+)'))
     ticks8 = int(last_match().group(1))
     if ticks8 != ticks7:
-        failed("ERROR: seek-ticks didn't go to correct tick on test %d" % i)
+        failed(f'ERROR: seek-ticks didn\'t go to correct tick on test {i}')
 
 send_gdb('seek-ticks 2000000000')
 expect_gdb('No event found matching specified ticks target')

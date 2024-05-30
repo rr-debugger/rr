@@ -12,9 +12,9 @@ regex_info = {
     'aarch64': ArchInfo('pc'),
 }
 
-syscall_re = re.compile("`SYSCALL: <unknown-syscall--1>' \\(state:EXITING_SYSCALL\\)")
-sched_re = re.compile("`SCHED'")
-eip_re = re.compile("%s:(0x[a-f0-9]+)" % regex_info[arch].ip_name)
+syscall_re = re.compile(r'''`SYSCALL: <unknown-syscall--1>' \(state:EXITING_SYSCALL\)''')
+sched_re = re.compile(r'`SCHED')
+eip_re = re.compile(r'%s:(0x[a-f0-9]+)' % regex_info[arch].ip_name)
 
 sched_enabled = False
 eip_enabled = False

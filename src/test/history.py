@@ -15,7 +15,7 @@ send_gdb('c')
 expect_gdb('i=4')
 
 send_gdb('forward')
-expect_gdb("Can't go forward. No more history entries.")
+expect_gdb('Can\'t go forward. No more history entries.')
 
 send_gdb('back')
 expect_gdb('i=3')
@@ -34,7 +34,7 @@ expect_gdb('i=0')
 send_gdb('c')
 expect_gdb('i=1')
 send_gdb('forward')
-expect_gdb("Can't go forward. No more history entries.")
+expect_gdb('Can\'t go forward. No more history entries.')
 
 send_gdb('back')
 expect_gdb('i=0')

@@ -58,11 +58,11 @@ def interrupt_gdb():
 
 def send_gdb(what):
     assert debugger_type == 'GDB'
-    send(child, "%s\n"%what)
+    send(child, f'{what}\n')
 
 def send_lldb(what):
     assert debugger_type == 'LLDB'
-    send(child, "%s\n"%what)
+    send(child, f'{what}\n')
 
 # Restarts and continues execution
 def restart_replay(event=0):
@@ -106,21 +106,21 @@ def backtrace():
 
 def expect_breakpoint_stop(number):
     if debugger_type == 'GDB':
-        expect_debugger("Breakpoint %d"%number)
+        expect_debugger(f'Breakpoint {number}')
     else:
-        expect_debugger("stop reason = breakpoint %d"%number)
+        expect_debugger(f'stop reason = breakpoint {number}')
 
 def expect_watchpoint_stop(number):
     if debugger_type == 'GDB':
-        expect_debugger("atchpoint %d"%number)
+        expect_debugger(f'atchpoint {number}')
     else:
-        expect_debugger("stop reason = watchpoint %d"%number)
+        expect_debugger(f'stop reason = watchpoint {number}')
 
 def expect_signal_stop(signal_name):
     if debugger_type == 'GDB':
-        expect_debugger(f"received signal {signal_name}")
+        expect_debugger(f'received signal {signal_name}')
     else:
-        expect_debugger(f"received signal: {signal_name}")
+        expect_debugger(f'received signal: {signal_name}')
 
 def set_breakpoint_commands(number, commands):
     if debugger_type == 'GDB':
@@ -154,10 +154,10 @@ def expect_threads(num_threads, selected_thread):
 
 def select_thread(index):
     if debugger_type == 'GDB':
-        send_gdb(f"thread {index}")
+        send_gdb(f'thread {index}')
         expect_debugger(f'Switching to thread {index} ')
     else:
-        send_lldb(f"thread select {index}")
+        send_lldb(f'thread select {index}')
         expect_debugger(f'thread #{index}')
 
 def scheduler_locking_on():
@@ -205,7 +205,7 @@ def clean_up():
             child = None
         except Exception as e:
             if iterations < 5:
-                print("close() failed with '%s', retrying..."%e)
+                print(f'close() failed with "{e}", retrying...')
                 iterations = iterations + 1
             else:
                 child = None
@@ -214,13 +214,13 @@ def expect(prog, what):
     try:
         prog.expect(what)
     except Exception as e:
-        failed('expecting "%s"'% (what), e)
+        failed(f'expecting "{what}"', e)
 
 def send(prog, what):
     try:
         prog.send(what)
     except Exception as e:
-        failed('sending "%s"'% (what), e)
+        failed(f'sending "{what}"', e)
 
 def set_up():
     global child

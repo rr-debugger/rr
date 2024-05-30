@@ -1,8 +1,8 @@
 import sys
 import re
 
-syscall_re = re.compile("`SIGNAL: ")
-time_re = re.compile("global_time:(\d+)")
+syscall_re = re.compile('`SIGNAL: ')
+time_re = re.compile(r'global_time:(\d+)')
 futex_time = 999999999
 
 while True:

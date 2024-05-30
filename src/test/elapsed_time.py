@@ -15,8 +15,7 @@ expect_gdb(re.compile(r'(?<=Elapsed Time \(s\): )[0-9.]+'))
 elapsed_time = float(last_match().group(0))
 sleep_time = 1.0
 if elapsed_time < sleep_time:
-    failed("ERROR ... The reported elapsed time after sleeping for " +
-           "{sleep_time} (s) was {elapsed_time}".format(
-               sleep_time=sleep_time, elapsed_time=elapsed_time))
+    failed('ERROR ... The reported elapsed time after sleeping for ' +
+           f'{sleep_time} (s) was {elapsed_time}')
 
 ok()

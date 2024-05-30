@@ -12,8 +12,8 @@ counter = sys.argv[2]
 expected_count = int(sys.argv[3])
 
 last_perfctr_value = -1
-syscall_re = re.compile("`SYSCALL: (\\w+)' \\(state:0\\)")
-perfctr_re = re.compile(counter + ":(\\d+)")
+syscall_re = re.compile(r'''`SYSCALL: (\\w+)' \\(state:0\\)''')
+perfctr_re = re.compile(counter + ':(\\d+)')
 
 while True:
     line = sys.stdin.readline()
@@ -27,7 +27,7 @@ while True:
             if m:
                 v = int(m.group(1))
                 if last_perfctr_value >= 0 and v - last_perfctr_value != expected_count:
-                    print("Mismatch: saw %d %ss between %ss (from %d to %d), expected %d" % \
+                    print('Mismatch: saw %d %ss between %ss (from %d to %d), expected %d' % \
                       (v - last_perfctr_value, counter, syscall, last_perfctr_value, v, expected_count))
                     sys.exit(1)
                 last_perfctr_value = v
