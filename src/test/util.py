@@ -6,7 +6,10 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'get_gdb_version', 'breakpoint_at_function',
             'watchpoint_at_address', 'cont', 'backtrace', 'up',
             'expect_breakpoint_stop', 'expect_watchpoint_stop',
-            'delete_watchpoint', 'set_breakpoint_commands' ]
+            'delete_watchpoint', 'expect_signal_stop',
+            'set_breakpoint_commands', 'select_thread',
+            'scheduler_locking_on', 'scheduler_locking_off',
+            'expect_expression', 'expect_threads',  ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -113,6 +116,12 @@ def expect_watchpoint_stop(number):
     else:
         expect_debugger("stop reason = watchpoint %d"%number)
 
+def expect_signal_stop(signal_name):
+    if debugger_type == 'GDB':
+        expect_debugger(f"received signal {signal_name}")
+    else:
+        expect_debugger(f"received signal: {signal_name}")
+
 def set_breakpoint_commands(number, commands):
     if debugger_type == 'GDB':
         send_gdb(f'commands {number}')
@@ -126,6 +135,38 @@ def set_breakpoint_commands(number, commands):
             send_lldb(command)
         send_lldb('DONE')
         expect_debugger('(rr)')
+
+def expect_expression(expression, value):
+    send_debugger(f'print {expression}', f'print {expression}')
+    if debugger_type == 'GDB':
+        expect_debugger(f' = {value}')
+    else:
+        expect_debugger(fr'\) {value}')
+
+def expect_threads(num_threads, selected_thread):
+    send_debugger('info threads', 'thread list')
+    for i in range(1, num_threads + 1):
+        selected = r'\*' if i == selected_thread else ''
+        if debugger_type == 'GDB':
+            expect_debugger(f'{selected} +{i} ')
+        else:
+            expect_debugger(f'{selected} +thread #{i}:')
+
+def select_thread(index):
+    if debugger_type == 'GDB':
+        send_gdb(f"thread {index}")
+        expect_debugger(f'Switching to thread {index} ')
+    else:
+        send_lldb(f"thread select {index}")
+        expect_debugger(f'thread #{index}')
+
+def scheduler_locking_on():
+    if debugger_type == 'GDB':
+        send_gdb('set scheduler-locking on')
+
+def scheduler_locking_off():
+    if debugger_type == 'GDB':
+        send_gdb('set scheduler-locking off')
 
 def send_debugger(gdb_cmd, lldb_cmd):
     if debugger_type == 'GDB':

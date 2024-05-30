@@ -1,21 +1,16 @@
 from util import *
 
-send_gdb('b break_here')
-expect_gdb('Breakpoint 1')
-send_gdb('c')
-expect_gdb('Breakpoint 1')
+bp = breakpoint_at_function('break_here')
+cont()
+expect_breakpoint_stop(bp)
 
-send_gdb('info threads')
-expect_gdb('  1    Thread')
-expect_gdb('\\* 2    Thread')
+expect_threads(num_threads=2, selected_thread=2)
 
-send_gdb('thread 1')
-expect_gdb('Switching to thread 1')
-send_gdb('set scheduler-locking on')
-send_gdb('call get_value()')
-expect_gdb('1')
-send_gdb('set scheduler-locking off')
-send_gdb('c')
-expect_gdb('SIGKILL')
+select_thread(1)
+scheduler_locking_on()
+expect_expression('get_value()', 1)
+scheduler_locking_off()
+cont()
+expect_signal_stop('SIGKILL')
 
 ok()
