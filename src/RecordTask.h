@@ -795,6 +795,9 @@ public:
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<StashedSignal> stashed_signals;
+  // When true, we're blocking signals during a syscall to
+  // prevent new signals from being delivered. `blocked_sigs_dirty`
+  // is false and `blocked_sigs` contains the previous sigmask.
   bool stashed_signals_blocking_more_signals;
   bool stashed_group_stop;
   bool break_at_syscallbuf_traced_syscalls;

@@ -671,6 +671,9 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       // We're injecting a signal, so make sure that signal is unblocked.
       sigset &= ~signal_bit(sig);
     }
+    LOG(debug) << "Set signal mask for " << tid << " to block all signals (bar "
+               << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
+               << "have a stashed signal";
     set_sigmask(sigset);
   }
 
@@ -937,7 +940,10 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
     ret = syscall(SYS_rt_tgsigqueueinfo, wake_task->tgid(), wake_task->tid,
                   SIGCHLD, &si);
     ASSERT(this, ret == 0);
-    if (wake_task->is_sig_blocked(SIGCHLD)) {
+    // `stashed_signals_blocking_more_signals` means that SIGCHLD can be
+    // blocked even when `is_sig_blocked` is false.
+    if (wake_task->is_sig_blocked(SIGCHLD) ||
+        wake_task->stashed_signals_blocking_more_signals) {
       LOG(debug) << "SIGCHLD is blocked, kicking it out of the syscall";
       // Just sending SIGCHLD won't wake it up. Send it a TIME_SLICE_SIGNAL
       // as well to make sure it exits a blocking syscall. We ensure those
@@ -1347,10 +1353,6 @@ void RecordTask::set_sigmask(sig_set_t mask) {
       return;
     }
     ASSERT(this, errno == EINVAL);
-  } else {
-    LOG(debug) << "Set signal mask to block all signals (bar "
-               << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
-               << " have a stashed signal";
   }
 }
 
@@ -2190,7 +2192,7 @@ void RecordTask::set_tid_and_update_serial(pid_t tid,
 
 bool RecordTask::may_reap() {
   if (emulated_stop_pending) {
-    LOG(debug) << "Declining to reap " << tid << "; emulated stop pending";
+    LOG(debug) << "Declining to reap " << tid << "; emulated stop pending " << emulated_stop_code;
     // Don't reap until the emulated ptrace stop has been processed.
     return false;
   }
