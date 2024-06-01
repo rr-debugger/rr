@@ -1292,13 +1292,21 @@ void RecordSession::syscall_state_changed(RecordTask* t,
                      << syscall_name(syscallno, syscall_arch);
         }
 
+        // Wait-like syscalls always check for notifications from waited-for processes
+        // before they check for pending signals. So, if the tracee has a pending
+        // notification that also generated a signal, the wait syscall returns
+        // normally rather than returning with ERESTARTSYS etc. (The signal will
+        // be dequeued and any handler run on the return to userspace, however.)
+        bool return_normally_from_wait = rec_return_normally_from_wait(t);
+
         /* TODO: is there any reason a restart_syscall can't
          * be interrupted by a signal and itself restarted? */
         bool may_restart = !is_restart_syscall_syscall(syscallno, t->arch())
                            // SYS_pause is either interrupted or
                            // never returns.  It doesn't restart.
                            && !is_pause_syscall(syscallno, t->arch()) &&
-                           t->regs().syscall_may_restart();
+                           t->regs().syscall_may_restart() &&
+                           !return_normally_from_wait;
         /* no need to process the syscall in case its
          * restarted this will be done in the exit from the
          * restart_syscall */

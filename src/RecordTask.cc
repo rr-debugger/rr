@@ -900,9 +900,8 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
         if (rchild->emulated_SIGCHLD_pending) {
           need_signal = true;
           // check to see if any thread in the ptracer process is in a waitpid
-          // that
-          // could read the status of 'tracee'. If it is, we should wake up that
-          // thread. Otherwise we send SIGCHLD to the ptracer thread.
+          // that could read the status of 'tracee'. If it is, we should wake
+          // up that thread. Otherwise we send SIGCHLD to the ptracer thread.
           for (Task* t : thread_group()->task_set()) {
             auto rt = static_cast<RecordTask*>(t);
             if (rt->is_waiting_for(rchild)) {
@@ -934,7 +933,7 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
   si.si_value.sival_int = SIGCHLD_SYNTHETIC;
   int ret;
   if (wake_task) {
-    LOG(debug) << "Sending synthetic SIGCHLD to tid " << wake_task->tid;
+    LOG(debug) << "Sending synthetic SIGCHLD to waiting tid " << wake_task->tid;
     // We must use the raw SYS_rt_tgsigqueueinfo syscall here to ensure the
     // signal is sent to the correct thread by tid.
     ret = syscall(SYS_rt_tgsigqueueinfo, wake_task->tgid(), wake_task->tid,
@@ -969,55 +968,45 @@ static bool is_synthetic_SIGCHLD(const siginfo_t& si) {
   return si.si_signo == SIGCHLD && si.si_value.sival_int == SIGCHLD_SYNTHETIC;
 }
 
-bool RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
+void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
   if (!is_synthetic_SIGCHLD(*si)) {
-    return true;
+    return;
   }
 
-  if (is_syscall_restart() && EV_SYSCALL_INTERRUPTION == ev().type()) {
-    int syscallno = regs().original_syscallno();
-    SupportedArch syscall_arch = ev().Syscall().arch();
-    if (is_waitpid_syscall(syscallno, syscall_arch) ||
-        is_waitid_syscall(syscallno, syscall_arch) ||
-        is_wait4_syscall(syscallno, syscall_arch)) {
-      // Wait-like syscalls always check for notifications from waited-for processes
-      // before they check for pending signals. So, if the tracee has a pending
-      // notification that also generated a signal, the wait syscall will return
-      // normally rather than returning with ERESTARTSYS etc. (The signal will
-      // be dequeued and any handler run on the return to userspace, however.)
-      // We need to emulate this by deferring our synthetic ptrace signal
-      // until after the wait syscall has returned.
-      LOG(debug) << "Deferring signal because we're in a wait";
-      // Return false to tell the caller to defer the signal and resume
-      // the syscall.
-      return false;
-    }
-  }
-
+  RecordTask* from_task = nullptr;
   for (RecordTask* tracee : emulated_ptrace_tracees) {
     if (tracee->emulated_ptrace_SIGCHLD_pending) {
-      tracee->emulated_ptrace_SIGCHLD_pending = false;
-      tracee->set_siginfo_for_waited_task<NativeArch>(
-          reinterpret_cast<NativeArch::siginfo_t*>(si));
-      si->si_value.sival_int = 0;
-      return true;
+      from_task = tracee;
+      from_task->emulated_ptrace_SIGCHLD_pending = false;
+      break;
     }
   }
 
-  for (ThreadGroup* child_tg : thread_group()->children()) {
-    for (Task* child : child_tg->task_set()) {
-      auto rchild = static_cast<RecordTask*>(child);
-      if (rchild->emulated_SIGCHLD_pending) {
-        rchild->emulated_SIGCHLD_pending = false;
-        rchild->set_siginfo_for_waited_task<NativeArch>(
-            reinterpret_cast<NativeArch::siginfo_t*>(si));
-        si->si_value.sival_int = 0;
-        return true;
+  if (!from_task) {
+    for (ThreadGroup* child_tg : thread_group()->children()) {
+      for (Task* child : child_tg->task_set()) {
+        auto rchild = static_cast<RecordTask*>(child);
+        if (rchild->emulated_SIGCHLD_pending) {
+          from_task = rchild;
+          from_task->emulated_SIGCHLD_pending = false;
+          break;
+        }
+      }
+      if (from_task) {
+        break;
       }
     }
+
+    if (!from_task) {
+      // Maybe the task died after the synthetic SIGCHLD was sent
+      LOG(warn) << "Can't find traced task that send synthetic SIGCHLD";
+      return;
+    }
   }
 
-  return true;
+  from_task->set_siginfo_for_waited_task<NativeArch>(
+      reinterpret_cast<NativeArch::siginfo_t*>(si));
+  si->si_value.sival_int = 0;
 }
 
 bool RecordTask::is_waiting_for_ptrace(RecordTask* t) {

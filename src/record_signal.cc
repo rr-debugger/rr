@@ -692,9 +692,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
       return DEFER_SIGNAL;
     }
 
-    if (!t->set_siginfo_for_synthetic_SIGCHLD(si)) {
-      return DEFER_SIGNAL;
-    }
+    t->set_siginfo_for_synthetic_SIGCHLD(si);
 
     if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
       t->push_event(Event::sched());

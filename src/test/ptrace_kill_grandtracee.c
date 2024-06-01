@@ -27,7 +27,7 @@ int main(void) {
   }
 
   test_assert(0 == ptrace(PTRACE_SEIZE, child, NULL,
-                          (void*)(PTRACE_O_TRACEFORK)));
+                          (void*)PTRACE_O_TRACEFORK));
   test_assert(1 == write(parent_to_child_fds[1], "p", 1));
 
   test_assert(child == waitpid(child, &status, 0));

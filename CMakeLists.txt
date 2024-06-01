@@ -1218,13 +1218,13 @@ set(BASIC_TESTS
   ptrace_attach_thread_running
   ptrace_breakpoint
   ptrace_change_patched_syscall
-  ptrace_waiter_thread
   x86/ptrace_debug_regs
   ptrace_exec
   x86/ptrace_exec32
   ptrace_kill_grandtracee
   x86/ptrace_tls
   ptrace_seize
+  ptrace_sigchld
   ptrace_sigchld_blocked
   ptrace_signals
   ptrace_singlestep
@@ -1235,6 +1235,7 @@ set(BASIC_TESTS
   ptrace_trace_clone
   ptrace_trace_exit
   ptrace_traceme
+  ptrace_waiter_thread
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer

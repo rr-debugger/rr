@@ -2249,8 +2249,11 @@ static Switchable prepare_bpf(RecordTask* t,
   return PREVENT_SWITCH;
 }
 
-static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
-                               int options) {
+static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state) {
+  if (t->in_wait_type == WAIT_TYPE_NONE) {
+    return false;
+  }
+
   for (Task* thread : t->thread_group()->task_set()) {
     RecordTask* rthread = static_cast<RecordTask*>(thread);
     for (RecordTask* child : rthread->emulated_ptrace_tracees) {
@@ -2267,7 +2270,7 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
       if (rchild->emulated_stop_type == NOT_STOPPED) {
         continue;
       }
-      if (!(options & WUNTRACED) && rchild->emulated_stop_type != CHILD_STOP) {
+      if (!(t->in_wait_options & WUNTRACED) && rchild->emulated_stop_type != CHILD_STOP) {
         continue;
       }
       if (!rchild->emulated_stop_pending || !t->is_waiting_for(rchild)) {
@@ -2280,16 +2283,16 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
   return false;
 }
 
-static bool maybe_pause_instead_of_waiting(RecordTask* t, int options) {
-  if (t->in_wait_type != WAIT_TYPE_PID || (options & WNOHANG)) {
-    return false;
+static void maybe_pause_instead_of_waiting(RecordTask* t) {
+  if (t->in_wait_type != WAIT_TYPE_PID || (t->in_wait_options & WNOHANG)) {
+    return;
   }
   RecordTask* child = t->session().find_task(t->in_wait_pid);
   if (!child) {
     LOG(debug) << "Child " << t->in_wait_pid << " not found!";
   }
   if (!child || !t->is_waiting_for_ptrace(child) || t->is_waiting_for(child)) {
-    return false;
+    return;
   }
   // OK, t is waiting for a ptrace child by tid, but since t is not really
   // ptracing child, entering a real wait syscall will not actually wait for
@@ -2310,7 +2313,6 @@ static bool maybe_pause_instead_of_waiting(RecordTask* t, int options) {
   r.set_arg3(0);
   r.set_arg4(0);
   t->set_regs(r);
-  return true;
 }
 
 static RecordTask* verify_ptrace_target(RecordTask* tracer,
@@ -4487,25 +4489,22 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         t->in_wait_type = WAIT_TYPE_PID;
         t->in_wait_pid = pid;
       }
-      int options = (int)regs.arg3();
-      bool pausing = false;
-      if (maybe_emulate_wait(t, syscall_state, options)) {
+      t->in_wait_options = (int)regs.arg3();
+      if (maybe_emulate_wait(t, syscall_state)) {
         Registers r = regs;
         // Set options to an invalid value to force syscall to fail
         r.set_arg3(0xffffffff);
         t->set_regs(r);
         should_switch = PREVENT_SWITCH;
-      } else if (maybe_pause_instead_of_waiting(t, options)) {
-        pausing = true;
+      } else {
+        maybe_pause_instead_of_waiting(t);
       }
-      // When pausing, we've modified the registers and will emulate the
-      // memory changes on syscall exit. We avoid modifying these registers
-      // with pointers to scratch memory, so mark them _NO_SCRATCH if we're
-      // pausing.
-      syscall_state.reg_parameter<int>(2, pausing ? IN_OUT_NO_SCRATCH : IN_OUT);
+      // We may modify emulated parameters so to make things
+      // simple, don't use scratch.
+      syscall_state.reg_parameter<int>(2, IN_OUT_NO_SCRATCH);
       if (syscallno == Arch::wait4) {
         syscall_state.reg_parameter<typename Arch::rusage>(4,
-          pausing ? IN_OUT_NO_SCRATCH : OUT);
+            IN_OUT_NO_SCRATCH);
       }
       return should_switch;
     }
@@ -4539,19 +4538,19 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       Switchable should_switch = ALLOW_SWITCH;
       t->in_wait_pid = wait_pid;
-      int options = (int)regs.arg4();
-      bool pausing = false;
-      if (maybe_emulate_wait(t, syscall_state, options)) {
+      t->in_wait_options = (int)regs.arg4();
+      if (maybe_emulate_wait(t, syscall_state)) {
         Registers r = regs;
         // Set options to an invalid value to force syscall to fail
         r.set_arg4(0xffffffff);
         t->set_regs(r);
         should_switch = PREVENT_SWITCH;
       } else {
-        pausing = maybe_pause_instead_of_waiting(t, options);
+        maybe_pause_instead_of_waiting(t);
       }
-      syscall_state.reg_parameter<typename Arch::siginfo_t>(3,
-        pausing ? IN_OUT_NO_SCRATCH : IN_OUT);
+      // We may modify emulated *infop so to make things
+      // simple, don't use scratch.
+      syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT_NO_SCRATCH);
       return should_switch;
     }
 
@@ -5414,10 +5413,25 @@ Switchable rec_prepare_syscall(RecordTask* t) {
 
 void rec_abort_prepared_syscall(RecordTask* t) {
   auto syscall_state = TaskSyscallState::maybe_get(t);
-  if (syscall_state) {
-    syscall_state->abort_syscall_results();
-    t->syscall_state = nullptr;
+  if (!syscall_state) {
+    return;
   }
+  syscall_state->abort_syscall_results();
+  t->syscall_state = nullptr;
+}
+
+bool rec_return_normally_from_wait(RecordTask* t) {
+  auto syscall_state = TaskSyscallState::maybe_get(t);
+  if (!syscall_state) {
+    return false;
+  }
+  if (syscall_state->emulate_wait_for_child) {
+    return true;
+  }
+  if (maybe_emulate_wait(t, *syscall_state)) {
+    return true;
+  }
+  return false;
 }
 
 static void aarch64_kernel_bug_workaround(RecordTask *t,
@@ -5474,6 +5488,7 @@ static void rec_prepare_restart_syscall_arch(RecordTask* t,
       t->set_regs(r);
       t->canonicalize_regs(t->arch());
       t->in_wait_type = WAIT_TYPE_NONE;
+      t->in_wait_options = 0;
       break;
     }
   }
@@ -6996,6 +7011,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::wait4:
     case Arch::waitid: {
       t->in_wait_type = WAIT_TYPE_NONE;
+      t->in_wait_options = 0;
       // Restore possibly-modified registers
       Registers r = t->regs();
       r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());

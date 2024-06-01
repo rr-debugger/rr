@@ -38,6 +38,13 @@ void rec_process_syscall(RecordTask* t);
  */
 void rec_did_sigreturn(RecordTask* t);
 
+/**
+ * Return true if we're in a wait-like syscall that should
+ * return a status from an emulated stop instead of being interrupted
+ * by a signal. Sets the waited-for task as a side effect.
+ */
+bool rec_return_normally_from_wait(RecordTask* t);
+
 } // namespace rr
 
 #endif /* RR_PROCESS_SYSCALL_H_ */
