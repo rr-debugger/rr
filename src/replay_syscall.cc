@@ -820,7 +820,8 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
   auto f = mapping.emu_file;
   if (f) {
     f->ensure_size(mapping.map.file_offset_bytes() + new_size);
-  } else if (new_size > old_size && mapping.map.fsname().size() > 0) {
+  } else if (new_size > old_size && mapping.map.fsname().size() > 0 &&
+             !mapping.map.is_named_anonymous()) {
     struct stat st;
     int ret = stat(mapping.map.fsname().c_str(), &st);
     if (ret != 0) {

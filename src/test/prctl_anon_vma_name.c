@@ -37,6 +37,14 @@ int main(void) {
     test_assert(p2 != MAP_FAILED);
     ret = prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, p, page_size*4, "ghi");
     test_assert(ret == -1 && errno == EBADF);
+
+    char* p3 = (char*)mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+        MAP_ANONYMOUS | (i ? MAP_SHARED : MAP_PRIVATE), -1, 0);
+    test_assert(p != MAP_FAILED);
+
+    ret = prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, p3, page_size, "don't blow up");
+    test_assert(ret == 0);
+    p3 = mremap(p3, page_size, 2*page_size, MREMAP_MAYMOVE);
   }
 
   atomic_puts("EXIT-SUCCESS");
