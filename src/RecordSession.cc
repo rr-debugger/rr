@@ -2456,11 +2456,13 @@ static string lookup_by_path(const string& name) {
       ld_preload += exe_info.sanitizer_path + ":";
     }
     ld_preload += syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
+#ifndef __BIONIC__
     // When librrpreload is built against glibc 2.34 but runs in a process linking pre-2.34 glibc,
     // its call to dlsym needs to search libdl before libc. When librrpreload found dlsym
     // in libc at link time, pre-2.34 ld.so throws a fatal error if it searches for dlsym in libc and
     // can't find it.
     ld_preload += ":libdl.so.2";
+#endif
     inject_ld_helper_library(env, "LD_PRELOAD", ld_preload);
   }
 
