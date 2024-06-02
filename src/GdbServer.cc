@@ -1946,6 +1946,7 @@ static bool is_likely_interp(string fsname) {
 #endif
 }
 
+#ifndef __BIONIC__
 static remote_ptr<void> base_addr_from_rendezvous(Task* t, string fname)
 {
   remote_ptr<void> interpreter_base = t->vm()->saved_interpreter_base();
@@ -1987,6 +1988,7 @@ static remote_ptr<void> base_addr_from_rendezvous(Task* t, string fname)
   }
   return nullptr;
 }
+#endif
 
 int GdbServer::open_file(Session& session, Task* continue_task, const std::string& file_name) {
   // XXX should we require file_scope_pid == 0 here?
@@ -2062,6 +2064,7 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
     // Last ditch attempt: Dig through the tracee's libc rendezvous struct to
     // see if we can find this file by a different name (e.g. if it was opened
     // via symlink)
+#ifndef __BIONIC__
     remote_ptr<void> base = base_addr_from_rendezvous(continue_task, file_name);
     if (base != nullptr && continue_task->vm()->has_mapping(base)) {
       int ret_fd = 0;
@@ -2072,6 +2075,7 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
       memory_files.insert(make_pair(ret_fd, FileId(continue_task->vm()->mapping_of(base).recorded_map)));
       return ret_fd;
     }
+#endif
     LOG(debug) << "... not found";
     return -1;
    }
