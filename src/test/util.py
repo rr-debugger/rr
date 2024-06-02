@@ -137,11 +137,8 @@ def set_breakpoint_commands(number, commands):
         expect_debugger('(rr)')
 
 def expect_expression(expression, value):
-    send_debugger(f'print {expression}', f'print {expression}')
-    if debugger_type == 'GDB':
-        expect_debugger(f' = {value}')
-    else:
-        expect_debugger(fr'\) {value}')
+    send_debugger(f'print {expression}', f'expression -- {expression}')
+    expect_debugger(f' = {value}')
 
 def expect_threads(num_threads, selected_thread):
     send_debugger('info threads', 'thread list')
