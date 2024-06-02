@@ -29,6 +29,7 @@ cmake -G Ninja \
   -DSKIP_PKGCONFIG=True \
   -DEXTRA_VERSION_STRING="$BUILD_ID" \
   -DZLIB_LDFLAGS=-lz \
+  -DEXTRA_EXTERNAL_SOLIBS="/build/rr/capnproto-android/src/kj/libkj.so;/build/rr/capnproto-android/src/capnp/libcapnp.so" \
   /src/rr
 cmake --build .
 cpack -G TGZ
