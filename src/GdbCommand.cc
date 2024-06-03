@@ -15,7 +15,7 @@ static SimpleGdbCommand elapsed_time(
     " 'record' timeline.",
     [](GdbServer&, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
-        return GdbCommandHandler::cmd_end_diversion();
+        return GdbServerCommandHandler::cmd_end_diversion();
       }
 
       ReplayTask* replay_t = static_cast<ReplayTask*>(t);
@@ -29,7 +29,7 @@ static SimpleGdbCommand when(
     "when", "Print the number of the last completely replayed rr event.",
     [](GdbServer&, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
-        return GdbCommandHandler::cmd_end_diversion();
+        return GdbServerCommandHandler::cmd_end_diversion();
       }
       // The current event has not been completely replayed, so
       // we report the number of the previuos event.
@@ -42,7 +42,7 @@ static SimpleGdbCommand when_ticks(
     "when-ticks", "Print the current rr tick count for the current thread.",
     [](GdbServer&, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
-        return GdbCommandHandler::cmd_end_diversion();
+        return GdbServerCommandHandler::cmd_end_diversion();
       }
       return string("Current tick: ") + to_string(t->tick_count());
     });
@@ -51,7 +51,7 @@ static SimpleGdbCommand when_tid(
     "when-tid", "Print the real tid for the current thread.",
     [](GdbServer&, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
-        return GdbCommandHandler::cmd_end_diversion();
+        return GdbServerCommandHandler::cmd_end_diversion();
       }
       return string("Current tid: ") + to_string(t->tid);
     });
@@ -83,7 +83,7 @@ static SimpleGdbCommand back(
         return string("Command requires a full debugging session.");
       }
       if (!t->session().is_replaying()) {
-        return GdbCommandHandler::cmd_end_diversion();
+        return GdbServerCommandHandler::cmd_end_diversion();
       }
       if (back_stack.size() == 0) {
         return string("Can't go back. No more history entries.");
@@ -101,7 +101,7 @@ static SimpleGdbCommand forward(
         return string("Command requires a full debugging session.");
       }
       if (!t->session().is_replaying()) {
-        return GdbCommandHandler::cmd_end_diversion();
+        return GdbServerCommandHandler::cmd_end_diversion();
       }
       if (forward_stack.size() == 0) {
         return string("Can't go forward. No more history entries.");

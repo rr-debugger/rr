@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "GdbCommandHandler.h"
+#include "GdbServerCommandHandler.h"
 #include "GdbCommand.h"
 #include "log.h"
 
@@ -31,7 +31,7 @@ static string gdb_macro_binding(const GdbCommand& cmd) {
   return ret;
 }
 
-/* static */ string GdbCommandHandler::gdb_macros() {
+/* static */ string GdbServerCommandHandler::gdb_macros() {
   GdbCommand::init_auto_args();
   stringstream ss;
   ss << string(R"Delimiter(
@@ -186,7 +186,7 @@ end
   return ss.str();
 }
 
-/*static*/ GdbCommand* GdbCommandHandler::command_for_name(const string& name) {
+/*static*/ GdbCommand* GdbServerCommandHandler::command_for_name(const string& name) {
   if (!gdb_command_list) {
     return nullptr;
   }
@@ -198,7 +198,7 @@ end
   return nullptr;
 }
 
-void GdbCommandHandler::register_command(GdbCommand& cmd) {
+void GdbServerCommandHandler::register_command(GdbCommand& cmd) {
   LOG(debug) << "registering command: " << cmd.name();
   if (!gdb_command_list) {
     gdb_command_list = new vector<GdbCommand*>();
@@ -243,7 +243,7 @@ static string gdb_unescape(const string& str) {
   return ss.str();
 }
 
-/* static */ string GdbCommandHandler::process_command(GdbServer& gdb_server,
+/* static */ string GdbServerCommandHandler::process_command(GdbServer& gdb_server,
                                                        Task* t,
                                                        const GdbRequest::RRCmd& rr_cmd) {
   vector<string> args;
@@ -263,7 +263,7 @@ static string gdb_unescape(const string& str) {
   
   string resp = cmd->invoke(gdb_server, target, args);
 
-  if (resp == GdbCommandHandler::cmd_end_diversion()) {
+  if (resp == GdbServerCommandHandler::cmd_end_diversion()) {
     LOG(debug) << "cmd must run outside of diversion (" << resp << ")";
     return resp;
   }

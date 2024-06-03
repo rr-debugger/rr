@@ -3,7 +3,7 @@
 #ifndef RR_GDB_COMMAND_H_
 #define RR_GDB_COMMAND_H_
 
-#include "GdbCommandHandler.h"
+#include "GdbServerCommandHandler.h"
 #include "GdbServer.h"
 
 #include <sstream>
@@ -16,7 +16,7 @@ class GdbCommand {
 protected:
   GdbCommand(const std::string& cmd_name, const std::string& documentation)
       : cmd_name(cmd_name), documentation(documentation) {
-    GdbCommandHandler::register_command(*this);
+    GdbServerCommandHandler::register_command(*this);
   }
 
 public:

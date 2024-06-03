@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_GDB_COMMAND_HANDLER_H_
-#define RR_GDB_COMMAND_HANDLER_H_
+#ifndef RR_GDB_SERVER_COMMAND_HANDLER_H_
+#define RR_GDB_SERVER_COMMAND_HANDLER_H_
 
 #include <string>
 
@@ -13,7 +13,7 @@ class GdbCommand;
 class GdbServer;
 class Task;
 
-class GdbCommandHandler {
+class GdbServerCommandHandler {
 public:
   // Declare any registered command with supporting
   // wrapper code.
@@ -45,4 +45,4 @@ private:
 
 } // namespace rr
 
-#endif
+#endif /* RR_GDB_SERVER_COMMAND_HANDLER_H_ */
