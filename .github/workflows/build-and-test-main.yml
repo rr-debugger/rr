@@ -6,6 +6,7 @@ jobs:
   setup:
     name: Setup runners
     runs-on: ubuntu-latest
+    if: github.repository == 'rr-debugger/rr'
     steps:
       - id: generate
         name: Generate runner ID
@@ -24,6 +25,7 @@ jobs:
   x86-64:
     uses: ./.github/workflows/build-and-test.yml
     needs: setup
+    if: github.repository == 'rr-debugger/rr'
     with:
       runner_id: ${{ needs.setup.outputs.RUNNER_ID }}_x86_64
       architecture: x86_64
@@ -31,6 +33,7 @@ jobs:
   arm64:
     uses: ./.github/workflows/build-and-test.yml
     needs: setup
+    if: github.repository == 'rr-debugger/rr'
     with:
       runner_id: ${{ needs.setup.outputs.RUNNER_ID }}_arm64
       architecture: arm64
@@ -42,7 +45,7 @@ jobs:
       - setup
       - x86-64
       - arm64
-    if: ${{ always() }}
+    if: ${{ always() && github.repository == 'rr-debugger/rr' }}
     steps:
       - name: "Stop runners"
         run: |2-
