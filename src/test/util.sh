@@ -152,7 +152,7 @@ test_passed=y
 nonce=
 
 # Set up the environment and working directory.
-TESTDIR="${SRCDIR}/src/test"
+export TESTDIR="${SRCDIR}/src/test"
 
 # Make rr treat temp files as durable. This saves copying all test
 # binaries into the trace.
@@ -350,7 +350,7 @@ function debug {
 function debug_lldb_only { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
         python3 $TESTDIR/$expectscript.py --lldb \
-        $RR_EXE $GLOBAL_OPTIONS replay -o-S -o$TESTDIR/test_setup.lldb $replayargs
+        $RR_EXE $GLOBAL_OPTIONS replay $replayargs
     if [[ $? == 0 ]]; then
         passed_msg lldb
     else

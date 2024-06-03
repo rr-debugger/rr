@@ -1,4 +1,4 @@
-import pexpect, re, signal, sys, time
+import pexpect, re, signal, sys, time, os
 
 __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'restart_replay', 'interrupt_gdb', 'expect_gdb', 'send_gdb',
@@ -236,6 +236,9 @@ def set_up():
             timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open(log_file, 'w'))
         child.delaybeforesend = 0
         expect_debugger(r'\(rr\)')
+        if debugger_type == 'LLDB':
+            script = os.environ["TESTDIR"] + "/test_setup.lldb"
+            send_lldb(f'command source -s 0 {script}')
     except Exception as e:
         failed('initializing rr and debugger', e)
 
