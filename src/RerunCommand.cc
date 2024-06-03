@@ -310,7 +310,7 @@ static void print_regs(ReplayTask* t, FrameTime event, uint64_t instruction_coun
           case x86:
             if (field.reg_num < 8) {
               t->extra_regs().read_register(
-                  value, GdbRegister(DREG_XMM0 + field.reg_num), &defined);
+                  value, GdbServerRegister(DREG_XMM0 + field.reg_num), &defined);
             } else {
               memset(value, 0, sizeof(value));
             }
@@ -318,7 +318,7 @@ static void print_regs(ReplayTask* t, FrameTime event, uint64_t instruction_coun
           case x86_64:
             if (field.reg_num < 16) {
               t->extra_regs().read_register(
-                  value, GdbRegister(DREG_64_XMM0 + field.reg_num), &defined);
+                  value, GdbServerRegister(DREG_64_XMM0 + field.reg_num), &defined);
             } else {
               memset(value, 0, sizeof(value));
             }
@@ -338,9 +338,9 @@ static void print_regs(ReplayTask* t, FrameTime event, uint64_t instruction_coun
           case x86:
             if (field.reg_num < 8) {
               t->extra_regs().read_register(
-                  value, GdbRegister(DREG_XMM0 + field.reg_num), &defined);
+                  value, GdbServerRegister(DREG_XMM0 + field.reg_num), &defined);
               t->extra_regs().read_register(
-                  value + 16, GdbRegister(DREG_YMM0H + field.reg_num),
+                  value + 16, GdbServerRegister(DREG_YMM0H + field.reg_num),
                   &defined);
             } else {
               memset(value, 0, sizeof(value));
@@ -349,9 +349,9 @@ static void print_regs(ReplayTask* t, FrameTime event, uint64_t instruction_coun
           case x86_64:
             if (field.reg_num < 16) {
               t->extra_regs().read_register(
-                  value, GdbRegister(DREG_64_XMM0 + field.reg_num), &defined);
+                  value, GdbServerRegister(DREG_64_XMM0 + field.reg_num), &defined);
               t->extra_regs().read_register(
-                  value + 16, GdbRegister(DREG_64_YMM0H + field.reg_num),
+                  value + 16, GdbServerRegister(DREG_64_YMM0H + field.reg_num),
                   &defined);
             } else {
               memset(value, 0, sizeof(value));

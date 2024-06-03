@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "GdbRegister.h"
+#include "GdbServerRegister.h"
 #include "Registers.h"
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
@@ -80,9 +80,9 @@ inline std::ostream& operator<<(std::ostream& o, const ExtendedTaskId& t) {
  * Represents a possibly-undefined register |name|.  |size| indicates how
  * many bytes of |value| are valid, if any.
  */
-struct GdbRegisterValue {
+struct GdbServerRegisterValue {
   enum { MAX_SIZE = Registers::MAX_SIZE };
-  GdbRegister name;
+  GdbServerRegister name;
   union {
     uint8_t value[MAX_SIZE];
     uint8_t value1;
@@ -274,7 +274,7 @@ struct GdbRequest {
     int kind = 0;
     std::vector<std::vector<uint8_t>> conditions;
   } watch_;
-  GdbRegisterValue reg_;
+  GdbServerRegisterValue reg_;
   struct Restart {
     int64_t param = 0;
     std::string param_str;
@@ -342,11 +342,11 @@ struct GdbRequest {
     DEBUG_ASSERT(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
     return watch_;
   }
-  GdbRegisterValue& reg() {
+  GdbServerRegisterValue& reg() {
     DEBUG_ASSERT(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
     return reg_;
   }
-  const GdbRegisterValue& reg() const {
+  const GdbServerRegisterValue& reg() const {
     DEBUG_ASSERT(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
     return reg_;
   }
@@ -617,13 +617,13 @@ public:
   /**
    * Send |value| back to the debugger host.  |value| may be undefined.
    */
-  void reply_get_reg(const GdbRegisterValue& value);
+  void reply_get_reg(const GdbServerRegisterValue& value);
 
   /**
    * Send |file| back to the debugger host.  |file| may contain
    * undefined register values.
    */
-  void reply_get_regs(const std::vector<GdbRegisterValue>& file);
+  void reply_get_regs(const std::vector<GdbServerRegisterValue>& file);
 
   /**
    * Pass |ok = true| iff the requested register was successfully set.

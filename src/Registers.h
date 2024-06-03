@@ -10,7 +10,7 @@
 #include <string.h>
 #include <sys/user.h>
 
-#include "GdbRegister.h"
+#include "GdbServerRegister.h"
 #include "core.h"
 #include "kernel_abi.h"
 #include "remote_code_ptr.h"
@@ -492,7 +492,7 @@ public:
     return !result.mismatch_count;
   }
 
-  // TODO: refactor me to use the GdbRegisterValue helper from
+  // TODO: refactor me to use the GdbServerRegisterValue helper from
   // GdbServerConnection.h.
 
   /**
@@ -501,7 +501,7 @@ public:
    * Return the size of the register in bytes and set |defined| to
    * indicate whether a useful value has been written to |buf|.
    */
-  size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
+  size_t read_register(uint8_t* buf, GdbServerRegister regno, bool* defined) const;
 
   /**
    * Write the value for register |offset| into |buf|, which should
@@ -517,7 +517,7 @@ public:
    * Update the register named |reg_name| to |value| with
    * |value_size| number of bytes.
    */
-  bool write_register(GdbRegister reg_name, const void* value,
+  bool write_register(GdbServerRegister reg_name, const void* value,
                       size_t value_size);
 
   /**
@@ -576,7 +576,7 @@ private:
   void compare_internal(const Registers& other, Comparison& result) const;
 
   template <typename Arch>
-  size_t read_register_arch(uint8_t* buf, GdbRegister regno,
+  size_t read_register_arch(uint8_t* buf, GdbServerRegister regno,
                             bool* defined) const;
 
   template <typename Arch>
@@ -584,7 +584,7 @@ private:
                                            bool* defined) const;
 
   template <typename Arch>
-  bool write_register_arch(GdbRegister regno, const void* value,
+  bool write_register_arch(GdbServerRegister regno, const void* value,
                            size_t value_size);
 
   template <typename Arch>

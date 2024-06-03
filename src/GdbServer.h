@@ -75,9 +75,9 @@ public:
   /**
    * Return the register |which|, which may not have a defined value.
    */
-  static GdbRegisterValue get_reg(const Registers& regs,
+  static GdbServerRegisterValue get_reg(const Registers& regs,
                                   const ExtraRegisters& extra_regs,
-                                  GdbRegister which);
+                                  GdbServerRegister which);
 
   // Null if this is an emergency debug session.
   ReplayTimeline* timeline() { return timeline_; }

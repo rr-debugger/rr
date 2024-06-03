@@ -55,7 +55,7 @@ struct RegData {
       : offset(offset), size(size), xsave_feature_bit(-1) {}
 };
 
-static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
+static bool reg_in_range(GdbServerRegister regno, GdbServerRegister low, GdbServerRegister high,
                          int offset_base, int offset_stride, int size,
                          RegData* out) {
   if (regno < low || regno > high) {
@@ -80,7 +80,7 @@ static const size_t AVX_xsave_offset = 576;
 
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
-static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
+static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) {
   // Check regno is in range, and if it's 32-bit then convert it to the
   // equivalent 64-bit register.
   switch (arch) {
@@ -88,11 +88,11 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
       // Convert regno to the equivalent 64-bit version since the XSAVE layout
       // is compatible
       if (regno >= DREG_XMM0 && regno <= DREG_XMM7) {
-        regno = (GdbRegister)(regno - DREG_XMM0 + DREG_64_XMM0);
+        regno = (GdbServerRegister)(regno - DREG_XMM0 + DREG_64_XMM0);
         break;
       }
       if (regno >= DREG_YMM0H && regno <= DREG_YMM7H) {
-        regno = (GdbRegister)(regno - DREG_YMM0H + DREG_64_YMM0H);
+        regno = (GdbServerRegister)(regno - DREG_YMM0H + DREG_64_YMM0H);
         break;
       }
       if (regno == DREG_MXCSR) {
@@ -102,7 +102,7 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
       } else if (regno < DREG_FIRST_FXSAVE_REG || regno > DREG_LAST_FXSAVE_REG) {
         return RegData();
       } else {
-        regno = (GdbRegister)(regno - DREG_FIRST_FXSAVE_REG +
+        regno = (GdbServerRegister)(regno - DREG_FIRST_FXSAVE_REG +
                               DREG_64_FIRST_FXSAVE_REG);
       }
       break;
@@ -176,7 +176,7 @@ static uint64_t* xsave_features(vector<uint8_t>& data) {
              : reinterpret_cast<uint64_t*>(data.data() + xsave_header_offset);
 }
 
-size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
+size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
                                      bool* defined) const {
   if (format_ == NT_FPR) {
     if (arch() != aarch64) {
@@ -234,7 +234,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   return reg_data.size;
 }
 
-bool ExtraRegisters::write_register(GdbRegister regno, const void* value,
+bool ExtraRegisters::write_register(GdbServerRegister regno, const void* value,
                                     size_t value_size) {
   if (format_ == NT_FPR) {
     if (arch() != aarch64) {
@@ -379,12 +379,12 @@ void ExtraRegisters::validate(Task* t) {
   }
 }
 
-static size_t get_full_value(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+static size_t get_full_value(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi,
                              uint8_t buf[128]) {
   bool defined = false;
   size_t len = r.read_register(buf, low, &defined);
   DEBUG_ASSERT(defined && len <= 64);
-  if (hi != GdbRegister(0)) {
+  if (hi != GdbServerRegister(0)) {
     size_t len2 = r.read_register(buf + len, hi, &defined);
     if (defined) {
       DEBUG_ASSERT(len == len2);
@@ -394,7 +394,7 @@ static size_t get_full_value(const ExtraRegisters& r, GdbRegister low, GdbRegist
   return len;
 }
 
-static string reg_to_string(const ExtraRegisters& r, GdbRegister low, GdbRegister hi) {
+static string reg_to_string(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi) {
   uint8_t buf[128];
   size_t len = get_full_value(r, low, hi, buf);
   bool printed_digit = false;
@@ -410,19 +410,19 @@ static string reg_to_string(const ExtraRegisters& r, GdbRegister low, GdbRegiste
   return out_buf;
 }
 
-static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+static void print_reg(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi,
                       const char* name, FILE* f) {
   string out = reg_to_string(r, low, hi);
   fprintf(f, "%s:0x%s", name, out.c_str());
 }
 
-static void print_regs(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+static void print_regs(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi,
                        int num_regs, const char* name_base, FILE* f) {
   for (int i = 0; i < num_regs; ++i) {
     char buf[80];
     sprintf(buf, "%s%d", name_base, i);
-    print_reg(r, (GdbRegister)(low + i),
-              hi == GdbRegister(0) ? hi : (GdbRegister)(hi + i), buf, f);
+    print_reg(r, (GdbServerRegister)(low + i),
+              hi == GdbServerRegister(0) ? hi : (GdbServerRegister)(hi + i), buf, f);
     if (i < num_regs - 1) {
       fputc(' ', f);
     }
@@ -432,22 +432,22 @@ static void print_regs(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
 void ExtraRegisters::print_register_file_compact(FILE* f) const {
   switch (arch_) {
     case x86:
-      print_regs(*this, DREG_ST0, GdbRegister(0), 8, "st", f);
+      print_regs(*this, DREG_ST0, GdbServerRegister(0), 8, "st", f);
       fputc(' ', f);
       print_regs(*this, DREG_XMM0, DREG_YMM0H, 8, "ymm", f);
       break;
     case x86_64:
-      print_regs(*this, DREG_64_ST0, GdbRegister(0), 8, "st", f);
+      print_regs(*this, DREG_64_ST0, GdbServerRegister(0), 8, "st", f);
       fputc(' ', f);
       print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
       break;
     case aarch64:
       DEBUG_ASSERT(format_ == NT_FPR);
-      print_regs(*this, DREG_V0, GdbRegister(0), 32, "v", f);
+      print_regs(*this, DREG_V0, GdbServerRegister(0), 32, "v", f);
       fputc(' ', f);
-      print_reg(*this, DREG_FPSR, GdbRegister(0), "fpsr", f);
+      print_reg(*this, DREG_FPSR, GdbServerRegister(0), "fpsr", f);
       fputc(' ', f);
-      print_reg(*this, DREG_FPCR, GdbRegister(0), "fpcr", f);
+      print_reg(*this, DREG_FPCR, GdbServerRegister(0), "fpcr", f);
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
@@ -745,7 +745,7 @@ void ExtraRegisters::set_user_fpxregs_struct(
   memcpy(data_.data(), &regs, sizeof(regs));
 }
 
-static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbRegister r,
+static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbServerRegister r,
                      int word) {
   RegData d = xsave_register_data(arch, r);
   DEBUG_ASSERT(d.size == 4);
@@ -802,12 +802,12 @@ void ExtraRegisters::reset() {
 
 static void compare_regs(const ExtraRegisters& reg1,
                          const ExtraRegisters& reg2,
-                         GdbRegister low, GdbRegister hi,
+                         GdbServerRegister low, GdbServerRegister hi,
                          int num_regs, const char* name_base,
                          Registers::Comparison& result) {
   for (int i = 0; i < num_regs; ++i) {
-    GdbRegister this_low = (GdbRegister)(low + i);
-    GdbRegister this_hi = hi == GdbRegister(0) ? hi : (GdbRegister)(hi + i);
+    GdbServerRegister this_low = (GdbServerRegister)(low + i);
+    GdbServerRegister this_hi = hi == GdbServerRegister(0) ? hi : (GdbServerRegister)(hi + i);
     uint8_t buf1[128];
     size_t len1 = get_full_value(reg1, this_low, this_hi, buf1);
     uint8_t buf2[128];
@@ -844,16 +844,16 @@ void ExtraRegisters::compare_internal(const ExtraRegisters& reg2,
 
   switch (arch()) {
     case x86:
-      compare_regs(*this, reg2, DREG_ST0, GdbRegister(0), 8, "st", result);
+      compare_regs(*this, reg2, DREG_ST0, GdbServerRegister(0), 8, "st", result);
       compare_regs(*this, reg2, DREG_XMM0, DREG_YMM0H, 8, "ymm", result);
       break;
     case x86_64:
-      compare_regs(*this, reg2, DREG_64_ST0, GdbRegister(0), 8, "st", result);
+      compare_regs(*this, reg2, DREG_64_ST0, GdbServerRegister(0), 8, "st", result);
       compare_regs(*this, reg2, DREG_64_XMM0, DREG_64_YMM0H, 8, "ymm", result);
       break;
     case aarch64:
       DEBUG_ASSERT(format_ == NT_FPR);
-      compare_regs(*this, reg2, DREG_V0, GdbRegister(0), 32, "v", result);
+      compare_regs(*this, reg2, DREG_V0, GdbServerRegister(0), 32, "v", result);
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");

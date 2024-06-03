@@ -260,8 +260,8 @@ struct ExpressionState {
       case OP_const64:
         return push(fetch<uint64_t>());
       case OP_reg: {
-        GdbRegisterValue v = GdbServer::get_reg(t->regs(), t->extra_regs(),
-                                                GdbRegister(fetch<uint16_t>()));
+        GdbServerRegisterValue v = GdbServer::get_reg(t->regs(), t->extra_regs(),
+                                                GdbServerRegister(fetch<uint16_t>()));
         if (!v.defined) {
           set_error();
           return;

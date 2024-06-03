@@ -78,7 +78,7 @@ template <size_t N> struct RegisterTable : std::array<RegisterValue, N> {
 template <typename T> struct RegisterInfo;
 
 template <> struct RegisterInfo<rr::X86Arch> {
-  static bool ignore_undefined_register(GdbRegister regno) {
+  static bool ignore_undefined_register(GdbServerRegister regno) {
     return regno == DREG_FOSEG || regno == DREG_MXCSR;
   }
   static const size_t num_registers = DREG_NUM_LINUX_I386;
@@ -87,7 +87,7 @@ template <> struct RegisterInfo<rr::X86Arch> {
 };
 
 template <> struct RegisterInfo<rr::X64Arch> {
-  static bool ignore_undefined_register(GdbRegister regno) {
+  static bool ignore_undefined_register(GdbServerRegister regno) {
     return regno == DREG_64_FOSEG || regno == DREG_64_MXCSR;
   }
   static const size_t num_registers = DREG_NUM_LINUX_X86_64;
@@ -96,7 +96,7 @@ template <> struct RegisterInfo<rr::X64Arch> {
 };
 
 template <> struct RegisterInfo<rr::ARM64Arch> {
-  static bool ignore_undefined_register(GdbRegister) {
+  static bool ignore_undefined_register(GdbServerRegister) {
     return false;
   }
   static const size_t num_registers = DREG_NUM_LINUX_AARCH64;
@@ -394,7 +394,7 @@ void Registers::compare_internal(const Registers& other,
 }
 
 template <typename Arch>
-size_t Registers::read_register_arch(uint8_t* buf, GdbRegister regno,
+size_t Registers::read_register_arch(uint8_t* buf, GdbServerRegister regno,
                                      bool* defined) const {
   if (regno >= array_length(RegisterInfo<Arch>::registers)) {
     *defined = false;
@@ -412,7 +412,7 @@ size_t Registers::read_register_arch(uint8_t* buf, GdbRegister regno,
   return rv.nbytes;
 }
 
-size_t Registers::read_register(uint8_t* buf, GdbRegister regno,
+size_t Registers::read_register(uint8_t* buf, GdbServerRegister regno,
                                 bool* defined) const {
   RR_ARCH_FUNCTION(read_register_arch, arch(), buf, regno, defined);
 }
@@ -424,7 +424,7 @@ size_t Registers::read_register_by_user_offset_arch(uint8_t* buf,
   for (size_t regno = 0; regno < RegisterInfo<Arch>::num_registers; ++regno) {
     RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
     if (rv.offset == offset) {
-      return read_register_arch<Arch>(buf, GdbRegister(regno), defined);
+      return read_register_arch<Arch>(buf, GdbServerRegister(regno), defined);
     }
   }
 
@@ -439,7 +439,7 @@ size_t Registers::read_register_by_user_offset(uint8_t* buf, uintptr_t offset,
 }
 
 template <typename Arch>
-bool Registers::write_register_arch(GdbRegister regno, const void* value,
+bool Registers::write_register_arch(GdbServerRegister regno, const void* value,
                                     size_t value_size) {
   RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
 
@@ -456,7 +456,7 @@ bool Registers::write_register_arch(GdbRegister regno, const void* value,
   }
 }
 
-bool Registers::write_register(GdbRegister regno, const void* value,
+bool Registers::write_register(GdbServerRegister regno, const void* value,
                                size_t value_size) {
   RR_ARCH_FUNCTION(write_register_arch, arch(), regno, value, value_size);
 }

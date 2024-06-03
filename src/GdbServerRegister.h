@@ -1,14 +1,14 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_GDB_REGISTER_H_
-#define RR_GDB_REGISTER_H_
+#ifndef RR_GDB_SERVER_REGISTER_H_
+#define RR_GDB_SERVER_REGISTER_H_
 
 namespace rr {
 
 /**
  * This is the register numbering used by GDB.
  */
-enum GdbRegister {
+enum GdbServerRegister {
   DREG_EAX,
   DREG_ECX,
   DREG_EDX,
@@ -235,4 +235,4 @@ enum GdbRegister {
 
 } // namespace rr
 
-#endif /* RR_GDB_REGISTER_H_ */
+#endif /* RR_GDB_SERVER_REGISTER_H_ */

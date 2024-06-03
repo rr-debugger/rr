@@ -627,8 +627,8 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
  * available.  Fewer bytes than that may be written, but |buf| is
  * guaranteed to be null-terminated.
  */
-static size_t print_reg_value(const GdbRegisterValue& reg, char* buf) {
-  parser_assert(reg.size <= GdbRegisterValue::MAX_SIZE);
+static size_t print_reg_value(const GdbServerRegisterValue& reg, char* buf) {
+  parser_assert(reg.size <= GdbServerRegisterValue::MAX_SIZE);
   if (reg.defined) {
     /* gdb wants the register value in native endianness.
      * reg.value read in native endianness is exactly that.
@@ -648,7 +648,7 @@ static size_t print_reg_value(const GdbRegisterValue& reg, char* buf) {
  * Read the encoded register value in |strp| into |reg|.  |strp| may
  * be mutated.
  */
-static void read_reg_value(char** strp, GdbRegisterValue* reg) {
+static void read_reg_value(char** strp, GdbServerRegisterValue* reg) {
   char* str = *strp;
 
   if ('x' == str[0]) {
@@ -1436,7 +1436,7 @@ bool GdbServerConnection::process_packet() {
       req = GdbRequest(DREQ_GET_REG);
       req.target = query_thread;
       parse_thread_suffix_threadid(payload, &req.target);
-      req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
+      req.reg().name = GdbServerRegister(strtoul(payload, &payload, 16));
       parser_assert('\0' == *payload);
       LOG(debug) << "debugger requests register value (" << req.reg().name
           << ") in thread " << req.target;
@@ -1446,7 +1446,7 @@ bool GdbServerConnection::process_packet() {
       req = GdbRequest(DREQ_SET_REG);
       req.target = query_thread;
       parse_thread_suffix_threadid(payload, &req.target);
-      req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
+      req.reg().name = GdbServerRegister(strtoul(payload, &payload, 16));
       parser_assert('=' == *payload++);
 
       read_reg_value(&payload, &req.reg());
@@ -2042,8 +2042,8 @@ void GdbServerConnection::reply_get_offsets(/* TODO */) {
   consume_request();
 }
 
-void GdbServerConnection::reply_get_reg(const GdbRegisterValue& reg) {
-  char buf[2 * GdbRegisterValue::MAX_SIZE + 1];
+void GdbServerConnection::reply_get_reg(const GdbServerRegisterValue& reg) {
+  char buf[2 * GdbServerRegisterValue::MAX_SIZE + 1];
 
   DEBUG_ASSERT(DREQ_GET_REG == req.type);
 
@@ -2053,9 +2053,9 @@ void GdbServerConnection::reply_get_reg(const GdbRegisterValue& reg) {
   consume_request();
 }
 
-void GdbServerConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
+void GdbServerConnection::reply_get_regs(const vector<GdbServerRegisterValue>& file) {
   std::unique_ptr<char[]> buf(
-      new char[file.size() * 2 * GdbRegisterValue::MAX_SIZE + 1]);
+      new char[file.size() * 2 * GdbServerRegisterValue::MAX_SIZE + 1]);
 
   DEBUG_ASSERT(DREQ_GET_REGS == req.type);
 

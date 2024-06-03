@@ -88,7 +88,7 @@ GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& connection,
  * value that can be named by |regname|.
  */
 static size_t get_reg(const Registers& regs, const ExtraRegisters& extra_regs,
-                      uint8_t* buf, GdbRegister regname, bool* defined) {
+                      uint8_t* buf, GdbServerRegister regname, bool* defined) {
   size_t num_bytes = regs.read_register(buf, regname, defined);
   if (!*defined) {
     num_bytes = extra_regs.read_register(buf, regname, defined);
@@ -96,7 +96,7 @@ static size_t get_reg(const Registers& regs, const ExtraRegisters& extra_regs,
   return num_bytes;
 }
 
-static bool set_reg(Task* target, const GdbRegisterValue& reg) {
+static bool set_reg(Task* target, const GdbServerRegisterValue& reg) {
   if (!reg.defined) {
     return false;
   }
@@ -122,10 +122,10 @@ static bool set_reg(Task* target, const GdbRegisterValue& reg) {
 /**
  * Return the register |which|, which may not have a defined value.
  */
-GdbRegisterValue GdbServer::get_reg(const Registers& regs,
+GdbServerRegisterValue GdbServer::get_reg(const Registers& regs,
                                     const ExtraRegisters& extra_regs,
-                                    GdbRegister which) {
-  GdbRegisterValue reg;
+                                    GdbServerRegister which) {
+  GdbServerRegisterValue reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
   reg.size = rr::get_reg(regs, extra_regs, &reg.value[0], which, &reg.defined);
@@ -186,7 +186,7 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
 
 void GdbServer::dispatch_regs_request(const Registers& regs,
                                       const ExtraRegisters& extra_regs) {
-  GdbRegister end;
+  GdbServerRegister end;
   // Send values for all the registers we sent XML register descriptions for.
   // Those descriptions are controlled by GdbServerConnection::cpu_features().
   bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
@@ -205,8 +205,8 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
       FATAL() << "Unknown architecture";
       return;
   }
-  vector<GdbRegisterValue> rs;
-  for (GdbRegister r = GdbRegister(0); r <= end; r = GdbRegister(r + 1)) {
+  vector<GdbServerRegisterValue> rs;
+  for (GdbServerRegister r = GdbServerRegister(0); r <= end; r = GdbServerRegister(r + 1)) {
     rs.push_back(get_reg(regs, extra_regs, r));
   }
   dbg->reply_get_regs(rs);
@@ -638,7 +638,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_GET_REG: {
-      GdbRegisterValue reg =
+      GdbServerRegisterValue reg =
           get_reg(target->regs(), *target->extra_regs_fallible(), req.reg().name);
       dbg->reply_get_reg(reg);
       return;

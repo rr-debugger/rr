@@ -8,7 +8,7 @@
 
 #include <vector>
 
-#include "GdbRegister.h"
+#include "GdbServerRegister.h"
 #include "Registers.h"
 #include "kernel_abi.h"
 
@@ -24,7 +24,7 @@ struct XSaveLayout;
  * Task is responsible for creating meaningful values of this class.
  *
  * The only reason this class has an arch() is to enable us to
- * interpret GdbRegister.
+ * interpret GdbServerRegister.
  */
 class ExtraRegisters {
 public:
@@ -105,13 +105,13 @@ public:
    * Like |Registers::read_register()|, except attempts to read
    * the value of an "extra register" (floating point / vector).
    */
-  size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
+  size_t read_register(uint8_t* buf, GdbServerRegister regno, bool* defined) const;
 
   /**
    * Like |Registers::write_register()|, except attempts to write
    * the value of an "extra register" (floating point / vector).
    */
-  bool write_register(GdbRegister regno, const void* value, size_t value_size);
+  bool write_register(GdbServerRegister regno, const void* value, size_t value_size);
 
   /**
    * Get a user_fpregs_struct for a particular Arch from these ExtraRegisters.
