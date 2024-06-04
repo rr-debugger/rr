@@ -94,6 +94,8 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelSapphireRapid;
     case 0xc06f0:
       return IntelEmeraldRapid;
+    case 0xa06a0:
+      return IntelMeteorLake;
     case 0x30f00:
       return AMDF15R30;
     case 0x00f10: // A8-3530MX, Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
@@ -113,7 +115,7 @@ static CpuMicroarch compute_cpu_microarch() {
       }
       break;
     case 0x10f10: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
-    case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+), 7975WX
+    case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+), 7975WX (Zen2)
     case 0x20f00: // Dali (Zen) (UNTESTED)
       if (ext_family == 8) {
         return AMDZen;
