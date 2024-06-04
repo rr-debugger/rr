@@ -395,7 +395,7 @@ static void check_for_arch_bugs(perf_event_attrs &perf_attr) {
   if (uarch >= IntelCometlake && uarch <= LastIntel) {
     check_for_freeze_on_smi();
   }
-  if (uarch == AMDZen) {
+  if (uarch >= AMDZen && uarch <= LastAMD) {
     check_for_zen_speclockmap();
   }
 }
