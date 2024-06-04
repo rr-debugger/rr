@@ -9,7 +9,7 @@
 
 namespace rr {
 
-class GdbCommand;
+class DebuggerExtensionCommand;
 class GdbServer;
 class Task;
 
@@ -23,7 +23,7 @@ public:
   // wrapper code.
   static std::string gdb_macros();
 
-  static void register_command(GdbCommand& cmd);
+  static void register_command(DebuggerExtensionCommand& cmd);
 
   /**
    * Process an incoming GDB payload of the following form:
@@ -35,7 +35,7 @@ public:
   static std::string process_command(GdbServer& gdb_server, Task* t,
                                      const GdbRequest::RRCmd& rr_cmd);
 
-  static GdbCommand* command_for_name(const std::string& name);
+  static DebuggerExtensionCommand* command_for_name(const std::string& name);
 
   /**
    * Special return value for commands that immediately end a diversion session

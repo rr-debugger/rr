@@ -16,9 +16,9 @@ def strip_prefix(s: str, needle: str) -> Optional[str]:
 
 GdbNewObjfileEventCallback = Callable[[object], None]
 
-class GdbCommand:
+class DebuggerExtensionCommand:
     def __init__(self, *args, **kwargs):
-        logging.debug("GdbCommand(%s, %s)" % (args, kwargs))
+        logging.debug("DebuggerExtensionCommand(%s, %s)" % (args, kwargs))
 
 class GdbScriptHost:
     """ The filename of the main symbol file """
@@ -166,8 +166,8 @@ class GdbApiRoot(GdbApiObject):
         return 13
 
     @property
-    def Command(self) -> GdbCommand:
-        return GdbCommand
+    def Command(self) -> DebuggerExtensionCommand:
+        return DebuggerExtensionCommand
 
 if __name__ == '__main__':
     with open(sys.argv[1], 'r') as user_script_file:

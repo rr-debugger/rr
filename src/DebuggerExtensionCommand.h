@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_GDB_COMMAND_H_
-#define RR_GDB_COMMAND_H_
+#ifndef RR_DEBUGGER_EXTENSION_COMMAND_H_
+#define RR_DEBUGGER_EXTENSION_COMMAND_H_
 
 #include "DebuggerExtensionCommandHandler.h"
 #include "GdbServer.h"
@@ -12,15 +12,15 @@
 
 namespace rr {
 
-class GdbCommand {
+class DebuggerExtensionCommand {
 protected:
-  GdbCommand(const std::string& cmd_name, const std::string& documentation)
+  DebuggerExtensionCommand(const std::string& cmd_name, const std::string& documentation)
       : cmd_name(cmd_name), documentation(documentation) {
     DebuggerExtensionCommandHandler::register_command(*this);
   }
 
 public:
-  virtual ~GdbCommand() {}
+  virtual ~DebuggerExtensionCommand() {}
 
   const std::string& name() const { return cmd_name; }
   const std::string& docs() const { return documentation; }
@@ -56,13 +56,13 @@ private:
   std::vector<std::string> cmd_auto_args;
 };
 
-class SimpleGdbCommand : public GdbCommand {
+class SimpleDebuggerExtensionCommand : public DebuggerExtensionCommand {
 public:
-  SimpleGdbCommand(
+  SimpleDebuggerExtensionCommand(
       const std::string& cmd_name, const std::string& documentation,
       const std::function<std::string(
           GdbServer&, Task* t, const std::vector<std::string>&)>& invoker)
-      : GdbCommand(cmd_name, documentation), invoker(invoker) {}
+      : DebuggerExtensionCommand(cmd_name, documentation), invoker(invoker) {}
 
   virtual std::string invoke(GdbServer& gdb_server, Task* t,
                              const std::vector<std::string>& args) override {
@@ -76,4 +76,4 @@ public:
 
 } // namespace rr
 
-#endif
+#endif /* RR_DEBUGGER_EXTENSION_COMMAND_H_ */

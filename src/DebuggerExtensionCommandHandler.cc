@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "DebuggerExtensionCommandHandler.h"
-#include "GdbCommand.h"
+#include "DebuggerExtensionCommand.h"
 #include "log.h"
 
 #include <sstream>
@@ -13,9 +13,9 @@ namespace rr {
 
 // HashMap would be better here but the unordered_map API is annoying
 // and linear search is fine.
-static vector<GdbCommand*>* gdb_command_list;
+static vector<DebuggerExtensionCommand*>* gdb_command_list;
 
-static string gdb_macro_binding(const GdbCommand& cmd) {
+static string gdb_macro_binding(const DebuggerExtensionCommand& cmd) {
   string auto_args_str = "[";
   for (size_t i = 0; i < cmd.auto_args().size(); i++) {
     if (i > 0) {
@@ -32,7 +32,7 @@ static string gdb_macro_binding(const GdbCommand& cmd) {
 }
 
 /* static */ string DebuggerExtensionCommandHandler::gdb_macros() {
-  GdbCommand::init_auto_args();
+  DebuggerExtensionCommand::init_auto_args();
   stringstream ss;
   ss << string(R"Delimiter(
 
@@ -186,7 +186,7 @@ end
   return ss.str();
 }
 
-/*static*/ GdbCommand* DebuggerExtensionCommandHandler::command_for_name(const string& name) {
+/*static*/ DebuggerExtensionCommand* DebuggerExtensionCommandHandler::command_for_name(const string& name) {
   if (!gdb_command_list) {
     return nullptr;
   }
@@ -198,10 +198,10 @@ end
   return nullptr;
 }
 
-void DebuggerExtensionCommandHandler::register_command(GdbCommand& cmd) {
+void DebuggerExtensionCommandHandler::register_command(DebuggerExtensionCommand& cmd) {
   LOG(debug) << "registering command: " << cmd.name();
   if (!gdb_command_list) {
-    gdb_command_list = new vector<GdbCommand*>();
+    gdb_command_list = new vector<DebuggerExtensionCommand*>();
   }
   gdb_command_list->push_back(&cmd);
 }
@@ -251,7 +251,7 @@ static string gdb_unescape(const string& str) {
     args.push_back(gdb_unescape(arg));
   }
 
-  GdbCommand* cmd = command_for_name(rr_cmd.name);
+  DebuggerExtensionCommand* cmd = command_for_name(rr_cmd.name);
   if (!cmd) {
     return gdb_escape(string() + "Command '" + rr_cmd.name + "' not found.\n");
   }

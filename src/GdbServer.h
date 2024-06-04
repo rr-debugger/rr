@@ -23,7 +23,7 @@
 namespace rr {
 
 class GdbServer {
-  // Not ideal but we can't inherit friend from GdbCommand
+  // Not ideal but we can't inherit friend from DebuggerExtensionCommand
   friend std::string invoke_checkpoint(GdbServer&, Task*,
                                        const std::vector<std::string>&);
   friend std::string invoke_delete_checkpoint(GdbServer&, Task*,
