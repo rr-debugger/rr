@@ -27,7 +27,7 @@
 #include <sstream>
 #include <vector>
 
-#include "GdbServerCommandHandler.h"
+#include "DebuggerExtensionCommandHandler.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "core.h"

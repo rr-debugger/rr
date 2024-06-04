@@ -580,7 +580,7 @@ set(RR_SOURCES
   src/Flags.cc
   src/ftrace.cc
   src/GdbCommand.cc
-  src/GdbServerCommandHandler.cc
+  src/DebuggerExtensionCommandHandler.cc
   src/GdbServerConnection.cc
   src/GdbServerExpression.cc
   src/GdbInitCommand.cc

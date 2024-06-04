@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_GDB_SERVER_COMMAND_HANDLER_H_
-#define RR_GDB_SERVER_COMMAND_HANDLER_H_
+#ifndef RR_DEBUGGER_EXTENSION_COMMAND_HANDLER_H_
+#define RR_DEBUGGER_EXTENSION_COMMAND_HANDLER_H_
 
 #include <string>
 
@@ -13,7 +13,11 @@ class GdbCommand;
 class GdbServer;
 class Task;
 
-class GdbServerCommandHandler {
+/**
+ * rr extends debuggers (GDB) with custom commands such as `when`.
+ * This class manages those commands.
+ */
+class DebuggerExtensionCommandHandler {
 public:
   // Declare any registered command with supporting
   // wrapper code.
@@ -45,4 +49,4 @@ private:
 
 } // namespace rr
 
-#endif /* RR_GDB_SERVER_COMMAND_HANDLER_H_ */
+#endif /* RR_DEBUGGER_EXTENSION_COMMAND_HANDLER_H_ */

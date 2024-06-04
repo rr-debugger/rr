@@ -20,7 +20,7 @@
 #include "BreakpointCondition.h"
 #include "ElfReader.h"
 #include "Event.h"
-#include "GdbServerCommandHandler.h"
+#include "DebuggerExtensionCommandHandler.h"
 #include "GdbServerExpression.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -794,7 +794,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
     }
     case DREQ_RR_CMD:
       dbg->reply_rr_cmd(
-          GdbServerCommandHandler::process_command(*this, target, req.rr_cmd()));
+          DebuggerExtensionCommandHandler::process_command(*this, target, req.rr_cmd()));
       return;
 #ifdef PROC_SERVICE_H
     case DREQ_QSYMBOL: {
@@ -961,10 +961,10 @@ bool GdbServer::diverter_process_debugger_requests(
         Task* task = diversion_session.find_task(last_continue_task.tuid);
         if (task) {
           std::string reply =
-              GdbServerCommandHandler::process_command(*this, task, req->rr_cmd());
+              DebuggerExtensionCommandHandler::process_command(*this, task, req->rr_cmd());
           // Certain commands cause the diversion to end immediately
           // while other commands must work within a diversion.
-          if (reply == GdbServerCommandHandler::cmd_end_diversion()) {
+          if (reply == DebuggerExtensionCommandHandler::cmd_end_diversion()) {
             diversion_refcount = 0;
             return false;
           }

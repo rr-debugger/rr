@@ -12,7 +12,7 @@
 
 #include "launch_debugger.h"
 
-#include "GdbServerCommandHandler.h"
+#include "DebuggerExtensionCommandHandler.h"
 #include "GdbServer.h"
 #include "GdbServerConnection.h"
 #include "log.h"
@@ -47,7 +47,7 @@ static const string& gdb_rr_macros() {
 
   if (s.empty()) {
     stringstream ss;
-    ss << GdbServerCommandHandler::gdb_macros()
+    ss << DebuggerExtensionCommandHandler::gdb_macros()
        << "define restart\n"
        << "  run c$arg0\n"
        << "end\n"
