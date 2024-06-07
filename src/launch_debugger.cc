@@ -138,15 +138,13 @@ static const string& gdb_rr_macros() {
   return s;
 }
 
-// Special-sauce macros defined by rr when launching the gdb client,
-// which implement functionality outside of the gdb remote protocol.
-// (Don't stare at them too long or you'll go blind ;).)
-static const string& lldb_rr_macros() {
+static const string& lldb_python_rr_macros() {
   static string s;
 
   if (s.empty()) {
     stringstream ss;
-    ss << "set set prompt \"(rr) \"\n";
+    ss << DebuggerExtensionCommandHandler::lldb_python_macros()
+       << "lldb.debugger.HandleCommand('set set prompt \"(rr) \"')\n";
     s = ss.str();
   }
   return s;
@@ -332,9 +330,12 @@ void launch_debugger(ScopedFd& params_pipe_fd,
     }
     case DebuggerType::LLDB: {
       cmd.push_back("--source-quietly");
-      string lldb_command_file = create_command_file(lldb_rr_macros());
-      cmd.push_back("--source-before-file");
-      cmd.push_back(lldb_command_file);
+      // We have to load the commands as a Python script. If we
+      // use the "script" command to launch a nested Python interpreter,
+      // Python emits some annoying text that we dont want to see.
+      string lldb_command_file = create_command_file(lldb_python_rr_macros());
+      cmd.push_back("-o");
+      cmd.push_back("script exec(open('" + lldb_command_file + "').read())");
       cmd.insert(cmd.end(), options.begin(), options.end());
       push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
       env.push_back("LLDB_UNDER_RR=1");
@@ -402,5 +403,7 @@ void emergency_debug(Task* t) {
 }
 
 string gdb_init_script() { return gdb_rr_macros(); }
+
+string lldb_init_script() { return lldb_python_rr_macros(); }
 
 } // namespace rr

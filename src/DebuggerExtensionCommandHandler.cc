@@ -15,32 +15,27 @@ namespace rr {
 // and linear search is fine.
 static vector<DebuggerExtensionCommand*>* debugger_command_list;
 
-static string gdb_macro_binding(const DebuggerExtensionCommand& cmd) {
-  string auto_args_str = "[";
-  for (size_t i = 0; i < cmd.auto_args().size(); i++) {
+static void print_python_string_array(ostream& out, const std::vector<std::string>& strs) {
+  out << "[";
+  for (size_t i = 0; i < strs.size(); i++) {
     if (i > 0) {
-      auto_args_str += ", ";
+      out << ", ";
     }
-    auto_args_str += "'" + cmd.auto_args()[i] + "'";
+    out << "'" << strs[i] << "'";
   }
-  auto_args_str += "]";
-  string ret = "python RRCmd('" + cmd.name() + "', " + auto_args_str + ")\n";
-  if (!cmd.docs().empty()) {
-    ret += "document " + cmd.name() + "\n" + cmd.docs() + "\nend\n";
-  }
-  return ret;
+  out << "]";
 }
 
-/* static */ string DebuggerExtensionCommandHandler::gdb_macros() {
-  DebuggerExtensionCommand::init_auto_args();
-  stringstream ss;
-  ss << string(R"Delimiter(
+static void gdb_macro_binding(ostream& out, const DebuggerExtensionCommand& cmd) {
+  out << "python RRCmd('" << cmd.name() << "', ";
+  print_python_string_array(out, cmd.auto_args());
+  out << ")\n";
+  if (!cmd.docs().empty()) {
+    out << "document " << cmd.name() << "\n" << cmd.docs() << "\nend\n";
+  }
+}
 
-set python print-stack full
-python
-
-import re
-
+static const char shared_python[] = R"Delimiter(
 def hex_unescape(string):
     str_len = len(string)
     if str_len % 2: # check for unexpected string length
@@ -63,6 +58,18 @@ def hex_escape(string):
             curr_char = ord(curr_char)
         result += format(curr_char, '02x')
     return result
+
+)Delimiter";
+
+string DebuggerExtensionCommandHandler::gdb_macros() {
+  DebuggerExtensionCommand::init_auto_args();
+  stringstream ss;
+  ss << R"Delimiter(set python print-stack full
+python
+)Delimiter"
+    << shared_python
+    << R"Delimiter(
+import re
 
 class RRWhere(gdb.Command):
     """Helper to get the location for checkpoints/history. Used by auto-args"""
@@ -163,11 +170,11 @@ RRSetSuppressRunHook()
 gdb.events.stop.connect(history_push)
 
 end
-)Delimiter");
+)Delimiter";
 
   if (debugger_command_list) {
     for (auto& it : *debugger_command_list) {
-      ss << gdb_macro_binding(*it);
+      gdb_macro_binding(ss, *it);
     }
   }
 
@@ -183,6 +190,77 @@ frame
 end
 )Delimiter");
 
+  return ss.str();
+}
+
+static void lldb_macro_binding(ostream& ss, const DebuggerExtensionCommand& cmd) {
+  string func_name = "rr_command_";
+  for (char ch : cmd.name()) {
+    if (ch == ' ') {
+      // We don't support commands with spaces in LLDB yet
+      return;
+    }
+    if (ch == '-') {
+      ch = '_';
+    }
+    func_name.push_back(ch);
+  }
+  ss << "def " << func_name << "(debugger, command, exe_ctx, result, internal_dict):\n";
+  if (!cmd.docs().empty()) {
+    ss << "    \"\"\"" << cmd.docs() << "\"\"\"\n";
+  }
+  ss << "    cmd_name = '" << cmd.name() << "'\n"
+     << "    auto_args = ";
+  print_python_string_array(ss, cmd.auto_args());
+  ss << "\n"
+     << "    command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args)\n"
+     << "\n"
+     << "lldb.debugger.HandleCommand('command script add -f " << func_name
+     << " " << cmd.name() << "')\n\n";
+}
+
+string DebuggerExtensionCommandHandler::lldb_python_macros() {
+  DebuggerExtensionCommand::init_auto_args();
+  stringstream ss;
+  ss << shared_python
+     << R"Delimiter(
+import lldb
+import re
+import shlex
+
+def run_command_and_get_output(debugger, command):
+    result = lldb.SBCommandReturnObject()
+    debugger.GetCommandInterpreter().HandleCommand(command, result)
+    assert result.Succeeded()
+    return result.GetOutput()
+
+def command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args):
+    interpreter = debugger.GetCommandInterpreter()
+    args = shlex.split(command)
+    # Ensure lldb tells rr its current thread
+    curr_thread = exe_ctx.thread
+    cmd_prefix = ("process plugin packet send qRRCmd:%s:%d"%
+        (cmd_name, -1 if curr_thread is None else curr_thread.GetThreadID()))
+    arg_strs = []
+    for auto_arg in auto_args:
+        arg_strs.append(":" + hex_escape(run_command_and_get_output(debugger, auto_arg)))
+    for arg in args:
+        arg_strs.append(":" + hex_escape(arg))
+    rv = run_command_and_get_output(debugger, cmd_prefix + ''.join(arg_strs));
+    rv_match = re.search('response: (.*)$', rv, re.MULTILINE);
+    if not rv_match:
+        result.SetError(None, "Invalid response: %s" % rv)
+        return
+    response = hex_unescape(rv_match.group(1))
+    result.Print(response.strip())
+
+)Delimiter";
+
+  if (debugger_command_list) {
+    for (auto& it : *debugger_command_list) {
+      lldb_macro_binding(ss, *it);
+    }
+  }
   return ss.str();
 }
 

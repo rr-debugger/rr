@@ -183,8 +183,11 @@ static SimpleDebuggerExtensionCommand info_checkpoints(
   "list all checkpoints created with the 'checkpoint' command",
   invoke_info_checkpoints);
 
-/*static*/ void DebuggerExtensionCommand::init_auto_args() {
-  checkpoint.add_auto_arg("rr-where");
+void DebuggerExtensionCommand::init_auto_args() {
+  static __attribute__((unused)) int dummy = []() {
+    checkpoint.add_auto_arg("rr-where");
+    return 0;
+  }();
 }
 
 } // namespace rr

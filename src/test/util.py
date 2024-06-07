@@ -9,7 +9,8 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'delete_watchpoint', 'expect_signal_stop',
             'set_breakpoint_commands', 'select_thread',
             'scheduler_locking_on', 'scheduler_locking_off',
-            'expect_expression', 'expect_threads',  ]
+            'expect_expression', 'expect_threads',
+            'send_custom_command' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -164,6 +165,9 @@ def scheduler_locking_on():
 def scheduler_locking_off():
     if debugger_type == 'GDB':
         send_gdb('set scheduler-locking off')
+
+def send_custom_command(cmd):
+    send_debugger(cmd, cmd)
 
 def send_debugger(gdb_cmd, lldb_cmd):
     if debugger_type == 'GDB':

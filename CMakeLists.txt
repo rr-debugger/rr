@@ -592,6 +592,7 @@ set(RR_SOURCES
   src/kernel_metadata.cc
   src/launch_debugger.cc
   src/log.cc
+  src/LldbInitCommand.cc
   src/LsCommand.cc
   src/main.cc
   src/MagicSaveDataMonitor.cc

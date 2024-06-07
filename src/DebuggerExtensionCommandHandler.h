@@ -14,19 +14,23 @@ class GdbServer;
 class Task;
 
 /**
- * rr extends debuggers (GDB) with custom commands such as `when`.
+ * rr extends debuggers (GDB, LLDB) with custom commands such as `when`.
  * This class manages those commands.
  */
 class DebuggerExtensionCommandHandler {
 public:
   // Declare any registered command with supporting
-  // wrapper code.
+  // wrapper code --- GDB script.
   static std::string gdb_macros();
+
+  // Declare any registered command with supporting
+  // wrapper code --- LLDB Python script.
+  static std::string lldb_python_macros();
 
   static void register_command(DebuggerExtensionCommand& cmd);
 
   /**
-   * Process an incoming GDB payload of the following form:
+   * Process an incoming debugger payload of the following form:
    *   <command name>:<arg1>:<arg2>:...
    *
    * NOTE: RR Command are typically sent with the qRRCmd: prefix which

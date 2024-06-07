@@ -55,6 +55,11 @@ void emergency_debug(Task* t);
  */
 std::string gdb_init_script();
 
+/**
+ * A string containing the default lldbinit script that we load into lldb.
+ */
+std::string lldb_init_script();
+
 } // namespace rr
 
 #endif /* RR_LAUNCH_DEBUGGER_H_ */
