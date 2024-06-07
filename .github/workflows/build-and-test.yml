@@ -3,7 +3,7 @@ name: Build and test on runner
 on:
   workflow_call:
     inputs:
-      runner_id:
+      label:
         required: true
         type: string
       architecture:
@@ -14,7 +14,8 @@ jobs:
   build-and-test:
     name: On runner
     runs-on:
-      - ${{ inputs.runner_id }}
+      - ${{ inputs.label }}
+      - arch_${{ inputs.architecture }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -9,25 +9,22 @@ jobs:
     if: github.repository == 'rr-debugger/rr'
     steps:
       - id: generate
-        name: Generate runner ID
+        name: Generate runner label
         run: |
-          RUNNER_ID=rr_runner_$(uuidgen|tr -d -)
-          echo "RUNNER_ID=$RUNNER_ID" >> "$GITHUB_OUTPUT"
-      - name: Start x86-64 runner
+          RUNNER_LABEL=rr_runner_$(uuidgen|tr -d -)
+          echo "RUNNER_LABEL=$RUNNER_LABEL" >> "$GITHUB_OUTPUT"
+      - name: Start runners
         run: |2-
-          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"create\", \"architecture\":\"x86_64\", \"label\": \"${{ steps.generate.outputs.RUNNER_ID }}_x86_64\"}" https://gztdxwrnjh46z4ucjge5m4pxhu0vtfzs.lambda-url.us-east-2.on.aws
-      - name: Start arm64 runner
-        run: |2-
-          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"create\", \"architecture\":\"arm64\", \"label\": \"${{ steps.generate.outputs.RUNNER_ID }}_arm64\"}" https://gztdxwrnjh46z4ucjge5m4pxhu0vtfzs.lambda-url.us-east-2.on.aws
+          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"create\", \"architectures\":[\"x86_64\", \"arm64\"], \"label\": \"${{ steps.generate.outputs.RUNNER_LABEL }}\"}" https://bqugdqmvcql6yvz4i362qohyea0namsk.lambda-url.us-east-2.on.aws
     outputs:
-      RUNNER_ID: ${{ steps.generate.outputs.RUNNER_ID }}
+      RUNNER_LABEL: ${{ steps.generate.outputs.RUNNER_LABEL }}
 
   x86-64:
     uses: ./.github/workflows/build-and-test.yml
     needs: setup
     if: github.repository == 'rr-debugger/rr'
     with:
-      runner_id: ${{ needs.setup.outputs.RUNNER_ID }}_x86_64
+      label: ${{ needs.setup.outputs.RUNNER_LABEL }}
       architecture: x86_64
 
   arm64:
@@ -35,7 +32,7 @@ jobs:
     needs: setup
     if: github.repository == 'rr-debugger/rr'
     with:
-      runner_id: ${{ needs.setup.outputs.RUNNER_ID }}_arm64
+      label: ${{ needs.setup.outputs.RUNNER_LABEL }}
       architecture: arm64
 
   stop-runners:
@@ -49,4 +46,4 @@ jobs:
     steps:
       - name: "Stop runners"
         run: |2-
-          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"destroy\", \"labels\": [\"${{ needs.setup.outputs.RUNNER_ID }}_x86_64\", \"${{ needs.setup.outputs.RUNNER_ID }}_arm64\"]}" https://gztdxwrnjh46z4ucjge5m4pxhu0vtfzs.lambda-url.us-east-2.on.aws
+          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"destroy\", \"label\": \"${{ needs.setup.outputs.RUNNER_LABEL }}\"}" https://bqugdqmvcql6yvz4i362qohyea0namsk.lambda-url.us-east-2.on.aws
