@@ -13,7 +13,7 @@ namespace rr {
 
 // HashMap would be better here but the unordered_map API is annoying
 // and linear search is fine.
-static vector<DebuggerExtensionCommand*>* gdb_command_list;
+static vector<DebuggerExtensionCommand*>* debugger_command_list;
 
 static string gdb_macro_binding(const DebuggerExtensionCommand& cmd) {
   string auto_args_str = "[";
@@ -165,8 +165,8 @@ gdb.events.stop.connect(history_push)
 end
 )Delimiter");
 
-  if (gdb_command_list) {
-    for (auto& it : *gdb_command_list) {
+  if (debugger_command_list) {
+    for (auto& it : *debugger_command_list) {
       ss << gdb_macro_binding(*it);
     }
   }
@@ -187,10 +187,10 @@ end
 }
 
 /*static*/ DebuggerExtensionCommand* DebuggerExtensionCommandHandler::command_for_name(const string& name) {
-  if (!gdb_command_list) {
+  if (!debugger_command_list) {
     return nullptr;
   }
-  for (auto& it : *gdb_command_list) {
+  for (auto& it : *debugger_command_list) {
     if (it->name() == name) {
       return it;
     }
@@ -200,10 +200,10 @@ end
 
 void DebuggerExtensionCommandHandler::register_command(DebuggerExtensionCommand& cmd) {
   LOG(debug) << "registering command: " << cmd.name();
-  if (!gdb_command_list) {
-    gdb_command_list = new vector<DebuggerExtensionCommand*>();
+  if (!debugger_command_list) {
+    debugger_command_list = new vector<DebuggerExtensionCommand*>();
   }
-  gdb_command_list->push_back(&cmd);
+  debugger_command_list->push_back(&cmd);
 }
 
 // applies the simplest two hex character by byte encoding
