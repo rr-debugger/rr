@@ -41,7 +41,7 @@ python
 
 import re
 
-def gdb_unescape(string):
+def hex_unescape(string):
     str_len = len(string)
     if str_len % 2: # check for unexpected string length
         return ""
@@ -56,7 +56,7 @@ def gdb_unescape(string):
         return ""
     return result.decode('utf-8')
 
-def gdb_escape(string):
+def hex_escape(string):
     result = ""
     for curr_char in string.encode('utf-8'):
         if isinstance(curr_char, str):
@@ -116,15 +116,15 @@ class RRCmd(gdb.Command):
             (self.cmd_name, -1 if curr_thread is None else curr_thread.ptid[1]))
         arg_strs = []
         for auto_arg in self.auto_args:
-            arg_strs.append(":" + gdb_escape(gdb.execute(auto_arg, to_string=True)))
+            arg_strs.append(":" + hex_escape(gdb.execute(auto_arg, to_string=True)))
         for arg in args:
-            arg_strs.append(":" + gdb_escape(arg))
+            arg_strs.append(":" + hex_escape(arg))
         rv = gdb.execute(cmd_prefix + ''.join(arg_strs), to_string=True);
         rv_match = re.search('received: "(.*)"', rv, re.MULTILINE);
         if not rv_match:
             gdb.write("Response error: " + rv)
             return
-        response = gdb_unescape(rv_match.group(1))
+        response = hex_unescape(rv_match.group(1))
         if response != '\n':
             gdb.write(response)
 
@@ -207,7 +207,7 @@ void DebuggerExtensionCommandHandler::register_command(DebuggerExtensionCommand&
 }
 
 // applies the simplest two hex character by byte encoding
-static string gdb_escape(const string& str) {
+static string hex_escape(const string& str) {
   stringstream ss;
   ss << hex;
   const size_t len = str.size();
@@ -223,7 +223,7 @@ static string gdb_escape(const string& str) {
 }
 // undo the two hex character byte encoding,
 // in case of error returns an empty string
-static string gdb_unescape(const string& str) {
+static string hex_unescape(const string& str) {
   const size_t len = str.size();
   // check for unexpected string length
   if (len % 2) {
@@ -248,12 +248,12 @@ static string gdb_unescape(const string& str) {
                                                        const GdbRequest::RRCmd& rr_cmd) {
   vector<string> args;
   for (const auto& arg : rr_cmd.args) {
-    args.push_back(gdb_unescape(arg));
+    args.push_back(hex_unescape(arg));
   }
 
   DebuggerExtensionCommand* cmd = command_for_name(rr_cmd.name);
   if (!cmd) {
-    return gdb_escape(string() + "Command '" + rr_cmd.name + "' not found.\n");
+    return hex_escape(string() + "Command '" + rr_cmd.name + "' not found.\n");
   }
   LOG(debug) << "invoking command: " << cmd->name();
   Task* target = t->session().find_task(rr_cmd.target_tid);
@@ -269,7 +269,7 @@ static string gdb_unescape(const string& str) {
   }
 
   LOG(debug) << "cmd response: " << resp;
-  return gdb_escape(resp + "\n");
+  return hex_escape(resp + "\n");
 }
 
 } // namespace rr
