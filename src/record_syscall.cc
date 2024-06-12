@@ -24,6 +24,8 @@
 #include <linux/ipc.h>
 #include <linux/joystick.h>
 #include <linux/kd.h>
+#include <linux/mroute.h>
+#include <linux/mroute6.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -1709,6 +1711,22 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SIOCGMIIPHY:
     case SIOCGMIIREG:
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
+      return PREVENT_SWITCH;
+
+#if 0
+    /* TODO: the IPv4 and IPv6 variants of this ioctl have the same value.
+     * (SIOCPROTOPRIVATE+1) - and there are other uses of this in other
+     * protocols.  So this probably needs a dispatch by fd socket type :(
+     */
+    case SIOCGETSGCNT:
+      syscall_state.reg_parameter<typename Arch::sioc_sg_req>(3);
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
+      return PREVENT_SWITCH;
+#endif
+
+    case SIOCGETSGCNT_IN6:
+      syscall_state.reg_parameter<typename Arch::sioc_sg_req6>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
 
