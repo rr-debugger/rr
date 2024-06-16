@@ -1650,6 +1650,7 @@ set(TESTS_WITHOUT_PROGRAM
   call_exit
   check_patched_pthread
   checkpoint_async_signal_syscalls_1000
+  checkpoint_invalid
   checkpoint_mmap_shared
   checkpoint_prctl_name
   checkpoint_simple

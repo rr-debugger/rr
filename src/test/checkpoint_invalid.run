@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record simple$bitness
+debug_gdb_only checkpoint_invalid

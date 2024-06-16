@@ -149,7 +149,11 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
   if (!gdb_server.timeline()) {
     return string("Command requires a full debugging session.");
   }
-  int id = stoi(args[0]);
+  char* endptr;
+  long id = strtol(args[0].c_str(), &endptr, 10);
+  if (*endptr) {
+    return string("Invalid checkpoint number ") + args[0] + ".";
+  }
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
     if (it->second.is_explicit == GdbServer::Checkpoint::EXPLICIT) {
