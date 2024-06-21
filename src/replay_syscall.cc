@@ -1213,11 +1213,12 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       auto arg1 = t->regs().arg1();
       if (sys == Arch::prctl &&
           (Arch::arch() != aarch64 || arg1 != PR_SET_SPECULATION_CTRL) &&
-          (unsigned long)t->regs().arg1() != PR_SET_VMA) {
+          ((unsigned long)t->regs().arg1() != PR_SET_VMA || trace_regs.syscall_result_signed() == -EINVAL)) {
         // On aarch64 PR_SET_SPECULATION_CTRL affects the pstate
         // register during the system call, so we need to replay
         // it, otherwise we'll get a mismatch there.
-        // We want to replay PR_SET_VMA as well.
+        // We want to replay PR_SET_VMA as well, but not if it originally failed
+        // with EINVAL because the recording kernel may not have supported it.
         return;
       }
     }
