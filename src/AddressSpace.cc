@@ -1646,7 +1646,7 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     err = "starts differ";
   } else if (m.end() != km.end()) {
     err = "ends differ";
-  } else if (m.prot() != km.prot()) {
+  } else if ((m.prot() ^ km.prot()) & KernelMapping::checkable_prot_mask) {
     err = "prots differ";
   } else if ((m.flags() ^ km.flags()) & KernelMapping::checkable_flags_mask) {
     err = "flags differ";
