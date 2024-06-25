@@ -56,6 +56,7 @@ public:
                                     MAP_PRIVATE | MAP_SHARED | MAP_STACK |
                                     MAP_GROWSDOWN;
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
+  static const int checkable_prot_mask = PROT_READ | PROT_WRITE | PROT_EXEC;
   static const dev_t NO_DEVICE = 0;
   static const ino_t NO_INODE = 0;
 
