@@ -100,6 +100,7 @@ enum CpuMicroarch {
   AMDZen2,
   AMDZen3,
   AMDZen4,
+  AMDRyzen9,
   LastAMD = AMDZen4,
   FirstARM,
   ARMNeoverseN1 = FirstARM,
@@ -203,6 +204,7 @@ static const PmuConfig pmu_configs[] = {
   { AMDZen2, "AMD Zen 2", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
   { AMDZen3, "AMD Zen 3", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
   { AMDZen4, "AMD Zen 4", 0x5100d1, 0, 0, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
+  { AMDRyzen9, "AMD Ryzen 9", 0x5100d1, 0, 0x6F, 10000, PMU_TICKS_RCB | PMU_SKID_UNBOUNDED },
   // Performance cores from ARM from cortex-a76 on (including neoverse-n1 and later)
   // have the following counters that are reliable enough for us.
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
