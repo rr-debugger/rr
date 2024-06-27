@@ -25,6 +25,15 @@ if(NOT CMAKE_CONFIGURATION_TYPES)
   endif()
 endif()
 
+option(INSTALL_TESTSUITE "Install the testsuite")
+option(force32bit "Force a 32-bit rr build, rather than both 64 and 32-bit. rr will only be able to record and replay 32-bit processes.")
+option(disable32bit "On a 64-bit platform, avoid requiring a 32-bit cross-compilation toolchain by not building 32-bit components. rr will be able to record 32-bit processes but not replay them.")
+option(staticlibs "Force usage of static linkage for non-standard libraries like capnproto")
+option(bpf "Enable bpf acceleration")
+option(asan "Build with address sanitizer enabled.")
+option(intel_pt_decoding "Build with Intel PT decoding enabled.")
+option(strip "Strip debug info from rr binary")
+
 enable_testing()
 set(BUILD_SHARED_LIBS ON)
 
@@ -34,7 +43,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BUILD_TESTS ON CACHE BOOL "Build tests")
 set(WILL_RUN_TESTS ${BUILD_TESTS} CACHE BOOL "Run tests")
-option(INSTALL_TESTSUITE "Install the testsuite")
 
 # CAREFUL!  "-" is an invalid character in RPM package names, while
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
@@ -152,9 +160,6 @@ if (CMAKE_ASM_COMPILER_ID STREQUAL "Clang" AND NOT ANDROID)
   set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -fno-integrated-as")
 endif()
 
-option(force32bit "Force a 32-bit rr build, rather than both 64 and 32-bit. rr will only be able to record and replay 32-bit processes.")
-option(disable32bit "On a 64-bit platform, avoid requiring a 32-bit cross-compilation toolchain by not building 32-bit components. rr will be able to record 32-bit processes but not replay them.")
-
 if(force32bit)
   set(rr_32BIT true)
   set(rr_64BIT false)
@@ -173,8 +178,6 @@ else()
   endif()
   set(rr_MBITNESS_OPTION)
 endif()
-
-option(staticlibs "Force usage of static linkage for non-standard libraries like capnproto")
 
 # Check that compiling 32-bit code on a 64-bit target works, if required.
 if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND rr_32BIT)
@@ -236,8 +239,6 @@ if(NOT ANDROID)
   set(ZSTD 1)
   add_definitions(-DZSTD=1)
 endif()
-
-option(bpf "Enable bpf acceleration")
 
 if(bpf)
   add_definitions(-DBPF=1)
@@ -661,7 +662,6 @@ if (x86ish)
   set(RR_SOURCES ${RR_SOURCES} src/test/x86/cpuid_loop.S)
 endif()
 
-option(asan "Build with address sanitizer enabled.")
 if (asan)
   set(ASAN_FLAGS "-fsanitize=address -fno-omit-frame-pointer")
       # Without no-omit-frame-pointer incomplete backtraces get stored.
@@ -690,7 +690,6 @@ else()
   set(CMAKE_INSTALL_INCLUDEDIR "include")
 endif()
 
-option(intel_pt_decoding "Build with Intel PT decoding enabled.")
 if (intel_pt_decoding)
   set(RR_SOURCES ${RR_SOURCES} src/ProcessorTraceDecoder.cc)
   add_definitions(-DINTEL_PT_DECODING=1)
@@ -714,8 +713,6 @@ if(bpf)
 
   add_dependencies(rr BPF)
 endif()
-
-option(strip "Strip debug info from rr binary")
 
 set(RR_MAIN_LINKER_FLAGS ${LINKER_FLAGS})
 if(strip)
