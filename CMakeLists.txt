@@ -119,7 +119,9 @@ set(RR_FLAGS_RELEASE "-Wall -Wextra -UDEBUG -DNDEBUG")
 
 # The following settings are the defaults for the OTHER build type.
 # Flags used to build the preload library. MUST have debuginfo enabled. SHOULD be optimized.
-set(PRELOAD_COMPILE_FLAGS "${RR_FLAGS_RELEASE} -fno-stack-protector -g3 -U_FORTIFY_SOURCE")
+# LTO breaks us by moving code around.
+set(PRELOAD_COMPILE_FLAGS "${RR_FLAGS_RELEASE} -fno-stack-protector -g3 -U_FORTIFY_SOURCE -fno-lto")
+set(PRELOAD_LINK_FLAGS "-nostartfiles -fno-lto")
 # Flags used to build Brotli. SHOULD be optimized. MUST NOT error on warnings.
 set(BROTLI_COMPILE_FLAGS ${RR_FLAGS_RELEASE})
 # Flags used to build tests. MUST have -DDEBUG and debuginfo enabled, MUST NOT be optimized.
@@ -461,7 +463,7 @@ endforeach(file)
 # we want it to have the same SONAME as the real vDSO to trick things
 # like AddressSanitizer into recognising it as the vDSO.
 set_target_properties(rrpage PROPERTIES NO_SONAME ON)
-set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-z,max-page-size=${PRELOAD_LIBRARY_PAGE_SIZE} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
+set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostdlib ${PRELOAD_LINK_FLAGS} -Wl,-z,max-page-size=${PRELOAD_LIBRARY_PAGE_SIZE} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
 set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_BINARY_DIR}/src/preload/rr_page.ld)
 # CMake seems to have trouble generating the link line without this
 set_target_properties(rrpage PROPERTIES LINKER_LANGUAGE C)
@@ -495,7 +497,7 @@ foreach(file ${PRELOAD_FILES})
   set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
-set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles ${LINKER_FLAGS}")
+set_target_properties(rrpreload PROPERTIES LINK_FLAGS "${PRELOAD_LINK_FLAGS} ${LINKER_FLAGS}")
 set_target_properties(rrpreload PROPERTIES INSTALL_RPATH "\$ORIGIN")
 
 if(RTLD_AUDIT)
@@ -517,7 +519,7 @@ if(RTLD_AUDIT)
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/audit/${file}"
                                 PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
   endforeach(file)
-  set_target_properties(rraudit PROPERTIES LINK_FLAGS "-nostartfiles -ldl ${LINKER_FLAGS}")
+  set_target_properties(rraudit PROPERTIES LINK_FLAGS "${PRELOAD_LINK_FLAGS} -ldl ${LINKER_FLAGS}")
 endif()
 
 # Ensure that CMake knows about our generated files.
@@ -878,7 +880,7 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   set_target_properties(rrpage_32 PROPERTIES NO_SONAME ON)
-  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostartfiles -nostdlib -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
+  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostdlib ${PRELOAD_LINK_FLAGS} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
   set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS ${CMAKE_BINARY_DIR}/src/preload/rr_page.ld)
   set_target_properties(rrpage_32 PROPERTIES LINKER_LANGUAGE C)
 
@@ -900,7 +902,7 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
   endforeach(file)
 
-  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles ${LINKER_FLAGS}")
+  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 ${PRELOAD_LINK_FLAGS} ${LINKER_FLAGS}")
   set_target_properties(rrpreload_32 PROPERTIES INSTALL_RPATH "\$ORIGIN")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}
