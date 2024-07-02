@@ -5,7 +5,7 @@ dd bs=1 count=65539 if=/dev/urandom of=mapped_file >& /dev/null
 dd bs=1 count=65539 if=/dev/urandom of=mapped_file2 >& /dev/null
 dd bs=1 count=1800 if=/dev/urandom of=mapped_file3 >& /dev/null
 dd bs=1 count=1800 if=/dev/urandom of=mapped_file4 >& /dev/null
-chmod u+x mapped_file*
+/bin/chmod u+x mapped_file*
 record pack$bitness
 
 pack || failed "'rr pack' failed"
