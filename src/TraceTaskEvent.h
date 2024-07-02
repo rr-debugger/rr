@@ -105,6 +105,14 @@ public:
     DEBUG_ASSERT(type() == EXEC);
     interp_name_ = name;
   }
+  std::vector<uint8_t> pac_data() const {
+    DEBUG_ASSERT(type() == EXEC);
+    return pac_data_;
+  }
+  void set_pac_data(std::vector<uint8_t> data) {
+    DEBUG_ASSERT(type() == EXEC);
+    pac_data_ = data;
+  }
   WaitStatus exit_status() const {
     DEBUG_ASSERT(type() == EXIT);
     return exit_status_;
@@ -124,6 +132,7 @@ private:
   remote_ptr<void> exe_base_;         // EXEC only
   remote_ptr<void> interp_base_;      // EXEC only
   std::string interp_name_;           // EXEC only
+  std::vector<uint8_t> pac_data_;     // EXEC only
   WaitStatus exit_status_;            // EXIT only
 };
 

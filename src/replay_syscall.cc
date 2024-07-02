@@ -450,6 +450,9 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   t->post_exec_syscall(exe_name, kms[exe_km].fsname());
   t->vm()->set_interp_base(tte.interp_base());
   t->vm()->set_interp_name(tte.interp_name());
+  if (!t->set_pac_keys(tte.pac_data())) {
+    LOG(warn) << "Failed to restore PAC keys. Replay may fail.";
+  }
 
   t->fd_table()->close_after_exec(
       t, t->current_trace_frame().event().Syscall().exec_fds_to_close);

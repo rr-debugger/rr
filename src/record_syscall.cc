@@ -5772,6 +5772,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     }
   }
 
+  syscall_state.exec_saved_event->set_pac_data(t->pac_keys());
   t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
 
   {

@@ -218,6 +218,7 @@ struct TaskEvent {
       interpBase @10 :RemotePtr;
       # Not a Path since it is only meaningful during recording
       interpName @11 :CString;
+      pacData @12 :PACData;
     }
     # Most frame 'exit' events generate one of these, but these are not
     # generated if rr ends abnormally so the tasks did not in fact exit during
@@ -258,6 +259,11 @@ struct Registers {
 
 struct ExtraRegisters {
   # May be empty. Format determined by Frame::arch
+  raw @0 :Data;
+}
+
+struct PACData {
+  # Formay determined by Frame::arch
   raw @0 :Data;
 }
 
