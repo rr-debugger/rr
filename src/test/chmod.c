@@ -12,7 +12,7 @@ int main(void) {
   test_assert(0 == fchmod(fd, 0200));
   test_assert(0 == access(file_path, W_OK));
   test_assert(0 == syscall(RR_fchmodat, AT_FDCWD, file_path, 0400));
-  test_assert(0 == syscall(RR_fchmodat2, AT_FDCWD, file_path, 0400, 0 || errno == ENOSYS));
+  test_assert(0 == syscall(RR_fchmodat2, AT_FDCWD, file_path, 0400, 0) || errno == ENOSYS);
   test_assert(0 == access(file_path, R_OK));
   test_assert(0 == faccessat(AT_FDCWD, file_path, R_OK, AT_SYMLINK_NOFOLLOW) || errno == ENOSYS);
   test_assert(0 == syscall(RR_faccessat2, AT_FDCWD, file_path, R_OK, AT_SYMLINK_NOFOLLOW) || errno == ENOSYS);
