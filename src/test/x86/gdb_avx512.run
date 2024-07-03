@@ -1,0 +1,9 @@
+# check if we have avx512, if not, don't run test
+
+if ! lscpu | grep -q "avx512f"; then
+    echo "not running avx512 test"
+    return 0
+fi
+
+source `dirname $0`/util.sh
+debug_test_gdb_only

@@ -788,11 +788,13 @@ set_source_files_properties(src/exec_stub.c
 
 set(RR_GDB_RESOURCES
   32bit-avx.xml
+  32bit-avx512.xml
   32bit-core.xml
   32bit-linux.xml
   32bit-sse.xml
   32bit-pkeys.xml
   64bit-avx.xml
+  64bit-avx512.xml
   64bit-core.xml
   64bit-linux.xml
   64bit-seg.xml
@@ -1724,6 +1726,7 @@ set(TESTS_WITHOUT_PROGRAM
   final_sigkill
   first_instruction
   fork_exec_info_thr
+  x86/gdb_avx512
   get_thread_list
   hardlink_mmapped_files
   hbreak
@@ -1872,6 +1875,13 @@ if(BUILD_TESTS)
 
   add_executable(prctl_tsc_supported src/test/prctl_tsc_supported.c)
   post_build_executable(prctl_tsc_supported)
+  if (x86ish)
+    add_executable(gdb_avx512 src/test/x86/gdb_avx512.c)
+    post_build_executable(gdb_avx512)
+    set_target_properties(gdb_avx512
+      PROPERTIES COMPILE_FLAGS "${RR_TEST_FLAGS} -g3 -mavx512f")
+    add_dependencies(gdb_avx512 Generated)
+  endif()
 
   # Test disabled because it requires libuvc to be built and installed, and a
   # working USB camera
@@ -1993,7 +2003,7 @@ if(BUILD_TESTS)
       bash source_dir/src/test/${test}.run ${testname} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
-
+  
   # Run 32-bit tests on 64-bit builds.
   # We copy the test files into '32' subdirectories in the output
   # directory, so we can set different compile options on them.
@@ -2013,6 +2023,11 @@ if(BUILD_TESTS)
       set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                                   PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
+
+    if (x86ish)
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/x86/gdb_avx512.c" "${CMAKE_CURRENT_BINARY_DIR}/32/gdb_avx512.c" COPYONLY)
+      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c" PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g3 -mavx512f")
+    endif()
 
     foreach(test ${BASIC_CPP_TESTS})
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
@@ -2081,6 +2096,16 @@ if(BUILD_TESTS)
       PROPERTIES LINK_FLAGS "-m32"
       COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g -O3")
     add_dependencies(watchpoint_unaligned2_32 Generated)
+
+    if (x86ish)
+      add_executable(gdb_avx512_32 "${CMAKE_CURRENT_BINARY_DIR}/32/gdb_avx512.c")
+      post_build_executable(gdb_avx512_32)
+      set_target_properties(gdb_avx512_32
+        PROPERTIES
+          LINK_FLAGS "-m32"
+          COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g3 -mavx512f")
+      add_dependencies(gdb_avx512_32 Generated)
+    endif()
 
     add_library(test_lib_32
       "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"

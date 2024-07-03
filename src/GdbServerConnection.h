@@ -748,10 +748,11 @@ public:
   const Features& features() { return features_; }
 
   enum {
-    CPU_X86_64 = 0x1,
-    CPU_AVX = 0x2,
-    CPU_AARCH64 = 0x4,
-    CPU_PKU = 0x8
+    CPU_X86_64 = 1 << 0,
+    CPU_AVX = 1 << 1,
+    CPU_AARCH64 = 1 << 2,
+    CPU_PKU = 1 << 3,
+    CPU_AVX512 = 1 << 4
   };
 
   void set_cpu_features(SupportedArch arch);
