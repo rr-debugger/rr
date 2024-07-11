@@ -30,6 +30,7 @@
 #include "DebuggerExtensionCommandHandler.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "TargetDescription.h"
 #include "core.h"
 #include "log.h"
 
@@ -67,7 +68,8 @@ GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid, const Features& f
       multiprocess_supported_(false),
       hwbreak_supported_(false),
       swbreak_supported_(false),
-      list_threads_in_stop_reply_(false) {
+      list_threads_in_stop_reply_(false),
+      target_description(nullptr) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -111,7 +113,7 @@ unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
     Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
   auto dbg = unique_ptr<GdbServerConnection>(
     new GdbServerConnection(t->thread_group()->tguid(), features));
-  dbg->set_cpu_features(get_cpu_features(t->arch()));
+  dbg->set_cpu_features(t->arch());
   dbg->await_debugger(listen_fd);
   return dbg;
 }
@@ -503,29 +505,6 @@ static string read_target_desc(const char* file_name) {
   return ss.str();
 }
 
-static const char* target_description_name(uint32_t cpu_features) {
-  // This doesn't scale, but it's what gdb does...
-  switch (cpu_features) {
-    case 0:
-      return "i386-linux.xml";
-    case GdbServerConnection::CPU_X86_64:
-      return "amd64-linux.xml";
-    case GdbServerConnection::CPU_AVX:
-      return "i386-avx-linux.xml";
-    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_AVX:
-      return "amd64-avx-linux.xml";
-    case GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
-      return "i386-pkeys-linux.xml";
-    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
-      return "amd64-pkeys-linux.xml";
-    case GdbServerConnection::CPU_AARCH64:
-      return "aarch64-core.xml";
-    default:
-      FATAL() << "Unknown features";
-      return nullptr;
-  }
-}
-
 bool GdbServerConnection::xfer(const char* name, char* args) {
   const char* mode = args;
   args = strchr(args, ':');
@@ -609,11 +588,8 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
       return false;
     }
 
-    string target_desc =
-        read_target_desc((strcmp(annex, "") && strcmp(annex, "target.xml"))
-                             ? annex
-                             : target_description_name(cpu_features_));
-    write_xfer_response(target_desc.c_str(), target_desc.size(), offset, len);
+    const auto desc = strcmp(annex, "") && strcmp(annex, "target.xml") ? read_target_desc(annex) : target_description->to_xml();
+    write_xfer_response(desc.c_str(), desc.size(), offset, len);
     return false;
   }
 
@@ -2334,5 +2310,12 @@ void GdbServerConnection::reply_restore_register_state(bool ok) {
 bool GdbServerConnection::is_connection_alive() { return connection_alive_; }
 
 bool GdbServerConnection::is_pass_signal(int sig) { return pass_signals.find(to_gdb_signum(sig)) != pass_signals.end(); }
+
+void GdbServerConnection::set_cpu_features(SupportedArch arch) {
+  cpu_features_ = get_cpu_features(arch);
+  DEBUG_ASSERT(target_description == nullptr &&
+               "Target description already created");
+  target_description = std::make_unique<TargetDescription>(arch, cpu_features_);
+}
 
 } // namespace rr
