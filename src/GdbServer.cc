@@ -206,6 +206,7 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
       return;
   }
   vector<GdbServerRegisterValue> rs;
+  rs.reserve(end);
   for (GdbServerRegister r = GdbServerRegister(0); r <= end; r = GdbServerRegister(r + 1)) {
     rs.push_back(get_reg(regs, extra_regs, r));
   }

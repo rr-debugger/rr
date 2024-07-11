@@ -648,6 +648,7 @@ set(RR_SOURCES
   src/SourcesCommand.cc
   src/StdioMonitor.cc
   src/SysCpuMonitor.cc
+  src/TargetDescription.cc
   src/Task.cc
   src/ThreadGroup.cc
   src/TraceeAttentionSet.cc
@@ -797,12 +798,6 @@ set(RR_GDB_RESOURCES
   64bit-seg.xml
   64bit-sse.xml
   64bit-pkeys.xml
-  amd64-pkeys-linux.xml
-  amd64-avx-linux.xml
-  amd64-linux.xml
-  i386-pkeys-linux.xml
-  i386-avx-linux.xml
-  i386-linux.xml
   aarch64-core.xml
   aarch64-fpu.xml
   aarch64-pauth.xml
