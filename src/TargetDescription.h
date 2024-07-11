@@ -14,7 +14,8 @@ enum class TargetFeature : u32 {
     Linux,
     Segment,
     AVX,
-    PKeys
+    PKeys,
+    FPU,
 };
 
 class TargetDescription {

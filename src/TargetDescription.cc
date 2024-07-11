@@ -68,6 +68,9 @@ FeatureStream& operator<<(FeatureStream& stream,
     case TargetFeature::Segment:
       stream << "seg.xml";
       break;
+    case TargetFeature::FPU:
+      stream << "fpu.xml";
+      break;
   }
   stream << R"("/>)" << '\n';
   return stream;
@@ -92,6 +95,7 @@ TargetDescription::TargetDescription(rr::SupportedArch arch,
       break;
     case rr::aarch64:
       target_features.push_back(TargetFeature::Core);
+      target_features.push_back(TargetFeature::FPU);
       break;
   }
 
