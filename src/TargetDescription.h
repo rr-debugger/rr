@@ -6,23 +6,22 @@ namespace rr {
 
 struct GdbServerRegisterValue;
 
-using u32 = std::uint32_t;
-
-enum class TargetFeature : u32 {
-    Core = 0,
-    SSE,
-    Linux,
-    Segment,
-    AVX,
-    PKeys,
-    FPU,
+enum class TargetFeature : uint32_t {
+  Core = 0,
+  SSE,
+  Linux,
+  Segment,
+  AVX,
+  PKeys,
+  FPU,
 };
 
 class TargetDescription {
-    SupportedArch arch;
-    std::vector<TargetFeature> target_features;
+  SupportedArch arch;
+  std::vector<TargetFeature> target_features;
+
 public:
-    explicit TargetDescription(rr::SupportedArch arch, u32 cpu_features) noexcept;
-    std::string to_xml() const noexcept;
+  explicit TargetDescription(rr::SupportedArch arch, uint32_t cpu_features);
+  std::string to_xml() const;
 };
-}
+} // namespace rr

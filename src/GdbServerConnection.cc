@@ -68,7 +68,8 @@ GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid, const Features& f
       multiprocess_supported_(false),
       hwbreak_supported_(false),
       swbreak_supported_(false),
-      list_threads_in_stop_reply_(false) {
+      list_threads_in_stop_reply_(false),
+      target_description(nullptr) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -112,8 +113,7 @@ unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
     Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
   auto dbg = unique_ptr<GdbServerConnection>(
     new GdbServerConnection(t->thread_group()->tguid(), features));
-  const auto arch = t->arch();
-  dbg->set_cpu_features(arch, get_cpu_features(arch));
+  dbg->set_cpu_features(t->arch());
   dbg->await_debugger(listen_fd);
   return dbg;
 }
@@ -588,7 +588,7 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
       return false;
     }
 
-    const auto desc = (strcmp(annex, "") && strcmp(annex, "target.xml") ? read_target_desc(annex) : target_decription->to_xml());
+    const auto desc = strcmp(annex, "") && strcmp(annex, "target.xml") ? read_target_desc(annex) : target_description->to_xml();
     write_xfer_response(desc.c_str(), desc.size(), offset, len);
     return false;
   }
@@ -2311,12 +2311,11 @@ bool GdbServerConnection::is_connection_alive() { return connection_alive_; }
 
 bool GdbServerConnection::is_pass_signal(int sig) { return pass_signals.find(to_gdb_signum(sig)) != pass_signals.end(); }
 
-void GdbServerConnection::set_cpu_features(SupportedArch arch,
-                                           uint32_t features) {
-  cpu_features_ = features;
-  DEBUG_ASSERT(target_decription == nullptr &&
+void GdbServerConnection::set_cpu_features(SupportedArch arch) {
+  cpu_features_ = get_cpu_features(arch);
+  DEBUG_ASSERT(target_description == nullptr &&
                "Target description already created");
-  target_decription = std::make_unique<TargetDescription>(arch, cpu_features_);
+  target_description = std::make_unique<TargetDescription>(arch, cpu_features_);
 }
 
 } // namespace rr

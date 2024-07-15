@@ -752,7 +752,7 @@ public:
     CPU_PKU = 0x8
   };
 
-  void set_cpu_features(SupportedArch arch, uint32_t features);
+  void set_cpu_features(SupportedArch arch);
   uint32_t cpu_features() const { return cpu_features_; }
 
   GdbServerConnection(ThreadGroupUid tguid, const Features& features);
@@ -879,7 +879,7 @@ private:
   bool hwbreak_supported_; // client supports hwbreak extension
   bool swbreak_supported_; // client supports swbreak extension
   bool list_threads_in_stop_reply_; // client requested threads: and thread-pcs: in stop replies
-  std::unique_ptr<TargetDescription> target_decription{nullptr};
+  std::unique_ptr<TargetDescription> target_description;
 };
 
 } // namespace rr

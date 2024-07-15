@@ -2,28 +2,29 @@
 #include "GdbServerConnection.h"
 #include "kernel_abi.h"
 #include <sstream>
+
 namespace rr {
 
 class FeatureStream {
-  std::stringstream stream{};
-  const char* arch_prefix{nullptr};
-
 public:
-  std::string result() noexcept { return stream.str(); }
+  std::string result() { return stream.str(); }
 
   template <typename Any>
-  friend FeatureStream& operator<<(FeatureStream& stream, Any any) noexcept;
+  friend FeatureStream& operator<<(FeatureStream& stream, Any any);
+
+private:
+  std::stringstream stream;
+  const char* arch_prefix;
 };
 
 template <typename Any>
-FeatureStream& operator<<(FeatureStream& stream, Any any) noexcept {
+FeatureStream& operator<<(FeatureStream& stream, Any any) {
   stream.stream << any;
   return stream;
 }
 
 template <>
-FeatureStream& operator<<(FeatureStream& stream,
-                          rr::SupportedArch arch) noexcept {
+FeatureStream& operator<<(FeatureStream& stream, rr::SupportedArch arch) {
   stream << "<architecture>";
   switch (arch) {
     case rr::x86:
@@ -44,8 +45,7 @@ FeatureStream& operator<<(FeatureStream& stream,
 }
 
 template <>
-FeatureStream& operator<<(FeatureStream& stream,
-                          TargetFeature feature) noexcept {
+FeatureStream& operator<<(FeatureStream& stream, TargetFeature feature) {
   DEBUG_ASSERT(stream.arch_prefix != nullptr &&
                "No architecture has been provided to description");
   stream << R"(  <xi:include href=")" << stream.arch_prefix;
@@ -77,7 +77,7 @@ FeatureStream& operator<<(FeatureStream& stream,
 }
 
 TargetDescription::TargetDescription(rr::SupportedArch arch,
-                                     u32 cpu_features) noexcept
+                                     uint32_t cpu_features)
     : arch(arch), target_features() {
 
   // default-assumed registers per arch
@@ -110,14 +110,14 @@ TargetDescription::TargetDescription(rr::SupportedArch arch,
   }
 }
 
-static constexpr auto Header = R"(<?xml version="1.0"?>
+static const char header[] = R"(<?xml version="1.0"?>
 <!DOCTYPE target SYSTEM "gdb-target.dtd">
 <target>
 )";
 
-std::string TargetDescription::to_xml() const noexcept {
-  FeatureStream fs{};
-  fs << Header << arch << "<osabi>GNU/Linux</osabi>\n";
+std::string TargetDescription::to_xml() const {
+  FeatureStream fs;
+  fs << header << arch << "<osabi>GNU/Linux</osabi>\n";
   for (const auto feature : target_features) {
     fs << feature;
   }
