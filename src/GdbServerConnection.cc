@@ -2082,7 +2082,7 @@ void GdbServerConnection::reply_get_stop_reason(ExtendedTaskId which, int sig,
                                                 const std::vector<ThreadInfo>& threads) {
   DEBUG_ASSERT(DREQ_GET_STOP_REASON == req.type);
 
-  send_stop_reply_packet(which, sig, threads, nullptr);
+  send_stop_reply_packet(which, sig, threads, string());
 
   consume_request();
 }
