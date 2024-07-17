@@ -1007,14 +1007,13 @@ void GdbServer::maybe_notify_stop(const Session& session,
                                   const GdbRequest& req,
                                   const BreakStatus& break_status) {
   bool do_stop = false;
-  remote_ptr<void> watch_addr;
   char watch[1024];
   watch[0] = '\0';
   if (!break_status.watchpoints_hit.empty()) {
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     stop_siginfo.si_signo = SIGTRAP;
-    watch_addr = break_status.watchpoints_hit[0].addr;
+    remote_ptr<void> watch_addr = break_status.watchpoints_hit[0].addr;
     bool any_hw_break = false;
     for (const auto& w : break_status.watchpoints_hit) {
       if (w.type == WATCH_EXEC) {
