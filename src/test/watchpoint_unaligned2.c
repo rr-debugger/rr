@@ -14,7 +14,7 @@ int main(void) {
 
   // This will fail; we just want the compiler to not optimize out
   // the store.
-  write(STDIN_FILENO, &value, sizeof(value));
+  test_assert(-1 == write(-1, &value, sizeof(value)));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
