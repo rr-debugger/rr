@@ -1,6 +1,6 @@
 from util import *
 
-send_gdb('b breakpoint')
+send_gdb('b main')
 expect_gdb('Breakpoint 1')
 
 send_gdb('c')
