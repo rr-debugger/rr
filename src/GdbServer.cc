@@ -313,7 +313,7 @@ static vector<GdbServerConnection::ThreadInfo> thread_info(const Session& sessio
 
 void GdbServer::notify_stop_internal(const Session& session,
                                      ExtendedTaskId which, int sig,
-                                     const char *reason) {
+                                     const string& reason) {
   dbg->notify_stop(which, sig, thread_info(session), reason);
 }
 
@@ -1007,8 +1007,7 @@ void GdbServer::maybe_notify_stop(const Session& session,
                                   const GdbRequest& req,
                                   const BreakStatus& break_status) {
   bool do_stop = false;
-  char watch[1024];
-  watch[0] = '\0';
+  stringstream reason;
   if (!break_status.watchpoints_hit.empty()) {
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
@@ -1021,9 +1020,9 @@ void GdbServer::maybe_notify_stop(const Session& session,
       }
     }
     if (dbg->hwbreak_supported() && any_hw_break) {
-      snprintf(watch, sizeof(watch) - 1, "hwbreak:;");
+      reason << "hwbreak:;";
     } else if (watch_addr) {
-      snprintf(watch, sizeof(watch) - 1, "watch:%" PRIxPTR ";", watch_addr.as_int());
+      reason << "watch:" << std::hex << watch_addr.as_int() << ";";
     }
     LOG(debug) << "Stopping for watchpoint at " << watch_addr;
   }
@@ -1033,7 +1032,7 @@ void GdbServer::maybe_notify_stop(const Session& session,
     stop_siginfo.si_signo = SIGTRAP;
     if (break_status.breakpoint_hit) {
       if (dbg->swbreak_supported()) {
-        snprintf(watch, sizeof(watch) - 1, "swbreak:;");
+        reason << "swbreak:;";
       }
       LOG(debug) << "Stopping for breakpoint";
     } else {
@@ -1086,7 +1085,7 @@ void GdbServer::maybe_notify_stop(const Session& session,
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
     notify_stop_internal(session, extended_task_id(t), stop_siginfo.si_signo,
-                         watch);
+                         reason.str());
     last_query_task = last_continue_task = extended_task_id(t);
   }
 }

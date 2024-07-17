@@ -1763,7 +1763,7 @@ static int to_gdb_signum(int sig) {
 
 void GdbServerConnection::send_stop_reply_packet(ExtendedTaskId thread, int sig,
                                                  const vector<ThreadInfo>& threads,
-                                                 const char *reason) {
+                                                 const string& reason) {
   if (sig < 0) {
     write_packet("E01");
     return;
@@ -1771,10 +1771,7 @@ void GdbServerConnection::send_stop_reply_packet(ExtendedTaskId thread, int sig,
   stringstream sstr;
   sstr << "T" << std::setfill('0') << std::setw(2) << std::hex
       << to_gdb_signum(sig) << std::setw(0);
-  sstr << "thread:" << format_thread_id(thread) << ";";
-  if (reason) {
-    sstr << reason;
-  }
+  sstr << "thread:" << format_thread_id(thread) << ";" << reason;
   if (list_threads_in_stop_reply_) {
     sstr << "threads:";
     bool first = true;
@@ -1808,7 +1805,7 @@ void GdbServerConnection::send_stop_reply_packet(ExtendedTaskId thread, int sig,
 
 void GdbServerConnection::notify_stop(ExtendedTaskId thread, int sig,
                                       const vector<ThreadInfo>& threads,
-                                      const char *reason) {
+                                      const string& reason) {
   DEBUG_ASSERT(req.is_resume_request() || req.type == DREQ_INTERRUPT);
 
   // don't pass this signal to gdb if it is specified not to
@@ -1827,9 +1824,6 @@ void GdbServerConnection::notify_stop(ExtendedTaskId thread, int sig,
     return;
   }
 
-  if (!reason) {
-    reason = "";
-  }
   send_stop_reply_packet(thread, sig, threads, reason);
 
   // This isn't documented in the gdb remote protocol, but if we

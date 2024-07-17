@@ -163,7 +163,7 @@ private:
 
   void notify_stop_internal(const Session& session,
                             ExtendedTaskId which, int sig,
-                            const char *reason = nullptr);
+                            const std::string& reason = std::string());
 
   /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there

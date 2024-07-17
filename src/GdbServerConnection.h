@@ -536,7 +536,7 @@ public:
    */
   void notify_stop(ExtendedTaskId which, int sig,
                    const std::vector<ThreadInfo>& threads,
-                   const char *reason);
+                   const std::string& reason);
 
   /** Notify the debugger that a restart request failed. */
   void notify_restart_failed();
@@ -845,7 +845,7 @@ private:
   void consume_request();
   void send_stop_reply_packet(ExtendedTaskId thread, int sig,
                               const std::vector<ThreadInfo>& threads,
-                              const char *reason);
+                              const std::string& reason);
   void send_file_error_reply(int system_errno);
   std::string format_thread_id(ExtendedTaskId thread);
 
