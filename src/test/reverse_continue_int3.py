@@ -7,6 +7,6 @@ send_gdb('rc')
 expect_gdb('SIGTRAP')
 
 send_gdb('rc')
-expect_gdb('stopped')
+expect_gdb('No more reverse-execution history')
 
 ok()

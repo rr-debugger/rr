@@ -1069,6 +1069,9 @@ void GdbServer::maybe_notify_stop(const Session& session,
       } else {
         // The start of the debuggee task-group should trigger a silent stop.
         stop_siginfo.si_signo = 0;
+        // Documented as "has reached the end (or the beginning when executing
+        // backward) of the log"
+        reason << "replaylog:begin;";
         LOG(debug) << "Stopping at start of execution while running backwards";
       }
     }

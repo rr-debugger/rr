@@ -25,6 +25,6 @@ send_gdb('reverse-stepi')
 expect_gdb('received signal')
 
 send_gdb('reverse-continue')
-expect_gdb('stopped')
+expect_gdb('No more reverse-execution history')
 
 ok()
