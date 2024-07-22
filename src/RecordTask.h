@@ -521,19 +521,6 @@ public:
   bool is_fatal_signal(int sig, SignalDeterministic deterministic) const;
 
   /**
-   * Return the pid of the newborn thread created by this task.
-   * Called when this task has a PTRACE_CLONE_EVENT with CLONE_THREAD.
-   */
-  pid_t find_newborn_thread();
-  /**
-   * Return the pid of the newborn process (whose parent has pid `parent_pid`,
-   * which need not be the same as the current task's pid, due to CLONE_PARENT)
-   * created by this task. Called when this task has a PTRACE_CLONE_EVENT
-   * without CLONE_THREAD, or PTRACE_FORK_EVENT.
-   */
-  pid_t find_newborn_process(pid_t child_parent);
-
-  /**
    * If the process looks alive, kill it.
    */
   void kill_if_alive();

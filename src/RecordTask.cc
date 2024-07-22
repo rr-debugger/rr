@@ -2089,66 +2089,6 @@ bool RecordTask::is_fatal_signal(int sig,
 
 void RecordTask::record_current_event() { record_event(ev()); }
 
-pid_t RecordTask::find_newborn_thread() {
-  ASSERT(this, session().is_recording());
-  ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE);
-
-  pid_t hint = get_ptrace_eventmsg_pid();
-  char path[PATH_MAX];
-  if (hint >= 0) {
-    sprintf(path, "/proc/%d/task/%d", tid, hint);
-    struct stat stat_buf;
-    // This should always succeed, but may fail in old kernels due to
-    // a kernel bug. See RecordSession::handle_ptrace_event.
-    if (!session().find_task(hint) && 0 == stat(path, &stat_buf)) {
-      return hint;
-    }
-  }
-
-  sprintf(path, "/proc/%d/task", tid);
-  DIR* dir = opendir(path);
-  ASSERT(this, dir);
-  while (true) {
-    struct dirent* result = readdir(dir);
-    ASSERT(this, result);
-    char* end;
-    pid_t thread_tid = strtol(result->d_name, &end, 10);
-    if (*end == '\0' && !session().find_task(thread_tid)) {
-      closedir(dir);
-      return thread_tid;
-    }
-  }
-}
-
-pid_t RecordTask::find_newborn_process(pid_t child_parent) {
-  ASSERT(this, session().is_recording());
-  ASSERT(this,
-         ptrace_event() == PTRACE_EVENT_CLONE ||
-             ptrace_event() == PTRACE_EVENT_VFORK ||
-             ptrace_event() == PTRACE_EVENT_FORK);
-
-  pid_t hint = get_ptrace_eventmsg_pid();
-  // This should always succeed, but may fail in old kernels due to
-  // a kernel bug. See RecordSession::handle_ptrace_event.
-  if (hint >= 0 && !session().find_task(hint) && get_ppid(hint) == child_parent) {
-    return hint;
-  }
-
-  DIR* dir = opendir("/proc");
-  ASSERT(this, dir);
-  while (true) {
-    struct dirent* result = readdir(dir);
-    ASSERT(this, result);
-    char* end;
-    pid_t proc_tid = strtol(result->d_name, &end, 10);
-    if (*end == '\0' && !session().find_task(proc_tid) &&
-        get_ppid(proc_tid) == child_parent) {
-      closedir(dir);
-      return proc_tid;
-    }
-  }
-}
-
 void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
   LOG(debug) << "updating cleartid futex to " << tid_addr;
   tid_futex = tid_addr;

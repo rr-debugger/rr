@@ -3472,17 +3472,7 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
 
   ASSERT(t, t->ptrace_event() == ptrace_event);
 
-  // Ideally we'd just use t->get_ptrace_eventmsg_pid() here, but
-  // kernels failed to translate that value from other pid namespaces to
-  // our pid namespace until June 2014:
-  // https://github.com/torvalds/linux/commit/4e52365f279564cef0ddd41db5237f0471381093
-  pid_t new_tid;
-  if (flags & CLONE_THREAD) {
-    new_tid = t->find_newborn_thread();
-  } else {
-    new_tid = t->find_newborn_process(flags & CLONE_PARENT ? t->get_parent_pid()
-                                                           : t->real_tgid());
-  }
+  pid_t new_tid = t->get_ptrace_eventmsg_pid();
   RecordTask* new_task = static_cast<RecordTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid));
