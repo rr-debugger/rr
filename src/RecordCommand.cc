@@ -580,6 +580,7 @@ static void install_signal_handlers(void) {
   sigaction(SIGINT, &sa, nullptr);
   sigaction(SIGABRT, &sa, nullptr);
   sigaction(SIGQUIT, &sa, nullptr);
+  sigaction(SIGTRAP, &sa, nullptr);
 }
 
 static void setup_session_from_flags(RecordSession& session,

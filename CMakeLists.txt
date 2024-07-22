@@ -1341,6 +1341,7 @@ set(BASIC_TESTS
   # sigprof
   sigpwr
   sigqueueinfo
+  sigtrap_process_group
   x86/sigreturn
   sigreturn_reg
   sigreturnmask
