@@ -431,10 +431,14 @@ foreach(py_module ${REQUIRED_PYTHON_MODULES})
 endforeach(py_module)
 
 if(WILL_RUN_TESTS)
-  # Check for gdb
+  # Check for gdb and lldb
   execute_process(COMMAND "gdb" "--version" RESULT_VARIABLE module_status OUTPUT_QUIET)
   if(module_status)
     message(FATAL_ERROR "Couldn't find gdb.")
+  endif()
+  execute_process(COMMAND "lldb" "--version" RESULT_VARIABLE module_status OUTPUT_QUIET)
+  if(module_status)
+    message(FATAL_ERROR "Couldn't find lldb.")
   endif()
 endif()
 
