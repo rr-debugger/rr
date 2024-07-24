@@ -340,7 +340,9 @@ function do_ps { psflags=$1
 #  debug <expect-script-name> [replay-args]
 function debug {
     debug_gdb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
-    debug_lldb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+    if [[ "$test_passed" == "y" ]]; then
+        debug_lldb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+    fi
 }
 
 #  debug_lldb_only <expect-script-name> [replay-args]
@@ -496,8 +498,7 @@ function compare_test { token=$1; replayflags=$2;
 # computing test pass/fail.
 function debug_test {
     record $TESTNAME
-    debug_gdb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
-    debug_lldb_only $TEST_PREFIX$TESTNAME_NO_BITNESS
+    debug
 }
 
 #  debug_test_gdb_only
