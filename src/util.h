@@ -428,11 +428,13 @@ OpenedSocket open_socket(const std::string& host, unsigned short port,
 
 /**
  * Like `abort`, but tries to wake up test-monitor for a snapshot if possible.
+ * We try not to allocate.
  */
 void notifying_abort();
 
 /**
  * Dump the current rr stack to the given file.
+ * We try not to allocate.
  */
 void dump_rr_stack(ScopedFd& fd);
 

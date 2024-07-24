@@ -402,12 +402,38 @@ NewlineTerminatingOstream::NewlineTerminatingOstream(LogModule** m_ptr,
   }
 }
 
+// We try not to allocate in here.
+static void dump_stack_and_abort() {
+  int pipes[2];
+  int ret = pipe(pipes);
+  if (ret >= 0) {
+    // Default pipe size is 64K which should be enough
+    {
+      ScopedFd write_fd(pipes[1]);
+      dump_rr_stack(write_fd);
+    }
+    ScopedFd read_fd(pipes[0]);
+    while (true) {
+      char buf[1024];
+      ret = read(read_fd, buf, sizeof(buf) - 1);
+      if (ret <= 0) {
+        break;
+      }
+      log_stream().write(buf, ret);
+    }
+  }
+  flush_log_stream();
+  flush_log_file();
+  notifying_abort();
+}
+
 NewlineTerminatingOstream::~NewlineTerminatingOstream() {
   if (enabled) {
     log_stream() << endl;
-    flush_log_stream();
     if (Flags::get().fatal_errors_and_warnings && level <= LOG_warn) {
-      notifying_abort();
+      dump_stack_and_abort();
+    } else {
+      flush_log_stream();
     }
   }
 }
@@ -431,8 +457,7 @@ FatalOstream::FatalOstream(const char* file, int line, const char* function) {
 
 FatalOstream::~FatalOstream() {
   log_stream() << endl;
-  flush_log_stream();
-  notifying_abort();
+  dump_stack_and_abort();
 }
 
 static const int LAST_EVENT_COUNT = 20;
