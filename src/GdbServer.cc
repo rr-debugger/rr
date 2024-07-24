@@ -1376,7 +1376,8 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state(
     last_resume_request = GdbRequest();
     return s;
   }
-  FATAL() << "Received continue/interrupt request after end-of-trace.";
+  FATAL() << "Received continue/interrupt request after end-of-trace: "
+          << req.type;
   return STOP_DEBUGGING;
 }
 
