@@ -356,7 +356,11 @@ function debug_lldb_only { expectscript=$1; replayargs=$2
     if [[ $? == 0 ]]; then
         passed_msg lldb
     else
-        failed "debug script failed (lldb); see `pwd`/lldb_rr.log and `pwd`/test-monitor.output and `pwd`/rr.log"
+        failed "debug script failed (lldb); see `pwd`/lldb_rr.log and `pwd`/test-monitor.output"
+        echo "--------------------------------------------------"
+        echo "rr.log:"
+        cat rr.log
+        echo "--------------------------------------------------"
     fi
 }
 
@@ -371,7 +375,11 @@ function debug_gdb_only { expectscript=$1; replayargs=$2
     if [[ $? == 0 ]]; then
         passed_msg gdb
     else
-        failed "debug script failed (gdb); see `pwd`/gdb_rr.log and `pwd`/test-monitor.output and `pwd`/rr.log"
+        failed "debug script failed (gdb); see `pwd`/gdb_rr.log and `pwd`/test-monitor.output"
+        echo "--------------------------------------------------"
+        echo "rr.log:"
+        cat rr.log
+        echo "--------------------------------------------------"
     fi
 }
 
