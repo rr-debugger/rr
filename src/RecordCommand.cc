@@ -547,7 +547,8 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
         did_print_reassurance = true;
         write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
       } else if (now - term_requested > RR_SIGKILL_GRACE_TIME + TRACEE_SIGTERM_RESPONSE_MAX_TIME) {
-        notifying_abort();
+        errno = 0;
+        FATAL() << "SIGTERM grace period expired";
       }
     }
   } else {
@@ -560,10 +561,8 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
  * give a stacktrace.
  */
 static void handle_SIGSEGV(__attribute__((unused)) int sig) {
-  static const char msg[] =
-    "rr itself crashed (SIGSEGV). This shouldn't happen!\n";
-  write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-  notifying_abort();
+  errno = 0;
+  FATAL() << "rr itself crashed (SIGSEGV). This shouldn't happen!";
 }
 
 static void install_signal_handlers(void) {

@@ -376,7 +376,11 @@ void emergency_debug(Task* t) {
   features.reverse_execution = false;
   OpenedSocket listen_socket = open_socket(string(), t->tid, PROBE_PORT);
 
-  dump_rr_stack();
+  {
+    ScopedFd fd(STDERR_FILENO);
+    dump_rr_stack(fd);
+    fd.extract();
+  }
 
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
   if (test_monitor_pid) {

@@ -432,9 +432,9 @@ OpenedSocket open_socket(const std::string& host, unsigned short port,
 void notifying_abort();
 
 /**
- * Dump the current rr stack
+ * Dump the current rr stack to the given file.
  */
-void dump_rr_stack();
+void dump_rr_stack(ScopedFd& fd);
 
 /**
  * Check for leaked mappings etc

@@ -1773,19 +1773,19 @@ void notifying_abort() {
   abort();
 }
 
-void dump_rr_stack() {
+void dump_rr_stack(ScopedFd& fd) {
   static const char msg[] = "=== Start rr backtrace:\n";
-  write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+  write_all(fd, msg, sizeof(msg) - 1);
 #ifdef EXECINFO_BACKTRACE
   void* buffer[1024];
   int count = backtrace(buffer, 1024);
-  backtrace_symbols_fd(buffer, count, STDERR_FILENO);
+  backtrace_symbols_fd(buffer, count, fd);
 #else
   static const char msg_fallback[] = "<rr backtraces not available on this system>\n";
-  write_all(STDERR_FILENO, msg_fallback, sizeof(msg_fallback) - 1);
+  write_all(fd, msg_fallback, sizeof(msg_fallback) - 1);
 #endif
   static const char msg2[] = "=== End rr backtrace\n";
-  write_all(STDERR_FILENO, msg2, sizeof(msg2) - 1);
+  write_all(fd, msg2, sizeof(msg2) - 1);
 }
 
 void check_for_leaks() {
