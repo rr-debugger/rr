@@ -350,13 +350,13 @@ function debug {
 # Load the "expect" script to drive replay of the recording of |exe|.
 # Only LLDB is tested.
 function debug_lldb_only { expectscript=$1; replayargs=$2
-    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
+    RR_LOG_FILE=rr.log _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT test-monitor.output \
         python3 $TESTDIR/$expectscript.py --lldb \
         $RR_EXE $GLOBAL_OPTIONS replay $replayargs
     if [[ $? == 0 ]]; then
         passed_msg lldb
     else
-        failed "debug script failed (lldb); see `pwd`/lldb_rr.log and `pwd`/debug.err"
+        failed "debug script failed (lldb); see `pwd`/lldb_rr.log and `pwd`/test-monitor.output and `pwd`/rr.log"
     fi
 }
 
@@ -365,13 +365,13 @@ function debug_lldb_only { expectscript=$1; replayargs=$2
 # Load the "expect" script to drive replay of the recording of |exe|.
 # Only GDB is tested.
 function debug_gdb_only { expectscript=$1; replayargs=$2
-    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
+    RR_LOG_FILE=rr.log _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT test-monitor.output \
         python3 $TESTDIR/$expectscript.py \
         $RR_EXE $GLOBAL_OPTIONS replay -o-n -o-ix -o$TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
         passed_msg gdb
     else
-        failed "debug script failed (gdb); see `pwd`/gdb_rr.log and `pwd`/debug.err"
+        failed "debug script failed (gdb); see `pwd`/gdb_rr.log and `pwd`/test-monitor.output and `pwd`/rr.log"
     fi
 }
 
