@@ -1642,6 +1642,7 @@ set(TESTS_WITH_PROGRAM
   watchpoint
   watchpoint_at_sched
   watchpoint_before_signal
+  x86/watchpoint_error
   watchpoint_no_progress
   watchpoint_size_change
   watchpoint_syscall

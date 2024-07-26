@@ -1190,7 +1190,11 @@ bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
     update_watchpoint_value(it->first, it->second);
   }
   it->second.watch(access_bits_of(type));
-  return allocate_watchpoints();
+  bool ok = allocate_watchpoints();
+  if (!ok) {
+    remove_watchpoint(addr, num_bytes, type);
+  }
+  return ok;
 }
 
 void AddressSpace::save_watchpoints() {

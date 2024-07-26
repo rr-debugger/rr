@@ -10,7 +10,7 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'set_breakpoint_commands', 'select_thread',
             'scheduler_locking_on', 'scheduler_locking_off',
             'expect_expression', 'expect_threads',
-            'send_custom_command' ]
+            'send_custom_command', 'stepi', 'watchpoint_at_address_fail' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -88,16 +88,32 @@ def breakpoint_at_function(function):
 size_to_type = {1: 'char', 2:'short', 4:'int', 8:'long long'}
 
 def watchpoint_at_address(address, size):
-    send_debugger(f'watch -l *({size_to_type[size]}*){address}',
-                  f'watchpoint set expression -s {size} -- {address}')
+    send_debugger(f'watch -l *({size_to_type[size]}*)({address})',
+                  f'watchpoint set expression -s {size} -- ({address})')
     expect_debugger(r'atchpoint (\d+)')
     return int(last_match().group(1))
+
+def watchpoint_at_address_fail(address, size):
+    send_debugger(f'watch -l *({size_to_type[size]}*)({address})',
+                  f'watchpoint set expression -s {size} -- ({address})')
+    if debugger_type == 'GDB':
+        expect_debugger(r'atchpoint (\d+)')
+        wp = int(last_match().group(1))
+        # Force watchpoint allocation
+        send_gdb('stepi')
+        expect_debugger(r'not insert hardware watchpoint')
+        send_gdb(f'delete {wp}')
+    else:
+        expect_debugger(r'creation failed')
 
 def delete_watchpoint(watchpoint):
     send_debugger(f'delete {watchpoint}', f'watchpoint delete {watchpoint}')
 
 def cont():
     send_debugger('continue', 'continue')
+
+def stepi():
+    send_debugger('stepi', 'stepi')
 
 def up():
     send_debugger('up', 'up')
