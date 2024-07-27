@@ -2344,10 +2344,10 @@ static struct rlimit initial_fd_limit;
 static struct rlimit initial_memlock_limit;
 
 void raise_resource_limits() {
-  // We need up to 5 perf event counters per tracee task
-  initial_fd_limit = raise_resource_limit(RLIMIT_NOFILE, 1024 + 5 * MAX_TRACEE_TASKS);
-  // We typically need one page of locked memory per tracee task
-  initial_memlock_limit = raise_resource_limit(RLIMIT_MEMLOCK, page_size() * 2 * MAX_TRACEE_TASKS);
+  // We need up to 7 perf event counters per tracee task
+  initial_fd_limit = raise_resource_limit(RLIMIT_NOFILE, 1024 + 7 * MAX_TRACEE_TASKS);
+  // We may need one page of locked memory per tracee task
+  initial_memlock_limit = raise_resource_limit(RLIMIT_MEMLOCK, page_size() * 1 * MAX_TRACEE_TASKS);
 }
 
 void restore_initial_resource_limits() {
