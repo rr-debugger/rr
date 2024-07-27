@@ -6,6 +6,7 @@
 #include <linux/shm.h>
 #include <signal.h>
 #include <syscall.h>
+#include <sys/resource.h>
 
 #include <sstream>
 
@@ -561,6 +562,31 @@ NativeArch::siginfo_t convert_to_native_siginfo_arch(const void* data,
 NativeArch::siginfo_t convert_to_native_siginfo(SupportedArch arch,
     const void* data, size_t size) {
   RR_ARCH_FUNCTION(convert_to_native_siginfo_arch, arch, data, size);
+}
+
+string rlimit_resource_name(int resource) {
+  switch (resource) {
+    CASE(RLIMIT_AS);
+    CASE(RLIMIT_CORE);
+    CASE(RLIMIT_CPU);
+    CASE(RLIMIT_DATA);
+    CASE(RLIMIT_FSIZE);
+    CASE(RLIMIT_LOCKS);
+    CASE(RLIMIT_MEMLOCK);
+    CASE(RLIMIT_MSGQUEUE);
+    CASE(RLIMIT_NICE);
+    CASE(RLIMIT_NOFILE);
+    CASE(RLIMIT_NPROC);
+    CASE(RLIMIT_RSS);
+    CASE(RLIMIT_RTPRIO);
+    CASE(RLIMIT_RTTIME);
+    CASE(RLIMIT_SIGPENDING);
+    CASE(RLIMIT_STACK);
+  default:
+    char buf[100];
+    snprintf(buf, sizeof(buf), "Unknown RLIMIT_ %d", resource);
+    return string(buf);
+  }
 }
 
 string prot_flags_string(int prot) {

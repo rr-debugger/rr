@@ -2311,30 +2311,48 @@ ssize_t read_to_end(const ScopedFd& fd, size_t offset, void* buf, size_t size) {
   return ret;
 }
 
-static struct rlimit initial_fd_limit;
+static struct rlimit raise_resource_limit(int resource, rlim_t max_value) {
+  struct rlimit initial;
 
-void raise_resource_limits() {
-  if (getrlimit(RLIMIT_NOFILE, &initial_fd_limit) < 0) {
-    FATAL() << "Can't get RLIMIT_NOFILE";
+  if (getrlimit(resource, &initial) < 0) {
+    FATAL() << "Can't get rlimit " << rlimit_resource_name(resource);
   }
 
-  struct rlimit new_limit = initial_fd_limit;
-  // Try raising fd limit to 65536
-  new_limit.rlim_cur = max<rlim_t>(new_limit.rlim_cur, 65536);
+  struct rlimit new_limit = initial;
+  new_limit.rlim_cur = max<rlim_t>(new_limit.rlim_cur, max_value);
   if (new_limit.rlim_max != RLIM_INFINITY) {
     new_limit.rlim_cur = min<rlim_t>(new_limit.rlim_cur, new_limit.rlim_max);
   }
-  if (new_limit.rlim_cur != initial_fd_limit.rlim_cur) {
-    if (setrlimit(RLIMIT_NOFILE, &new_limit) < 0) {
-      LOG(warn) << "Failed to raise file descriptor limit";
+  if (new_limit.rlim_cur != initial.rlim_cur) {
+    if (setrlimit(resource, &new_limit) < 0) {
+      LOG(warn) << "Failed to raise rlimit " << rlimit_resource_name(resource)
+          << " to " << new_limit.rlim_cur;
     }
+  }
+
+  return initial;
+}
+
+static void restore_resource_limit(int resource, const struct rlimit& old_limit) {
+  if (setrlimit(resource, &old_limit) < 0) {
+    LOG(warn) << "Failed to reset rlimit " << rlimit_resource_name(resource);
   }
 }
 
+static const int MAX_TRACEE_TASKS = 65536;
+static struct rlimit initial_fd_limit;
+static struct rlimit initial_memlock_limit;
+
+void raise_resource_limits() {
+  // We need up to 5 perf event counters per tracee task
+  initial_fd_limit = raise_resource_limit(RLIMIT_NOFILE, 1024 + 5 * MAX_TRACEE_TASKS);
+  // We typically need one page of locked memory per tracee task
+  initial_memlock_limit = raise_resource_limit(RLIMIT_MEMLOCK, page_size() * 2 * MAX_TRACEE_TASKS);
+}
+
 void restore_initial_resource_limits() {
-  if (setrlimit(RLIMIT_NOFILE, &initial_fd_limit) < 0) {
-    LOG(warn) << "Failed to reset file descriptor limit";
-  }
+  restore_resource_limit(RLIMIT_NOFILE, initial_fd_limit);
+  restore_resource_limit(RLIMIT_MEMLOCK, initial_memlock_limit);
 }
 
 template <typename Arch> static size_t word_size_arch() {

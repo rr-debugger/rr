@@ -95,6 +95,11 @@ int addr_bits(SupportedArch arch);
  */
 remote_ptr<void> usable_address_space_end(SupportedArch arch);
 
+/**
+ * Convert an rlimit resource name to a string.
+ */
+std::string rlimit_resource_name(int resource);
+
 } // namespace rr
 
 #endif
