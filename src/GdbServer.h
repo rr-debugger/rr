@@ -223,6 +223,9 @@ private:
   // Read back the contents of all debugger memory regions from the session.
   void read_back_debugger_mem(DiversionSession& session);
 
+  // Get the last GdbServerRegister for "this" arch. If it hasn't be determined, configure it.
+  GdbServerRegister arch_reg_end(SupportedArch arch) noexcept;
+
   // dbg is never null.
   std::unique_ptr<GdbServerConnection> dbg;
   // The ThreadGroupUid of the task being debugged.
@@ -315,6 +318,8 @@ private:
     ExtraRegisters extra_regs;
   };
   std::unordered_map<int, SavedRegisters> saved_register_states;
+
+  GdbServerRegister target_regs_end = GdbServerRegister(0);
 };
 
 } // namespace rr

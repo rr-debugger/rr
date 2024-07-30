@@ -121,6 +121,10 @@ if [[ $TESTNAME =~ ([A-Za-z0-9_]+)_32$ ]]; then
 else
     TESTNAME_NO_BITNESS=$TESTNAME
 fi
+
+# We may want to retrieve this from python
+export TESTNAME=$TESTNAME
+
 LIB_ARG=$2
 OBJDIR=$3
 if [[ "$OBJDIR" == "" ]]; then

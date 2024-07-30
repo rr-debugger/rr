@@ -216,6 +216,7 @@ enum cpuid_requests {
   CPUID_AMD_PLATFORM_QOS = 0x80000020
 };
 
+constexpr int AVX_512_FOUNDATION_FLAG = 1 << 16;
 const int XSAVE_FEATURE_FLAG = 1 << 26;
 const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;

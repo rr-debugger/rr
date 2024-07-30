@@ -17,5 +17,4 @@
   <xi:include href="64bit-seg.xml"/>
   <xi:include href="64bit-avx.xml"/>
   <xi:include href="64bit-avx512.xml"/>
-  <xi:include href="64bit-pkeys.xml"/>
 </target>

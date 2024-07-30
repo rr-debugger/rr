@@ -16,5 +16,4 @@
   <xi:include href="32bit-linux.xml"/>
   <xi:include href="32bit-avx.xml"/>
   <xi:include href="32bit-avx512.xml"/>
-  <xi:include href="32bit-pkeys.xml"/>
 </target>
