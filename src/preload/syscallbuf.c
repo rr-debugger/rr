@@ -2372,7 +2372,7 @@ static long sys_madvise(struct syscall_info* call) {
   }
 
   if (advice == MADV_DONTNEED) {
-    ret = untraced_syscall3(syscallno, addr, length, MADV_COLD);
+    ret = privileged_untraced_syscall3(syscallno, addr, length, MADV_COLD);
     commit_raw_syscall(syscallno, ptr, ret);
     if (ret < 0) {
       return traced_raw_syscall(call);
