@@ -2,21 +2,6 @@
 
 #include "util.h"
 
-struct rseq {
-  uint32_t cpu_id_start;
-  uint32_t cpu_id;
-  uint64_t rseq_cs;
-  uint32_t flags;
-} __attribute__((aligned(32)));
-
-struct rseq_cs {
-  uint32_t version;
-  uint32_t flags;
-  uint64_t start_ip;
-  uint64_t post_commit_offset;
-  uint64_t abort_ip;
-} __attribute__((aligned(32)));
-
 static struct rseq* rs_ptr;
 static struct rseq_cs rs_cs;
 
