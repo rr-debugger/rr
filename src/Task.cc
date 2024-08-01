@@ -3331,6 +3331,19 @@ void Task::write_zeroes(unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void>
   vm()->notify_written(initial_addr, initial_size, 0);
 }
 
+void Task::will_schedule() {
+  if (rseq_state) {
+    // Relying on rseq_t being the same across architectures.
+    int cpu = session().trace_stream()->bound_to_cpu();
+    uint32_t cpu_id = cpu >= 0 ? cpu : 0;
+    auto addr = REMOTE_PTR_FIELD(rseq_state->ptr.cast<typename NativeArch::rseq_t>(), cpu_id_start);
+    bool ok = true;
+    write_mem(addr, cpu_id, &ok);
+    addr = REMOTE_PTR_FIELD(rseq_state->ptr.cast<typename NativeArch::rseq_t>(), cpu_id);
+    write_mem(addr, cpu_id, &ok);
+  }
+}
+
 const TraceStream* Task::trace_stream() const {
   if (session().as_record()) {
     return &session().as_record()->trace_writer();

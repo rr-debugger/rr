@@ -1283,6 +1283,7 @@ set(BASIC_TESTS
   redzone_integrity
   rename
   rlimit
+  rseq_cpu_id_reset
   rusage
   samask
   save_data_fd

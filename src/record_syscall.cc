@@ -4317,7 +4317,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           t->write_mem(addr, cpu_id);
           t->record_local(addr, &cpu_id);
           addr = REMOTE_PTR_FIELD(rseq, cpu_id_start);
-          uint32_t cpu_id_start = 0;
+          int cpu = t->session().trace_stream()->bound_to_cpu();
+          uint32_t cpu_id_start = cpu >= 0 ? cpu : 0;
           t->write_mem(addr, cpu_id_start);
           t->record_local(addr, &cpu_id_start);
           t->rseq_state = nullptr;

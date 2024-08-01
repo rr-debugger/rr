@@ -827,6 +827,11 @@ public:
                                               const void* buf, bool* ok = nullptr,
                                               uint32_t flags = 0);
 
+  /**
+   * This task has been selected to run next.
+   */
+  void will_schedule();
+
   SupportedArch detect_syscall_arch();
 
   /**

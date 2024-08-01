@@ -2647,6 +2647,9 @@ RecordSession::RecordResult RecordSession::record_step() {
     }
     prev_task->pop_event(EV_SCHED);
   }
+  if (t->tuid() != prev_task_tuid) {
+    t->will_schedule();
+  }
 
   // Have to disable context-switching until we know it's safe
   // to allow switching the context.

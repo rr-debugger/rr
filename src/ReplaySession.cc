@@ -1820,6 +1820,11 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
     t = revive_task_for_exec();
   }
 
+  if (t->tuid() != last_task_tuid) {
+    t->will_schedule();
+    last_task_tuid = t->tuid();
+  }
+
   LOG(debug) << "[event " << trace_frame.time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
              << (ev.is_syscall_event() ? state_name(ev.Syscall().state)

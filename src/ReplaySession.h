@@ -430,6 +430,7 @@ private:
   siginfo_t last_siginfo_;
   Flags flags_;
   FastForwardStatus fast_forward_status;
+  TaskUid last_task_tuid;
   bool skip_next_execution_event;
   bool replay_stops_at_first_execve_;
   bool detected_transient_error_;
