@@ -3375,6 +3375,7 @@ static void init_scratch_memory(RecordTask* t,
 
   KernelMapping km =
       t->vm()->map(t, t->scratch_ptr, sz, prot, flags, 0, string());
+  t->vm()->mapping_flags_of(t->scratch_ptr) |= AddressSpace::Mapping::IS_SCRATCH;
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
   auto record_in_trace = t->trace_writer().write_mapped_region(t,

@@ -315,6 +315,8 @@ public:
       IS_RR_PAGE = 0x8,
       // This mapping is the rr vdso page
       IS_RR_VDSO_PAGE = 0x10,
+      // This mapping is the per-thread scratch space.
+      IS_SCRATCH = 0x20,
     };
     uint32_t flags;
   };
