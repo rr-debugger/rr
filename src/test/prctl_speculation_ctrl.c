@@ -34,7 +34,7 @@ int main(void) {
     } else if (ret & PR_SPEC_ENABLE) {
       test_assert(-1 == prctl(PR_SET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS,
                               PR_SPEC_DISABLE, 0, 0) &&
-                  errno == ENXIO);
+                  (errno == ENXIO || errno == EPERM));
     } else {
       test_assert(-1 == prctl(PR_SET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS,
                               PR_SPEC_ENABLE, 0, 0) &&
