@@ -61,6 +61,9 @@ RecordCommand RecordCommand::singleton(
     "                             _RR_TRACE_DIR gets ignored.\n"
     "                             Directory name is given name, not the\n"
     "                             application name.\n"
+    "  --save-as=<NAME>           Name of the new recording's directory. If\n"
+    "                             a recording with that name already exists, normal\n"
+    "                             number appending is applied."
     "  -p --print-trace-dir=<NUM> print trace directory followed by a newline\n"
     "                             to given file descriptor\n"
     "  --syscall-buffer-sig=<NUM> the signal used for communication with the\n"
@@ -132,7 +135,7 @@ struct RecordFlags {
 
   int print_trace_dir;
 
-  string output_trace_dir;
+  TraceOutputPath path;
 
   /* Whether to use file-cloning optimization during recording. */
   bool use_file_cloning;
@@ -195,7 +198,7 @@ struct RecordFlags {
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
         syscall_buffer_size(0),
         print_trace_dir(-1),
-        output_trace_dir(""),
+        path{"", "", false, false},
         use_file_cloning(true),
         use_read_cloning(true),
         bind_cpu(BIND_CPU),
@@ -275,6 +278,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 17, "asan", NO_PARAMETER },
     { 18, "tsan", NO_PARAMETER },
     { 19, "intel-pt", NO_PARAMETER },
+    { 20, "save-as", HAS_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -286,6 +290,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'v', "env", HAS_PARAMETER },
     { 'w', "wait", NO_PARAMETER }};
+
   ParsedOption opt;
   auto args_copy = args;
   if (!Command::parse_option(args_copy, options, &opt)) {
@@ -320,7 +325,8 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.print_trace_dir = opt.int_value;
       break;
     case 'o':
-      flags.output_trace_dir = opt.value;
+      flags.path.output_trace_dir = opt.value;
+      flags.path.usr_provided_outdir = true;
       break;
     case 0:
       flags.use_read_cloning = false;
@@ -490,6 +496,10 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       break;
     case 19:
       flags.intel_pt = true;
+      break;
+    case 20:
+      flags.path.name = opt.value;
+      flags.path.usr_provided_name = true;
       break;
     case 's':
       flags.always_switch = true;
@@ -674,11 +684,11 @@ static void* repeat_SIGTERM(__attribute__((unused)) void* p) {
 
 static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
-
+  DEBUG_ASSERT(!flags.path.name.empty() && !flags.path.output_trace_dir.empty() && "No output dir or trace dir name set");
   auto session = RecordSession::create(
-      args, flags.extra_env, flags.disable_cpuid_features,
+      args, flags.extra_env, flags.disable_cpuid_features, flags.path,
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
-      flags.bind_cpu, flags.output_trace_dir,
+      flags.bind_cpu,
       flags.trace_id.get(),
       flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan,
       flags.intel_pt);
@@ -710,7 +720,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
     bool done_initial_exec = session->done_initial_exec();
     step_result = session->record_step();
     // Only create latest-trace symlink if --output-trace-dir is not being used
-    if (!done_initial_exec && session->done_initial_exec() && flags.output_trace_dir.empty()) {
+    if (!done_initial_exec && session->done_initial_exec() && !flags.path.usr_provided_outdir) {
       session->trace_writer().make_latest_trace();
     }
     if (term_requested) {
@@ -869,6 +879,16 @@ int RecordCommand::run(vector<string>& args) {
     chars.push_back(0);
     string padding = string("RR_CHAOS_PADDING=") + chars.data();
     flags.extra_env.push_back(padding);
+  }
+
+  if(flags.path.name.empty()) {
+    flags.path.name = args[0];
+    flags.path.usr_provided_name = false;
+  }
+
+  if(flags.path.output_trace_dir.empty()) {
+    flags.path.usr_provided_outdir = false;
+    flags.path.output_trace_dir = trace_save_dir();
   }
 
   WaitStatus status = record(args, flags);

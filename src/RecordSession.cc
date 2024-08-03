@@ -2375,10 +2375,10 @@ static string lookup_by_path(const string& name) {
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
     const DisableCPUIDFeatures& disable_cpuid_features,
+    const TraceOutputPath& path_info,
     SyscallBuffering syscallbuf,
     unsigned char syscallbuf_desched_sig,
     BindCPU bind_cpu,
-    const string& output_trace_dir,
     const TraceUuid* trace_id,
     bool use_audit,
     bool unmap_vdso,
@@ -2514,7 +2514,7 @@ static string lookup_by_path(const string& name) {
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
-                        output_trace_dir, trace_id, use_audit, unmap_vdso,
+                        path_info, trace_id, use_audit, unmap_vdso,
                         intel_pt));
   session->excluded_ranges_ = std::move(exe_info.sanitizer_exclude_memory_ranges);
   session->fixed_global_exclusion_range_ = std::move(exe_info.fixed_global_exclusion_range);
@@ -2528,12 +2528,12 @@ RecordSession::RecordSession(const std::string& exe_path,
                              SyscallBuffering syscallbuf,
                              int syscallbuf_desched_sig,
                              BindCPU bind_cpu,
-                             const string& output_trace_dir,
+                             const TraceOutputPath& path,
                              const TraceUuid* trace_id,
                              bool use_audit,
                              bool unmap_vdso,
                              bool intel_pt_enabled)
-    : trace_out(argv[0], output_trace_dir, ticks_semantics_),
+    : trace_out(path, ticks_semantics_),
       scheduler_(*this),
       trace_id(trace_id),
       disable_cpuid_features_(disable_cpuid_features),

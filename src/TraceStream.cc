@@ -1309,23 +1309,8 @@ bool TraceReader::read_raw_data_metadata_for_frame(RawDataMetadata& d) {
   return true;
 }
 
-static string make_trace_dir(const string& exe_path, const string& output_trace_dir) {
-  if (!output_trace_dir.empty()) {
-    // save trace dir in given output trace dir with option -o
-    int ret = mkdir(output_trace_dir.c_str(), S_IRWXU | S_IRWXG);
-    if (ret == 0) {
-      return output_trace_dir;
-    }
-    if (EEXIST == errno) {
-      CLEAN_FATAL() << "Trace directory `" << output_trace_dir << "' already exists.";
-    } else if (EACCES == errno) {
-      CLEAN_FATAL() << "Permission denied to create trace directory `" << output_trace_dir << "'";
-    } else {
-      FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
-    }
-  } else {
-    // save trace dir set in _RR_TRACE_DIR or in the default trace dir
-    ensure_dir(trace_save_dir(), "trace directory", S_IRWXU);
+static string create_unique_dir(const TraceOutputPath& path) {
+    ensure_dir(path.output_trace_dir, "trace directory", S_IRWXU);
 
     // Find a unique trace directory name.
     int nonce = 0;
@@ -1333,7 +1318,7 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
     string dir;
     do {
       stringstream ss;
-      ss << trace_save_dir() << "/" << basename(exe_path.c_str()) << "-"
+      ss << path.output_trace_dir << "/" << basename(path.name.c_str()) << "-"
          << nonce++;
       dir = ss.str();
       ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
@@ -1344,6 +1329,28 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
     }
 
     return dir;
+}
+
+static string make_trace_dir(const TraceOutputPath& path) {
+  if (path.usr_provided_outdir) {
+    // save trace dir in given output trace dir with option -o
+    int ret = mkdir(path.output_trace_dir.c_str(), S_IRWXU | S_IRWXG);
+    if(path.usr_provided_name) {
+      return create_unique_dir(path);
+    }
+    if (ret == 0) {
+      return path.output_trace_dir;
+    }
+    if (EEXIST == errno) {
+      CLEAN_FATAL() << "Trace directory `" << path.output_trace_dir << "' already exists.";
+    } else if (EACCES == errno) {
+      CLEAN_FATAL() << "Permission denied to create trace directory `" << path.output_trace_dir << "'";
+    } else {
+      FATAL() << "Unable to create trace directory `" << path.output_trace_dir << "'";
+    }
+  } else {
+    // save trace dir set in _RR_TRACE_DIR or in the default trace dir
+    return create_unique_dir(path);
   }
 
   return ""; // not reached
@@ -1352,10 +1359,9 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
-TraceWriter::TraceWriter(const std::string& file_name,
-                         const string& output_trace_dir,
+TraceWriter::TraceWriter(const TraceOutputPath& trace_output,
                          TicksSemantics ticks_semantics_)
-    : TraceStream(make_trace_dir(file_name, output_trace_dir),
+    : TraceStream(make_trace_dir(trace_output),
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),

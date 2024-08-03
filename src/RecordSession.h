@@ -11,6 +11,7 @@
 #include "Session.h"
 #include "ThreadGroup.h"
 #include "TraceFrame.h"
+#include "TraceStream.h"
 #include "WaitStatus.h"
 
 namespace rr {
@@ -63,10 +64,10 @@ public:
       const std::vector<std::string>& argv,
       const std::vector<std::string>& extra_env,
       const DisableCPUIDFeatures& features,
+      const TraceOutputPath& path_info,
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
       unsigned char syscallbuf_desched_sig = SIGPWR,
       BindCPU bind_cpu = BIND_CPU,
-      const std::string& output_trace_dir = "",
       const TraceUuid* trace_id = nullptr,
       bool use_audit = false,
       bool unmap_vdso = false,
@@ -217,7 +218,7 @@ private:
                 SyscallBuffering syscallbuf,
                 int syscallbuf_desched_sig,
                 BindCPU bind_cpu,
-                const std::string& output_trace_dir,
+                const TraceOutputPath& path_info,
                 const TraceUuid* trace_id,
                 bool use_audit,
                 bool unmap_vdso,
@@ -281,8 +282,6 @@ private:
    * Keeps track of detached tasks.
    */
   std::map<pid_t, RecordTask*> detached_task_map;
-
-  std::string output_trace_dir;
 
   bool use_audit_;
   bool unmap_vdso_;
