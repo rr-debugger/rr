@@ -164,8 +164,8 @@ static void write_map(const WriteVmConfig& cfg,
       FILE_OP_FATAL(file) << "couldn't truncate file to size "
                           << map.map.size();
 
-    auto bytes_read = 0;
-    while (static_cast<size_t>(bytes_read) < map.map.size()) {
+    auto bytes_read = 0ull;
+    while(static_cast<size_t>(bytes_read) < map.map.size()) {
       const auto current_read = cfg.pread(bytes_read, map.map);
       if (current_read == -1)
         FILE_OP_FATAL(file) << " couldn't read contents of " << map.map.str();
