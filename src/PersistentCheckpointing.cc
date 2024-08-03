@@ -67,11 +67,24 @@ WriteVmConfig::WriteVmConfig(Task* clone_leader, const char* data_dir,
   ASSERT(clone_leader, proc_pagemap_fd.is_open())
       << "Serializing VM for " << clone_leader->rec_tid
       << " failed. Couldn't open " << proc_pagemap_fd;
-  buffer = { .ptr = ::mmap(nullptr, buffer_size, PROT_READ | PROT_WRITE,
-                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0),
+  buffer = { .ptr =
+                 (uint8_t*)::mmap(nullptr, buffer_size, PROT_READ | PROT_WRITE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0),
              .size = buffer_size };
   ASSERT(clone_leader, buffer.ptr != MAP_FAILED)
       << "Failed to mmap buffer with capacity " << buffer_size;
+}
+
+ssize_t WriteVmConfig::pread(ssize_t bytes_read,
+                             const KernelMapping& km) const {
+  DEBUG_ASSERT(bytes_read != 1 &&
+               "you've passed in the 'invalid pread result' as bytes_read");
+  const auto current_read =
+      ::pread(proc_mem_fd, buffer.ptr + bytes_read, km.size() - bytes_read,
+              km.start().as_int() + bytes_read);
+  if (current_read == -1)
+    return current_read;
+  return bytes_read + current_read;
 }
 
 std::string checkpoints_index_file(const std::string& trace_dir) {
@@ -151,10 +164,14 @@ static void write_map(const WriteVmConfig& cfg,
       FILE_OP_FATAL(file) << "couldn't truncate file to size "
                           << map.map.size();
 
-    const auto bytes_read = ::pread(cfg.proc_mem_fd, cfg.buffer.ptr,
-                                    map.map.size(), map.map.start().as_int());
-    if (bytes_read == -1)
-      FILE_OP_FATAL(file) << " couldn't read contents of " << map.map.str();
+    auto bytes_read = 0;
+    while (static_cast<size_t>(bytes_read) < map.map.size()) {
+      const auto current_read = cfg.pread(bytes_read, map.map);
+      if (current_read == -1)
+        FILE_OP_FATAL(file) << " couldn't read contents of " << map.map.str();
+      bytes_read = current_read;
+    }
+
     ASSERT(cfg.clone_leader,
            static_cast<unsigned long>(bytes_read) == map.map.size())
         << " data read from /proc/" << cfg.clone_leader->tid

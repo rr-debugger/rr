@@ -28,9 +28,11 @@ public:
   const char* cp_data_dir;
 
   struct {
-    void* ptr;
+    uint8_t* ptr;
     size_t size;
   } buffer;
+
+  ssize_t pread(ssize_t bytes_read, const KernelMapping& km) const;
 };
 
 /* Writes capture `state` to state builder `sb`. */
