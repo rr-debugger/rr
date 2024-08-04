@@ -828,7 +828,6 @@ size_t PerfCounters::PTState::flush() {
         mmap_header->data_size - start_offset);
     memcpy(packet.data(), const_cast<perf_event_header*>(header), first_chunk_size);
     memcpy(packet.data() + first_chunk_size, const_cast<char*>(data_buf), header->size - first_chunk_size);
-    mmap_header->data_tail += header->size;
 
     switch (header->type) {
       case PERF_RECORD_LOST:
@@ -857,6 +856,8 @@ size_t PerfCounters::PTState::flush() {
         FATAL() << "Unknown record " << header->type;
         break;
     }
+
+    mmap_header->data_tail += header->size;
   }
   return ret;
 }
