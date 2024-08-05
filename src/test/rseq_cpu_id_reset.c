@@ -46,6 +46,7 @@ static int main_child(void) {
 }
 
 static int main_child_wrapper(__attribute__((unused)) void* arg) {
+  atomic_puts("EXIT-SUCCESS");
   exit(main_child());
 }
 
@@ -69,6 +70,6 @@ int main(void) {
     test_assert(1 == write(from_main_fds[1], "x", 1));
   }
 
-  atomic_puts("EXIT-SUCCESS");
+  pause();
   return 0;
 }
