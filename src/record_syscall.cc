@@ -2058,6 +2058,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
     case IOCTL_MASK_SIZE(HIDIOCGRAWINFO):
     case IOCTL_MASK_SIZE(HIDIOCGRAWNAME(0)):
+    case IOCTL_MASK_SIZE(HIDIOCGRDESCSIZE):
     case IOCTL_MASK_SIZE(BLKBSZGET):
     case IOCTL_MASK_SIZE(BLKGETDISKSEQ):
       syscall_state.reg_parameter(3, size);
