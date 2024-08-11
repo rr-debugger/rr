@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "PerfCounterBuffers.h"
 #include "ScopedFd.h"
 #include "Ticks.h"
 
@@ -70,10 +71,9 @@ public:
   struct PTState {
     PTData pt_data;
     ScopedFd pt_perf_event_fd;
-    volatile perf_event_mmap_page* mmap_header;
-    char* mmap_aux_buffer;
+    PerfCounterBuffers perf_buffers;
 
-    PTState() : mmap_header(nullptr), mmap_aux_buffer(nullptr) {}
+    PTState() {}
     ~PTState() { close(); }
 
     void open(pid_t tid);

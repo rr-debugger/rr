@@ -619,6 +619,7 @@ set(RR_SOURCES
   src/MvCommand.cc
   src/PackCommand.cc
   src/PerfCounters.cc
+  src/PerfCounterBuffers.cc
   src/PidFdMonitor.cc
   src/processor_trace_check.cc
   src/ProcFdDirMonitor.cc

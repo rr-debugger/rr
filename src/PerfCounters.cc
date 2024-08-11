@@ -778,87 +778,42 @@ void PerfCounters::PTState::open(pid_t tid) {
     return;
   }
 
-  void* base = mmap(NULL, page_size() + PT_PERF_DATA_SIZE,
-      PROT_READ | PROT_WRITE, MAP_SHARED, pt_perf_event_fd, 0);
-  if (base == MAP_FAILED) {
-    FATAL() << "Can't allocate memory for PT DATA area";
-  }
-  auto header = static_cast<struct perf_event_mmap_page*>(base);
-  mmap_header = header;
-
-  header->aux_offset = header->data_offset + header->data_size;
-  header->aux_size = PT_PERF_AUX_SIZE;
-
-  void* aux = mmap(NULL, header->aux_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-      pt_perf_event_fd, header->aux_offset);
-  if (aux == MAP_FAILED) {
-    FATAL() << "Can't allocate memory for PT AUX area";
-  }
-  mmap_aux_buffer = static_cast<char*>(aux);
+  perf_buffers.allocate(pt_perf_event_fd, PT_PERF_DATA_SIZE, PT_PERF_AUX_SIZE);
 }
 
-// I wish I knew why this type isn't defined in perf_event.h but is just
-// commented out there...
-struct PerfEventAux {
-  struct perf_event_header header;
-  uint64_t aux_offset;
-  uint64_t aux_size;
-  uint64_t flags;
-  uint64_t sample_id;
-};
-
 size_t PerfCounters::PTState::flush() {
-  if (!mmap_header) {
+  if (!perf_buffers.allocated()) {
     return 0;
   }
 
-  uint64_t data_end = mmap_header->data_head;
-  __sync_synchronize();
-  volatile char* data_buf = reinterpret_cast<volatile char*>(mmap_header) +
-      mmap_header->data_offset;
-
-  vector<char> packet;
   size_t ret = 0;
-  while (mmap_header->data_tail < data_end) {
-    uint64_t data_start = mmap_header->data_tail;
-    size_t start_offset = data_start % mmap_header->data_size;
-    auto header = reinterpret_cast<volatile perf_event_header*>(data_buf + start_offset);
-    packet.resize(header->size);
-    size_t first_chunk_size = min<size_t>(header->size,
-        mmap_header->data_size - start_offset);
-    memcpy(packet.data(), const_cast<perf_event_header*>(header), first_chunk_size);
-    memcpy(packet.data() + first_chunk_size, const_cast<char*>(data_buf), header->size - first_chunk_size);
 
-    switch (header->type) {
+  while (auto packet = perf_buffers.next_packet()) {
+    struct perf_event_header header = *packet->data();
+    switch (header.type) {
       case PERF_RECORD_LOST:
         FATAL() << "PT records lost!";
         break;
       case PERF_RECORD_ITRACE_START:
         break;
       case PERF_RECORD_AUX: {
-        auto aux_packet = reinterpret_cast<PerfEventAux*>(packet.data());
-        if (aux_packet->flags) {
-          FATAL() << "Unexpected AUX packet flags " << aux_packet->flags;
+        auto aux_packet = *reinterpret_cast<PerfEventAux*>(packet->data());
+        if (aux_packet.flags) {
+          FATAL() << "Unexpected AUX packet flags " << aux_packet.flags;
         }
         pt_data.data.emplace_back();
         vector<uint8_t>& data = pt_data.data.back();
-        data.resize(aux_packet->aux_size);
-        ret += aux_packet->aux_size;
-        size_t aux_start_offset = aux_packet->aux_offset % PT_PERF_AUX_SIZE;
-        first_chunk_size = min<size_t>(aux_packet->aux_size, PT_PERF_AUX_SIZE - aux_start_offset);
-        memcpy(data.data(), mmap_aux_buffer + aux_start_offset, first_chunk_size);
-        memcpy(data.data() + first_chunk_size, mmap_aux_buffer,
-               aux_packet->aux_size - first_chunk_size);
-        mmap_header->aux_tail += aux_packet->aux_size;
+        data.resize(aux_packet.aux_size);
+        memcpy(data.data(), packet->aux_data(), aux_packet.aux_size);
+        ret += aux_packet.aux_size;
         break;
       }
       default:
-        FATAL() << "Unknown record " << header->type;
+        FATAL() << "Unknown record " << header.type;
         break;
     }
-
-    mmap_header->data_tail += header->size;
   }
+
   return ret;
 }
 
@@ -872,12 +827,7 @@ PTData PerfCounters::extract_intel_pt_data() {
 
 void PerfCounters::PTState::close() {
   pt_perf_event_fd.close();
-  if (mmap_aux_buffer) {
-    munmap(mmap_aux_buffer, mmap_header->aux_size);
-    mmap_aux_buffer = nullptr;
-    munmap(const_cast<perf_event_mmap_page*>(mmap_header), page_size() + PT_PERF_DATA_SIZE);
-    mmap_header = nullptr;
-  }
+  perf_buffers.destroy();
 }
 
 void PerfCounters::start(Task* t, Ticks ticks_period) {
