@@ -3,6 +3,7 @@
 #ifndef RR_RECORD_TASK_H_
 #define RR_RECORD_TASK_H_
 
+#include "ContextSwitchEvent.h"
 #include "Registers.h"
 #include "Task.h"
 #include "TraceFrame.h"
@@ -737,7 +738,7 @@ public:
   // Syscallbuf state
 
   SyscallbufCodeLayout syscallbuf_code_layout;
-  ScopedFd desched_fd;
+  ContextSwitchEvent desched_fd;
   /* Value of hdr->num_rec_bytes when the buffer was flushed */
   uint32_t flushed_num_rec_bytes;
   /* Nonzero after the trace recorder has flushed the

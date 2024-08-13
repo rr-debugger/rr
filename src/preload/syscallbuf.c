@@ -663,7 +663,22 @@ static int open_desched_event_counter(pid_t tid) {
   local_memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
   attr.type = PERF_TYPE_SOFTWARE;
-  attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
+  switch (globals.context_switch_event_strategy) {
+    case STRATEGY_SW_CONTEXT_SWITCHES:
+      attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
+      break;
+    case STRATEGY_RECORD_SWITCH:
+      attr.config = PERF_COUNT_SW_DUMMY;
+      attr.watermark = 1;
+      attr.context_switch = 1;
+      attr.wakeup_watermark = 1;
+      attr.exclude_kernel = 1;
+      attr.exclude_guest = 1;
+      break;
+    default:
+      fatal("Unknown strategy");
+      break;
+  }
   attr.disabled = 1;
   attr.sample_period = 1;
 

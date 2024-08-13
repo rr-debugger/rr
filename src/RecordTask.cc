@@ -11,6 +11,7 @@
 #include <sys/syscall.h>
 
 #include "AutoRemoteSyscalls.h"
+#include "ContextSwitchEvent.h"
 #include "PreserveFileMonitor.h"
 #include "RecordSession.h"
 #include "WaitManager.h"
@@ -420,6 +421,12 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto cpu_binding_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), cpu_binding);
   t->write_mem(cpu_binding_ptr, cpu_binding);
   t->record_local(cpu_binding_ptr, &cpu_binding);
+
+  auto context_switch_event_strategy = ContextSwitchEvent::strategy();
+  auto context_switch_event_strategy_ptr =
+      REMOTE_PTR_FIELD(params.globals.rptr(), context_switch_event_strategy);
+  t->write_mem(context_switch_event_strategy_ptr, context_switch_event_strategy);
+  t->record_local(context_switch_event_strategy_ptr, &context_switch_event_strategy);
 }
 
 void RecordTask::push_syscall_event(int syscallno) {
@@ -519,7 +526,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
-    desched_fd = remote.retrieve_fd(desched_fd_child);
+    desched_fd.init(remote.retrieve_fd(desched_fd_child));
 
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {
@@ -712,6 +719,8 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       }
     }
   }
+
+  desched_fd.drain_events();
 }
 
 vector<remote_code_ptr> RecordTask::syscallbuf_syscall_entry_breakpoints() {

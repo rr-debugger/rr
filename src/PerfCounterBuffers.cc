@@ -51,10 +51,15 @@ optional<PerfCounterBuffers::Packet> PerfCounterBuffers::next_packet() {
     FATAL() << "Can't offer more than one packet at a time";
   }
 
-  uint64_t data_end = *reinterpret_cast<volatile uint64_t*>(mmap_header->data_head);
+  // Equivalent of kernel's READ_ONCE. This value is written
+  // by the kernel.
+  uint64_t data_end =
+    *reinterpret_cast<volatile unsigned long long*>(&mmap_header->data_head);
   if (mmap_header->data_tail >= data_end) {
     return nullopt;
   }
+  // Force memory barrier to ensure that we see all memory updates that were
+  // performed before `data_head `was updated.
   __sync_synchronize();
 
   char* data_buf = reinterpret_cast<char*>(mmap_header) + mmap_header->data_offset;

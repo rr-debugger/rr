@@ -162,15 +162,15 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
 }
 
 void disarm_desched_event(RecordTask* t) {
-  if (t->desched_fd.is_open() &&
-      ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
+  ScopedFd& fd = t->desched_fd.tracee_fd();
+  if (fd.is_open() && ioctl(fd, PERF_EVENT_IOC_DISABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
 }
 
 void arm_desched_event(RecordTask* t) {
-  if (t->desched_fd.is_open() &&
-      ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
+  ScopedFd& fd = t->desched_fd.tracee_fd();
+  if (fd.is_open() && ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
     FATAL() << "Failed to arm desched event";
   }
 }

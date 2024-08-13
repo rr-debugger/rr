@@ -17,6 +17,7 @@ int main(void) {
   attr.size = sizeof(attr);
   attr.type = PERF_TYPE_SOFTWARE;
   attr.config = PERF_COUNT_SW_CPU_CLOCK;
+  attr.exclude_kernel = 1;
   attr.sample_period = 1000000;
   attr.sample_type = PERF_SAMPLE_IP;
 

@@ -230,6 +230,11 @@ struct mprotect_record {
   int32_t padding;
 };
 
+enum ContextSwitchEventStrategy {
+  STRATEGY_SW_CONTEXT_SWITCHES,
+  STRATEGY_RECORD_SWITCH
+};
+
 /**
  * Must be arch-independent.
  * Variables used to communicate between preload and rr.
@@ -298,6 +303,7 @@ struct preload_globals {
   unsigned char fdt_uniform;
   /* The CPU we're bound to, if any; -1 if not bound. Not read during replay. */
   int32_t cpu_binding;
+  enum ContextSwitchEventStrategy context_switch_event_strategy;
 };
 
 /**

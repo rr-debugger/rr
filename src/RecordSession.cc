@@ -2395,29 +2395,6 @@ static string lookup_by_path(const string& name) {
     unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
   } else {
     setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
-
-    if (!has_effective_caps(uint64_t(1) << CAP_SYS_ADMIN) &&
-        !has_effective_caps(uint64_t(1) << CAP_PERFMON)) {
-      ScopedFd fd("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
-      if (fd.is_open()) {
-        char buf[100];
-        ssize_t size = read(fd, buf, sizeof(buf) - 1);
-        if (size >= 0) {
-          buf[size] = 0;
-          int val = atoi(buf);
-          if (val > 1) {
-            fprintf(stderr,
-                    "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is %d.\n"
-                    "Change it to 1, or use 'rr record -n' (slow).\n"
-                    "Consider putting 'kernel.perf_event_paranoid = 1' in /etc/sysctl.d/10-rr.conf.\n"
-                    "See 'man 8 sysctl', 'man 5 sysctl.d' (systemd systems)\n"
-                    "and 'man 5 sysctl.conf' (non-systemd systems) for more details.\n",
-                    val);
-            exit(1);
-          }
-        }
-      }
-    }
   }
 
   vector<string> env = current_env();
