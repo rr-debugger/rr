@@ -7,6 +7,7 @@
 #include "ReplayTask.h"
 #include "Session.h"
 #include "log.h"
+#include "util.h"
 
 namespace rr {
 
@@ -14,10 +15,7 @@ Switchable StdioMonitor::will_write(Task* t) {
   if (t->session().mark_stdio()) {
     char buf[256];
     snprintf(buf, sizeof(buf) - 1, "[rr %d %" PRId64 "]", t->tgid(), t->trace_time());
-    ssize_t len = strlen(buf);
-    if (write(original_fd, buf, len) != len) {
-      ASSERT(t, false) << "Couldn't write to " << original_fd;
-    }
+    write_all(original_fd, buf, strlen(buf));
   }
 
   return PREVENT_SWITCH;
@@ -31,10 +29,7 @@ void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges,
   }
   for (auto& r : ranges) {
     auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
-    if (bytes.size() !=
-        (size_t)write(original_fd, bytes.data(), bytes.size())) {
-      ASSERT(t, false) << "Couldn't write to " << original_fd;
-    }
+    write_all(original_fd, bytes.data(), bytes.size());
   }
 }
 
