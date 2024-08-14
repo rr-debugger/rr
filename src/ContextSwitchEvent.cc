@@ -130,7 +130,7 @@ static ContextSwitchEventStrategy init_strategy() {
     return ContextSwitchEventStrategy::STRATEGY_SW_CONTEXT_SWITCHES;
   }
   optional<int> perf_event_paranoid = read_perf_event_paranoid();
-  if (perf_event_paranoid.has_value() && *perf_event_paranoid < 2) {
+  if (perf_event_paranoid.has_value() && *perf_event_paranoid <= 1) {
     return ContextSwitchEventStrategy::STRATEGY_SW_CONTEXT_SWITCHES;
   }
 
@@ -140,7 +140,7 @@ static ContextSwitchEventStrategy init_strategy() {
 
   string paranoid_value = "unknown";
   if (perf_event_paranoid.has_value()) {
-    paranoid_value = *perf_event_paranoid;
+    paranoid_value = std::to_string(*perf_event_paranoid);
   }
   CLEAN_FATAL() <<
       "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is "
