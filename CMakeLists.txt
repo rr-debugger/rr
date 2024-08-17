@@ -1413,6 +1413,7 @@ set(BASIC_TESTS
   userfaultfd
   utimes
   vdso_parts
+  vdso_symbols
   vfork_done
   vfork_flush
   vfork_setopts
