@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-#ifdef __x86_64__
+#if defined(__x86_64__) || defined(__aarch64__)
 typedef Elf64_Ehdr Ehdr;
 typedef Elf64_Shdr Shdr;
 typedef Elf64_Sym Sym;
