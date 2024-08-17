@@ -27,6 +27,12 @@ static Shdr* find_section(Ehdr* ehdr, const char* name) {
   return NULL;
 }
 
+#ifdef __aarch64__
+#define PRELOAD_LIBRARY_PAGE_SIZE 65536
+#else
+#define PRELOAD_LIBRARY_PAGE_SIZE 4096
+#endif
+
 int main(void) {
   char* vdso = (char*)getauxval(AT_SYSINFO_EHDR);
   Ehdr* ehdr = (Ehdr*)vdso;
@@ -39,8 +45,8 @@ int main(void) {
   for (int si = 0; si*dynsym->sh_entsize < dynsym->sh_size; ++si) {
     Sym* sym = (Sym*)(vdso + dynsym->sh_offset) + si;
     // All symbols must be within the VDSO size, i.e. not the
-    // absolute address. We assume the VDSO is less than 64K.
-    test_assert(sym->st_value < 0x10000);
+    // absolute address. We assume the VDSO is less than 4 pages.
+    test_assert(sym->st_value < 4*PRELOAD_LIBRARY_PAGE_SIZE);
   }
 
   atomic_puts("EXIT-SUCCESS");
