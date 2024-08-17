@@ -1,9 +1,9 @@
 PHDRS
 {
-  text PT_LOAD FILEHDR PHDRS;
-  dynamic PT_DYNAMIC ;
-  note PT_NOTE ;
-  eh_frame 0x6474e550 ;
+  text PT_LOAD FLAGS(5) FILEHDR PHDRS;
+  dynamic PT_DYNAMIC FLAGS(4);
+  note PT_NOTE FLAGS(4);
+  eh_frame 0x6474e550;
   replay PT_NULL;
 }
 SECTIONS
