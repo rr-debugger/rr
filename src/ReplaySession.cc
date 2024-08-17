@@ -2234,7 +2234,7 @@ bool ReplaySession::mark_stdio() const {
 }
 
 bool ReplaySession::echo_stdio() const {
-  return flags().redirect_stdio &&
+  return flags().redirect_stdio && visible_execution_ &&
     current_frame_time() >= suppress_stdio_before_event_;
 }
 
