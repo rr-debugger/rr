@@ -1138,7 +1138,7 @@ std::shared_ptr<BpfAccelerator> BpfAccelerator::singleton;
       CLEAN_FATAL() << "rr's bpf at " << path << " is corrupt";
       return nullptr;
     }
-    struct bpf_program* prog = bpf_program__next(NULL, obj);
+    struct bpf_program* prog = bpf_object__next_program(obj, nullptr);
     if (!prog) {
       CLEAN_FATAL() << "rr's bpf at " << path << " is corrupt";
       return nullptr;
