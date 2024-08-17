@@ -12,6 +12,11 @@ int main(void) {
   }
 
   int sock_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_RAW);
+  if (sock_fd < 0 && errno == EAFNOSUPPORT) {
+    atomic_puts("IPV6 not supported, skipping test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(sock_fd >= 0);
 
   struct ip6t_getinfo* info;
