@@ -815,32 +815,32 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
     dd = debug_dirs->process_one_binary(original_file_name);
   }
 
-  const string* chosen_debug_dir = nullptr;
-  if (!dd.debug_file_directories.empty()) {
-    // XXXkhuey what do we do if there's more than one directory?
-    chosen_debug_dir = &dd.debug_file_directories.back();
-  }
-  const string* chosen_src_dir = nullptr;
-  if (!dd.source_directories.empty()) {
-    chosen_src_dir = &dd.source_directories.back();
-  }
+  for (auto chosen_debug_dir : dd.debug_file_directories) {
+    const string* chosen_src_dir = nullptr;
+    if (!dd.source_directories.empty()) {
+      chosen_src_dir = &dd.source_directories.back();
+    }
 
-  bool has_source_files = process_auxiliary_file(trace_file_reader, *reader, altlink_reader.get(),
+    bool has_source_files = process_auxiliary_file(trace_file_reader, *reader, altlink_reader.get(),
+                                                   trace_relative_name, original_file_name,
+                                                   file_names, full_file_name, DEBUGLINK,
+                                                   comp_dir_substitutions, output_comp_dir_substitutions,
+                                                   &chosen_debug_dir, chosen_src_dir,
+                                                   dwos, external_debug_info, false, dir_exists_cache);
+
+    if (altlink_reader) {
+      has_source_files |= process_auxiliary_file(trace_file_reader, *altlink_reader, nullptr,
                                                  trace_relative_name, original_file_name,
-                                                 file_names, full_file_name, DEBUGLINK,
+                                                 file_names, full_altfile_name, DEBUGALTLINK,
                                                  comp_dir_substitutions, output_comp_dir_substitutions,
-                                                 chosen_debug_dir, chosen_src_dir,
-                                                 dwos, external_debug_info, false, dir_exists_cache);
-
-  if (altlink_reader) {
-    has_source_files |= process_auxiliary_file(trace_file_reader, *altlink_reader, nullptr,
-                                               trace_relative_name, original_file_name,
-                                               file_names, full_altfile_name, DEBUGALTLINK,
-                                               comp_dir_substitutions, output_comp_dir_substitutions,
-                                               chosen_debug_dir, chosen_src_dir,
-                                               dwos, external_debug_info, has_source_files, dir_exists_cache);
+                                                 &chosen_debug_dir, chosen_src_dir,
+                                                 dwos, external_debug_info, has_source_files, dir_exists_cache);
+    }
+    if (has_source_files) {
+      return true;
+    }
   }
-  return has_source_files;
+  return false;
 }
 
 struct Symlink {
