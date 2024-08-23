@@ -73,7 +73,7 @@ static bool can_use_switch_records() {
   }
   struct f_owner_ex own;
   own.type = F_OWNER_TID;
-  own.pid = gettid();
+  own.pid = syscall(SYS_gettid);
   ret = fcntl(fd, F_SETOWN_EX, &own);
   if (ret < 0) {
     FATAL() << "Failed to fcntl(SETOWN_EX)";
