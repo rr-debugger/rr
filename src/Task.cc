@@ -3213,17 +3213,13 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
   return nwritten;
 }
 
-void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
+ssize_t Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                               const void* buf, bool* ok, uint32_t flags) {
-  ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
-  if (0 == buf_size) {
-    return;
-  }
-
   ssize_t nwritten = write_bytes_helper_no_notifications(addr, buf_size, buf, ok, flags);
   if (nwritten > 0) {
     vm()->notify_written(addr, nwritten, flags);
   }
+  return nwritten;
 }
 
 ssize_t Task::write_bytes_helper_no_notifications(remote_ptr<void> addr, ssize_t buf_size,

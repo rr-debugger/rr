@@ -422,6 +422,7 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
     w.setTid(r.rec_tid);
     w.setAddr(r.addr.as_int());
     w.setSize(r.size);
+    w.setSizeIsConservative(r.size_validation == MemWriteSizeValidation::CONSERVATIVE);
     auto holes = w.initHoles(r.holes.size());
     for (size_t j = 0; j < r.holes.size(); ++j) {
       holes[j].setOffset(r.holes[j].offset);
@@ -573,7 +574,8 @@ TraceFrame TraceReader::read_frame(FrameTime skip_before) {
       const auto& hole = holes[j];
       h[j] = { hole.getOffset(), hole.getSize() };
     }
-    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()), h };
+    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()), h,
+                    w.getSizeIsConservative() ? MemWriteSizeValidation::CONSERVATIVE : MemWriteSizeValidation::EXACT };
   }
 
   if (ret.global_time < skip_before) {
@@ -1237,8 +1239,9 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
 
 void TraceWriter::write_raw_header(pid_t rec_tid, size_t total_len,
                                    remote_ptr<void> addr,
-                                   const std::vector<WriteHole>& holes = std::vector<WriteHole>()) {
-  raw_recs.push_back({ addr, total_len, rec_tid, holes });
+                                   const std::vector<WriteHole>& holes,
+                                   MemWriteSizeValidation size_validation) {
+  raw_recs.push_back({ addr, total_len, rec_tid, holes, size_validation });
 }
 
 void TraceWriter::write_raw_data(const void* d, size_t len) {
@@ -1253,6 +1256,7 @@ bool TraceReader::read_raw_data_for_frame(RawData& d) {
   auto& rec = raw_recs[raw_recs.size() - 1];
   d.rec_tid = rec.rec_tid;
   d.addr = rec.addr;
+  d.size_validation = rec.size_validation;
 
   d.data.resize(rec.size);
   auto hole_iter = rec.holes.begin();
@@ -1285,6 +1289,7 @@ bool TraceReader::read_raw_data_for_frame_with_holes(RawDataWithHoles& d) {
   d.addr = rec.addr;
   d.holes = std::move(rec.holes);
   size_t data_size = rec.size;
+  d.size_validation = rec.size_validation;
   for (auto& h : d.holes) {
     data_size -= h.size;
   }

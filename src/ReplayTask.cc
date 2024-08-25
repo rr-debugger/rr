@@ -157,8 +157,14 @@ static size_t write_data_with_holes(ReplayTask* t,
     if (holes_iter != buf.holes.end()) {
       data_end = data_offset + holes_iter->offset - addr_offset;
     }
-    t->write_bytes_helper(buf.addr + addr_offset, data_end - data_offset, buf.data.data() + data_offset,
-                          nullptr);
+    bool ok = true;
+    ssize_t nwritten = t->write_bytes_helper(buf.addr + addr_offset, data_end - data_offset,
+                                             buf.data.data() + data_offset,&ok);
+
+    ASSERT(t, ok || buf.size_validation == MemWriteSizeValidation::CONSERVATIVE)
+        << "Should have written " << buf.data.size() << " bytes to " << (buf.addr + addr_offset)
+        << ", but only wrote " << nwritten;
+
     addr_offset += data_end - data_offset;
     data_offset = data_end;
   }

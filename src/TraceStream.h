@@ -38,6 +38,16 @@ struct WriteHole {
   uint64_t size;
 };
 
+enum class MemWriteSizeValidation {
+  /* A data record where we _know_ that this data was all written, and it
+   * _must_ be replicated in the replayed process in its entirety */
+  EXACT,
+  /* We recorded a range of memory that's a conservative over-estimate of
+    * what was actually written, and it might not replay cleanly in its
+    * entirety in a replayed process */
+  CONSERVATIVE,
+};
+
 /**
  * TraceStream stores all the data common to both recording and
  * replay.  TraceWriter deals with recording-specific logic, and
@@ -56,6 +66,7 @@ public:
     size_t size;
     pid_t rec_tid;
     std::vector<WriteHole> holes;
+    MemWriteSizeValidation size_validation;
   };
 
   /**
@@ -224,13 +235,15 @@ public:
    * 'addr' is the address in the tracee where the data came from/will be
    * restored to.
    */
-  void write_raw(pid_t tid, const void* data, size_t len, remote_ptr<void> addr) {
+  void write_raw(pid_t tid, const void* data, size_t len, remote_ptr<void> addr,
+                 MemWriteSizeValidation size_validation = MemWriteSizeValidation::EXACT) {
     write_raw_data(data, len);
-    write_raw_header(tid, len, addr, std::vector<WriteHole>());
+    write_raw_header(tid, len, addr, std::vector<WriteHole>(), size_validation);
   }
   void write_raw_data(const void* data, size_t len);
   void write_raw_header(pid_t tid, size_t total_len, remote_ptr<void> addr,
-                        const std::vector<WriteHole>& holes);
+                        const std::vector<WriteHole>& holes,
+                        MemWriteSizeValidation size_validation = MemWriteSizeValidation::EXACT);
 
   /**
    * Write a task event (clone or exec record) to the trace.
@@ -344,6 +357,7 @@ public:
     std::vector<uint8_t> data;
     remote_ptr<void> addr;
     pid_t rec_tid;
+    MemWriteSizeValidation size_validation;
   };
 
   /**
@@ -354,6 +368,7 @@ public:
     remote_ptr<void> addr;
     pid_t rec_tid;
     std::vector<WriteHole> holes;
+    MemWriteSizeValidation size_validation;
   };
 
   /**

@@ -1724,7 +1724,8 @@ bool RecordTask::record_remote_by_local_map(remote_ptr<void> addr,
   return false;
 }
 
-void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
+void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes,
+                               MemWriteSizeValidation size_validation) {
   ASSERT(this, num_bytes >= 0);
 
   if (!addr) {
@@ -1750,11 +1751,11 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
     ASSERT(this, false) << "Should have recorded " << num_bytes << " bytes from "
                         << addr << ", but failed";
   }
-  trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr);
+  trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr, size_validation);
 }
 
-void RecordTask::record_remote_writable(remote_ptr<void> addr,
-                                        ssize_t num_bytes) {
+void RecordTask::record_remote_writable(remote_ptr<void> addr, ssize_t num_bytes,
+                                        MemWriteSizeValidation size_validation) {
   ASSERT(this, num_bytes >= 0);
 
   remote_ptr<void> p = addr;
@@ -1777,7 +1778,7 @@ void RecordTask::record_remote_writable(remote_ptr<void> addr,
   }
   num_bytes = min(num_bytes, p - addr);
 
-  record_remote(addr, num_bytes);
+  record_remote(addr, num_bytes, size_validation);
 }
 
 ssize_t RecordTask::record_remote_fallible(remote_ptr<void> addr,
