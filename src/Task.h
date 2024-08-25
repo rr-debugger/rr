@@ -816,7 +816,7 @@ public:
   /**
    * |flags| is bits from WriteFlags.
    */
-  void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
+  ssize_t write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                           const void* buf, bool* ok = nullptr,
                           uint32_t flags = 0);
   /**

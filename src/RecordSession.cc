@@ -19,6 +19,7 @@
 #include "PerfCounters.h"
 #include "RecordTask.h"
 #include "TraceeAttentionSet.h"
+#include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
 #include "WaitManager.h"
 #include "core.h"
@@ -1758,7 +1759,8 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // We record this data even if sigframe_size is zero to simplify replay.
       // Stop recording data if we run off the end of a writable mapping.
       // Our sigframe size is conservative so we need to do this.
-      t->record_remote_writable(t->regs().sp(), sigframe_size);
+      t->record_remote_writable(t->regs().sp(), sigframe_size,
+                                MemWriteSizeValidation::CONSERVATIVE);
 
       // This event is used by the replayer to set up the signal handler frame.
       // But if we don't have a handler, we don't want to record the event

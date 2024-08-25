@@ -244,6 +244,10 @@ struct MemWrite {
   # A list of regions where zeroes are written. These are not
   # present in the compressed data.
   holes @3 :List(WriteHole);
+  # This is set for writes where we don't actually know that the write
+  # will apply in full in the replayee (e.g. for conservative sigframe
+  # captures when handling EV_SIGNAL).
+  sizeIsConservative @4 :Bool;
 }
 
 enum Arch {
