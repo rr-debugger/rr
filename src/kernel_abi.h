@@ -1819,6 +1819,11 @@ struct BaseArch : public wordsize,
       ptr64<__u32> link_attach_flags;
       __u64 revision;
     } query;
+    struct { /* anonymous struct used by RR_BPF_OBJ_GET_INFO_BY_FD command */
+      __u32 bpf_fd;
+      __u32 info_len;
+      __u64 info;
+    } info;
   };
 
   struct file_handle {

@@ -2177,6 +2177,9 @@ static Switchable prepare_bpf(RecordTask* t,
     case RR_BPF_BTF_LOAD:
     case RR_BPF_PROG_DETACH:
     case RR_BPF_PROG_ATTACH:
+    case RR_BPF_MAP_FREEZE:
+    case RR_BPF_PROG_BIND_MAP:
+    case RR_BPF_TOKEN_CREATE:
       break;
     case RR_BPF_OBJ_GET:
       return ALLOW_SWITCH;
@@ -2208,19 +2211,19 @@ static Switchable prepare_bpf(RecordTask* t,
       auto attr_buf = MemoryRange(attr_begin, attr_size);
       auto attrp = attr_begin.cast<typename Arch::bpf_attr>();
 
-      // if this assert fails, we should check what fields were added to the
-      // query ABI, update the structure and track pointers to output arrays
-      ASSERT(t, attr_size <= sizeof(((typename Arch::bpf_attr*)nullptr)->query));
-
       // if the offset of the prog_cnt is out of the buffer,
       // the syscall will fail and we can't track anything
       auto prog_cnt_p = REMOTE_PTR_FIELD(attrp, query.prog_cnt);
       if (!attr_buf.contains(prog_cnt_p)) {
         break;
       }
-      auto prog_cnt = t->read_mem(prog_cnt_p);
-      auto buf_size = prog_cnt * sizeof(__u32);
+      bool ok = true;
+      auto prog_cnt = t->read_mem(prog_cnt_p, &ok);
+      if (!ok) {
+        break;
+      }
 
+      auto buf_size = prog_cnt * sizeof(__u32);
       // for each output array, only track changes if the field is
       // within the bounds of the user provided buffer
       auto prog_ids_p = REMOTE_PTR_FIELD(attrp, query.prog_ids);
@@ -2242,6 +2245,30 @@ static Switchable prepare_bpf(RecordTask* t,
       if (attr_buf.contains(link_attach_flags_p)) {
         syscall_state.mem_ptr_parameter(link_attach_flags_p, buf_size);
       }
+      break;
+    }
+    case RR_BPF_OBJ_GET_INFO_BY_FD: {
+      auto attr_size = t->regs().arg3();
+      auto attr_begin = syscall_state.reg_parameter(2, attr_size, IN_OUT);
+      auto attr_buf = MemoryRange(attr_begin, attr_size);
+      auto attrp = attr_begin.cast<typename Arch::bpf_attr>();
+
+      auto info_len_p = REMOTE_PTR_FIELD(attrp, info.info_len);
+      if (!attr_buf.contains(info_len_p)) {
+        break;
+      }
+      bool ok = true;
+      auto info_len = t->read_mem(info_len_p, &ok);
+      if (!ok) {
+        break;
+      }
+
+      auto info_p = REMOTE_PTR_FIELD(attrp, info.info);
+      // *info_p is actually a uint64_t, so for 32-bit tracees we're assuming
+      // they're little-endian here. That's true for now since x86 is the only
+      // 32-bit architecture we support. We could fix this by making
+      // mem_ptr_parameter take a remote_ptr<T> and checking the size of T.
+      syscall_state.mem_ptr_parameter(info_p, info_len);
       break;
     }
     default:
