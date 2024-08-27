@@ -15,7 +15,7 @@ int main(void) {
     const char* filename = "foo";
     memset(&attr, 0, sizeof(attr));
     attr.pathname = (__u64)(uintptr_t)filename;
-    bpf(BPF_OBJ_GET, &attr, 1);
+    bpf(RR_BPF_OBJ_GET, &attr, 1);
   }
 
   atomic_puts("EXIT-SUCCESS");

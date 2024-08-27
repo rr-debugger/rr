@@ -45,7 +45,7 @@ int main(void) {
   // query cgroups bpf programs. at first, no programs are attached
   query_attr.query.prog_cnt = 2;
   query_attr.query.attach_type = ATTACH_TYPE;
-  if (bpf(BPF_PROG_QUERY, &query_attr, sizeof(query_attr.query)) != 0) {
+  if (bpf(RR_BPF_PROG_QUERY, &query_attr, sizeof(query_attr.query)) != 0) {
     if (errno == ENOSYS) {
       atomic_puts("Skipping test because bpf is not supported");
       atomic_puts("EXIT-SUCCESS");
@@ -58,7 +58,7 @@ int main(void) {
       atomic_puts("EXIT-SUCCESS");
       return 0;
     }
-    test_assert(0 && "bpf(BPF_PROG_QUERY) failed");
+    test_assert(0 && "bpf(RR_BPF_PROG_QUERY) failed");
   }
   test_assert(query_attr.query.prog_cnt == 0);
 
@@ -75,7 +75,7 @@ int main(void) {
   };
   const int offset_of_attach_prog_fd = 112;
   size_t prog_attr_size = offset_of_attach_prog_fd + sizeof(__u32);
-  int prog = bpf(BPF_PROG_LOAD, &prog_attr, prog_attr_size);
+  int prog = bpf(RR_BPF_PROG_LOAD, &prog_attr, prog_attr_size);
   if (prog < 0) {
     atomic_puts(log_buf);
     test_assert(0 && "failed to load program");
@@ -88,12 +88,12 @@ int main(void) {
   const int offset_of_replace_bpf_fd = 112;
   size_t attach_attr_size = offset_of_replace_bpf_fd + sizeof(__u32);
   attach_attr.attach_bpf_fd = prog;
-  test_assert(bpf(BPF_PROG_ATTACH, &attach_attr, attach_attr_size) == 0);
+  test_assert(bpf(RR_BPF_PROG_ATTACH, &attach_attr, attach_attr_size) == 0);
 
   // query again
   query_attr.query.prog_cnt = 1;
   query_attr.query.attach_type = ATTACH_TYPE;
-  test_assert(bpf(BPF_PROG_QUERY, &query_attr, sizeof(query_attr.query)) == 0);
+  test_assert(bpf(RR_BPF_PROG_QUERY, &query_attr, sizeof(query_attr.query)) == 0);
   test_assert(query_attr.query.prog_cnt == 1); // the kernel sets this field
 
   atomic_puts("EXIT-SUCCESS");

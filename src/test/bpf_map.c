@@ -23,7 +23,7 @@ int main(void) {
   attr.key_size = sizeof(key);
   attr.value_size = sizeof(value);
   attr.max_entries = 10;
-  map_fd = bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
+  map_fd = bpf(RR_BPF_MAP_CREATE, &attr, sizeof(attr));
   if (map_fd < 0) {
     if (errno == ENOSYS) {
       atomic_puts("bpf syscall not supported");
@@ -42,11 +42,11 @@ int main(void) {
   attr.key = (uintptr_t)&key;
   attr.value = (uintptr_t)&value;
   attr.flags = BPF_ANY;
-  ret = bpf(BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr));
+  ret = bpf(RR_BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr));
 
   ALLOCATE_GUARD(value_out, 'a');
   attr.value = (uintptr_t)value_out;
-  ret = bpf(BPF_MAP_LOOKUP_ELEM, &attr, sizeof(attr));
+  ret = bpf(RR_BPF_MAP_LOOKUP_ELEM, &attr, sizeof(attr));
   test_assert(0 == ret);
   VERIFY_GUARD(value_out);
   test_assert(value == *value_out);
@@ -54,7 +54,7 @@ int main(void) {
   ALLOCATE_GUARD(next_key, 'b');
   attr.key = (uintptr_t)&unknown_key;
   attr.next_key = (uintptr_t)next_key;
-  ret = bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr));
+  ret = bpf(RR_BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr));
   test_assert(0 == ret);
   VERIFY_GUARD(next_key);
   test_assert(key == *next_key);

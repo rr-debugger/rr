@@ -2170,16 +2170,16 @@ static Switchable prepare_bpf(RecordTask* t,
                               TaskSyscallState& syscall_state) {
   int cmd = t->regs().arg1();
   switch (cmd) {
-    case BPF_MAP_CREATE:
-    case BPF_MAP_UPDATE_ELEM:
-    case BPF_MAP_DELETE_ELEM:
-    case BPF_BTF_LOAD:
-    case BPF_PROG_DETACH:
-    case BPF_PROG_ATTACH:
+    case RR_BPF_MAP_CREATE:
+    case RR_BPF_MAP_UPDATE_ELEM:
+    case RR_BPF_MAP_DELETE_ELEM:
+    case RR_BPF_BTF_LOAD:
+    case RR_BPF_PROG_DETACH:
+    case RR_BPF_PROG_ATTACH:
       break;
-    case BPF_OBJ_GET:
+    case RR_BPF_OBJ_GET:
       return ALLOW_SWITCH;
-    case BPF_PROG_LOAD: {
+    case RR_BPF_PROG_LOAD: {
       auto argsp =
           syscall_state.reg_parameter<typename Arch::bpf_attr>(2, IN);
       auto args = t->read_mem(argsp);
@@ -2187,21 +2187,21 @@ static Switchable prepare_bpf(RecordTask* t,
                                       args.log_size);
       break;
     }
-    case BPF_MAP_LOOKUP_ELEM: {
+    case RR_BPF_MAP_LOOKUP_ELEM: {
       remote_ptr<typename Arch::bpf_attr> argsp;
       BpfMapMonitor* monitor = bpf_map_monitor<Arch>(t, syscall_state, &argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, value),
                                       monitor->value_size());
       break;
     }
-    case BPF_MAP_GET_NEXT_KEY: {
+    case RR_BPF_MAP_GET_NEXT_KEY: {
       remote_ptr<typename Arch::bpf_attr> argsp;
       BpfMapMonitor* monitor = bpf_map_monitor<Arch>(t, syscall_state, &argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, next_key),
                                       monitor->key_size());
       break;
     }
-    case BPF_PROG_QUERY: {
+    case RR_BPF_PROG_QUERY: {
       auto attr_size = t->regs().arg3();
       auto attr_begin = syscall_state.reg_parameter(2, attr_size, IN_OUT);
       auto attr_buf = MemoryRange(attr_begin, attr_size);
@@ -6706,7 +6706,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::bpf:
       if (!t->regs().syscall_failed()) {
         switch ((int)t->regs().orig_arg1()) {
-          case BPF_MAP_CREATE: {
+          case RR_BPF_MAP_CREATE: {
             int fd = t->regs().syscall_result_signed();
             auto attr = t->read_mem(remote_ptr<typename Arch::bpf_attr>(t->regs().arg2()));
             t->fd_table()->add_monitor(t, fd, new BpfMapMonitor(attr.key_size, attr.value_size));
