@@ -227,8 +227,8 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
     return;
   }
 
-  char disabled[syscallbuf_fds_disabled_size];
-  memset(disabled, 0, sizeof(disabled));
+  vector<char> disabled;
+  disabled.resize(syscallbuf_fds_disabled_size, 0);
 
   // It's possible that some tasks in this address space have a different
   // FdTable. We need to disable syscallbuf for an fd if any tasks for this
@@ -249,8 +249,8 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
   }
 
   auto addr = REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fd_class[0]);
-  rt->write_mem(addr, disabled, syscallbuf_fds_disabled_size);
-  rt->record_local(addr, disabled, syscallbuf_fds_disabled_size);
+  rt->write_mem(addr, disabled.data(), syscallbuf_fds_disabled_size);
+  rt->record_local(addr, disabled.data(), syscallbuf_fds_disabled_size);
 }
 
 void FdTable::close_after_exec(ReplayTask* t, const vector<int>& fds_to_close) {
