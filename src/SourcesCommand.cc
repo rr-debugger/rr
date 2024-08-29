@@ -815,7 +815,14 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
     dd = debug_dirs->process_one_binary(original_file_name);
   }
 
-  for (auto chosen_debug_dir : dd.debug_file_directories) {
+  vector<string*> debug_file_directories;
+  debug_file_directories.reserve(dd.debug_file_directories.size() + 1);
+  for (auto& dfd : dd.debug_file_directories) {
+    debug_file_directories.push_back(&dfd);
+  }
+  debug_file_directories.push_back(nullptr);
+
+  for (auto chosen_debug_dir : debug_file_directories) {
     const string* chosen_src_dir = nullptr;
     if (!dd.source_directories.empty()) {
       chosen_src_dir = &dd.source_directories.back();
@@ -825,7 +832,7 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
                                                    trace_relative_name, original_file_name,
                                                    file_names, full_file_name, DEBUGLINK,
                                                    comp_dir_substitutions, output_comp_dir_substitutions,
-                                                   &chosen_debug_dir, chosen_src_dir,
+                                                   chosen_debug_dir, chosen_src_dir,
                                                    dwos, external_debug_info, false, dir_exists_cache);
 
     if (altlink_reader) {
@@ -833,7 +840,7 @@ static bool try_debuglink_file(ElfFileReader& trace_file_reader,
                                                  trace_relative_name, original_file_name,
                                                  file_names, full_altfile_name, DEBUGALTLINK,
                                                  comp_dir_substitutions, output_comp_dir_substitutions,
-                                                 &chosen_debug_dir, chosen_src_dir,
+                                                 chosen_debug_dir, chosen_src_dir,
                                                  dwos, external_debug_info, has_source_files, dir_exists_cache);
     }
     if (has_source_files) {
