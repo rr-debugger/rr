@@ -528,7 +528,6 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                            size_t instruction_length,
                                            uint32_t fake_syscall_number) {
   size_t patch_region_size = instruction_length + hook.patch_region_length;
-  uint8_t jump_patch[patch_region_size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
   remote_ptr<uint8_t> jump_patch_start = ip_of_instruction.to_data_ptr<uint8_t>();
@@ -580,7 +579,8 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
-  memset(jump_patch, NOP, sizeof(jump_patch));
+  vector<uint8_t> jump_patch;
+  jump_patch.resize(patch_region_size, NOP);
   if (hook_can_ignore_interfering_branches(hook, JumpPatch::size)) {
     // If the preceding instruction is long enough to contain the entire jump,
     // and is a nop, replace the original instruction by a jump back to the
@@ -590,9 +590,9 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
     jump_patch[patch_region_size-2] = 0xeb; // jmp rel
     jump_patch[patch_region_size-1] = (int8_t)-patch_region_size;
   }
-  JumpPatch::substitute(jump_patch, jump_offset32);
+  JumpPatch::substitute(jump_patch.data(), jump_offset32);
   bool ok = true;
-  write_and_record_bytes(t, jump_patch_start, sizeof(jump_patch), jump_patch, &ok);
+  write_and_record_bytes(t, jump_patch_start, jump_patch.size(), jump_patch.data(), &ok);
   if (!ok) {
     LOG(warn) << "Couldn't write patch; errno=" << errno;
   }
