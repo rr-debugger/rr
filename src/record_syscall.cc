@@ -1640,6 +1640,10 @@ static Switchable prepare_ioctl(RecordTask* t,
   /* Some ioctl()s are irregular and don't follow the _IOC()
    * conventions.  Special case them here. */
   switch (request) {
+    case 0xc0404807:
+      syscall_state.reg_parameter(3, size, IN_OUT);
+      return PREVENT_SWITCH;
+
     case 0xc020462a: // Nvidia driver ioctl
       syscall_state.emulate_result(-ENOTTY);
       return PREVENT_SWITCH;
@@ -2059,6 +2063,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(HIDIOCGRAWINFO):
     case IOCTL_MASK_SIZE(HIDIOCGRAWNAME(0)):
     case IOCTL_MASK_SIZE(HIDIOCGRDESCSIZE):
+    case IOCTL_MASK_SIZE(HIDIOCGRDESC):
     case IOCTL_MASK_SIZE(BLKBSZGET):
     case IOCTL_MASK_SIZE(BLKGETDISKSEQ):
       syscall_state.reg_parameter(3, size);
