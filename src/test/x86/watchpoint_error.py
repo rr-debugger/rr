@@ -1,3 +1,4 @@
+import os
 from util import *
 
 breakpoint = breakpoint_at_function('main')
@@ -5,8 +6,9 @@ cont()
 expect_breakpoint_stop(breakpoint)
 
 watchpoint_at_address("&buffer[0]", 8)
-watchpoint_at_address("&buffer[8]", 8)
-watchpoint_at_address("&buffer[16]", 8)
+if os.environ['IS_32BIT_RR'] != '1':
+    watchpoint_at_address("&buffer[8]", 8)
+    watchpoint_at_address("&buffer[16]", 8)
 wp4 = watchpoint_at_address("&buffer[24]", 8)
 watchpoint_at_address_fail("&buffer[32]", 8)
 

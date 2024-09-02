@@ -1,2 +1,3 @@
 source `dirname $0`/util.sh
+export IS_32BIT_RR=$(file $RESOURCE_PATH/lib/rr/librrpage.so | grep 32-bit -c)
 debug_test watchpoint_error
