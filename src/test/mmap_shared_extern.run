@@ -1,0 +1,25 @@
+source `dirname $0`/util.sh
+
+skip_if_rr_32_bit_with_shell_64_bit
+
+rm -rf $workdir/map_file
+RECORD_ARGS="--check-outside-mmaps"
+record mmap_shared_extern$bitness $workdir/map_file 0 1
+mv record.out record.out.1
+mv record.err record.err.1
+grep "could cause diversion" $workdir/record.out.1 > /dev/null
+if [[ $? != 1 ]]; then
+  failed "\"could cause diversion\" was returned when all processes are inside the recording."
+  exit
+fi
+
+rm -rf $workdir/map_file
+mmap_shared_extern$bitness $workdir/map_file 0 0 > /dev/null&
+RECORD_ARGS="--check-outside-mmaps"
+record mmap_shared_extern$bitness $workdir/map_file 1 0
+mv record.out record.out.2
+mv record.err record.err.2
+grep "could cause diversion" $workdir/record.out.2 > /dev/null
+if [[ $? != 0 ]]; then
+  failed "\"could cause diversion\" was not returned when some processes are outside the recording."
+fi

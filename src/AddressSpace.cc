@@ -107,6 +107,10 @@ void KernelMapIterator::init(bool* ok) {
 }
 
 void KernelMapIterator::operator++() {
+  if (!maps_file) {
+    return;
+  }
+
   char line[PATH_MAX * 2];
   if (!fgets(line, sizeof(line), maps_file)) {
     fclose(maps_file);

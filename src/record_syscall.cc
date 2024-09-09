@@ -6006,6 +6006,51 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
   return ret;
 }
 
+static void check_outside_mappings(const KernelMapping& tracee_km, const RecordSession& session) {
+#if defined(__i386__)
+  struct utsname buf;
+  if (uname(&buf) != 0) {
+    FATAL() << "Failed to read /proc";
+  }
+  if (sizeof(void*) == 4 && strcmp(buf.machine, "x86_64") == 0) {
+      /* Running 32-bit rr at a 64-bit kernel is not going to work because
+       * the KernelMapIterator currently does not handle this combination. */
+      FATAL() << "Cannot use --check_outside_mmaps with 32-bit rr at 64-bit kernel.";
+  }
+#endif
+  DIR* proc = opendir("/proc");
+  if (!proc) {
+    FATAL() << "Failed to read /proc";
+  }
+  while (true) {
+    struct dirent* f = readdir(proc);
+    if (!f) {
+      break;
+    }
+    pid_t pid = atoi(f->d_name);
+    if (pid) {
+      auto task = session.find_task(pid);
+      if (task) {
+        continue;
+      }
+      bool ok = false;
+      for (KernelMapIterator it(pid, &ok); ok && !it.at_end(); ++it) {
+        auto km = it.current();
+        if (km.device() == tracee_km.device() &&
+            km.inode() == tracee_km.inode() &&
+            km.prot() & PROT_WRITE)
+        {
+          printf("rr: Warning: Mapping of file %s could cause diversion when replaying, "
+                 "because pid=%d has mapped it outside of the recording.\n",
+                 km.fsname().c_str(), pid);
+          return;
+        }
+      }
+    }
+  }
+  closedir(proc);
+}
+
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                          int fd, off64_t offset) {
   if (t->regs().syscall_failed()) {
@@ -6125,6 +6170,10 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
         "correctly yet. Optimistically hoping it's not "
         "written by programs outside the rr tracee "
         "tree.";
+    }
+
+    if (t->session().check_outside_mmaps()) {
+      check_outside_mappings(km, t->session());
     }
   }
 

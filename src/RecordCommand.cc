@@ -104,7 +104,9 @@ RecordCommand RecordCommand::singleton(
     "  --asan                     Override heuristics and always enable ASAN\n"
     "                             compatibility.\n"
     "  --tsan                     Override heuristics and always enable TSAN\n"
-    "                             compatibility.\n");
+    "                             compatibility.\n"
+    "  --check-outside-mmaps      Try to identify files that are mapped outside\n"
+    "                             of the trace and could cause diversions.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -188,6 +190,9 @@ struct RecordFlags {
      with PT. */
   bool intel_pt;
 
+  /* True if we should check files being mapped outside of the recording. */
+  bool check_outside_mmaps;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -212,7 +217,8 @@ struct RecordFlags {
         unmap_vdso(false),
         asan(false),
         tsan(false),
-        intel_pt(false) {}
+        intel_pt(false),
+        check_outside_mmaps(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -275,6 +281,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 17, "asan", NO_PARAMETER },
     { 18, "tsan", NO_PARAMETER },
     { 19, "intel-pt", NO_PARAMETER },
+    { 20, "check-outside-mmaps", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -491,6 +498,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 19:
       flags.intel_pt = true;
       break;
+    case 20:
+      flags.check_outside_mmaps = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -681,7 +691,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get(),
       flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan,
-      flags.intel_pt);
+      flags.intel_pt, flags.check_outside_mmaps);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();
