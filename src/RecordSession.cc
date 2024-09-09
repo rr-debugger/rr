@@ -2386,7 +2386,8 @@ static string lookup_by_path(const string& name) {
     bool unmap_vdso,
     bool force_asan_active,
     bool force_tsan_active,
-    bool intel_pt) {
+    bool intel_pt,
+    bool check_outside_mmaps) {
   TraceeAttentionSet::initialize();
 
   // The syscallbuf library interposes some critical
@@ -2494,7 +2495,7 @@ static string lookup_by_path(const string& name) {
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
                         output_trace_dir, trace_id, use_audit, unmap_vdso,
-                        intel_pt));
+                        intel_pt, check_outside_mmaps));
   session->excluded_ranges_ = std::move(exe_info.sanitizer_exclude_memory_ranges);
   session->fixed_global_exclusion_range_ = std::move(exe_info.fixed_global_exclusion_range);
   return session;
@@ -2511,7 +2512,8 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const TraceUuid* trace_id,
                              bool use_audit,
                              bool unmap_vdso,
-                             bool intel_pt_enabled)
+                             bool intel_pt_enabled,
+                             bool check_outside_mmaps)
     : trace_out(argv[0], output_trace_dir, ticks_semantics_),
       scheduler_(*this),
       trace_id(trace_id),
@@ -2527,7 +2529,8 @@ RecordSession::RecordSession(const std::string& exe_path,
       enable_chaos_(false),
       wait_for_all_(false),
       use_audit_(use_audit),
-      unmap_vdso_(unmap_vdso) {
+      unmap_vdso_(unmap_vdso),
+      check_outside_mmaps_(check_outside_mmaps) {
   set_intel_pt_enabled(intel_pt_enabled);
   if (intel_pt_enabled) {
     PerfCounters::start_pt_copy_thread();

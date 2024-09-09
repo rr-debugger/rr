@@ -72,7 +72,8 @@ public:
       bool unmap_vdso = false,
       bool force_asan_active = false,
       bool force_tsan_active = false,
-      bool intel_pt = false);
+      bool intel_pt = false,
+      bool check_outside_mmaps = false);
 
   ~RecordSession() override;
 
@@ -98,6 +99,7 @@ public:
   }
   bool use_audit() const { return use_audit_; }
   bool unmap_vdso() { return unmap_vdso_; }
+  bool check_outside_mmaps() { return check_outside_mmaps_; }
   uint64_t rr_signal_mask() const;
 
   enum RecordStatus {
@@ -221,7 +223,8 @@ private:
                 const TraceUuid* trace_id,
                 bool use_audit,
                 bool unmap_vdso,
-                bool intel_pt);
+                bool intel_pt,
+                bool check_outside_mmaps);
 
   virtual void on_create(Task* t) override;
 
@@ -286,6 +289,7 @@ private:
 
   bool use_audit_;
   bool unmap_vdso_;
+  bool check_outside_mmaps_;
 };
 
 } // namespace rr
