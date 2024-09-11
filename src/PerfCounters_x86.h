@@ -344,10 +344,12 @@ static void check_for_zen_speclockmap() {
       LOG(debug) << "SpecLockMap is disabled";
     } else {
       LOG(debug) << "SpecLockMap is not disabled";
-      fprintf(stderr,
-              "On Zen CPUs, rr will not work reliably unless you disable the "
-              "hardware SpecLockMap optimization.\nFor instructions on how to "
-              "do this, see https://github.com/rr-debugger/rr/wiki/Zen\n");
+      if (!Flags::get().suppress_environment_warnings) {
+        fprintf(stderr,
+                "On Zen CPUs, rr will not work reliably unless you disable the "
+                "hardware SpecLockMap optimization.\nFor instructions on how to "
+                "do this, see https://github.com/rr-debugger/rr/wiki/Zen\n");
+      }
     }
   }
 }
