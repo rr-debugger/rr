@@ -337,6 +337,7 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   if (fd < 0) {
     switch (errno) {
       case EACCES:
+      case EPERM:
         CLEAN_FATAL() << "Permission denied to use 'perf_event_open'; are hardware perf events "
                    "available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
         break;
