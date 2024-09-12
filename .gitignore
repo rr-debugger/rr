@@ -10,6 +10,8 @@ _CPack_Packages/
 CTestTestfile.cmake
 compile_commands.json
 Debug
+bin_dir
+source_dir
 dist/
 install_manifest.txt
 Makefile
@@ -42,3 +44,6 @@ third-party/zen-pmu-workaround/*.mod
 third-party/zen-pmu-workaround/*.mod.c
 third-party/zen-pmu-workaround/Module.symvers
 third-party/zen-pmu-workaround/modules.order
+rr_trace.capnp.*
+test32.c
+src/preload/rr_page.ld
