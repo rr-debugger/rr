@@ -2,7 +2,7 @@ source `dirname $0`/util.sh
 
 mkdir $workdir/inner
 RECORD_ARGS="--env=_RR_TRACE_DIR=$workdir/inner"
-record $TESTNAME "$(which rr) record --nested=detach $PWD/$TESTNAME-$nonce --inner"
+record $TESTNAME "$(which rr) record --suppress-environment-warnings --nested=detach $PWD/$TESTNAME-$nonce --inner"
 # Replay outer
 replay
 check_record EXIT-WAITED
