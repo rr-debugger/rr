@@ -1495,6 +1495,8 @@ set(TESTS_WITH_PROGRAM
   clone_interruption
   # Disabled because it fails
   # clone_share_vm
+  clone_syscallbuf_cleanup_blocked
+  clone_syscallbuf_cleanup_cpu
   clone_vfork
   concurrent_signals
   conditional_breakpoint_calls

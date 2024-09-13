@@ -914,6 +914,14 @@ public:
   // Returns true if the range is completely covered by private mappings
   bool range_is_private_mapping(const MemoryRange& range) const;
 
+  /**
+   * When two processes share an address space (e.g. with vfork(2) or
+   * clone(2) CLONE_VM), and one process calls execve(2), we need to unmap
+   * that process's syscallbuf. This list is checked the next time a task
+   * in that address space runs to perform the unmapping
+   */
+  std::vector<MemoryRange> regions_pending_unmap;
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;

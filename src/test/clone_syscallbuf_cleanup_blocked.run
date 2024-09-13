@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+skip_if_no_syscall_buf
+record $TESTNAME
+replay
