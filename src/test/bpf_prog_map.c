@@ -97,10 +97,7 @@ int main(void) {
   ret = bpf(RR_BPF_OBJ_GET_INFO_BY_FD, map_attr, sizeof(*map_attr));
   if (ret == 0) {
     test_assert(prog_info->created_by_uid == getuid());
-    atomic_printf("Program: %s run_cnt %lld verified_insns %d\n",
-                  prog_info->name, prog_info->run_cnt, prog_info->verified_insns);
   } else {
-    sleep(1000);
     test_assert(errno == EINVAL);
   }
   VERIFY_GUARD(prog_info);
