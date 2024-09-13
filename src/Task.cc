@@ -1057,29 +1057,17 @@ static bool is_long_mode_segment(uint32_t segment) {
 #endif
 
 void Task::post_exec(const string& exe_file) {
-  Task* stopped_task_in_address_space = nullptr;
-  bool other_task_in_address_space = false;
-  for (Task* t : as->task_set()) {
-    if (t != this) {
-      other_task_in_address_space = true;
-      if (t->is_stopped_) {
-        stopped_task_in_address_space = t;
-        break;
-      }
-    }
+  // If the address space of this process which just exec'd is shared with another process
+  // (via vfork(2) or CLONE_VM perhaps), we will be leaving behind the syscallbuf mappings
+  // for this pid in the shared address space. Make a note of this, so that the next time
+  // we run a task in tihs address space, we unmap these buffers. (n.b. we can't clean up
+  // those buffers *before* the exec completes, because it might fail in which case we
+  // souldn't have cleaned them up.)
+  if (scratch_ptr) {
+    as->regions_pending_unmap.push_back(MemoryRange(scratch_ptr, scratch_size));
   }
-  if (stopped_task_in_address_space) {
-    LOG(warn) << "Unmapping buffers using tid " << stopped_task_in_address_space->tid;
-    AutoRemoteSyscalls remote(stopped_task_in_address_space);
-    unmap_buffers_for(remote, this, syscallbuf_child);
-  } else if (other_task_in_address_space) {
-    // We should clean up our syscallbuf/scratch but that's too hard since we
-    // have no stopped task to use for that :-(.
-    // (We can't clean up those buffers *before* the exec completes, because it
-    // might fail in which case we shouldn't have cleaned them up.)
-    // Just let the buffers leak. The AddressSpace will clean up our local
-    // shared buffer when it's destroyed.
-    LOG(warn) << "Intentionally leaking syscallbuf after exec for task " << tid;
+  if (!syscallbuf_child.is_null()) {
+    as->regions_pending_unmap.push_back(MemoryRange(syscallbuf_child, syscallbuf_size));
   }
 
   session().post_exec();
@@ -1129,6 +1117,21 @@ void Task::post_exec_syscall(const std::string& original_exe_file) {
 }
 
 bool Task::execed() const { return tg->execed; }
+
+void Task::unmap_dead_syscallbufs_if_required() {
+  if (!as->regions_pending_unmap.empty()) {
+    LOG(warn) << "Using " << tid << " to unmap syscallbuf regions for "
+              << "previously exec'd processes";
+    AutoRemoteSyscalls remote(this);
+    std::vector<MemoryRange> regions_pending_unmap;
+    std::swap(regions_pending_unmap, as->regions_pending_unmap);
+    for (auto region : regions_pending_unmap) {
+      if (remote.infallible_munmap_syscall_if_alive(region.start(), region.size())) {
+        vm()->unmap(this, region.start(), region.size());
+      }
+    }
+  }
+}
 
 void Task::flush_inconsistent_state() { ticks = 0; }
 

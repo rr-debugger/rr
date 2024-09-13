@@ -1142,6 +1142,13 @@ public:
   // (used to avoid double recording on unexpected exit)
   bool last_syscall_entry_recorded;
 
+  /*
+   * Called before the scheduler resumes a task to check if the task's address
+   * space has any leftover syscallbufs from dead processes which shared the
+   * address space
+   */
+  void unmap_dead_syscallbufs_if_required();
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);

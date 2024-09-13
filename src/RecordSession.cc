@@ -936,6 +936,7 @@ void RecordSession::task_continue(const StepState& step_state) {
       }
     }
   }
+  t->unmap_dead_syscallbufs_if_required();
   t->resume_execution(resume, RESUME_NONBLOCKING, ticks_request);
 }
 
