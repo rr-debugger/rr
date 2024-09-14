@@ -329,6 +329,7 @@ private:
   sig_set_t sigmask_to_restore;
 
   bool need_sigpending_renable;
+  bool need_desched_event_reenable;
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;

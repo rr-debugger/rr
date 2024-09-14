@@ -15,6 +15,7 @@ const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
 void disarm_desched_event(RecordTask* t);
 void arm_desched_event(RecordTask* t);
+bool desched_event_armed(RecordTask *t);
 bool handle_syscallbuf_breakpoint(RecordTask* t);
 
 enum SignalBlocked { SIG_UNBLOCKED = 0, SIG_BLOCKED = 1 };

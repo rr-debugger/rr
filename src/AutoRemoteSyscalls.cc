@@ -20,6 +20,7 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "record_signal.h"
 #include "util.h"
 
 using namespace std;
@@ -97,7 +98,8 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       use_singlestep_path(false),
       enable_mem_params_(enable_mem_params),
       restore_sigmask(false),
-      need_sigpending_renable(false) {
+      need_sigpending_renable(false),
+      need_desched_event_reenable(false) {
   if (initial_at_seccomp) {
     // This should only ever happen during recording - we don't use the
     // seccomp traps during replay.
@@ -142,15 +144,28 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
   }
   if (t->session().is_recording()) {
     RecordTask *rt = static_cast<RecordTask*>(t);
+    sig_set_t signals_to_block = 0;
+
     if (rt->schedule_frozen) {
       // If we're explicitly controlling the schedule, make sure not to accidentally run
       // any signals that we were not meant to be able to see.
+      memset(&signals_to_block, 0xff, sizeof(sig_set_t));
+    }
+    if (desched_event_armed(rt)) {
+      // If the desched event is enabled, we need to disable it, so that we don't get
+      // the desched signal interrupting the syscall we're trying to make. We also
+      // need to mask it, so that if there's a pending desched signal from before
+      // we disable it, we don't accidently steal it.
+      signals_to_block |= signal_bit(rt->session().syscallbuf_desched_sig());
+      need_desched_event_reenable = true;
+      disarm_desched_event(rt);
+    }
+
+    if (signals_to_block) {
       restore_sigmask = true;
       sigmask_to_restore = rt->get_sigmask();
-      sig_set_t all_blocked;
-      memset(&all_blocked, 0xff, sizeof(all_blocked));
       // Ignore the process dying here - we'll notice later.
-      (void)rt->set_sigmask(all_blocked);
+      (void)rt->set_sigmask(signals_to_block | sigmask_to_restore);
     }
   }
 }
@@ -324,6 +339,9 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   t->set_status(restore_wait_status);
   if (restore_sigmask) {
     static_cast<RecordTask*>(t)->set_sigmask(sigmask_to_restore);
+  }
+  if (need_desched_event_reenable) {
+    arm_desched_event(static_cast<RecordTask*>(t));
   }
   if (need_sigpending_renable) {
     // The purpose of this PTRACE_INTERRUPT is to re-enable TIF_SIGPENDING on
