@@ -175,6 +175,20 @@ void arm_desched_event(RecordTask* t) {
   }
 }
 
+bool desched_event_armed(RecordTask *t) {
+  if (t->syscallbuf_child == nullptr) {
+    return false;
+  }
+  bool ok = true;
+  bool is_armed = t->read_mem(
+    REMOTE_PTR_FIELD(t->syscallbuf_child, desched_signal_may_be_relevant), &ok);
+  if (!ok) {
+    // If we can't read this (perhaps syscallbuf isn't actually mapped), it's not armed
+    return false;
+  }
+  return is_armed;
+}
+
 template <typename Arch>
 static remote_code_ptr get_stub_scratch_1_arch(RecordTask* t) {
   auto remote_locals = AddressSpace::preload_thread_locals_start()
@@ -274,8 +288,7 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
   // We're at an untraced-syscall entry point.
   // To allow an AutoRemoteSyscall, we need to make sure desched signals are
   // disarmed (and rearmed afterward).
-  bool armed_desched_event = t->read_mem(
-      REMOTE_PTR_FIELD(t->syscallbuf_child, desched_signal_may_be_relevant));
+  bool armed_desched_event = desched_event_armed(t);
   if (armed_desched_event) {
     disarm_desched_event(t);
   }
@@ -327,9 +340,7 @@ static void handle_desched_event(RecordTask* t) {
    * the desched_signal_may_be_relevant was set by the outermost syscallbuf
    * invocation.
    */
-  if (!t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child,
-                                    desched_signal_may_be_relevant)) ||
-      t->running_inside_desched()) {
+  if (!desched_event_armed(t) || t->running_inside_desched()) {
     LOG(debug) << "  (not entering may-block syscall; resuming)";
     /* We have to disarm the event just in case the tracee
      * has cleared the relevancy flag, but not yet
