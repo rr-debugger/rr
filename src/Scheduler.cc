@@ -39,6 +39,12 @@ static double low_priority_probability = 0.1;
 // many tests are basically main-thread-only
 static double main_thread_low_priority_probability = 0.3;
 static double very_short_timeslice_probability = 0.1;
+// For low priority tasks, assign some probability of being treated
+// as medium priority until their first yield.
+// This lets a low priority task run until it unblocks the execution of
+// a high-priority task and then never run again during a
+// high-priority-only interval. See the `startup` test.
+static double postpone_low_priority_until_after_yield = 0.2;
 static Ticks very_short_timeslice_max_duration = 100;
 static double short_timeslice_probability = 0.1;
 static Ticks short_timeslice_max_duration = 10000;
@@ -70,8 +76,9 @@ static double priorities_refresh_max_interval = 20;
  * running time. Then to maximise the probability of triggering the test
  * failure, we start high-priority-only intervals as often as possible,
  * i.e. one for D' seconds starting every 5xD' seconds.
- * The start time of the first interval is chosen uniformly randomly to be
- * between 0 and 4xD'.
+ * The start time of the first interval is chosen to be between 0 and 4xD'.
+ * To make sure we capture startup effects, we choose 0 with probability 0.25
+ * and uniformly between 0 and 4xD' otherwise.
  * Then, if we guessed D' and the low-priority thread correctly, the
  * probability of triggering the test failure is 1 if T >= 4xD', T/4xD'
  * otherwise, i.e. >= T/8xD. (Higher values of D' than optimal can also trigger
@@ -83,6 +90,7 @@ static int high_priority_only_duration_steps = 12;
 static double high_priority_only_duration_step_factor = 2;
 // Allow this much of overall runtime to be in the "high priority only" interval
 static double high_priority_only_fraction = 0.2;
+static double start_high_priority_only_immediately_probability = 0.25;
 
 Scheduler::Scheduler(RecordSession& session)
     : reschedule_count(0),
@@ -179,10 +187,20 @@ void Scheduler::set_num_cores(int cores) {
 
 static double random_frac() { return double(random() % INT32_MAX) / INT32_MAX; }
 
+static const int CHAOS_MODE_HIGH_PRIORITY = 0;
+static const int CHAOS_MODE_MEDIUM_PRIORITY_UNTIL_NEXT_YIELD = 1;
+static const int CHAOS_MODE_LOW_PRIORITY = 2;
+
 int Scheduler::choose_random_priority(RecordTask* t) {
   double prob = t->tgid() == t->tid ? main_thread_low_priority_probability
                                     : low_priority_probability;
-  return random_frac() < prob;
+  if (random_frac() < prob) {
+    if (random_frac() < postpone_low_priority_until_after_yield) {
+      return CHAOS_MODE_MEDIUM_PRIORITY_UNTIL_NEXT_YIELD;
+    }
+    return CHAOS_MODE_LOW_PRIORITY;
+  }
+  return CHAOS_MODE_HIGH_PRIORITY;
 }
 
 static bool treat_syscall_as_nonblocking(int syscallno, SupportedArch arch) {
@@ -484,20 +502,30 @@ void Scheduler::maybe_reset_priorities(double now) {
   }
 }
 
+void Scheduler::notify_descheduled(RecordTask* t) {
+  if (!enable_chaos || t->priority != CHAOS_MODE_MEDIUM_PRIORITY_UNTIL_NEXT_YIELD) {
+    return;
+  }
+  LOGM(debug) << "Lowering priority of " << t->tid << " after descheduling";
+  update_task_priority_internal(t, CHAOS_MODE_LOW_PRIORITY);
+}
+
 void Scheduler::maybe_reset_high_priority_only_intervals(double now) {
   if (!enable_chaos || high_priority_only_intervals_refresh_time > now) {
     return;
   }
-  int duration_step = random() % high_priority_only_duration_steps;
+  int duration_step = 11;
   high_priority_only_intervals_duration =
       min_high_priority_only_duration *
       pow(high_priority_only_duration_step_factor, duration_step);
   high_priority_only_intervals_period =
       high_priority_only_intervals_duration / high_priority_only_fraction;
-  high_priority_only_intervals_start =
-      now +
-      random_frac() * (high_priority_only_intervals_period -
-                       high_priority_only_intervals_duration);
+  high_priority_only_intervals_start = now;
+  if (random_frac() >= start_high_priority_only_immediately_probability) {
+    high_priority_only_intervals_start +=
+        random_frac() * (high_priority_only_intervals_period -
+                         high_priority_only_intervals_duration);
+  }
   high_priority_only_intervals_refresh_time =
       now +
       min_high_priority_only_duration *
@@ -516,7 +544,7 @@ bool Scheduler::in_high_priority_only_interval(double now) {
 }
 
 bool Scheduler::treat_as_high_priority(RecordTask* t) {
-  return t->priority == 0;
+  return t->priority < CHAOS_MODE_LOW_PRIORITY;
 }
 
 void Scheduler::validate_scheduled_task() {
@@ -934,11 +962,14 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     must_run_task = next;
   }
 
-  if (current_ && current_ != next && is_logging_enabled(LOG_debug, __FILE__)) {
-    LOGM(debug) << "Switching from " << current_->tid << "(" << current_->name()
-               << ") to " << next->tid << "(" << next->name() << ") (priority "
-               << current_->priority << " to " << next->priority << ") at "
-               << current_->trace_writer().time();
+  if (current_ && current_ != next) {
+    notify_descheduled(current_);
+    if (is_logging_enabled(LOG_debug, __FILE__)) {
+      LOGM(debug) << "Switching from " << current_->tid << "(" << current_->name()
+                  << ") to " << next->tid << "(" << next->name() << ") (priority "
+                  << current_->priority << " to " << next->priority << ") at "
+                  << current_->trace_writer().time();
+    }
   }
 
   maybe_reset_high_priority_only_intervals(now);

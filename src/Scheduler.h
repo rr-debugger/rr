@@ -226,6 +226,7 @@ private:
   void maybe_pop_round_robin_task(RecordTask* t);
   void setup_new_timeslice();
   void maybe_reset_priorities(double now);
+  void notify_descheduled(RecordTask* t);
   int choose_random_priority(RecordTask* t);
   void update_task_priority_internal(RecordTask* t, int value);
   void maybe_reset_high_priority_only_intervals(double now);

@@ -2108,6 +2108,7 @@ if(BUILD_TESTS)
     pipe_wakeup
     mmap_adjacent
     mmap_bits
+    startup
     starvation_multithreaded
     starvation_singlethreaded
   )
