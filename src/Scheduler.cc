@@ -516,7 +516,7 @@ bool Scheduler::in_high_priority_only_interval(double now) {
 }
 
 bool Scheduler::treat_as_high_priority(RecordTask* t) {
-  return task_priority_set_total_count > 1 && t->priority == 0;
+  return t->priority == 0;
 }
 
 void Scheduler::validate_scheduled_task() {
@@ -855,9 +855,6 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       }
     }
 
-    // When there's only one thread, treat it as low priority for the
-    // purposes of high-priority-only-intervals. Otherwise single-threaded
-    // workloads mostly don't get any chaos mode effects.
     if (next && !treat_as_high_priority(next) &&
         last_reschedule_in_high_priority_only_interval) {
       if (result.by_waitpid) {
