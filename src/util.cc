@@ -2600,4 +2600,23 @@ void base_name(string& s) {
   }
 }
 
+static optional<int> init_read_perf_event_paranoid() {
+  ScopedFd fd("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
+  if (fd.is_open()) {
+    char buf[100];
+    ssize_t size = read(fd, buf, sizeof(buf) - 1);
+    if (size >= 0) {
+      buf[size] = 0;
+      return atoi(buf);
+    }
+  }
+
+  return nullopt;
+}
+
+optional<int> read_perf_event_paranoid() {
+  static optional<int> value = init_read_perf_event_paranoid();
+  return value;
+}
+
 } // namespace rr

@@ -9,6 +9,7 @@
 
 #include <array>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -665,6 +666,8 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
 
 // Strip any directory part from the filename `s`
 void base_name(std::string& s);
+
+std::optional<int> read_perf_event_paranoid();
 
 } // namespace rr
 
