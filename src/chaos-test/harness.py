@@ -33,7 +33,7 @@ def run(rr_params):
         out_array = []
         with open(d + "/out", 'r') as out:
             for line in out:
-                out_array.append(line)
+                out_array.append(line.strip())
         return [ret, out_array]
     finally:
         shutil.rmtree(d)
@@ -45,6 +45,7 @@ pool = multiprocessing.Pool(max(1, round(multiprocessing.cpu_count()/2)))
 def safe_exit(code):
     pool.terminate()
     pool.join()
+    print()
     sys.exit(code)
 
 print("Running %d iterations of %s/bin/%s %s without chaos mode"%(sanity_runs, objdir, name, ' '.join(params)))
@@ -72,7 +73,7 @@ for r in pool.imap_unordered(run, itertools.repeat(["--chaos"], runs)):
     if failed == 0:
         print("First test failure detected, output:")
         for line in r[1]:
-            print(line,)
+            print(line)
     failed = failed + 1
 if failed == 0:
     print("PROBLEM: With chaos mode, test %s did not fail in %d runs"%(name, runs))
@@ -83,5 +84,5 @@ if float(failed)/runs < 3*float(sanity_failed)/sanity_runs:
     print("PROBLEM: Chaos mode didn't really help!")
     safe_exit(3)
 
+print("SUCCESS")
 safe_exit(0)
-print()
