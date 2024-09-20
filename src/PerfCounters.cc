@@ -1066,7 +1066,7 @@ Ticks PerfCounters::read_ticks(Task* t, Error* error) {
       ret = measure_val;
     }
   }
-  if (ret > adjusted_counting_period) {
+  if (!t->session().is_recording() && ret > adjusted_counting_period) {
     if (error && (perf_attrs[pmu_index].pmu_flags & PMU_SKID_UNBOUNDED)) {
       *error = Error::Transient;
     } else {
