@@ -139,6 +139,14 @@ enum _ptrace_get_syscall_info_op {
 #define NT_ARM_SYSTEM_CALL 0x404
 #endif
 
+#ifndef NT_ARM_PACA_KEYS
+#define NT_ARM_PACA_KEYS 0x407
+#endif
+
+#ifndef NT_ARM_PACG_KEYS
+#define NT_ARM_PACG_KEYS 0x408
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.
