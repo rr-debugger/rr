@@ -647,7 +647,7 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
 }
 
 bool Scheduler::may_use_unlimited_ticks() {
-  return ntasks_stopped == 1;
+  return ntasks_stopped == 1 && !enable_chaos;
 }
 
 void Scheduler::started_task(RecordTask* t) {
