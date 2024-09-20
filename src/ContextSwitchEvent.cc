@@ -20,19 +20,6 @@ using namespace std;
 
 namespace rr {
 
-static optional<int> read_perf_event_paranoid() {
-  ScopedFd fd("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
-  if (fd.is_open()) {
-    char buf[100];
-    ssize_t size = read(fd, buf, sizeof(buf) - 1);
-    if (size >= 0) {
-      buf[size] = 0;
-      return atoi(buf);
-    }
-  }
-  return nullopt;
-}
-
 static volatile int sigio_count;
 
 static void sigio_handler(int, siginfo_t*, void*) {
