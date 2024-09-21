@@ -1519,6 +1519,7 @@ set(TESTS_WITH_PROGRAM
   exclusion_region
   exec_failed
   exec_many
+  exec_shared_as
   execve_loop
   exit_codes
   exit_group
@@ -1898,6 +1899,15 @@ if(BUILD_TESTS)
     endif()
   endif()
 
+  # Add exit_fast test executable
+  add_executable(exit_fast src/test/exit_fast.c)
+  set_target_properties(exit_fast
+                      PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs ${LINKER_FLAGS}")
+  post_build_executable(exit_fast)
+  add_dependencies(exit_fast Generated)
+  set_source_files_properties(src/test/exit_fast.c
+                              COMPILE_FLAGS "-fno-stack-protector")
+
   # Check if we're running on KNL. If so, we allot more time to tests, due to
   # reduced single-core performance.
   execute_process(COMMAND cat /proc/cpuinfo OUTPUT_VARIABLE CPUINFO)
@@ -1919,6 +1929,8 @@ if(BUILD_TESTS)
     install(TARGETS test_lib
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
     install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/test-monitor
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/exit_fast
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
     if (x86ish)
       install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/cpuid
@@ -1960,13 +1972,13 @@ if(BUILD_TESTS)
   # This sucks but I can't find a better way to get CMake to build
   # the same source file in two different ways.
   if(rr_32BIT AND rr_64BIT)
-    foreach(header util.h nsutils.h ptrace_util.h util_internal.h)
+    foreach(header util.h nsutils.h ptrace_util.h util_syscall.h util_internal.h)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${header}"
                     "${CMAKE_CURRENT_BINARY_DIR}/32/${header}"
                     COPYONLY)
     endforeach(header)
 
-    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib tick0 watchpoint_unaligned2)
+    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib tick0 watchpoint_unaligned2 exit_fast)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                      COPYONLY)
@@ -2023,6 +2035,14 @@ if(BUILD_TESTS)
     set_target_properties(tick0_less_32
       PROPERTIES LINK_FLAGS "-m32 -static -nostdlib -nodefaultlibs"
       COMPILE_FLAGS "-m32 -static -nostdlib -nodefaultlibs -O3 -g2")
+
+    # Add exit_fast test executable
+    add_executable(exit_fast_32 "${CMAKE_CURRENT_BINARY_DIR}/32/exit_fast.c")
+    set_target_properties(exit_fast_32
+                        PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs ${LINKER_FLAGS}")
+    add_dependencies(exit_fast_32 Generated)
+    post_build_executable(exit_fast_32)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/exit_fast.c" COMPILE_FLAGS "-fno-stack-protector")
 
     add_executable(watchpoint_unaligned2_32 "${CMAKE_CURRENT_BINARY_DIR}/32/watchpoint_unaligned2.c")
     post_build_executable(watchpoint_unaligned2_32)
