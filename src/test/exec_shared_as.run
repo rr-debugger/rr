@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+save_exe exit_fast$bitness
+record $TESTNAME exit_fast$bitness-$nonce
+replay
+check EXIT-SUCCESS
