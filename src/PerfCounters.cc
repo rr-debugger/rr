@@ -336,7 +336,26 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   }
   if (fd < 0) {
     switch (errno) {
-      case EACCES:
+      case EACCES: {
+        // Debian/Ubuntu/Android? are known to carry a patch that creates
+        // additional perf_event_paranoid levels, and at level 4 no
+        // perf_event_open() is allowed at all.
+        // https://git.launchpad.net/~ubuntu-kernel/ubuntu/+source/linux/+git/noble/commit/kernel/events/core.c?id=e88769f04a4f050e02980f776942c28431e56faf
+        // XXXkhuey ideally we could suggest adding CAP_PERFMON to rr here
+        // but the patch only accepts CAP_SYS_ADMIN.
+        auto perf_event_paranoid = read_perf_event_paranoid();
+        if (perf_event_paranoid.has_value() && *perf_event_paranoid > 3) {
+          string paranoid_value = std::to_string(*perf_event_paranoid);
+          CLEAN_FATAL() <<
+            "rr needs /proc/sys/kernel/perf_event_paranoid <= 3, but it is "
+                        << paranoid_value << ".\n"
+                        << "Change it to <= 3.\n"
+                        << "Consider putting 'kernel.perf_event_paranoid = 3' in /etc/sysctl.d/10-rr.conf.\n"
+                        << "See 'man 8 sysctl', 'man 5 sysctl.d' (systemd systems)\n"
+                        << "and 'man 5 sysctl.conf' (non-systemd systems) for more details.";
+        }
+        RR_FALLTHROUGH;
+      }
       case EPERM:
         CLEAN_FATAL() << "Permission denied to use 'perf_event_open'; are hardware perf events "
                    "available? See https://github.com/rr-debugger/rr/wiki/Will-rr-work-on-my-system";
