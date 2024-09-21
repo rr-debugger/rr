@@ -936,7 +936,6 @@ void RecordSession::task_continue(const StepState& step_state) {
       }
     }
   }
-  t->unmap_dead_syscallbufs_if_required();
   t->resume_execution(resume, RESUME_NONBLOCKING, ticks_request);
 }
 
@@ -2709,6 +2708,7 @@ RecordSession::RecordResult RecordSession::record_step() {
   }
 
   t->verify_signal_states();
+  t->unmap_dead_syscallbufs_if_required();
 
   // We try to inject a signal if there's one pending; otherwise we continue
   // task execution.
