@@ -1,0 +1,31 @@
+source `dirname $0`/util.sh
+
+record simple$bitness
+record simple$bitness
+
+mkdir the_pack_dir
+
+# Pack both directories with a common pack directory
+pack --pack-dir the_pack_dir simple$bitness-$nonce-0 simple$bitness-$nonce-1
+
+# Test that we can still replay both traces
+replay simple$bitness-$nonce-0
+check EXIT-SUCCESS
+rm replay.err replay.out
+
+replay simple$bitness-$nonce-1
+check EXIT-SUCCESS
+rm replay.err replay.out
+
+# Check that we can move all three directories somewhere else and replay
+# still works.
+mkdir a_subdirectory
+mv the_pack_dir simple$bitness-$nonce-0 simple$bitness-$nonce-1 a_subdirectory
+
+replay a_subdirectory/simple$bitness-$nonce-0
+check EXIT-SUCCESS
+rm replay.err replay.out
+
+replay a_subdirectory/simple$bitness-$nonce-1
+check EXIT-SUCCESS
+rm replay.err replay.out

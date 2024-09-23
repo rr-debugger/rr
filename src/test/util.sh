@@ -328,9 +328,9 @@ function rerun { rerunflags=$1
         $RR_EXE $GLOBAL_OPTIONS rerun $rerunflags 1> rerun.out 2> rerun.err
 }
 
-function pack { packflags=$1
+function pack {
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT pack.err \
-        $RR_EXE $GLOBAL_OPTIONS pack $packflags 1> pack.out 2> pack.err
+        $RR_EXE $GLOBAL_OPTIONS pack $@ 1> pack.out 2> pack.err
 }
 
 function do_ps { psflags=$1

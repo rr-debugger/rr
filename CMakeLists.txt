@@ -1720,6 +1720,7 @@ set(TESTS_WITHOUT_PROGRAM
   nested_detach_kill
   nested_detach_stop
   nested_release
+  pack_dir
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   post_exec_fpu_regs
