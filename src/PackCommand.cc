@@ -52,9 +52,13 @@ protected:
 
 PackCommand PackCommand::singleton(
     "pack",
-    " rr pack [OPTION]... [<trace-dir>]\n"
+    " rr pack [OPTION]... [<trace-dirs>...]\n"
     "  --symlink                  Create symlinks to all mmapped files\n"
     "                             instead of copying them.\n"
+    "  --pack-dir=<path>          Specify a directory in which to pack common files.\n"
+    "                             This helps conserve space when packing multiple traces\n"
+    "                             with common files. Both the trace dir and pack dir\n"
+    "                             (at the same relative path) are required for replay\n"
     "\n"
     "Eliminates duplicate files in the trace directory, and copies files into\n"
     "the trace directory as necessary to ensure that all needed files are in\n"
@@ -671,36 +675,38 @@ static void delete_unnecessary_files(const map<string, string>& file_map,
   }
 }
 
-static int pack(const string& trace_dir, const PackFlags& flags) {
-  string dir;
-  {
-    // validate trace and produce default trace directory if trace_dir is empty
-    TraceReader reader(trace_dir);
-    dir = reader.dir();
-  }
+static int pack(const vector<string>& trace_dirs, const PackFlags& flags) {
+  for (const string &trace_dir : trace_dirs) {
+    string dir;
+    {
+      // validate trace and produce default trace directory if trace_dir is empty
+      TraceReader reader(trace_dir);
+      dir = reader.dir();
+    }
 
-  PackDir pack_dir(flags.pack_dir);
-  char buf[PATH_MAX];
-  char* ret = realpath(dir.c_str(), buf);
-  if (!ret) {
-    FATAL() << "realpath failed on " << dir;
-  }
-  string abspath(buf);
+    PackDir pack_dir(flags.pack_dir);
+    char buf[PATH_MAX];
+    char* ret = realpath(dir.c_str(), buf);
+    if (!ret) {
+      FATAL() << "realpath failed on " << dir;
+    }
+    string abspath(buf);
 
-  if (flags.symlink) {
-    map<string, string> canonical_symlink_map =
-        compute_canonical_symlink_map(abspath);
-    rewrite_mmaps(canonical_symlink_map, abspath);
-    delete_unnecessary_files(canonical_symlink_map, abspath);
-  } else {
-    map<string, string> canonical_mmapped_files =
-        compute_canonical_mmapped_files(abspath, pack_dir);
-    rewrite_mmaps(canonical_mmapped_files, abspath);
-    delete_unnecessary_files(canonical_mmapped_files, abspath);
-  }
+    if (flags.symlink) {
+      map<string, string> canonical_symlink_map =
+          compute_canonical_symlink_map(abspath);
+      rewrite_mmaps(canonical_symlink_map, abspath);
+      delete_unnecessary_files(canonical_symlink_map, abspath);
+    } else {
+      map<string, string> canonical_mmapped_files =
+          compute_canonical_mmapped_files(abspath, pack_dir);
+      rewrite_mmaps(canonical_mmapped_files, abspath);
+      delete_unnecessary_files(canonical_mmapped_files, abspath);
+    }
 
-  if (!probably_not_interactive(STDOUT_FILENO)) {
-    printf("rr: Packed trace directory `%s'.\n", dir.c_str());
+    if (!probably_not_interactive(STDOUT_FILENO)) {
+      printf("rr: Packed trace directory `%s'.\n", dir.c_str());
+    }
   }
 
   return 0;
@@ -733,23 +739,22 @@ static bool parse_pack_arg(vector<string>& args, PackFlags& flags) {
 }
 
 int PackCommand::run(vector<string>& args) {
-  bool found_dir = false;
-  string trace_dir;
   PackFlags flags;
 
   while (parse_pack_arg(args, flags)) {
   }
 
+  vector<string> trace_dirs;
   while (!args.empty()) {
-    if (!found_dir && parse_optional_trace_dir(args, &trace_dir)) {
-      found_dir = true;
-      continue;
+    string trace_dir;
+    if (!parse_optional_trace_dir(args, &trace_dir)) {
+      print_help(stderr);
+      return 1;
     }
-    print_help(stderr);
-    return 1;
+    trace_dirs.push_back(trace_dir);
   }
 
-  return pack(trace_dir, flags);
+  return pack(trace_dirs, flags);
 }
 
 } // namespace rr
