@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #ifndef RRUTIL_SYSCALL_H
-#define RRUTIL_SYSCLAL_H
+#define RRUTIL_SYSCALL_H
 
 #include <stdint.h>
 
