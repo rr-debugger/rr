@@ -2505,6 +2505,10 @@ int __lsan_is_turned_off(void)
 {
   return rr_lsan_is_turned_off;
 }
+#include <sanitizer/asan_interface.h>
+const char *__asan_default_options() {
+  return "verify_asan_link_order=0";
+}
 #endif
 
 bool coredumping_signal_takes_down_entire_vm() {

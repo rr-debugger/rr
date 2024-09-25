@@ -2317,6 +2317,8 @@ static ExeInfo read_exe_info(const string& exe_file) {
   ElfFileReader reader(fd);
   ret.arch = reader.arch();
 
+  // Don't try to modifiy LD_PRELOAD when rr itself is built with ASan
+#ifndef __SANITIZE_ADDRESS__
   DynamicSection dynamic = reader.read_dynamic();
   for (auto& entry : dynamic.entries) {
     if (entry.tag == DT_NEEDED && entry.val < dynamic.strtab.size()) {
@@ -2330,6 +2332,7 @@ static ExeInfo read_exe_info(const string& exe_file) {
       }
     }
   }
+#endif
 
   auto syms = reader.read_symbols(".dynsym", ".dynstr");
   for (size_t i = 0; i < syms.size(); ++i) {
