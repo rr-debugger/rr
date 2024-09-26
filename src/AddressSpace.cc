@@ -2337,7 +2337,9 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
   MemoryRange global_exclusion_range = get_global_exclusion_range(&t->session());
   // NB: Above RR_PAGE_ADDR is probably not free anyways, but if it somehow is
   // don't hand it out again.
-  static MemoryRange rrpage_so_range = MemoryRange(RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE, RR_PAGE_ADDR + PRELOAD_LIBRARY_PAGE_SIZE);
+  static MemoryRange rrpage_so_range = MemoryRange(remote_ptr<void>(RR_PAGE_ADDR - PRELOAD_LIBRARY_PAGE_SIZE),
+                                                   remote_ptr<void>(RR_PAGE_ADDR + PRELOAD_LIBRARY_PAGE_SIZE));
+  assert(rrpage_so_range.size() == 2 * PRELOAD_LIBRARY_PAGE_SIZE);
 
   // Ignore the hint half the time.
   if (hint && (random() & 1)) {
