@@ -87,7 +87,8 @@ function onexit {
             rm -rf $nontmp_workdir
         fi
     else
-        echo Test $TESTNAME failed, leaving behind $tmp_workdir and $nontmp_workdir
+        echo -n Test $TESTNAME failed, leaving behind $tmp_workdir
+        (rmdir "$nontmp_workdir" 2>/dev/null && echo) || echo " and $nontmp_workdir"
         echo To replay the failed test, run
         echo " " _RR_TRACE_DIR="$workdir" rr replay
         exit 1
