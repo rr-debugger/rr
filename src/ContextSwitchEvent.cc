@@ -144,12 +144,15 @@ ContextSwitchEventStrategy ContextSwitchEvent::strategy() {
   return strat;
 }
 
-void ContextSwitchEvent::init(ScopedFd tracee_fd) {
+bool ContextSwitchEvent::init(ScopedFd tracee_fd) {
   tracee_fd_ = std::move(tracee_fd);
   if (strategy() == ContextSwitchEventStrategy::STRATEGY_RECORD_SWITCH) {
     mmap_buffer = make_unique<PerfCounterBuffers>();
-    mmap_buffer->allocate(tracee_fd_, page_size(), 0);
+    bool ok = false;
+    mmap_buffer->allocate(tracee_fd_, page_size(), 0, &ok);
+    return ok;
   }
+  return true;
 }
 
 void ContextSwitchEvent::drain_events() {

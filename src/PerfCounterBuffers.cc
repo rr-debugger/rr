@@ -23,13 +23,22 @@ void PerfCounterBuffers::destroy() {
 }
 
 void PerfCounterBuffers::allocate(ScopedFd& perf_event_fd,
-    uint64_t buffer_size, uint64_t aux_size) {
+    uint64_t buffer_size, uint64_t aux_size, bool *ok) {
   this->buffer_size = buffer_size;
+  if (ok) {
+    *ok = true;
+  }
 
   void* base = mmap(NULL, page_size() + buffer_size,
       PROT_READ | PROT_WRITE, MAP_SHARED, perf_event_fd, 0);
   if (base == MAP_FAILED) {
-    FATAL() << "Can't allocate memory for PT DATA area";
+    const auto msg = "Can't allocate memory for PT DATA area";
+    if (!ok) {
+      FATAL() << msg;
+    }
+    LOG(warn) << msg;
+    *ok = false;
+    return;
   }
   mmap_header = static_cast<struct perf_event_mmap_page*>(base);
 
@@ -40,7 +49,13 @@ void PerfCounterBuffers::allocate(ScopedFd& perf_event_fd,
     void* aux = mmap(NULL, mmap_header->aux_size, PROT_READ | PROT_WRITE, MAP_SHARED,
         perf_event_fd, mmap_header->aux_offset);
     if (aux == MAP_FAILED) {
-      FATAL() << "Can't allocate memory for PT AUX area";
+      const auto msg = "Can't allocate memory for PT AUX area";
+      if (!ok) {
+        FATAL() << msg;
+      }
+      LOG(warn) << msg;
+      *ok = false;
+      return;
     }
     mmap_aux_buffer = static_cast<char*>(aux);
   }

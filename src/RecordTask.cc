@@ -526,7 +526,11 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
-    desched_fd.init(remote.retrieve_fd(desched_fd_child));
+    if (!desched_fd.init(remote.retrieve_fd(desched_fd_child))) {
+      LOG(warn)
+          << "ContextSwitchEvent initialization with strategy "
+             "STRATEGY_RECORD_SWITCH failed. tracee died unexpectedly or killed ??";
+    }
 
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {
