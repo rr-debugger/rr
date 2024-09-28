@@ -1,7 +1,8 @@
 source `dirname $0`/util.sh
 
-record simple$bitness
-record simple$bitness
+save_exe simple$bitness
+just_record simple$bitness-$nonce
+just_record simple$bitness-$nonce
 
 mkdir the_pack_dir
 
