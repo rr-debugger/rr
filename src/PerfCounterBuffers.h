@@ -32,7 +32,7 @@ public:
       buffer_size(0), packet_in_use(false) {}
   ~PerfCounterBuffers() { destroy(); }
 
-  void allocate(ScopedFd& perf_event_fd, uint64_t buffer_size, uint64_t aux_size);
+  void allocate(ScopedFd& perf_event_fd, uint64_t buffer_size, uint64_t aux_size, bool *ok = nullptr);
   void destroy();
 
   bool allocated() const { return mmap_header != nullptr; }

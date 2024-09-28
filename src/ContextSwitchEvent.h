@@ -47,7 +47,7 @@ namespace rr {
  */
 class ContextSwitchEvent {
 public:
-  void init(ScopedFd tracee_fd);
+  bool init(ScopedFd tracee_fd);
 
   ScopedFd& tracee_fd() { return tracee_fd_; }
 
