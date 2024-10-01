@@ -754,6 +754,11 @@ int PackCommand::run(vector<string>& args) {
     trace_dirs.push_back(trace_dir);
   }
 
+  // If no trace dirs were supplied, default to packing "", i.e. the latest trace.
+  if (trace_dirs.empty()) {
+    trace_dirs.push_back("");
+  }
+
   return pack(trace_dirs, flags);
 }
 
