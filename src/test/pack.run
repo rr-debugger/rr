@@ -12,6 +12,11 @@ pack || failed "'rr pack' failed"
 if [[ `ls latest-trace/*_pack$bitness-* | wc -l` != "1" ]]; then
     failed "Failed to coalesce all instances of 'pack'"
 fi
+
+if [[ `ls latest-trace/mmap_pack_* | wc -l` == "0" ]]; then
+    failed "Packing produced no files."
+fi
+
 # If there are no copies of _mapped_file it was probably copied
 # into the trace data, for one of various reasons, so don't fail
 # the test in that case.
