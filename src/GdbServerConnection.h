@@ -17,6 +17,7 @@
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
+#include "TargetDescription.h"
 #include "TaskishUid.h"
 #include "core.h"
 
@@ -750,7 +751,8 @@ public:
     CPU_AARCH64 = 0x4,
     CPU_PKU = 0x8
   };
-  void set_cpu_features(uint32_t features) { cpu_features_ = features; }
+
+  void set_cpu_features(SupportedArch arch);
   uint32_t cpu_features() const { return cpu_features_; }
 
   GdbServerConnection(ThreadGroupUid tguid, const Features& features);
@@ -877,6 +879,7 @@ private:
   bool hwbreak_supported_; // client supports hwbreak extension
   bool swbreak_supported_; // client supports swbreak extension
   bool list_threads_in_stop_reply_; // client requested threads: and thread-pcs: in stop replies
+  std::unique_ptr<TargetDescription> target_description;
 };
 
 } // namespace rr
