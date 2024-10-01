@@ -1083,7 +1083,9 @@ static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
     // On x86, we would have expected this to get restored to the syscallno.
     // Since the syscallno is in a different register on other platforms, this
     // assert does not apply.
-    ASSERT(t, syscallno == ret)
+    // We have seen cases where `ret` is `restart_syscall`.
+    ASSERT(t, syscallno == ret ||
+        is_restart_syscall_syscall(ret, t->ev().Syscall().arch()))
         << "Interrupted call was " << t->ev().Syscall().syscall_name()
         << " and sigreturn claims to be restarting "
         << syscall_name(ret, t->ev().Syscall().arch());
