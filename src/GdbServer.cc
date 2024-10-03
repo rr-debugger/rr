@@ -1370,15 +1370,21 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state(
   if (timeline_) {
     final_event = timeline_->current_session().trace_reader().time();
   }
-  GdbRequest req = process_debugger_requests(REPORT_THREADS_DEAD);
-  ContinueOrStop s;
-  if (detach_or_restart(req, &s)) {
-    last_resume_request = GdbRequest();
-    return s;
+  while (true) {
+    GdbRequest req = process_debugger_requests(REPORT_THREADS_DEAD);
+    ContinueOrStop s;
+    if (detach_or_restart(req, &s)) {
+      last_resume_request = GdbRequest();
+      return s;
+    }
+    if (req.type == DREQ_INTERRUPT) {
+      // Ignore this. Sometimes LLDB seems to send it automatically
+      // after the task has exited, before we detach I guess.
+      continue;
+    }
+    FATAL() << "Received continue/interrupt request after end-of-trace: "
+            << req.type;
   }
-  FATAL() << "Received continue/interrupt request after end-of-trace: "
-          << req.type;
-  return STOP_DEBUGGING;
 }
 
 ReplayTask* GdbServer::require_timeline_current_task() {
