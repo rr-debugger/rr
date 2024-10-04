@@ -4867,6 +4867,13 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
         }
 
+        case ARCH_GET_XCOMP_SUPP:
+        case ARCH_GET_XCOMP_PERM:
+          syscall_state.reg_parameter<uint64_t>(2);
+          break;
+        case ARCH_REQ_XCOMP_PERM:
+          break;
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;

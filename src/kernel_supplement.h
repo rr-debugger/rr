@@ -552,6 +552,16 @@ enum {
 // value that is used for 32-bit processes.
 #define RR_LARGEFILE_32 0x8000
 
+#ifndef ARCH_GET_XCOMP_SUPP
+#define ARCH_GET_XCOMP_SUPP 0x1021
+#endif
+#ifndef ARCH_GET_XCOMP_PERM
+#define ARCH_GET_XCOMP_PERM 0x1022
+#endif
+#ifndef ARCH_REQ_XCOMP_PERM
+#define ARCH_REQ_XCOMP_PERM 0x1023
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.
