@@ -980,7 +980,7 @@ set(BASIC_TESTS
   alarm
   alarm2
   alsa_ioctl
-  arch_prctl
+  x86/arch_prctl_x86
   async_segv_ignored
   at_threadexit
   bad_ip
