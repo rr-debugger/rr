@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.i386.avx512">
+    <vector id="v2ui128" type="uint128" count="2"/>
+    <reg name="zmm0h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm1h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm2h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm3h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm4h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm5h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm6h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm7h" bitsize="256" type="v2ui128"/>
+    <reg name="k0" bitsize="64" type="uint64"/>
+    <reg name="k1" bitsize="64" type="uint64"/>
+    <reg name="k2" bitsize="64" type="uint64"/>
+    <reg name="k3" bitsize="64" type="uint64"/>
+    <reg name="k4" bitsize="64" type="uint64"/>
+    <reg name="k5" bitsize="64" type="uint64"/>
+    <reg name="k6" bitsize="64" type="uint64"/>
+    <reg name="k7" bitsize="64" type="uint64"/>
+  </feature>
+

@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.i386.avx512">
+    <vector id="v8bf16" type="bfloat16" count="8"/>
+    <vector id="v8h" type="ieee_half" count="8"/>
+    <vector id="v4f" type="ieee_single" count="4"/>
+    <vector id="v2d" type="ieee_double" count="2"/>
+    <vector id="v16i8" type="int8" count="16"/>
+    <vector id="v8i16" type="int16" count="8"/>
+    <vector id="v4i32" type="int32" count="4"/>
+    <vector id="v2i64" type="int64" count="2"/>
+    <union id="vec128">
+      <field name="v8_bfloat16" type="v8bf16"/>
+      <field name="v8_half" type="v8h"/>
+      <field name="v4_float" type="v4f"/>
+      <field name="v2_double" type="v2d"/>
+      <field name="v16_int8" type="v16i8"/>
+      <field name="v8_int16" type="v8i16"/>
+      <field name="v4_int32" type="v4i32"/>
+      <field name="v2_int64" type="v2i64"/>
+      <field name="uint128" type="uint128"/>
+    </union>
+    <vector id="v2ui128" type="uint128" count="2"/>
+    <reg name="xmm16" bitsize="128" type="vec128"/>
+    <reg name="xmm17" bitsize="128" type="vec128"/>
+    <reg name="xmm18" bitsize="128" type="vec128"/>
+    <reg name="xmm19" bitsize="128" type="vec128"/>
+    <reg name="xmm20" bitsize="128" type="vec128"/>
+    <reg name="xmm21" bitsize="128" type="vec128"/>
+    <reg name="xmm22" bitsize="128" type="vec128"/>
+    <reg name="xmm23" bitsize="128" type="vec128"/>
+    <reg name="xmm24" bitsize="128" type="vec128"/>
+    <reg name="xmm25" bitsize="128" type="vec128"/>
+    <reg name="xmm26" bitsize="128" type="vec128"/>
+    <reg name="xmm27" bitsize="128" type="vec128"/>
+    <reg name="xmm28" bitsize="128" type="vec128"/>
+    <reg name="xmm29" bitsize="128" type="vec128"/>
+    <reg name="xmm30" bitsize="128" type="vec128"/>
+    <reg name="xmm31" bitsize="128" type="vec128"/>
+    <reg name="ymm16h" bitsize="128" type="uint128"/>
+    <reg name="ymm17h" bitsize="128" type="uint128"/>
+    <reg name="ymm18h" bitsize="128" type="uint128"/>
+    <reg name="ymm19h" bitsize="128" type="uint128"/>
+    <reg name="ymm20h" bitsize="128" type="uint128"/>
+    <reg name="ymm21h" bitsize="128" type="uint128"/>
+    <reg name="ymm22h" bitsize="128" type="uint128"/>
+    <reg name="ymm23h" bitsize="128" type="uint128"/>
+    <reg name="ymm24h" bitsize="128" type="uint128"/>
+    <reg name="ymm25h" bitsize="128" type="uint128"/>
+    <reg name="ymm26h" bitsize="128" type="uint128"/>
+    <reg name="ymm27h" bitsize="128" type="uint128"/>
+    <reg name="ymm28h" bitsize="128" type="uint128"/>
+    <reg name="ymm29h" bitsize="128" type="uint128"/>
+    <reg name="ymm30h" bitsize="128" type="uint128"/>
+    <reg name="ymm31h" bitsize="128" type="uint128"/>
+    <reg name="zmm0h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm1h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm2h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm3h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm4h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm5h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm6h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm7h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm8h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm9h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm10h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm11h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm12h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm13h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm14h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm15h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm16h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm17h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm18h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm19h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm20h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm21h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm22h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm23h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm24h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm25h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm26h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm27h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm28h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm29h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm30h" bitsize="256" type="v2ui128"/>
+    <reg name="zmm31h" bitsize="256" type="v2ui128"/>
+    <reg name="k0" bitsize="64" type="uint64"/>
+    <reg name="k1" bitsize="64" type="uint64"/>
+    <reg name="k2" bitsize="64" type="uint64"/>
+    <reg name="k3" bitsize="64" type="uint64"/>
+    <reg name="k4" bitsize="64" type="uint64"/>
+    <reg name="k5" bitsize="64" type="uint64"/>
+    <reg name="k6" bitsize="64" type="uint64"/>
+    <reg name="k7" bitsize="64" type="uint64"/>
+  </feature>
+

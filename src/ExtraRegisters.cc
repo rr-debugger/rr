@@ -66,17 +66,59 @@ static bool reg_in_range(GdbServerRegister regno, GdbServerRegister low, GdbServ
   return true;
 }
 
-static const int AVX_FEATURE_BIT = 2;
-static const int PKRU_FEATURE_BIT = 9;
+static constexpr int AVX_FEATURE_BIT = 2;
+static constexpr int AVX_OPMASK_FEATURE_BIT = 5;
+static constexpr int AVX_ZMM_HI256_FEATURE_BIT = 6;
+static constexpr int AVX_ZMM_HI16_FEATURE_BIT = 7;
+static constexpr int PKRU_FEATURE_BIT = 9;
 
 static const uint64_t PKRU_FEATURE_MASK = 1 << PKRU_FEATURE_BIT;
 
 static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
 static const size_t xsave_header_end = xsave_header_offset + xsave_header_size;
-// This is always at 576 since AVX is always the first optional feature,
-// if present.
-static const size_t AVX_xsave_offset = 576;
+struct RegisterConfig {
+  int8_t feature;
+  GdbServerRegister base;
+  int8_t size;
+  int stride;
+
+  int register_offset(GdbServerRegister reg, int base_offset) const noexcept {
+    const auto& layout = xsave_native_layout();
+    return layout.feature_layouts[feature].offset + base_offset + (reg - base) * stride;
+  }
+};
+
+static constexpr std::array<RegisterConfig, 6> RegisterConfigLookupTable{
+  { { AVX_FEATURE_BIT, DREG_64_YMM0H, 16, 16 },
+    { AVX_ZMM_HI16_FEATURE_BIT, DREG_64_XMM16, 16, 64 },
+    { AVX_ZMM_HI16_FEATURE_BIT, DREG_64_YMM16H, 16, 64 },
+    { AVX_ZMM_HI256_FEATURE_BIT, DREG_64_ZMM0H, 32, 32 },
+    { AVX_ZMM_HI16_FEATURE_BIT, DREG_64_ZMM16H, 32, 64 },
+    { AVX_OPMASK_FEATURE_BIT, DREG_64_K0, 8, 8 } }
+};
+
+static constexpr auto YMM16_31 = 0b10;
+static constexpr auto ZMM16_31 = 0b100;
+
+// Every range of registers (except K0-7) are 16 registers long. We use this fact to build
+// a lookup table, for the AVX2 and AVX512 registers.
+static bool reg_is_avx2_or_512(GdbServerRegister reg, RegData& out) noexcept {
+  if(reg < DREG_64_YMM0H || reg > DREG_64_K7) {
+    return false;
+  }
+
+  const auto selector = (reg - DREG_64_YMM0H) >> 4;
+  DEBUG_ASSERT(selector >= 0 && selector <= 5 && "GdbServerRegister enum values has been changed.");
+  const auto cfg = RegisterConfigLookupTable[selector];
+  out.xsave_feature_bit = cfg.feature;
+  out.size = cfg.size;
+
+  // only YMM16-31 and ZMM16-31 have a base offset (16 and 32 respectively)
+  const auto base_offset = cfg.size * (selector == YMM16_31) | cfg.size * (selector == ZMM16_31);
+  out.offset = cfg.register_offset(reg, base_offset);
+  return true;
+}
 
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
@@ -93,6 +135,14 @@ static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) 
       }
       if (regno >= DREG_YMM0H && regno <= DREG_YMM7H) {
         regno = (GdbServerRegister)(regno - DREG_YMM0H + DREG_64_YMM0H);
+        break;
+      }
+      if(regno >= DREG_ZMM0H && regno <= DREG_ZMM7H) {
+        regno = (GdbServerRegister)(regno - DREG_ZMM0H + DREG_64_ZMM0H);
+        break;
+      }
+      if(regno >= DREG_K0 && regno <= DREG_K7) {
+        regno = (GdbServerRegister)(regno - DREG_K0 + DREG_64_K0);
         break;
       }
       if (regno == DREG_MXCSR) {
@@ -123,9 +173,7 @@ static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) 
     return result;
   }
 
-  if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
-                   16, &result)) {
-    result.xsave_feature_bit = AVX_FEATURE_BIT;
+  if(reg_is_avx2_or_512(regno, result)) {
     return result;
   }
 

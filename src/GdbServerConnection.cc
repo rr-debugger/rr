@@ -83,8 +83,12 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
       if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
         // PKU (Skylake) implies AVX (Sandy Bridge).
-        cpu_features |= GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_PKU;
+        cpu_features |= GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_AVX512 | GdbServerConnection::CPU_PKU;
         break;
+      }
+
+      if((cpuid_data.ebx & AVX_512_FOUNDATION_FLAG) == AVX_512_FOUNDATION_FLAG) {
+        cpu_features |= GdbServerConnection::CPU_AVX512 | GdbServerConnection::CPU_AVX;
       }
 
       cpuid_data = cpuid(CPUID_GETFEATURES, 0);
@@ -512,11 +516,15 @@ static const char* target_description_name(uint32_t cpu_features) {
       return "amd64-linux.xml";
     case GdbServerConnection::CPU_AVX:
       return "i386-avx-linux.xml";
+    case GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_AVX512:
+      return "i386-avx512-linux.xml";
     case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_AVX:
       return "amd64-avx-linux.xml";
-    case GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
+    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_AVX512:
+      return "amd64-avx512-linux.xml";
+    case GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_AVX512:
       return "i386-pkeys-linux.xml";
-    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
+    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_AVX512:
       return "amd64-pkeys-linux.xml";
     case GdbServerConnection::CPU_AARCH64:
       return "aarch64-core.xml";

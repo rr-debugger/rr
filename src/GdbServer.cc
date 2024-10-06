@@ -186,26 +186,9 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
 
 void GdbServer::dispatch_regs_request(const Registers& regs,
                                       const ExtraRegisters& extra_regs) {
-  GdbServerRegister end;
-  // Send values for all the registers we sent XML register descriptions for.
-  // Those descriptions are controlled by GdbServerConnection::cpu_features().
-  bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
-  bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
-  switch (regs.arch()) {
-    case x86:
-      end = have_PKU ? DREG_PKRU : (have_AVX ? DREG_YMM7H : DREG_ORIG_EAX);
-      break;
-    case x86_64:
-      end = have_PKU ? DREG_64_PKRU : (have_AVX ? DREG_64_YMM15H : DREG_GS_BASE);
-      break;
-    case aarch64:
-      end = DREG_FPCR;
-      break;
-    default:
-      FATAL() << "Unknown architecture";
-      return;
-  }
+  const GdbServerRegister end = arch_reg_end(regs.arch());
   vector<GdbServerRegisterValue> rs;
+  rs.reserve(end);
   for (GdbServerRegister r = GdbServerRegister(0); r <= end; r = GdbServerRegister(r + 1)) {
     rs.push_back(get_reg(regs, extra_regs, r));
   }
@@ -2312,6 +2295,49 @@ void GdbServer::read_back_debugger_mem(DiversionSession& session) {
       t->read_bytes_helper(start, size, region.second.values.data());
     }
   }
+}
+
+GdbServerRegister GdbServer::arch_reg_end(SupportedArch arch) noexcept {
+  if(target_regs_end != GdbServerRegister(0)) {
+    return target_regs_end;
+  }
+
+  // Send values for all the registers we sent XML register descriptions for.
+  // Those descriptions are controlled by GdbServerConnection::cpu_features().
+  bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
+  bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
+  bool have_AVX512 = dbg->cpu_features() & GdbServerConnection::CPU_AVX512;
+  switch (arch) {
+    case x86:
+      if(have_PKU) {
+        target_regs_end = DREG_PKRU;
+      } else if(have_AVX512) {
+        target_regs_end = DREG_K7;
+      } else if(have_AVX) {
+        target_regs_end = DREG_YMM7H;
+      } else {
+        target_regs_end = DREG_ORIG_EAX;
+      }
+      break;
+    case x86_64:
+      if(have_PKU) {
+        target_regs_end = DREG_64_PKRU;
+      } else if(have_AVX512) {
+        target_regs_end = DREG_64_K7;
+      } else if(have_AVX) {
+        target_regs_end = DREG_64_YMM15H;
+      } else {
+        target_regs_end = DREG_GS_BASE;
+      }
+      break;
+    case aarch64:
+      target_regs_end = DREG_FPCR;
+      break;
+    default:
+      FATAL() << "Unknown architecture";
+      return target_regs_end;
+  }
+  return target_regs_end;
 }
 
 bool GdbServer::debugger_mem_region(ThreadGroupUid tguid, remote_ptr<void> addr,
