@@ -44,8 +44,6 @@ SECTIONS
 VERSION {
   @VDSO_NAME@ {
     global:
-      gettimeofday;
-      clock_gettime;
       @VDSO_SYMBOLS@
   };
 }
