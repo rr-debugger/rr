@@ -41,22 +41,30 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
       return ARMCortexA75;
     case 0xd0b:
       return ARMCortexA76;
-    case 0xd0c:
-      return ARMNeoverseN1;
     case 0xd0d:
       return ARMCortexA77;
-    case 0xd40:
-      return ARMNeoverseV1;
     case 0xd41:
     case 0xd4b: // ARM Cortex A78C
       return ARMCortexA78;
     case 0xd44:
     case 0xd4c: // ARM Cortex X1C
       return ARMCortexX1;
+    case 0xd0c:
+      return ARMNeoverseN1;
     case 0xd49:
       return ARMNeoverseN2;
+    case 0xd8e:
+      return ARMNeoverseN3;
     case 0xd4a:
       return ARMNeoverseE1;
+    case 0xd40:
+      return ARMNeoverseV1;
+    case 0xd4f:
+      return ARMNeoverseV2;
+    case 0xd83:
+      return ARMNeoverseV3AE;
+    case 0xd84:
+      return ARMNeoverseV3;
     }
     break;
   case 0x51: // Qualcomm
