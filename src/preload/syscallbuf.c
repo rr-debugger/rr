@@ -242,6 +242,7 @@ static void local_memcpy(void* dest, const void* source, int n) {
 #elif defined(__aarch64__)
   long c1;
   long c2;
+  long n_long = n;
   __asm__ __volatile__("subs %4, %2, 16\n\t"
                        "b.lt 2f\n\t"
                        "1:\n\t"
@@ -267,7 +268,7 @@ static void local_memcpy(void* dest, const void* source, int n) {
                        "ldrb %w3, [%1]\n\t"
                        "strb %w3, [%0]\n\t"
                        "3:\n\t"
-                       : "+r"(dest), "+r"(source), "+r"(n), "=&r"(c1), "=&r"(c2)
+                       : "+r"(dest), "+r"(source), "+r"(n_long), "=&r"(c1), "=&r"(c2)
                        :
                        : "cc", "memory");
 #else
@@ -289,8 +290,9 @@ static void local_memset(void* dest, uint8_t c, int n) {
                        :
                        : "cc", "memory");
 #elif defined(__aarch64__)
-  double v1;
+  double v1 __attribute__((vector_size(16)));
   long n2;
+  long n_long = n;
   __asm__ __volatile__("subs %4, %2, 32\n\t"
                        "b.lt 2f\n\t"
                        "dup %3.16b, %w0\n"
@@ -306,7 +308,7 @@ static void local_memset(void* dest, uint8_t c, int n) {
                        "subs %2, %2, #1\n\t"
                        "b.ne 3b\n"
                        "4:\n\t"
-                       : "+r"(c), "+r"(dest), "+r"(n), "=x"(v1), "=r"(n2)
+                       : "+r"(c), "+r"(dest), "+r"(n_long), "=x"(v1), "=r"(n2)
                        :
                        : "cc", "memory");
 #else
@@ -1547,6 +1549,7 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
 #elif defined(__aarch64__)
   long c1;
   long c2;
+  long size_long = size;
   unsigned char *globals_in_replay = rr_page_replay_flag_addr();
   __asm__ __volatile__("ldrb %w3, [%5]\n\t"
                        "cmp %3, #0\n\t" // eq -> record
@@ -1580,7 +1583,7 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
                        "mov %4, xzr\n\t"
                        "mov %1, xzr\n\t"
                        : "+r"(buf), "+r"(src),
-                         "+r"(size), "=&r"(c1), "=&r"(c2), "+r"(globals_in_replay)
+                         "+r"(size_long), "=&r"(c1), "=&r"(c2), "+r"(globals_in_replay)
                        :
                        : "cc", "memory");
 #else

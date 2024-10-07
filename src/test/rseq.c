@@ -19,7 +19,7 @@ static uint64_t jump_aborts;
 static volatile uint32_t dummy;
 
 static void do_section(void) {
-  int did_abort = 0;
+  long did_abort = 0;
 
   rs_ptr->rseq_cs = (uint64_t)(uintptr_t)&rs_cs;
 #if defined(__x86_64__) || defined(__i386__)
@@ -37,7 +37,7 @@ static void do_section(void) {
     "1:\n\t"
     : : "m"(dummy), "m"(did_abort));
 #elif defined(__aarch64__)
-  int dummy2;
+  long dummy2;
   __asm__ __volatile__ (
     "start_ip:\n\t"
     "mov %1, 1234\n\t"
