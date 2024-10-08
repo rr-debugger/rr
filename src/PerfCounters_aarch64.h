@@ -100,6 +100,13 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
     }
     break;
   }
+  case 0xc0: // Ampere
+    switch (cpuid.part) {
+    case 0xac3:
+      return AmpereOne;
+    }
+    break;
+  }
   CLEAN_FATAL() << "Unknown aarch64 CPU type " << cpuid;
   return UnknownCpu; // not reached
 }
