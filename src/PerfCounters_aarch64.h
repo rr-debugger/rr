@@ -99,7 +99,6 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
       return AppleM2Avalanche;
     }
     break;
-  }
   case 0xc0: // Ampere
     switch (cpuid.part) {
     case 0xac3:
