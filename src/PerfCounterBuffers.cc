@@ -70,12 +70,14 @@ optional<PerfCounterBuffers::Packet> PerfCounterBuffers::next_packet() {
   // by the kernel.
   uint64_t data_end =
     *reinterpret_cast<volatile unsigned long long*>(&mmap_header->data_head);
-  if (mmap_header->data_tail >= data_end) {
-    return nullopt;
-  }
+
   // Force memory barrier to ensure that we see all memory updates that were
   // performed before `data_head `was updated.
   __sync_synchronize();
+
+  if (mmap_header->data_tail >= data_end) {
+    return nullopt;
+  }
 
   char* data_buf = reinterpret_cast<char*>(mmap_header) + mmap_header->data_offset;
   uint64_t data_start = mmap_header->data_tail;
