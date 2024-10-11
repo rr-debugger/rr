@@ -95,6 +95,7 @@ optional<PerfCounterBuffers::Packet> PerfCounterBuffers::next_packet() {
   }
 
   void* aux_ptr = nullptr;
+  packet_data_aux_end = mmap_header->aux_tail;
   if (header.type == PERF_RECORD_AUX) {
     PerfEventAux aux_packet = *reinterpret_cast<PerfEventAux*>(header_ptr);
     size_t aux_start_offset = aux_packet.aux_offset % mmap_header->aux_size;
@@ -107,7 +108,7 @@ optional<PerfCounterBuffers::Packet> PerfCounterBuffers::next_packet() {
              aux_packet.aux_size - first_chunk_size);
       aux_ptr = aux_packet_storage.data();
     }
-    packet_data_aux_end = mmap_header->aux_tail + aux_packet.aux_size;
+    packet_data_aux_end += aux_packet.aux_size;
   }
 
   packet_in_use = true;
