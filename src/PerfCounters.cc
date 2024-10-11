@@ -834,6 +834,10 @@ size_t PerfCounters::PTState::flush() {
       case PERF_RECORD_AUX: {
         auto aux_packet = *reinterpret_cast<PerfEventAux*>(packet->data());
         if (aux_packet.flags) {
+          if (aux_packet.flags & PERF_AUX_FLAG_TRUNCATED) {
+            CLEAN_FATAL() << "PT aux data truncated. Try increasing "
+              "PT_PERF_AUX_SIZE in src/PerfCounters.cc and rerecording.";
+          }
           FATAL() << "Unexpected AUX packet flags " << aux_packet.flags;
         }
         pt_data.data.emplace_back();
