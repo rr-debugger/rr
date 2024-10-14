@@ -1052,6 +1052,9 @@ bool cpuid_faulting_works() {
   static bool did_check_cpuid_faulting = false;
   static bool cpuid_faulting_ok = false;
 
+#if defined(__i386__) || defined(__x86_64__)
+  did_check_cpuid_faulting = true;
+#endif
   if (did_check_cpuid_faulting) {
     return cpuid_faulting_ok;
   }
