@@ -288,7 +288,7 @@ static const syscall_interruption_t interrupted;
 
 /**
  * Sum type for all events (well, a C++ approximation thereof).  An
- * Event always has a definted EventType.  It can be down-casted to
+ * Event always has a defined EventType.  It can be down-casted to
  * one of the leaf types above iff the type tag is correct.
  */
 struct Event {
