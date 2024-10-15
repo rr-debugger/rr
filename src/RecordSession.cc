@@ -338,7 +338,7 @@ static void note_entering_syscall(RecordTask* t) {
       // value will be wrong due to the aarch64 kernel bug.
       // Get it from the syscall event.
       Registers r = t->regs();
-      r.set_x7(t->ev().Syscall().regs.x7());
+      r.set_x(7, t->ev().Syscall().regs.x(7));
       t->set_regs(r);
     }
   }
@@ -1464,7 +1464,7 @@ static void setup_sigframe_siginfo_arch(RecordTask* t,
       dest = t->regs().si();
       break;
     case aarch64:
-      dest = t->regs().x1();
+      dest = t->regs().x(1);
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown architecture");
