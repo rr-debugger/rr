@@ -1366,18 +1366,18 @@ TrapReasons Task::compute_trap_reasons() {
         // step over those instructions so we need to detect that here.
         reasons.singlestep = true;
       } else {
-        TrappedInstruction ti =
-          trapped_instruction_at(this, address_of_last_execution_resume);
-        if (ti == TrappedInstruction::CPUID &&
+        SpecialInst si =
+          special_instruction_at(this, address_of_last_execution_resume);
+        if (si.opcode == SpecialInstOpcode::X86_CPUID &&
             ip() == address_of_last_execution_resume +
-                        trapped_instruction_len(TrappedInstruction::CPUID)) {
+                        special_instruction_len(SpecialInstOpcode::X86_CPUID)) {
           // Likewise we emulate CPUID instructions and must forcibly detect that
           // here.
           reasons.singlestep = true;
           // This also takes care of the did_set_breakpoint_after_cpuid workaround case
-        } else if (ti == TrappedInstruction::INT3 &&
+        } else if (si.opcode == SpecialInstOpcode::X86_INT3 &&
             ip() == address_of_last_execution_resume +
-                        trapped_instruction_len(TrappedInstruction::INT3)) {
+                        special_instruction_len(SpecialInstOpcode::X86_INT3)) {
           // INT3 instructions should also be turned into a singlestep here.
           reasons.singlestep = true;
         }
@@ -1562,12 +1562,12 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   if (is_singlestep_resume(how)) {
     work_around_KNL_string_singlestep_bug();
     if (is_x86ish(arch())) {
-      singlestepping_instruction = trapped_instruction_at(this, ip());
-      if (singlestepping_instruction == TrappedInstruction::CPUID) {
+      singlestepping_instruction = special_instruction_at(this, ip());
+      if (singlestepping_instruction.opcode == SpecialInstOpcode::X86_CPUID) {
         // In KVM virtual machines (and maybe others), singlestepping over CPUID
         // executes the following instruction as well. Work around that.
         did_set_breakpoint_after_cpuid =
-          vm()->add_breakpoint(ip() + trapped_instruction_len(singlestepping_instruction), BKPT_INTERNAL);
+          vm()->add_breakpoint(ip() + special_instruction_len(singlestepping_instruction.opcode), BKPT_INTERNAL);
       }
     } else if (arch() == aarch64 && is_singlestep_resume(how_last_execution_resumed)) {
       // On aarch64, if the last execution was any sort of single step, then
@@ -2429,7 +2429,7 @@ bool Task::did_waitpid(WaitStatus status) {
 
     if (did_set_breakpoint_after_cpuid) {
       remote_code_ptr bkpt_addr =
-        address_of_last_execution_resume + trapped_instruction_len(singlestepping_instruction);
+        address_of_last_execution_resume + special_instruction_len(singlestepping_instruction.opcode);
       if (ip().undo_executed_bkpt(arch()) == bkpt_addr) {
         Registers r = regs();
         r.set_ip(bkpt_addr);
@@ -2438,10 +2438,10 @@ bool Task::did_waitpid(WaitStatus status) {
       vm()->remove_breakpoint(bkpt_addr, BKPT_INTERNAL);
       did_set_breakpoint_after_cpuid = false;
     }
-    if ((singlestepping_instruction == TrappedInstruction::PUSHF ||
-         singlestepping_instruction == TrappedInstruction::PUSHF16) &&
+    if ((singlestepping_instruction.opcode == SpecialInstOpcode::X86_PUSHF ||
+         singlestepping_instruction.opcode == SpecialInstOpcode::X86_PUSHF16) &&
         ip() == address_of_last_execution_resume +
-          trapped_instruction_len(singlestepping_instruction)) {
+          special_instruction_len(singlestepping_instruction.opcode)) {
       // We singlestepped through a pushf. Clear TF bit on stack.
       auto sp = regs().sp().cast<uint16_t>();
       // If this address is invalid then we should have segfaulted instead of
@@ -2449,7 +2449,7 @@ bool Task::did_waitpid(WaitStatus status) {
       uint16_t val = read_mem(sp);
       write_mem(sp, (uint16_t)(val & ~X86_TF_FLAG));
     }
-    singlestepping_instruction = TrappedInstruction::NONE;
+    singlestepping_instruction.opcode = SpecialInstOpcode::NONE;
 
     // We might have singlestepped at the resumption address and just exited
     // the kernel without executing the breakpoint at that address.

@@ -227,9 +227,9 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
         result.break_status.signal = unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
         result.break_status.signal->si_signo = t->stop_sig();
       } else if (t->stop_sig() == SIGSEGV) {
-        auto trapped_instruction = trapped_instruction_at(t, t->ip());
-        if (trapped_instruction == TrappedInstruction::RDTSC) {
-          size_t len = trapped_instruction_len(trapped_instruction);
+        auto special_instruction = special_instruction_at(t, t->ip());
+        if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC) {
+          size_t len = special_instruction_len(special_instruction.opcode);
           uint64_t rdtsc_value = next_rdtsc_value();
           LOG(debug) << "Faking RDTSC instruction with value " << rdtsc_value;
           Registers r = t->regs();
