@@ -1317,7 +1317,7 @@ protected:
   // Task.cc
   uint64_t last_resume_orig_cx;
   // The instruction type we're singlestepping through.
-  TrappedInstruction singlestepping_instruction;
+  SpecialInst singlestepping_instruction;
   // True if we set a breakpoint after a singlestepped CPUID instruction.
   // We need this in addition to `singlestepping_instruction` because that
   // might be CPUID but we failed to set the breakpoint.

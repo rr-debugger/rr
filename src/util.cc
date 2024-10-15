@@ -1947,53 +1947,55 @@ static const uint8_t pushf_insn[] = { 0x9c };
 static const uint8_t pushf16_insn[] = { 0x66, 0x9c };
 
 // XXX this probably needs to be extended to decode ignored prefixes
-TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip) {
-  uint8_t insn[sizeof(rdtscp_insn)];
-  ssize_t ret =
-      t->read_bytes_fallible(ip.to_data_ptr<uint8_t>(), sizeof(insn), insn);
-  if (ret < 0) {
-    return TrappedInstruction::NONE;
+SpecialInst special_instruction_at(Task* t, remote_code_ptr ip) {
+  if (is_x86ish(t->arch())) {
+    uint8_t insn[sizeof(rdtscp_insn)];
+    ssize_t ret =
+        t->read_bytes_fallible(ip.to_data_ptr<uint8_t>(), sizeof(insn), insn);
+    if (ret < 0) {
+      return {SpecialInstOpcode::NONE};
+    }
+    size_t len = ret;
+    if (len >= sizeof(rdtsc_insn) &&
+        !memcmp(insn, rdtsc_insn, sizeof(rdtsc_insn))) {
+      return {SpecialInstOpcode::X86_RDTSC};
+    }
+    if (len >= sizeof(rdtscp_insn) &&
+        !memcmp(insn, rdtscp_insn, sizeof(rdtscp_insn))) {
+      return {SpecialInstOpcode::X86_RDTSCP};
+    }
+    if (len >= sizeof(cpuid_insn) &&
+        !memcmp(insn, cpuid_insn, sizeof(cpuid_insn))) {
+      return {SpecialInstOpcode::X86_CPUID};
+    }
+    if (len >= sizeof(int3_insn) &&
+        !memcmp(insn, int3_insn, sizeof(int3_insn))) {
+      return {SpecialInstOpcode::X86_INT3};
+    }
+    if (len >= sizeof(pushf_insn) &&
+        !memcmp(insn, pushf_insn, sizeof(pushf_insn))) {
+      return {SpecialInstOpcode::X86_PUSHF};
+    }
+    if (len >= sizeof(pushf16_insn) &&
+        !memcmp(insn, pushf16_insn, sizeof(pushf16_insn))) {
+      return {SpecialInstOpcode::X86_PUSHF16};
+    }
   }
-  size_t len = ret;
-  if (len >= sizeof(rdtsc_insn) &&
-      !memcmp(insn, rdtsc_insn, sizeof(rdtsc_insn))) {
-    return TrappedInstruction::RDTSC;
-  }
-  if (len >= sizeof(rdtscp_insn) &&
-      !memcmp(insn, rdtscp_insn, sizeof(rdtscp_insn))) {
-    return TrappedInstruction::RDTSCP;
-  }
-  if (len >= sizeof(cpuid_insn) &&
-      !memcmp(insn, cpuid_insn, sizeof(cpuid_insn))) {
-    return TrappedInstruction::CPUID;
-  }
-  if (len >= sizeof(int3_insn) &&
-      !memcmp(insn, int3_insn, sizeof(int3_insn))) {
-    return TrappedInstruction::INT3;
-  }
-  if (len >= sizeof(pushf_insn) &&
-      !memcmp(insn, pushf_insn, sizeof(pushf_insn))) {
-    return TrappedInstruction::PUSHF;
-  }
-  if (len >= sizeof(pushf16_insn) &&
-      !memcmp(insn, pushf16_insn, sizeof(pushf16_insn))) {
-    return TrappedInstruction::PUSHF16;
-  }
-  return TrappedInstruction::NONE;
+  return {SpecialInstOpcode::NONE};
 }
 
-size_t trapped_instruction_len(TrappedInstruction insn) {
-  if (insn == TrappedInstruction::RDTSC) {
+size_t special_instruction_len(SpecialInstOpcode insn) {
+  if (insn == SpecialInstOpcode::X86_RDTSC) {
     return sizeof(rdtsc_insn);
-  } else if (insn == TrappedInstruction::RDTSCP) {
+  } else if (insn == SpecialInstOpcode::X86_RDTSCP) {
     return sizeof(rdtscp_insn);
-  } else if (insn == TrappedInstruction::CPUID) {
+  } else if (insn == SpecialInstOpcode::X86_CPUID) {
     return sizeof(cpuid_insn);
-  } else if (insn == TrappedInstruction::INT3) {
+  } else if (insn == SpecialInstOpcode::X86_INT3) {
     return sizeof(int3_insn);
-  } else if (insn == TrappedInstruction::PUSHF) {
+  } else if (insn == SpecialInstOpcode::X86_PUSHF) {
     return sizeof(pushf_insn);
-  } else if (insn == TrappedInstruction::PUSHF16) {
+  } else if (insn == SpecialInstOpcode::X86_PUSHF16) {
     return sizeof(pushf16_insn);
   } else {
     return 0;

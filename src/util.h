@@ -486,23 +486,27 @@ std::vector<std::string> current_env();
  */
 int get_num_cpus();
 
-enum class TrappedInstruction {
-  NONE = 0,
-  RDTSC = 1,
-  RDTSCP = 2,
-  CPUID = 3,
-  INT3 = 4,
-  PUSHF = 5,
-  PUSHF16 = 6,
+enum class SpecialInstOpcode {
+  NONE,
+  X86_RDTSC,
+  X86_RDTSCP,
+  X86_CPUID,
+  X86_INT3,
+  X86_PUSHF,
+  X86_PUSHF16,
+};
+
+struct SpecialInst {
+  SpecialInstOpcode opcode;
 };
 
 /* If |t->ip()| points at a decoded instruction, return the instruction */
-TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip);
+SpecialInst special_instruction_at(Task* t, remote_code_ptr ip);
 
 extern const uint8_t rdtsc_insn[2];
 
 /* Return the length of the TrappedInstruction */
-size_t trapped_instruction_len(TrappedInstruction insn);
+size_t special_instruction_len(SpecialInstOpcode insn);
 
 /**
  * Certain instructions generate deterministic signals but also advance pc.

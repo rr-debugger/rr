@@ -78,15 +78,15 @@ static void restore_signal_state(RecordTask* t, int sig,
 static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
-  auto trapped_instruction = trapped_instruction_at(t, t->ip());
-  switch (trapped_instruction) {
-    case TrappedInstruction::RDTSC:
-    case TrappedInstruction::RDTSCP:
+  auto special_instruction = special_instruction_at(t, t->ip());
+  switch (special_instruction.opcode) {
+    case SpecialInstOpcode::X86_RDTSC:
+    case SpecialInstOpcode::X86_RDTSCP:
       if (t->tsc_mode == PR_TSC_SIGSEGV) {
         return false;
       }
       break;
-    case TrappedInstruction::CPUID:
+    case SpecialInstOpcode::X86_CPUID:
       if (t->cpuid_mode == 0) {
         return false;
       }
@@ -95,13 +95,13 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
       return false;
   }
 
-  size_t len = trapped_instruction_len(trapped_instruction);
+  size_t len = special_instruction_len(special_instruction.opcode);
   ASSERT(t, len > 0);
 
   Registers r = t->regs();
-  if (trapped_instruction == TrappedInstruction::RDTSC ||
-      trapped_instruction == TrappedInstruction::RDTSCP) {
-    if (trapped_instruction == TrappedInstruction::RDTSC &&
+  if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC ||
+      special_instruction.opcode == SpecialInstOpcode::X86_RDTSCP) {
+    if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC &&
         t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, true)) {
       Event ev = Event::patch_syscall();
       ev.PatchSyscall().patch_trapping_instruction = true;
@@ -114,7 +114,7 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
     r.set_rdtsc_output(current_time);
 
     LOG(debug) << " trapped for rdtsc: returning " << current_time;
-  } else if (trapped_instruction == TrappedInstruction::CPUID) {
+  } else if (special_instruction.opcode == SpecialInstOpcode::X86_CPUID) {
     auto eax = r.syscallno();
     auto ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
