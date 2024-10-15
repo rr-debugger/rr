@@ -5376,7 +5376,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           regs),x);
         auto x7 = t->read_mem(x_regs_arr.field((uintptr_t*)nullptr,
           7 * sizeof(uintptr_t)));
-        syscall_state.syscall_entry_registers.set_x7(x7);
+        syscall_state.syscall_entry_registers.set_x(7, x7);
       }
       t->invalidate_sigmask();
       return PREVENT_SWITCH;
@@ -5471,7 +5471,7 @@ static void aarch64_kernel_bug_workaround(RecordTask *t,
     // un-recorded divergence). I'm really hoping to get this fixed
     // in the kernel.
     Registers r = t->regs();
-    r.set_x7(syscall_state.syscall_entry_registers.x7());
+    r.set_x(7, syscall_state.syscall_entry_registers.x(7));
     t->set_regs(r);
   }
 }

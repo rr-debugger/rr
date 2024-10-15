@@ -238,8 +238,8 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
       uint64_t x15_x30[2];
       get_stub_scratch_2(t, x15_x30, 16);
       Registers r = t->regs();
-      r.set_x15(x15_x30[0]);
-      r.set_xlr(x15_x30[1]);
+      r.set_x(15, x15_x30[0]);
+      r.set_x(30, x15_x30[1]);
       t->set_regs(r);
       t->count_direct_jump();
     }

@@ -1626,7 +1626,7 @@ bool RecordTask::is_in_syscallbuf() {
     bool ok = true;
     uint64_t addr;
     if (arch() == aarch64) {
-      addr = regs().xlr();
+      addr = regs().x(30);
     }
     else {
       ASSERT(this, is_x86ish(arch())) << "Unknown architecture";

@@ -404,34 +404,14 @@ public:
     u.arm64regs.pstate = pstate;
   }
 
-  void set_x7(uintptr_t x7) {
-    DEBUG_ASSERT(arch() == aarch64);
-    u.arm64regs.x[7] = x7;
+  void set_x(unsigned regno, uintptr_t val) {
+    DEBUG_ASSERT(arch() == aarch64 && regno < 31);
+    u.arm64regs.x[regno] = val;
   }
 
-  void set_x15(uintptr_t x15) {
-    DEBUG_ASSERT(arch() == aarch64);
-    u.arm64regs.x[15] = x15;
-  }
-
-  void set_xlr(uintptr_t xlr) {
-    DEBUG_ASSERT(arch() == aarch64);
-    u.arm64regs.x[30] = xlr;
-  }
-
-  uintptr_t x1() const {
-    DEBUG_ASSERT(arch() == aarch64);
-    return u.arm64regs.x[1];
-  }
-
-  uintptr_t x7() const {
-    DEBUG_ASSERT(arch() == aarch64);
-    return u.arm64regs.x[7];
-  }
-
-  uintptr_t xlr() const {
-    DEBUG_ASSERT(arch() == aarch64);
-    return u.arm64regs.x[30];
+  uintptr_t x(unsigned regno) const {
+    DEBUG_ASSERT(arch() == aarch64 && regno < 31);
+    return u.arm64regs.x[regno];
   }
   // End of aarch64 specific accessors
 
