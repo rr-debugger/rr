@@ -220,6 +220,16 @@ inline static void check_data(void* buf, size_t len) {
 inline static uint64_t rdtsc(void) { return __rdtsc(); }
 #endif
 
+inline static void trigger_timer_counter_trap(void) {
+#if defined(__i386__) || defined(__x86_64)
+  rdtsc();
+#elif defined(__aarch64__)
+  __asm__ __volatile__("mrs xzr, cntvct_el0");
+#else
+#error "Unknown architecture"
+#endif
+}
+
 /**
  * Perform some syscall that writes an event, i.e. is not syscall-buffered.
  */
