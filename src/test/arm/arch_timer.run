@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+if ! prctl_tsc_supported; then
+  exit 77
+fi
+compare_test EXIT-SUCCESS
+debug_gdb_only arm/diversion_arch_timer

@@ -488,6 +488,9 @@ int get_num_cpus();
 
 enum class SpecialInstOpcode {
   NONE,
+  ARM_MRS_CNTFRQ_EL0,
+  ARM_MRS_CNTVCT_EL0,
+  ARM_MRS_CNTVCTSS_EL0,
   X86_RDTSC,
   X86_RDTSCP,
   X86_CPUID,
@@ -498,6 +501,7 @@ enum class SpecialInstOpcode {
 
 struct SpecialInst {
   SpecialInstOpcode opcode;
+  unsigned regno = 0;
 };
 
 /* If |t->ip()| points at a decoded instruction, return the instruction */
@@ -646,6 +650,28 @@ inline unsigned long long rdtsc(void) {
   return __rdtsc();
 #else
   FATAL() << "Reached x86-only code path on non-x86 architecture";
+  return 0;
+#endif
+}
+
+inline unsigned long long cntfrq(void) {
+#if defined(__aarch64__)
+  unsigned long long val;
+  asm volatile("mrs %0, CNTFRQ_EL0" : "=r" (val));
+  return val;
+#else
+  FATAL() << "Reached AArch64-only code path on non-AArch64 architecture";
+  return 0;
+#endif
+}
+
+inline unsigned long long cntvct(void) {
+#if defined(__aarch64__)
+  unsigned long long val;
+  asm volatile("mrs %0, CNTVCT_EL0" : "=r" (val));
+  return val;
+#else
+  FATAL() << "Reached AArch64-only code path on non-AArch64 architecture";
   return 0;
 #endif
 }
