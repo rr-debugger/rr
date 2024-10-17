@@ -1232,7 +1232,6 @@ set(BASIC_TESTS
   prctl_name
   prctl_short_name
   prctl_speculation_ctrl
-  x86/prctl_tsc
   privileged_net_ioctl
   proc_fds
   proc_mem
@@ -1461,6 +1460,7 @@ set(BASIC_CPP_TESTS
 set(TESTS_WITH_PROGRAM
   abort_nonmain
   alternate_thread_diversion
+  arm/arch_timer
   args
   async_kill_with_syscallbuf
   async_kill_with_syscallbuf2
@@ -1574,6 +1574,7 @@ set(TESTS_WITH_PROGRAM
   pack
   patch_page_end
   x86/patch_40_80_f6_81
+  prctl_tsc
   priority
   ptrace_remote_unmap
   x86/rdtsc_loop
@@ -1817,6 +1818,9 @@ if(BUILD_TESTS)
     if (NOT x86ish AND ${test} MATCHES "^x86/.*")
       continue()
     endif()
+    if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND ${test} MATCHES "^arm/.*")
+      continue()
+    endif()
     get_filename_component(testname ${test} NAME)
 
     add_executable(${testname} src/test/${test}.c)
@@ -1853,6 +1857,9 @@ if(BUILD_TESTS)
   set_target_properties(watchpoint_unaligned2
     PROPERTIES COMPILE_FLAGS "${RR_TEST_FLAGS} -g -O3")
   add_dependencies(watchpoint_unaligned2 Generated)
+
+  add_executable(prctl_tsc_supported src/test/prctl_tsc_supported.c)
+  post_build_executable(prctl_tsc_supported)
 
   # Test disabled because it requires libuvc to be built and installed, and a
   # working USB camera
@@ -1925,7 +1932,7 @@ if(BUILD_TESTS)
   set(CTEST_TEST_TIMEOUT 1000)
 
   function(configure_test test)
-    set_tests_properties(${test} PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+    set_tests_properties(${test} PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" SKIP_RETURN_CODE 77)
   endfunction(configure_test)
 
   if(INSTALL_TESTSUITE)
@@ -1947,6 +1954,9 @@ if(BUILD_TESTS)
     if (NOT x86ish AND ${test} MATCHES "^x86/.*")
       continue()
     endif()
+    if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND ${test} MATCHES "^arm/.*")
+      continue()
+    endif()
     get_filename_component(testname ${test} NAME)
     add_test(${test}
       bash source_dir/src/test/basic_test.run ${testname} "" bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
@@ -1958,6 +1968,9 @@ if(BUILD_TESTS)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     if (NOT x86ish AND ${test} MATCHES "^x86/.*")
+      continue()
+    endif()
+    if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND ${test} MATCHES "^arm/.*")
       continue()
     endif()
     get_filename_component(testname ${test} NAME)
@@ -2006,6 +2019,9 @@ if(BUILD_TESTS)
     endforeach(file)
 
     foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${TESTS_WITH_PROGRAM})
+      if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND ${test} MATCHES "^arm/.*")
+        continue()
+      endif()
       get_filename_component(testname ${test} NAME)
       if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
         add_executable(${testname}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
@@ -2084,6 +2100,9 @@ if(BUILD_TESTS)
     endif(INSTALL_TESTSUITE)
 
     foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
+      if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND ${test} MATCHES "^arm/.*")
+        continue()
+      endif()
       get_filename_component(testname ${test} NAME)
       add_test(${test}-32
         bash source_dir/src/test/basic_test.run ${testname}_32 "" bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
@@ -2094,6 +2113,9 @@ if(BUILD_TESTS)
     endforeach(test)
 
     foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
+      if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" AND ${test} MATCHES "^arm/.*")
+        continue()
+      endif()
       get_filename_component(testname ${test} NAME)
       add_test(${test}-32
         bash source_dir/src/test/${test}.run ${testname}_32 "" bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})

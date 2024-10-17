@@ -9,6 +9,8 @@ static void skip_handler(__attribute__((unused)) int sig,
   ctx->uc_mcontext.gregs[REG_EIP] += 2;
 #elif defined(__x86_64__)
   ctx->uc_mcontext.gregs[REG_RIP] += 2;
+#elif defined(__aarch64__)
+  ctx->uc_mcontext.pc += 4;
 #else
 #error unknown architecture
 #endif
@@ -38,7 +40,7 @@ int main(void) {
     test_assert(0 == prctl(PR_GET_TSC, &status));
     test_assert(PR_TSC_SIGSEGV == status);
     signal(SIGSEGV, exit_handler);
-    rdtsc();
+    trigger_timer_counter_trap();
     return 77;
   }
 
@@ -48,6 +50,6 @@ int main(void) {
   signal(SIGSEGV, print_handler);
   test_assert(0 == prctl(PR_GET_TSC, &status));
   test_assert(PR_TSC_SIGSEGV == status);
-  rdtsc();
+  trigger_timer_counter_trap();
   return 1;
 }

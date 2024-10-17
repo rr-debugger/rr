@@ -15,7 +15,7 @@ using namespace std;
 namespace rr {
 
 DiversionSession::DiversionSession(int cpu_binding) :
-  emu_fs(EmuFs::create()), fake_rdstc(uint64_t(1) << 60), cpu_binding_(cpu_binding) {}
+  emu_fs(EmuFs::create()), fake_timer_counter(uint64_t(1) << 60), cpu_binding_(cpu_binding) {}
 
 DiversionSession::~DiversionSession() {
   // We won't permanently leak any OS resources by not ensuring
@@ -50,10 +50,10 @@ static void execute_syscall(Task* t) {
   remote.regs().set_syscall_result(t->regs().syscall_result());
 }
 
-uint64_t DiversionSession::next_rdtsc_value() {
-  uint64_t rdtsc_value = fake_rdstc;
-  fake_rdstc += 1 << 20; // 1M cycles
-  return rdtsc_value;
+uint64_t DiversionSession::next_timer_counter() {
+  uint64_t value = fake_timer_counter;
+  fake_timer_counter += 1 << 20; // 1M cycles
+  return value;
 }
 
 template <typename Arch>
@@ -70,7 +70,7 @@ static void process_syscall_arch(Task* t, int syscallno) {
   }
 
   if (syscallno == t->session().syscall_number_for_rrcall_rdtsc()) {
-    uint64_t rdtsc_value = static_cast<DiversionSession*>(&t->session())->next_rdtsc_value();
+    uint64_t rdtsc_value = static_cast<DiversionSession*>(&t->session())->next_timer_counter();
     LOG(debug) << "Faking rrcall_rdtsc syscall with value " << rdtsc_value;
     remote_ptr<uint64_t> out_param(t->regs().arg1());
     t->write_mem(out_param, rdtsc_value);
@@ -230,12 +230,34 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
         auto special_instruction = special_instruction_at(t, t->ip());
         if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC) {
           size_t len = special_instruction_len(special_instruction.opcode);
-          uint64_t rdtsc_value = next_rdtsc_value();
+          uint64_t rdtsc_value = next_timer_counter();
           LOG(debug) << "Faking RDTSC instruction with value " << rdtsc_value;
           Registers r = t->regs();
           r.set_ip(r.ip() + len);
           r.set_ax((uint32_t)rdtsc_value);
           r.set_dx(rdtsc_value >> 32);
+          t->set_regs(r);
+          result.break_status = BreakStatus();
+          continue;
+        } else if (special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTVCT_EL0 ||
+                   special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0) {
+          size_t len = special_instruction_len(special_instruction.opcode);
+          uint64_t cntvct_value = next_timer_counter();
+          Registers r = t->regs();
+          r.set_ip(r.ip() + len);
+          if (special_instruction.regno != 31) {
+            r.set_x(special_instruction.regno, cntvct_value);
+          }
+          t->set_regs(r);
+          result.break_status = BreakStatus();
+          continue;
+        } else if (special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0) {
+          size_t len = special_instruction_len(special_instruction.opcode);
+          Registers r = t->regs();
+          r.set_ip(r.ip() + len);
+          if (special_instruction.regno != 31) {
+            r.set_x(special_instruction.regno, cntfrq());
+          }
           t->set_regs(r);
           result.break_status = BreakStatus();
           continue;

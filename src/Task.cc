@@ -128,14 +128,20 @@ void Task::detach() {
 }
 
 void Task::reenable_cpuid_tsc() {
+  AutoRemoteSyscalls remote(this);
   if (is_x86ish(arch())) {
-    AutoRemoteSyscalls remote(this);
     if (session().has_cpuid_faulting()) {
       remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
                             ARCH_SET_CPUID, 1);
     }
     remote.infallible_syscall(syscall_number_for_prctl(arch()),
                           PR_SET_TSC, PR_TSC_ENABLE);
+  }
+  if (arch() == aarch64) {
+    // Not infallible because the prctl is only available in 6.12+.
+    // We already warned about this in post_exec_syscall().
+    remote.syscall(syscall_number_for_prctl(arch()),
+                   PR_SET_TSC, PR_TSC_ENABLE);
   }
 }
 
@@ -1113,6 +1119,14 @@ void Task::post_exec_syscall(const std::string& original_exe_file) {
   if (session().has_cpuid_faulting()) {
     remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
                               ARCH_SET_CPUID, 0);
+  }
+  if (arch() == aarch64) {
+    if (remote.syscall(syscall_number_for_prctl(remote.task()->arch()),
+                       PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0) != 0) {
+      LOG(warn) << "Missing kernel support for PR_SET_TSC; architected timer "
+                   "accesses will not be replayed deterministically. It is "
+                   "recommended to upgrade to kernel version 6.12";
+    }
   }
 }
 

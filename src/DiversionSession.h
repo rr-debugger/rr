@@ -59,13 +59,13 @@ public:
   void set_tracee_fd_number(int fd_number) { tracee_socket_fd_number = fd_number; }
   void on_create(Task *t) override { this->Session::on_create(t); }
 
-  uint64_t next_rdtsc_value();
+  uint64_t next_timer_counter();
 
 private:
   friend class ReplaySession;
 
   std::shared_ptr<EmuFs> emu_fs;
-  uint64_t fake_rdstc;
+  uint64_t fake_timer_counter;
   int cpu_binding_;
 };
 

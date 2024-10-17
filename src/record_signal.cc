@@ -80,6 +80,9 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
 
   auto special_instruction = special_instruction_at(t, t->ip());
   switch (special_instruction.opcode) {
+    case SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0:
+    case SpecialInstOpcode::ARM_MRS_CNTVCT_EL0:
+    case SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0:
     case SpecialInstOpcode::X86_RDTSC:
     case SpecialInstOpcode::X86_RDTSCP:
       if (t->tsc_mode == PR_TSC_SIGSEGV) {
@@ -99,8 +102,17 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   ASSERT(t, len > 0);
 
   Registers r = t->regs();
-  if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC ||
-      special_instruction.opcode == SpecialInstOpcode::X86_RDTSCP) {
+  if (special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTVCT_EL0 ||
+      special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0) {
+    if (special_instruction.regno != 31) {
+      r.set_x(special_instruction.regno, cntvct());
+    }
+  } else if (special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0) {
+    if (special_instruction.regno != 31) {
+      r.set_x(special_instruction.regno, cntfrq());
+    }
+  } else if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC ||
+             special_instruction.opcode == SpecialInstOpcode::X86_RDTSCP) {
     if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC &&
         t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, true)) {
       Event ev = Event::patch_syscall();

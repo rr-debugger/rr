@@ -1980,6 +1980,24 @@ SpecialInst special_instruction_at(Task* t, remote_code_ptr ip) {
         !memcmp(insn, pushf16_insn, sizeof(pushf16_insn))) {
       return {SpecialInstOpcode::X86_PUSHF16};
     }
+  } else if (t->arch() == aarch64) {
+    uint8_t insn[4];
+    ssize_t ret =
+        t->read_bytes_fallible(ip.to_data_ptr<uint8_t>(), sizeof(insn), insn);
+    if (ret < 0) {
+      return {SpecialInstOpcode::NONE};
+    }
+    uint32_t insn_word =
+        insn[0] | (insn[1] << 8) | (insn[2] << 16) | (insn[3] << 24);
+    if ((insn_word & 0xffffffe0) == 0xd53be000) {
+      return {SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0, insn_word & 31};
+    }
+    if ((insn_word & 0xffffffe0) == 0xd53be040) {
+      return {SpecialInstOpcode::ARM_MRS_CNTVCT_EL0, insn_word & 31};
+    }
+    if ((insn_word & 0xffffffe0) == 0xd53be0c0) {
+      return {SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0, insn_word & 31};
+    }
   }
   return {SpecialInstOpcode::NONE};
 }
@@ -1997,6 +2015,10 @@ size_t special_instruction_len(SpecialInstOpcode insn) {
     return sizeof(pushf_insn);
   } else if (insn == SpecialInstOpcode::X86_PUSHF16) {
     return sizeof(pushf16_insn);
+  } else if (insn == SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0 ||
+             insn == SpecialInstOpcode::ARM_MRS_CNTVCT_EL0 ||
+             insn == SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0) {
+    return 4;
   } else {
     return 0;
   }
