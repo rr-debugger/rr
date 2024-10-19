@@ -2259,6 +2259,10 @@ static const MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000L
                                      remote_ptr<void>((uintptr_t)0x10007fff8000LL));
 static const MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
                                                  remote_ptr<void>((uintptr_t)0x640000002000LL));
+// See https://github.com/llvm/llvm-project/commit/fb77ca05ffb4f8e666878f2f6718a9fb4d686839
+// and https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/asan/asan_allocator.h
+static const MemoryRange asan_allocator_reserved2(remote_ptr<void>((uintptr_t)0x500000000000LL),
+                                                  remote_ptr<void>((uintptr_t)0x540000000000LL));
 
 // See https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/tsan/rtl/tsan_platform_posix.cpp
 static const MemoryRange tsan_shadow(remote_ptr<void>((uintptr_t)0x008000000000LL),
@@ -2287,6 +2291,7 @@ struct ExeInfo {
     }
     sanitizer_exclude_memory_ranges.push_back(asan_shadow);
     sanitizer_exclude_memory_ranges.push_back(asan_allocator_reserved);
+    sanitizer_exclude_memory_ranges.push_back(asan_allocator_reserved2);
   }
   void setup_tsan_memory_ranges() {
     if (!check_sanitizer_arch()) {
