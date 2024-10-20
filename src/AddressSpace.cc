@@ -2275,10 +2275,19 @@ void AddressSpace::populate_address_space(Task* t) {
 
 static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   remote_ptr<void> start = km.start();
+  remote_ptr<void> end = km.end();
   if (km.flags() & MAP_GROWSDOWN) {
     start = min(start, km.end() - AddressSpace::chaos_mode_min_stack_size());
+    // We actually must separate mappings from the stack by at least one page - otherwise the
+    // kernel might merge the VMA we're allocating with the stack! That actually can only happen
+    // under rr anyway, because we strip out the MAP_GROWSDOWN flag out of the mmap flags. This
+    // causes problems for glibc - in particular pthread_attr_getstack will open /proc/self/maps
+    // and fish around for the top of the initial thread's stack, and it will get the wrong value
+    // if the stack VMA is merged with the one above it.
+    start -= page_size();
+    end += page_size();
   }
-  return MemoryRange(start, km.end());
+  return MemoryRange(start, end);
 }
 
 static MemoryRange overlaps_excluded_range(const RecordSession& session, MemoryRange range) {
