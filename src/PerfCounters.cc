@@ -69,9 +69,24 @@ static uint32_t pmu_semantics_flags;
 
 /*
  * Find out the cpu model using the cpuid instruction.
- * Full list of CPUIDs at http://sandpile.org/x86/cpuid.htm
- * Another list at
- * http://software.intel.com/en-us/articles/intel-architecture-and-processor-identification-with-cpuid-model-and-family-numbers
+ *
+ * A 3rd party list of CPUIDs at https://sandpile.org/x86/cpuid.htm
+ *
+ * Intel's up-to-date and complete list is in
+ * "Volume 4: Model-Specific Registers", Chapter 2.
+ * See "Intel 64 and IA-32 Architectures Software Developer Manual"
+ * https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+ *
+ * Alternatively you can find the recently added CPUIDs in the lighter document
+ * called "Documentation Changes", navigate in table of contents to
+ * "27. Updates to Chapter 2, Volume 4"
+ * and then "Chapter 2 Model-Specific Registers (MSRs)"
+ *
+ * AMD: your best bet is https://www.amd.com/en/search/documentation/hub.html
+ * Search for "revision guide Family 17h" and "Model 31h" or "Models 00h-0Fh"
+ * For example "Revision Guide for AMD Family 19h Models 00h-0Fh Processors"
+ * has a "Table 2" with "CPUID Values for AMD" showing the specific model and
+ * revisions.
  */
 enum CpuMicroarch {
   UnknownCpu,
