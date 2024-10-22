@@ -117,7 +117,7 @@ static CpuMicroarch compute_cpu_microarch() {
       break;
     case 0x10f10: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
     case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+), 7975WX (Zen2)
-    case 0x20f00: // Dali (Zen) (UNTESTED)
+    case 0x20f00: // Dali (Zen)
       if (ext_family == 8) {
         return AMDZen;
       } else if (ext_family == 0xa) {
@@ -125,8 +125,8 @@ static CpuMicroarch compute_cpu_microarch() {
       }
       break;
     case 0x30f10: // Rome, Castle Peak (Zen 2)
-    case 0x60f00: // Renoir (Zen 2) (UNTESTED)
-    case 0x70f10: // Matisse (Zen 2) (UNTESTED)
+    case 0x60f00: // Renoir (Zen 2)
+    case 0x70f10: // Matisse (Zen 2)
     case 0x60f80: // Lucienne (Zen 2)
     case 0x90f00: // Van Gogh (Zen 2)
       if (ext_family == 8) {
