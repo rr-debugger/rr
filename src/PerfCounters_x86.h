@@ -141,6 +141,8 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x70f40: // Phoenix (Zen 4)
     case 0x70f50: // Hawk Point (Zen 4)
       return AMDZen4;
+    case 0x20f40: // Strix Point (Zen 5)
+      return AMDZen5;
     default:
       break;
   }
