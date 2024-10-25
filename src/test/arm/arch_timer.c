@@ -4,6 +4,9 @@
 #include <sys/prctl.h>
 #include <stdio.h>
 
+// For compatibility with pre-2.38 versions of binutils.
+#define cntvctss_el0 "s3_3_c14_c0_6"
+
 long cntfrq(void) {
   long c;
   __asm__ __volatile__("mrs %0, cntfrq_el0" : "=r"(c));
@@ -19,7 +22,7 @@ long cntvct(void) {
 long cntvctss(void) {
   long c;
   if (getauxval(AT_HWCAP2) & HWCAP2_ECV) {
-    __asm__ __volatile__(".arch armv8.6-a\nmrs %0, cntvctss_el0" : "=r"(c));
+    __asm__ __volatile__(".arch armv8.6-a\nmrs %0, " cntvctss_el0 : "=r"(c));
   } else {
     __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(c));
   }
@@ -33,7 +36,7 @@ void arch_timer_nops(void) {
   __asm__ __volatile__("mrs xzr, cntfrq_el0");
   __asm__ __volatile__("mrs xzr, cntvct_el0");
   if (getauxval(AT_HWCAP2) & HWCAP2_ECV) {
-    __asm__ __volatile__("mrs xzr, cntvctss_el0");
+    __asm__ __volatile__("mrs xzr, " cntvctss_el0);
   }
 }
 
