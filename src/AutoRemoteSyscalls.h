@@ -282,7 +282,8 @@ public:
                           struct stat& real_file, std::string& real_file_name);
 
   // Calling this with allow_death false is DEPRECATED.
-  void check_syscall_result(long ret, int syscallno, bool allow_death = true);
+  // Returns true iff session was not replaying and allow_death is true and process is not alive (-ESRCH)
+  bool check_syscall_result(long ret, int syscallno, bool allow_death = true);
 
 private:
   void setup_path(bool enable_singlestep_path);

@@ -855,13 +855,13 @@ int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
   }
 }
 
-void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allow_death) {
+bool AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allow_death) {
   if (word_size(t->arch()) == 4) {
     // Sign-extend ret because it can be a 32-bit negative errno
     ret = (int)ret;
   }
   if (ret == -ESRCH && allow_death && !t->session().is_replaying()) {
-    return;
+    return true;
   }
   if (-4096 < ret && ret < 0) {
     string extra_msg;
@@ -879,6 +879,7 @@ void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allo
                      << " arg3=0x" << hex << t->regs().arg3() << " arg4=0x" << t->regs().arg4()
                      << " arg5=0x" << hex << t->regs().arg5() << " arg6=0x" << t->regs().arg6();
   }
+  return false;
 }
 
 void AutoRemoteSyscalls::finish_direct_mmap(

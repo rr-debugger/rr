@@ -3205,13 +3205,15 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
   int mprotect_syscallno = syscall_number_for_mprotect(t->arch());
   bool failed_access = false;
   for (auto& m : mappings_to_fix) {
-    long ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot() | PROT_WRITE);
-    if ((int)ret == -EACCES) {
+    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot() | PROT_WRITE);
+    if (ret == -EACCES) {
       // We could be trying to write to a read-only shared file. In that case we should
       // report the error without dying.
       failed_access = true;
-    } else {
-      remote.check_syscall_result(ret, mprotect_syscallno, false);
+    } else if (remote.check_syscall_result(ret, mprotect_syscallno)) {
+      errno = ESRCH;
+      // No point continuing to go around the loop
+      return -1;
     }
   }
   ssize_t nwritten;
@@ -3221,8 +3223,13 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     nwritten = pwrite_all_fallible(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
   }
   for (auto& m : mappings_to_fix) {
-    remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
-                              m.prot());
+    int ret = remote.infallible_syscall_if_alive(mprotect_syscallno, m.start(),
+                                                 m.size(), m.prot());
+    if (ret == -ESRCH) {
+      errno = ESRCH;
+      // No point continuing to go around the loop
+      return nwritten;
+    }
   }
   if (failed_access) {
     errno = EACCES;
