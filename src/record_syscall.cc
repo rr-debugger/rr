@@ -6861,7 +6861,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       Registers r = t->regs();
       if (r.syscall_failed()) {
         uintptr_t path = syscallno == Arch::open ? r.orig_arg1() : r.arg2();
-        bool ok = false;
+        bool ok = true;
         string pathname = t->read_c_str(remote_ptr<char>(path), &ok);
         if (ok && is_gcrypt_deny_file(pathname.c_str())) {
           fake_gcrypt_file(t, &r);
