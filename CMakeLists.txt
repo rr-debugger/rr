@@ -1203,6 +1203,7 @@ set(BASIC_TESTS
   numa
   x86/old_fork
   orphan_process
+  open_null
   openat2
   packet_mmap_disable
   x86/patch_syscall_restart

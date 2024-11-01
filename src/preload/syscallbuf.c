@@ -2532,7 +2532,7 @@ static long sys_open(struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (!supported_open(pathname, flags)) {
+  if (!pathname || !supported_open(pathname, flags)) {
     return traced_raw_syscall(call);
   }
 
