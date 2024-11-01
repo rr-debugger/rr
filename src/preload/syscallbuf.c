@@ -2446,6 +2446,12 @@ static long sys_mprotect(struct syscall_info* call) {
 }
 
 static int supported_open(const char* file_name, int flags) {
+  if (!file_name) {
+    /* XXXkhuey what about other bogus but non-null pointers?
+       We're going to crash below. */
+    return 0;
+  }
+
   if (is_gcrypt_deny_file(file_name)) {
     /* This needs to be a traced syscall. We want to return an
        open file even if the file doesn't exist and the untraced syscall
@@ -2532,7 +2538,7 @@ static long sys_open(struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (!pathname || !supported_open(pathname, flags)) {
+  if (!supported_open(pathname, flags)) {
     return traced_raw_syscall(call);
   }
 
