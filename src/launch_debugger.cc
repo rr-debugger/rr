@@ -48,9 +48,10 @@ static const string& gdb_rr_macros() {
   if (s.empty()) {
     stringstream ss;
     ss << DebuggerExtensionCommandHandler::gdb_macros()
-       << "define restart\n"
-       << "  run c$arg0\n"
-       << "end\n"
+       // gdb warns about redefining inbuilt commands, silence that by
+       // wrapping it in python code
+       << "python gdb.execute('define jump\nrr-denied jump\nend')"
+       << "python gdb.execute('define restart\nrun c$arg0\nend')"
        << "document restart\n"
        << "restart at checkpoint N\n"
        << "checkpoints are created with the 'checkpoint' command\n"
@@ -60,9 +61,6 @@ static const string& gdb_rr_macros() {
        << "end\n"
        << "document seek-ticks\n"
        << "restart at given ticks value\n"
-       << "end\n"
-       << "define jump\n"
-       << "  rr-denied jump\n"
        << "end\n"
        // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
        // issued before any user-generated resume-execution command
