@@ -13,8 +13,15 @@ if [[ `ls latest-trace/*_pack$bitness-* | wc -l` != "1" ]]; then
     failed "Failed to coalesce all instances of 'pack'"
 fi
 
-if [[ `ls latest-trace/mmap_pack_* | wc -l` == "0" ]]; then
-    failed "Packing produced no files."
+touch does_fs_support_clone
+# Assumes your `cp` supports the --reflink flag
+cp --reflink=always does_fs_support_clone does_fs_support_clone1
+if [[ $? -ne 0 ]]; then
+  # Since fs does NOT support file cloning, this further check should now be done
+  # (without the outer `if` the pack test would fail on btrfs)
+  if [[ `ls latest-trace/mmap_pack_* | wc -l` == "0" ]]; then
+       failed "Packing produced no files."
+  fi
 fi
 
 # If there are no copies of _mapped_file it was probably copied
