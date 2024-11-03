@@ -58,6 +58,7 @@ struct perf_event_attrs {
   const char *pmu_name = nullptr;
   uint32_t pmu_flags = 0;
   uint32_t skid_size = 0;
+  uint32_t ticks_min_period = 1;
   bool checked = false;
   bool has_ioc_period_bug = false;
   bool only_one_counter = false;
@@ -409,23 +410,32 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   return ScopedFd(fd);
 }
 
-static void check_for_ioc_period_bug(perf_event_attrs &perf_attr) {
+// Returns the ticks minimum period.
+static uint32_t check_for_ioc_period_bug(perf_event_attrs &perf_attr) {
   // Start a cycles counter
   struct perf_event_attr attr = perf_attr.ticks;
   attr.sample_period = 0xffffffff;
   attr.exclude_kernel = 1;
   ScopedFd bug_fd = start_counter(0, -1, &attr);
 
-  uint64_t new_period = 1;
-  if (ioctl(bug_fd, PERF_EVENT_IOC_PERIOD, &new_period)) {
-    FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed";
+  uint64_t period = 1;
+  if (ioctl(bug_fd, PERF_EVENT_IOC_PERIOD, &period)) {
+    // On some hardware the kernel imposes a minimum period of 32 to work
+    // around errata, e.g.
+    // https://github.com/torvalds/linux/blob/11066801dd4b7c4d75fce65c812723a80c1481ae/arch/x86/events/intel/core.c#L4610
+    period = 32;
+    if (ioctl(bug_fd, PERF_EVENT_IOC_PERIOD, &period)) {
+      FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed";
+    }
   }
 
   struct pollfd poll_bug_fd = {.fd = bug_fd, .events = POLL_IN, .revents = 0 };
   poll(&poll_bug_fd, 1, 0);
 
   perf_attr.has_ioc_period_bug = poll_bug_fd.revents == 0;
-  LOG(debug) << "has_ioc_period_bug=" << perf_attr.has_ioc_period_bug;
+  LOG(debug) << "has_ioc_period_bug=" << perf_attr.has_ioc_period_bug
+    << " min_period=" << period;
+  return period;
 }
 
 static const int NUM_BRANCHES = 500;
@@ -497,12 +507,14 @@ static void check_working_counters(perf_event_attrs &perf_attr) {
   }
 }
 
-static void check_for_bugs(perf_event_attrs &perf_attr) {
+// Returns the ticks minimum period.
+static uint32_t check_for_bugs(perf_event_attrs &perf_attr) {
   DEBUG_ASSERT(!running_under_rr());
 
-  check_for_ioc_period_bug(perf_attr);
+  uint32_t min_period = check_for_ioc_period_bug(perf_attr);
   check_working_counters(perf_attr);
   check_for_arch_bugs(perf_attr);
+  return min_period;
 }
 
 static std::vector<CpuMicroarch> get_cpu_microarchs() {
@@ -645,7 +657,7 @@ static void check_pmu(int pmu_index) {
     return;
   }
 
-  check_for_bugs(perf_attr);
+  perf_attr.ticks_min_period = check_for_bugs(perf_attr);
   /*
    * For maintainability, and since it doesn't impact performance when not
    * needed, we always activate this. If it ever turns out to be a problem,
@@ -692,7 +704,11 @@ TicksSemantics PerfCounters::default_ticks_semantics() {
 uint32_t PerfCounters::skid_size() {
   DEBUG_ASSERT(attributes_initialized);
   DEBUG_ASSERT(perf_attrs[pmu_index].checked);
-  return perf_attrs[pmu_index].skid_size;
+  // If we want to stop after one event, and our minimum period is Y,
+  // and the skid size is X, then we'll actually use a period of Y
+  // and potentially skid to Y + X, so report Y + X as the skid size.
+  return perf_attrs[pmu_index].skid_size +
+      perf_attrs[pmu_index].ticks_min_period;
 }
 
 PerfCounters::PerfCounters(pid_t tid, int cpu_binding,
@@ -902,6 +918,7 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
     // PERF_EVENT_IOC_PERIOD so just turn 0 into a very big number.
     ticks_period = uint64_t(1) << 60;
   }
+  ticks_period = max<Ticks>(ticks_period, perf_attr.ticks_min_period);
 
   if (!opened) {
     LOG(debug) << "Recreating counters with period " << ticks_period;
