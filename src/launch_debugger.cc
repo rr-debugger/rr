@@ -50,8 +50,8 @@ static const string& gdb_rr_macros() {
     ss << DebuggerExtensionCommandHandler::gdb_macros()
        // gdb warns about redefining inbuilt commands, silence that by
        // wrapping it in python code
-       << "python gdb.execute('define jump\nrr-denied jump\nend')"
-       << "python gdb.execute('define restart\nrun c$arg0\nend')"
+       << "python gdb.execute('define jump\\nrr-denied jump\\nend')\n"
+       << "python gdb.execute('define restart\\nrun c$arg0\\nend')\n"
        << "document restart\n"
        << "restart at checkpoint N\n"
        << "checkpoints are created with the 'checkpoint' command\n"
