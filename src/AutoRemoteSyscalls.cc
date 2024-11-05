@@ -619,6 +619,31 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
     LOG(debug) << "Failed to recvmsg " << ret;
     return ret;
   }
+
+  typename Arch::msghdr msghdr =
+      remote.task()->read_mem(msg.remote_msg(), &ok);
+  if (!ok) {
+    ASSERT(remote.task(), errno == ESRCH || errno == EIO);
+    LOG(debug) << "Failed to read msghdr";
+    return -ESRCH;
+  }
+  ASSERT(remote.task(), !(msghdr.msg_flags & MSG_CTRUNC))
+      << "Control message was truncated; error in receiving fd in "
+         "AutoRemoteSyscalls::child_recvmsg(). msghdr.msg_flags: "
+      << HEX(msghdr.msg_flags) << "\n"
+      << "This error has been most likely caused by a process\n"
+      << "exceeding the max allowed open files limit set by\n"
+      << "Linux. Please consult `man 1 ulimit' and `man 1 prlimit' to\n"
+      << "learn how the max open files limit may be changed/checked.\n"
+      << "As usual, always carefully think through all implications of\n"
+      << "changing the process limits on your programs before making any\n"
+      << "changes.\n\n"
+      << "If the above Assertion still fails, then (a) The limit you set was\n"
+      << "not high enough, or (b) the program could be opening files in an\n"
+      << "unbounded fashion, or (c) there is some other reason why socket\n"
+      << "control messages are being truncated and file descriptors cannot be\n"
+      << "received via SCM_RIGHTS.";
+
   int their_fd = remote.task()->read_mem(msg.remote_cmsgdata(), &ok);
   if (!ok) {
     ASSERT(remote.task(), errno == ESRCH || errno == EIO);
