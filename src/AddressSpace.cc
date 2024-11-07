@@ -1757,7 +1757,11 @@ void AddressSpace::verify(Task* t) const {
   LOG(debug) << "Verifying address space for task " << t->tid;
 
   MemoryMap::const_iterator mem_it = mem.begin();
-  KernelMapIterator kernel_it(t);
+  bool ok = false;
+  // Must pass ok parameter otherwise KernelMapIterator constructor will become
+  // infallible if /proc/[tid]/maps cannot be opened
+  KernelMapIterator kernel_it(t, &ok);
+  // checking at_end() is equivalent to checking if ok
   if (kernel_it.at_end()) {
     LOG(debug) << "Task " << t->tid << " exited unexpectedly, ignoring";
     return;
