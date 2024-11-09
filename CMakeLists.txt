@@ -1330,6 +1330,7 @@ set(BASIC_TESTS
   sigaltstack
   sigchld_interrupt_signal
   sigcont
+  sigcont_threaded
   sigframe_grow_stack
   sighandler_bad_rsp_sigsegv
   sighandler_fork
