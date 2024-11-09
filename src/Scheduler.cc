@@ -318,10 +318,10 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
   }
 
   if (t->emulated_stop_type != NOT_STOPPED) {
-    if (t->is_signal_pending(SIGCONT)) {
-      // We have to do this here. RecordTask::signal_delivered can't always
-      // do it because if we don't PTRACE_CONT the task, we'll never see the
-      // SIGCONT.
+    if (t->is_stopped() && t->is_signal_pending(SIGCONT)) {
+      // We have to do this here. RecordTask::signal_delivered can't do it
+      // in the case where t->is_stopped(), because if we don't PTRACE_CONT
+      // the task, we'll never see the SIGCONT.
       t->emulate_SIGCONT();
       // We shouldn't run any user code since there is at least one signal
       // pending.
