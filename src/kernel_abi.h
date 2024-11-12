@@ -2520,17 +2520,21 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     struct hw_bp dbg_regs[16];
   };
 
+  // Also defined as mcontext_t in some headers
   struct __attribute((aligned(16))) sigcontext {
     __u64 fault_addr;
     user_pt_regs regs;
     // ISA extension state follows here
+    unsigned char __reserved[4096] __attribute((aligned(16)));
   };
 
+  // Also defined as ucontext_t in some headers
   struct ucontext {
     unsigned long	uc_flags;
     ptr<ucontext> uc_link;
     stack_t		  uc_stack;
     kernel_sigset_t	  uc_sigmask;
+    /* 128 bytes are reserved for the sigmask so reflect that here */
     uint8_t __unused1[1024 / 8 - sizeof(kernel_sigset_t)];
     struct sigcontext uc_mcontext;
   };

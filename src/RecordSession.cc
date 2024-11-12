@@ -1729,8 +1729,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                           /* this returns 512 when XSAVE unsupported */
                           xsave_area_size();
         } else if (t->arch() == aarch64) {
-          sigframe_size = sizeof(ARM64Arch::rt_sigframe) +
-                          sizeof(ARM64Arch::user_fpsimd_state);
+          sigframe_size = sizeof(ARM64Arch::rt_sigframe);
         } else {
           DEBUG_ASSERT(0 && "Add sigframe size for your architecture here");
         }
