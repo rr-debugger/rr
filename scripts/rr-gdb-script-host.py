@@ -14,6 +14,14 @@ def strip_prefix(s: str, needle: str) -> Optional[str]:
 
     return None
 
+def print_wrapper(*args, **kwargs):
+    # Don't allow the script to print to stdout and interfere
+    # with our communication with the rr process.
+    f = kwargs.get("file")
+    if f is None or f == sys.stdout:
+        kwargs["file"] = sys.stderr
+    print(*args, **kwargs)
+
 GdbNewObjfileEventCallback = Callable[[object], None]
 
 class DebuggerExtensionCommand:
@@ -54,7 +62,7 @@ class GdbScriptHost:
 
     def execute_script(self, script: str):
         gdb_api: GdbApiRoot = GdbApiRoot(self)
-        exec(script, {'gdb': gdb_api})
+        exec(script, {'gdb': gdb_api, "print": print_wrapper})
 
     def new_objfile(self, f: str):
         new_objfile: GdbNewObjfile = GdbNewObjfile(self, f)
