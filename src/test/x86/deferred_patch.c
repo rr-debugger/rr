@@ -105,6 +105,7 @@ static void *do_thread(void*) {
   test_assert(1 == read(pipefds2[0], &byte, 1));
   test_assert(1 == write(pipefds[1], &byte, 1));
   futex_wait(2);
+  test_assert(futex == 3);
   return NULL;
 }
 
@@ -136,10 +137,11 @@ int main(void) {
   // Wait for SIGUSR1
   test_assert(1 == write(pipefds2[1], &byte, 1));
   futex_wait(1);
+
+  // Issue SIGUSR2 in thread to let it out of the futex (and let it patch the syscall)
+  sched_yield(); sched_yield();
   pthread_kill(t, SIGUSR2);
   pthread_join(t, NULL);
-
-  test_assert(futex == 3);
 
   // Make sure that the patching actually happened (if the syscallbuf is enabled)
   uintptr_t ret = deferred_patch_syscall(SYS_rrcall_check_presence, RRCALL_CHECK_SYSCALLBUF_USED_OR_DISABLED, 0, 0, 0);
