@@ -1017,13 +1017,32 @@ void RecordSession::desched_state_changed(RecordTask* t) {
       (uint8_t)1);
 }
 
+static void retry_syscall_patch(RecordTask* t, remote_code_ptr orig_syscall_ip)
+{
+  bool should_retry = false;
+  if (t->vm()->monkeypatcher().try_patch_syscall(t, false, should_retry, orig_syscall_ip)) {
+    // Syscall was patched. Emit event and continue execution.
+    LOG(debug) << "Retried patch applied successfully";
+    auto ev = Event::patch_syscall();
+    ev.PatchSyscall().patch_after_syscall = true;
+    t->record_event(ev);
+  }
+  ASSERT(t, !should_retry);
+}
+
 static void syscall_not_restarted(RecordTask* t) {
   LOG(debug) << "  " << t->tid << ": popping abandoned interrupted " << t->ev()
              << "; pending events:";
   if (IS_LOGGING(debug)) {
     t->log_pending_events();
   }
+  bool should_retry_patch = t->ev().Syscall().should_retry_patch;
+  remote_code_ptr orig_syscall_ip = t->ev().Syscall().regs.ip();
   t->pop_syscall_interruption();
+  if (should_retry_patch) {
+    LOG(debug) << "Retrying deferred syscall patching non-restarted syscall at " << orig_syscall_ip << " (current ip " << t->regs().ip() << ")";
+    retry_syscall_patch(t, orig_syscall_ip);
+  }
 }
 
 /**
@@ -1072,15 +1091,12 @@ static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
   if (0 > ret) {
     syscall_not_restarted(t);
   } else if (t->arch() == x86 || t->arch() == x86_64) {
-    // On x86, we would have expected this to get restored to the syscallno.
-    // Since the syscallno is in a different register on other platforms, this
-    // assert does not apply.
-    // We have seen cases where `ret` is `restart_syscall`.
-    ASSERT(t, syscallno == ret ||
-        is_restart_syscall_syscall(ret, t->ev().Syscall().arch()))
-        << "Interrupted call was " << t->ev().Syscall().syscall_name()
-        << " and sigreturn claims to be restarting "
-        << syscall_name(ret, t->ev().Syscall().arch());
+    SupportedArch arch;
+    if (get_syscall_instruction_arch(t, t->regs().ip(), &arch) && arch == t->arch() &&
+        (syscallno == ret || is_restart_syscall_syscall(ret, t->ev().Syscall().arch()))) {
+      return;
+    }
+    syscall_not_restarted(t);
   }
 }
 
@@ -1337,7 +1353,13 @@ void RecordSession::syscall_state_changed(RecordTask* t,
          * done with it.  But if we are, "freeze" it on the
          * event stack until the execution point where it
          * might be restarted. */
+        bool need_patch_retry = false;
+        remote_code_ptr orig_syscall_ip;
         if (!may_restart) {
+          need_patch_retry = t->ev().Syscall().should_retry_patch;
+          if (need_patch_retry) {
+            orig_syscall_ip = t->ev().Syscall().regs.ip();
+          }
           t->pop_syscall();
           if (EV_DESCHED == t->ev().type()) {
             LOG(debug) << "  exiting desched critical section";
@@ -1350,17 +1372,9 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
         t->canonicalize_regs(syscall_arch);
 
-        if (!may_restart) {
-          if (t->retry_syscall_patching) {
-            LOG(debug) << "Retrying deferred syscall patching";
-            t->retry_syscall_patching = false;
-            if (t->vm()->monkeypatcher().try_patch_syscall(t, false)) {
-              // Syscall was patched. Emit event and continue execution.
-              auto ev = Event::patch_syscall();
-              ev.PatchSyscall().patch_after_syscall = true;
-              t->record_event(ev);
-            }
-          }
+        if (need_patch_retry) {
+          LOG(debug) << "Retrying deferred syscall patching at " << orig_syscall_ip << " (current ip " << t->regs().ip() << ")";
+          retry_syscall_patch(t, orig_syscall_ip);
         }
       }
 
@@ -2053,8 +2067,9 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
     }
 
     // Don't ever patch a sigreturn syscall. These can't go through the syscallbuf.
+    bool should_retry = false;
     if (!is_sigreturn(t->regs().original_syscallno(), t->arch())) {
-      if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
+      if (t->vm()->monkeypatcher().try_patch_syscall(t, true, should_retry)) {
         // Syscall was patched. Emit event and continue execution.
         t->record_event(Event::patch_syscall());
         return true;
@@ -2068,6 +2083,7 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
     }
 
     t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
+    t->ev().Syscall().should_retry_patch = should_retry;
   }
 
   check_initial_task_syscalls(t, step_result);
