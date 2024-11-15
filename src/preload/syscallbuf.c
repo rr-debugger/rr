@@ -4341,6 +4341,13 @@ case SYS_epoll_pwait:
 #undef CASE
 #undef CASE_GENERIC_NONBLOCKING
 #undef CASE_GENERIC_NONBLOCKING_FD
+    case SYS_rrcall_check_presence:
+      if (call->args[0] == RRCALL_CHECK_SYSCALLBUF_USED_OR_DISABLED &&
+          call->args[1] == 0 && call->args[2] == 0 && call->args[3] == 0 &&
+          call->args[4] == 0 && call->args[5] == 0) {
+        return 0;
+      }
+      // fallthrough
     default:
       return traced_raw_syscall(call);
   }

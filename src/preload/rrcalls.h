@@ -73,6 +73,15 @@
  * presence of absence of rr.
  */
 #define SYS_rrcall_check_presence (RR_CALL_BASE + 8)
+   /*
+    * If `arg1` is `RRCALL_CHECK_SYSCALLBUF_USED_OR_DISABLED`,
+    * SYS_rrcall_check_presence returns 0 only if
+    * 1) The syscallbuf was used to service the syscall
+    * 2) The syscallbuf is disabled
+    *
+    * Otherwise returns ENOTSUP.
+    */
+    #define RRCALL_CHECK_SYSCALLBUF_USED_OR_DISABLED 1
 /**
  * Requests that rr detach from this process and re-create outside of its
  * process tree, such that it may run without seccomp.

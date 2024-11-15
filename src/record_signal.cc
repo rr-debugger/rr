@@ -102,6 +102,7 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   ASSERT(t, len > 0);
 
   Registers r = t->regs();
+  bool should_retry_patch = false;
   if (special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTVCT_EL0 ||
       special_instruction.opcode == SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0) {
     if (special_instruction.regno != 31) {
@@ -114,7 +115,7 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   } else if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC ||
              special_instruction.opcode == SpecialInstOpcode::X86_RDTSCP) {
     if (special_instruction.opcode == SpecialInstOpcode::X86_RDTSC &&
-        t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, true)) {
+        t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, true, should_retry_patch)) {
       Event ev = Event::patch_syscall();
       ev.PatchSyscall().patch_trapping_instruction = true;
       t->record_event(ev);
@@ -141,15 +142,16 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   t->set_regs(r);
   t->record_event(Event::instruction_trap());
 
-  if (t->retry_syscall_patching) {
+  if (should_retry_patch) {
     LOG(debug) << "Retrying deferred syscall patching";
-    t->retry_syscall_patching = false;
-    if (t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, false)) {
+    should_retry_patch = false;
+    if (t->vm()->monkeypatcher().try_patch_trapping_instruction(t, len, false, should_retry_patch)) {
       // Instruction was patched. Emit event.
       auto ev = Event::patch_syscall();
       ev.PatchSyscall().patch_after_syscall = true;
       t->record_event(ev);
     }
+    ASSERT(t, !should_retry_patch);
   }
 
   t->push_event(Event::noop());

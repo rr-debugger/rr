@@ -808,9 +808,6 @@ public:
   // be manually run.
   bool waiting_for_ptrace_exit;
 
-  // When exiting a syscall, we should call MonkeyPatcher::try_patch_syscall again.
-  bool retry_syscall_patching;
-
   // We've sent a SIGKILL during shutdown for this task.
   bool sent_shutdown_kill;
 
