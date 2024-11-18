@@ -80,6 +80,7 @@ static void handle_usr1(__attribute__((unused)) int sig) {
   // rather than the futex one that we interrupted.
   test_assert(1 == read(pipefds[0], &byte, 1));
   futex = 2;
+  test_assert(1 == write(pipefds2[1], &byte, 1));
   return;
 }
 
@@ -104,6 +105,7 @@ static void *do_thread(void*) {
   syscall(SYS_tkill, parent, SIGUSR1);
   test_assert(1 == read(pipefds2[0], &byte, 1));
   test_assert(1 == write(pipefds[1], &byte, 1));
+  test_assert(1 == read(pipefds2[0], &byte, 1));
   futex_wait(2);
   test_assert(futex == 3);
   return NULL;
