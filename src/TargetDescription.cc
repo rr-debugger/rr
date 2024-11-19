@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
 #include "TargetDescription.h"
 #include "GdbServerConnection.h"
 #include "kernel_abi.h"
@@ -7,13 +9,13 @@ namespace rr {
 
 class FeatureStream {
 public:
-  std::string result() { return stream.str(); }
+  string result() { return stream.str(); }
 
   template <typename Any>
   friend FeatureStream& operator<<(FeatureStream& stream, Any any);
 
 private:
-  std::stringstream stream;
+  stringstream stream;
   const char* arch_prefix;
 };
 
@@ -115,7 +117,7 @@ static const char header[] = R"(<?xml version="1.0"?>
 <target>
 )";
 
-std::string TargetDescription::to_xml() const {
+string TargetDescription::to_xml() const {
   FeatureStream fs;
   fs << header << arch << "<osabi>GNU/Linux</osabi>\n";
   for (const auto feature : target_features) {
