@@ -697,8 +697,12 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
 // Strip any directory part from the filename `s`
 void base_name(std::string& s);
 struct TraceOutputPath {
+  // The root trace directory, where recorded traces will be saved
   std::string output_trace_dir;
+  // The name of the recording that's currently being created
   std::string name;
+  // Flags that are set, to signal if user requested different
+  // trace dirs or different names of the recordings
   bool usr_provided_outdir;
   bool usr_provided_name;
 };
