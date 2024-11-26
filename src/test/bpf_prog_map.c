@@ -75,8 +75,14 @@ int main(void) {
   VERIFY_GUARD(map_attr);
 
   memset(map_attr, 0, sizeof(*map_attr));
-  map_attr->prog_bind_map.map_fd = map_fd;
-  map_attr->prog_bind_map.prog_fd = prog;
+  struct {
+    uint32_t prog_fd;
+    uint32_t map_fd;
+    uint32_t flags;
+  } prog_bind_map;
+  prog_bind_map.map_fd = map_fd;
+  prog_bind_map.prog_fd = prog;
+  memcpy(map_attr, &prog_bind_map, sizeof(prog_bind_map));
   int ret = bpf(RR_BPF_PROG_BIND_MAP, map_attr, sizeof(*map_attr));
   test_assert(ret == 0 || errno == EINVAL);
   VERIFY_GUARD(map_attr);
