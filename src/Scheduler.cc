@@ -349,7 +349,10 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
     }
   }
 
-  if (t->waiting_for_ptrace_exit && !t->was_reaped()) {
+  if (t->seen_ptrace_exit_event() && !t->handled_ptrace_exit_event()) {
+    LOGM(debug) << "  " << t->tid << " has a pending PTRACE_EVENT_EXIT to process; we can run it";
+    return true;
+  } else if (t->waiting_for_ptrace_exit && !t->was_reaped()) {
     LOGM(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
   } else if (t->is_stopped() || t->was_reaped()) {
     LOGM(debug) << "  " << t->tid << "  was already stopped with status " << t->status();
