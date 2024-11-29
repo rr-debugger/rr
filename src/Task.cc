@@ -2261,9 +2261,21 @@ static bool simulate_transient_error(Task* t) {
   return true;
 }
 
+static bool ignore_signal_for_detached_proxy(int sig) {
+  switch (sig) {
+    case SIGSTOP:
+    case SIGCONT:
+    case SIGTTIN:
+    case SIGTTOU:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool Task::did_waitpid(WaitStatus status) {
   if (is_detached_proxy() &&
-      (status.stop_sig() == SIGSTOP || status.stop_sig() == SIGCONT)) {
+      ignore_signal_for_detached_proxy(status.stop_sig())) {
     LOG(debug) << "Task " << tid << " is a detached proxy, ignoring status " << status;
     return true;
   }
