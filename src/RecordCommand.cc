@@ -590,6 +590,8 @@ static void install_signal_handlers(void) {
   sigaction(SIGABRT, &sa, nullptr);
   sigaction(SIGQUIT, &sa, nullptr);
   sigaction(SIGTRAP, &sa, nullptr);
+  sigaction(SIGTTIN, &sa, nullptr);
+  sigaction(SIGTTOU, &sa, nullptr);
 }
 
 static void setup_session_from_flags(RecordSession& session,
