@@ -2288,6 +2288,10 @@ bool remove_latest_trace_symlink() {
   return true;
 }
 
+static bool ends_with(std::string_view str, std::string_view suffix) {
+  return str.size() >= suffix.size() && str.compare(str.size()-suffix.size(), suffix.size(), suffix) == 0;
+}
+
 bool is_valid_trace_name(const string& entry, std::string* reason) {
   // filename corresponds to dirname
   const string name = filename(entry.c_str());
@@ -2310,9 +2314,9 @@ bool is_valid_trace_name(const string& entry, std::string* reason) {
     }
     return false;
   }
-  if (name == "cpu_lock") {
+  if (name == "cpu_lock" || name == "src" || ends_with(name, ".xml")) {
     if (reason) {
-      *reason = "Name cpu_lock is reserved";
+      *reason = "Name " + name + " is reserved";
     }
     return false;
   }

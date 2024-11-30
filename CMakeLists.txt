@@ -845,6 +845,11 @@ install(PROGRAMS scripts/signal-rr-recording.sh
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
+# Note that this works fine when installing to /usr/local, but zsh by default doesn't autoload *any* completions in HOME,
+# so people will still have to manually set `FPATH=~/.local/share/zsh/site-functions`.
+install(PROGRAMS scripts/rr_completion.zsh
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/zsh/site-functions RENAME _rr)
+
 set(RR_INSTALL_LIBS rrpreload rrpage rr_exec_stub)
 if(RTLD_AUDIT)
   set(RR_INSTALL_LIBS ${RR_INSTALL_LIBS} rraudit)
