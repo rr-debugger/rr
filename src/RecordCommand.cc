@@ -817,6 +817,30 @@ static void reset_uid_sudo() {
   prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0);
 }
 
+static ScopedFd open_controlling_terminal_if_foreground_process_group_leader() {
+  char path[L_ctermid + 1];
+  ctermid(path);
+  ScopedFd terminal_fd(path, O_RDONLY);
+  if (terminal_fd.is_open()) {
+    pid_t fg_process_group = tcgetpgrp(terminal_fd);
+    if (fg_process_group != getpid()) {
+      terminal_fd.close();
+    }
+  }
+  return terminal_fd;
+}
+
+static void detach_teleport() {
+  int ret = syscall(SYS_rrcall_detach_teleport, (uintptr_t)0, (uintptr_t)0,
+    (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
+  if (ret < 0) {
+    FATAL() << "Failed to detach from parent rr";
+  }
+  if (running_under_rr(false)) {
+    FATAL() << "Detaching from parent rr did not work";
+  }
+}
+
 int RecordCommand::run(vector<string>& args) {
   RecordFlags flags;
   while (parse_record_arg(args, flags)) {
@@ -829,14 +853,28 @@ int RecordCommand::run(vector<string>& args) {
         return 1;
       case NESTED_DETACH:
       case NESTED_RELEASE: {
-        int ret = syscall(SYS_rrcall_detach_teleport, (uintptr_t)0, (uintptr_t)0,
-          (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
-        if (ret < 0) {
-          FATAL() << "Failed to detach from parent rr";
+        bool is_process_group_leader = getpgrp() == getpid();
+        ScopedFd terminal_fd = open_controlling_terminal_if_foreground_process_group_leader();
+
+        detach_teleport();
+
+        if (is_process_group_leader) {
+          setpgid(0, 0);
         }
-        if (running_under_rr(false)) {
-          FATAL() << "Detaching from parent rr did not work";
+        if (terminal_fd.is_open()) {
+          struct sigaction sa;
+          struct sigaction sa_old;
+          memset(&sa, 0, sizeof(sa));
+          sa.sa_handler = SIG_IGN;
+          // Ignore SIGTTOU while we change settings, we don't want it to stop us
+          sigaction(SIGTTOU, &sa, &sa_old);
+          int ret = tcsetpgrp(terminal_fd, getpid());
+          if (ret) {
+            LOG(warn) << "Failed to make ourselves the foreground process: " << errno_name(errno);
+          }
+          sigaction(SIGTTOU, &sa_old, nullptr);
         }
+
         if (flags.nested == NESTED_RELEASE) {
           exec_child(args);
           return 1;

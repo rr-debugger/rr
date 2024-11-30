@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+skip_if_test_32_bit
+actual_rr=$(which $RR_EXE)
+RR_EXE="detach_terminal$bitness --newtty $actual_rr"
+just_record detach_terminal$bitness "--newpgrp $actual_rr record --nested=release detach_terminal$bitness"
+replay
+check_record EXIT-SUCCESS

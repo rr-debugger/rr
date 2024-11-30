@@ -1507,6 +1507,7 @@ set(TESTS_WITH_PROGRAM
   crash_in_function
   daemon_read
   dconf_mock
+  detach_terminal
   dev_tty
   x86/diversion_rdtsc
   diversion_sigtrap
