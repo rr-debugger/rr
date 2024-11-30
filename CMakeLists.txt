@@ -1567,6 +1567,7 @@ set(TESTS_WITH_PROGRAM
   mutex_pi_stress
   nested_detach_wait
   nested_detach_kill_stuck
+  nested_release_signal
   overflow_branch_counter
   pack
   patch_page_end

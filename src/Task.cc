@@ -3561,6 +3561,11 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
   TraceeAttentionSet::get_original_sigmask(&sigmask);
   sigprocmask(SIG_SETMASK, &sigmask, nullptr);
 
+  // Stop igoring signals.
+  for (int sig = 1; sig <= 31; ++sig) {
+    signal(sig, SIG_DFL);
+  }
+
   struct NativeArch::cap_header header = {.version =
                                               _LINUX_CAPABILITY_VERSION_3,
                                           .pid = 0 };
