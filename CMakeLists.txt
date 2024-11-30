@@ -1719,6 +1719,7 @@ set(TESTS_WITHOUT_PROGRAM
   nested_detach_kill
   nested_detach_stop
   nested_release
+  nested_release_exit_code
   pack_dir
   parent_no_break_child_bkpt
   parent_no_stop_child_crash

@@ -266,6 +266,14 @@ RecordTask::~RecordTask() {
   session().on_destroy_record_task(this);
 }
 
+void RecordTask::record_exit_trace_event(WaitStatus exit_status) {
+  session().trace_writer().write_task_event(
+      TraceTaskEvent::for_exit(tid, exit_status));
+  if (thread_group()->tgid == tid) {
+    thread_group()->exit_status = exit_status;
+  }
+}
+
 void RecordTask::record_exit_event(WriteChildTid write_child_tid) {
   // The kernel explicitly only clears the futex if the address space is shared.
   // If the address space has no other users then the futex will not be cleared

@@ -134,6 +134,8 @@ public:
    * If necessary, signal the ptracer that this task has exited.
    */
   void do_ptrace_exit_stop(WaitStatus exit_status);
+
+  void record_exit_trace_event(WaitStatus exit_status);
   /**
    * Return the exit event.
    * If write_child_tid is set, zero out child_tid now if applicable.

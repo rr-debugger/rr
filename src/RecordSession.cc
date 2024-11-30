@@ -113,14 +113,6 @@ static void record_robust_futex_changes(RecordTask* t) {
   RR_ARCH_FUNCTION(record_robust_futex_changes_arch, t->arch(), t);
 }
 
-static void record_exit_trace_event(RecordTask* t, WaitStatus exit_status) {
-  t->session().trace_writer().write_task_event(
-      TraceTaskEvent::for_exit(t->tid, exit_status));
-  if (t->thread_group()->tgid == t->tid) {
-    t->thread_group()->exit_status = exit_status;
-  }
-}
-
 static bool looks_like_syscall_entry(RecordTask* t) {
   bool ok;
   bool at_syscall = is_at_syscall_instruction(t,
@@ -298,7 +290,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // letting this task complete its exit.
   bool may_wait_exit = !t->was_reaped() && !is_coredumping_signal(exit_status.fatal_sig()) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
-  record_exit_trace_event(t, exit_status);
+  t->record_exit_trace_event(exit_status);
   t->record_exit_event(
     (!t->was_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
   if (!t->was_reaped()) {
@@ -766,7 +758,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         // address space.
         pid_t tid = t->rec_tid;
         WaitStatus status = t->status();
-        record_exit_trace_event(t, WaitStatus(0));
+        t->record_exit_trace_event(WaitStatus(0));
         t->record_exit_event();
         // Don't call RecordTask::destroy() because we don't want to
         // PTRACE_DETACH.
@@ -1839,7 +1831,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // actually kill the task now that it isn't under ptrace control anymore.
         t->destroy_buffers(nullptr, nullptr);
         WaitStatus exit_status = WaitStatus::for_fatal_sig(sig);
-        record_exit_trace_event(t, exit_status);
+        t->record_exit_trace_event(exit_status);
         // Allow writing child_tid now because otherwise the write will race
         t->record_exit_event(RecordTask::WRITE_CHILD_TID);
         // On a real affected kernel, we probably would have never gotten here,

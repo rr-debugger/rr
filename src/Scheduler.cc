@@ -659,16 +659,18 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
       waited->emulated_stop_code = status;
       parent->send_synthetic_SIGCHLD_if_necessary();
     }
-
-    if (!parent &&
-        (status.type() == WaitStatus::EXIT || status.type() == WaitStatus::FATAL_SIGNAL)) {
-      // The task is now dead, but so is our parent, so none of our
-      // tasks care about this. We can now delete the proxy task.
-      // This will also reap the rec_tid of the proxy task.
-      delete waited;
-      // If there is a parent, we'll kill this task when the parent reaps it
-      // in our wait() emulation.
+    if (status.type() == WaitStatus::EXIT || status.type() == WaitStatus::FATAL_SIGNAL) {
+      waited->record_exit_trace_event(status);
+      if (!parent) {
+        // The task is now dead, but so is our parent, so none of our
+        // tasks care about this. We can now delete the proxy task.
+        // This will also reap the rec_tid of the proxy task.
+        delete waited;
+        // If there is a parent, we'll kill this task when the parent reaps it
+        // in our wait() emulation.
+      }
     }
+
     return nullptr;
   }
   return waited;

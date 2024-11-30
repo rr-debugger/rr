@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+just_record $RR_EXE "record --nested=release false" && failed "error not propagated"
+passed
