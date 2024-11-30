@@ -3561,7 +3561,9 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
   TraceeAttentionSet::get_original_sigmask(&sigmask);
   sigprocmask(SIG_SETMASK, &sigmask, nullptr);
 
-  // Stop igoring signals.
+  // When creating a detach-teleport child, this task inherits signal
+  // handling set up by RecordCommand. So reset non-RT signal handlers
+  // to defaults now.
   for (int sig = 1; sig <= 31; ++sig) {
     signal(sig, SIG_DFL);
   }

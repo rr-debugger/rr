@@ -207,13 +207,14 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       schedule_frozen(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
-    // Initial tracee. It inherited its state from this process, so set it up.
-    // The very first task we fork inherits the signal
-    // dispositions of the current OS process (which should all be
-    // default at this point, but ...).  From there on, new tasks
-    // will transitively inherit from this first task.
+    // Initial tracee.
     auto sh = Sighandlers::create();
     sh->init_from_current_process();
+    // Task::set_up_process resets all non-RT signals to
+    // default handling, so mimic that now.
+    for (int sig = 1; sig <= 31; ++sig) {
+      reset_handler(&sh->get(sig), arch());
+    }
     sighandlers.swap(sh);
     own_namespace_rec_tid = _tid;
   }
