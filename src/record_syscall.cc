@@ -7104,7 +7104,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       if (tracee) {
         // Finish emulation of ptrace result or stop-signal
         Registers r = t->regs();
-        r.set_syscall_result(syscallno == Arch::waitid ? 0 : tracee->tid);
+        r.set_syscall_result(syscallno == Arch::waitid ? 0 : tracee->tgid());
         t->set_regs(r);
         if (syscallno == Arch::waitid) {
           remote_ptr<typename Arch::siginfo_t> sip = r.arg3();
