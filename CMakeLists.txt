@@ -1025,6 +1025,7 @@ set(BASIC_TESTS
   x86/cross_arch
   cwd_inaccessible
   daemon
+  x86/deferred_patch
   desched_blocking_poll
   desched_sigkill
   detach_huge_mmap

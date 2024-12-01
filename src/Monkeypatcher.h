@@ -63,10 +63,12 @@ public:
    * Zero or more mapping operations are also recorded to the trace and must
    * be replayed.
    */
-  bool try_patch_syscall(RecordTask* t, bool entering_syscall = true);
-  bool try_patch_syscall_x86ish(RecordTask* t, bool entering_syscall,
-                                SupportedArch arch);
-  bool try_patch_syscall_aarch64(RecordTask* t, bool entering_syscall);
+  bool try_patch_syscall(RecordTask* t, bool entering_syscall, bool &should_retry);
+  bool try_patch_syscall(RecordTask* t, bool entering_syscall, bool &should_retry, remote_code_ptr ip);
+
+  bool try_patch_syscall_x86ish(RecordTask* t, remote_code_ptr ip, bool entering_syscall,
+                                SupportedArch arch, bool &should_retry);
+  bool try_patch_syscall_aarch64(RecordTask* t, remote_code_ptr ip, bool entering_syscall);
 
   /**
    * Try to patch the trapping instruction that |t| just trapped on. If this
@@ -78,7 +80,8 @@ public:
    * be replayed.
    */
   bool try_patch_trapping_instruction(RecordTask* t, size_t instruction_length,
-                                      bool before_instruction = true);
+                                      bool before_instruction,
+                                      bool &should_retry);
 
   /**
    * Replace all extended jumps by syscalls again. Note that we do not try to
@@ -161,7 +164,9 @@ private:
   const syscall_patch_hook* find_syscall_hook(RecordTask* t,
                                               remote_code_ptr ip,
                                               bool entering_syscall,
-                                              size_t instruction_length);
+                                              size_t instruction_length,
+                                              bool &should_retry,
+                                              bool &transient_failure);
 
   /**
    * The list of supported syscall patches obtained from the preload
