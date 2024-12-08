@@ -1754,6 +1754,7 @@ set(TESTS_WITHOUT_PROGRAM
   run_end
   run_in_function
   sanity
+  save_as
   seekticks
   shm_checkpoint
   siginfo
