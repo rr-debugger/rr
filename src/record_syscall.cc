@@ -5250,10 +5250,22 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       // are zero.
       bool arguments_are_zero = true;
       Registers r = t->regs();
-      for (int i = 1; i <= 6; ++i) {
+      int first_zero_reg = 1;
+      uintptr_t ret = 0;
+      if (r.arg(1) == RRCALL_CHECK_SYSCALLBUF_USED_OR_DISABLED) {
+        if (!!getenv(SYSCALLBUF_ENABLED_ENV_VAR)) {
+          // Syscallbuf is enabled, but we reached here anyway. Return -ENOTSUP.
+          ret = (uintptr_t)-ENOTSUP;
+        }
+        first_zero_reg = 2;
+      }
+      for (int i = first_zero_reg; i <= 6; ++i) {
         arguments_are_zero &= r.arg(i) == 0;
       }
-      syscall_state.emulate_result(arguments_are_zero ? 0 : (uintptr_t)-EINVAL);
+      if (!arguments_are_zero)
+        syscall_state.emulate_result((uintptr_t)-EINVAL);
+      else
+        syscall_state.emulate_result(ret);
       syscall_state.expect_errno = ENOSYS;
       return PREVENT_SWITCH;
     }

@@ -279,6 +279,8 @@ struct SyscallEvent {
   bool failed_during_preparation;
   // Syscall is being emulated via PTRACE_SYSEMU.
   bool in_sysemu;
+  // True if we should retry patching on exit from this syscall
+  bool should_retry_patch;
 };
 
 struct syscall_interruption_t {

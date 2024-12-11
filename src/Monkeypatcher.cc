@@ -981,7 +981,9 @@ static uint64_t jump_patch_size(SupportedArch arch)
 const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                                                            remote_code_ptr ip,
                                                            bool entering_syscall,
-                                                           size_t instruction_length) {
+                                                           size_t instruction_length,
+                                                           bool &should_retry,
+                                                           bool &transient_failure) {
   /* we need to inspect this many bytes before the start of the instruction,
      to find every short jump that might land after it. Conservative. */
   static const intptr_t LOOK_BACK = 0x80;
@@ -1035,9 +1037,9 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
         // A patch that uses bytes before the syscall can't be done when
         // entering the syscall, it must be done when exiting. So set a flag on
         // the Task that tells us to come back later.
-        t->retry_syscall_patching = true;
+        should_retry = true;
         LOG(debug) << "Deferring syscall patching at " << ip << " in " << t
-                   << " until syscall exit.";
+                  << " until syscall exit.";
         return nullptr;
       }
       matches_hook = true;
@@ -1111,6 +1113,7 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
       end_range = ip + instruction_length + hook.patch_region_length;
     }
     if (!safe_for_syscall_patching(start_range, end_range, t)) {
+      transient_failure = true;
       LOG(debug)
           << "Temporarily declining to patch syscall at " << ip
           << " because a different task has its ip in the patched range";
@@ -1141,18 +1144,18 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
 // The `entering_syscall` flag tells us whether or not we're at syscall entry.
 // If we are, and we find a pattern that can only be patched at exit, we'll
 // set a flag on the RecordTask telling it to try again after syscall exit.
-bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscall,
-                                             SupportedArch arch) {
-  Registers r = t->regs();
-  remote_code_ptr ip = r.ip();
-
+bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, remote_code_ptr ip, bool entering_syscall,
+                                             SupportedArch arch, bool &should_retry) {
   ASSERT(t, is_x86ish(arch)) << "Unsupported architecture";
 
   size_t instruction_length = rr::syscall_instruction_length(arch);
+  bool transient_failure = false;
   const syscall_patch_hook* hook_ptr = find_syscall_hook(t, ip - instruction_length,
-      entering_syscall, instruction_length);
+      entering_syscall, instruction_length, should_retry, transient_failure);
   bool success = false;
-  intptr_t syscallno = r.original_syscallno();
+  // `syscallno` isn't necessarily correct here (in the extremely rare corner case that we
+  // deferred a patch and the signal handler changed it), but we only use it for logging.
+  intptr_t syscallno = t->regs().original_syscallno();
   if (hook_ptr) {
     // Get out of executing the current syscall before we patch it.
     if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
@@ -1170,7 +1173,7 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscal
   }
 
   if (!success) {
-    if (!t->retry_syscall_patching) {
+    if (!should_retry && !transient_failure) {
       LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
                  << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
       tried_to_patch_syscall_addresses.insert(ip);
@@ -1181,15 +1184,12 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, bool entering_syscal
   return true;
 }
 
-bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_syscall) {
-  Registers r = t->regs();
-  remote_code_ptr ip = r.ip() - 4;
-
+bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, remote_code_ptr ip, bool entering_syscall) {
   uint32_t inst[2] = {0, 0};
-  size_t bytes_count = t->read_bytes_fallible(ip.to_data_ptr<uint8_t>() - 4, 8, &inst);
+  size_t bytes_count = t->read_bytes_fallible(ip.to_data_ptr<uint8_t>() - 8, 8, &inst);
   if (bytes_count < sizeof(inst) || inst[1] != 0xd4000001) {
     LOG(debug) << "Declining to patch syscall at "
-               << ip << " for unexpected instruction";
+               << ip - 4 << " for unexpected instruction";
     tried_to_patch_syscall_addresses.insert(ip);
     return false;
   }
@@ -1201,7 +1201,7 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
     // Our syscall hook cannot do that so this would have to be a raw syscall.
     // We can handle this at runtime but if we know the call is definitely
     // a clone we can avoid patching it here.
-    LOG(debug) << "Declining to patch clone syscall at " << ip;
+    LOG(debug) << "Declining to patch clone syscall at " << ip - 4;
     tried_to_patch_syscall_addresses.insert(ip);
     return false;
   }
@@ -1210,9 +1210,9 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
              memcmp(syscall_hooks[0].patch_region_bytes, &inst[1], 4) == 0))
     << "Unknown syscall hook";
 
-  if (!safe_for_syscall_patching(ip, ip + 4, t)) {
+  if (!safe_for_syscall_patching(ip - 4, ip, t)) {
     LOG(debug)
-      << "Temporarily declining to patch syscall at " << ip
+      << "Temporarily declining to patch syscall at " << ip - 4
       << " because a different task has its ip in the patched range";
     return false;
   }
@@ -1222,10 +1222,10 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
     return false;
   }
 
-  LOG(debug) << "Patching syscall at " << ip << " syscall "
-             << syscall_name(r.original_syscallno(), aarch64) << " tid " << t->tid;
+  LOG(debug) << "Patching syscall at " << ip - 4 << " syscall "
+             << syscall_name(t->regs().original_syscallno(), aarch64) << " tid " << t->tid;
 
-  auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], ip, 4, 0);
+  auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], ip - 4, 4, 0);
   if (!success && entering_syscall) {
     // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
     if (!t->enter_syscall()) {
@@ -1234,8 +1234,8 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
   }
 
   if (!success) {
-    LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
-               << syscall_name(r.original_syscallno(), aarch64) << " tid " << t->tid;
+    LOG(debug) << "Failed to patch syscall at " << ip - 4 << " syscall "
+               << syscall_name(t->regs().original_syscallno(), aarch64) << " tid " << t->tid;
     tried_to_patch_syscall_addresses.insert(ip);
     return false;
   }
@@ -1243,7 +1243,14 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, bool entering_sysca
   return true;
 }
 
-bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
+
+bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall, bool &should_retry) {
+  Registers r = t->regs();
+  remote_code_ptr ip = r.ip();
+  return try_patch_syscall(t, entering_syscall, should_retry, ip);
+}
+
+bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall, bool &should_retry, remote_code_ptr ip) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
     // fill tried_to_patch_syscall_addresses with addresses that we might be
@@ -1261,14 +1268,12 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
     return false;
   }
 
-  Registers r = t->regs();
-  remote_code_ptr ip = r.ip();
   // We should not get here for untraced syscalls or anything else from the rr page.
   // These should be normally prevented by our seccomp filter
   // and in the case of syscalls interrupted by signals,
   // the check for the syscall restart should prevent us from reaching here.
-  DEBUG_ASSERT(ip.to_data_ptr<void>() < AddressSpace::rr_page_start() ||
-               ip.to_data_ptr<void>() >= AddressSpace::rr_page_end());
+  ASSERT(t, ip.to_data_ptr<void>() < AddressSpace::rr_page_start() ||
+            ip.to_data_ptr<void>() >= AddressSpace::rr_page_end());
   if (tried_to_patch_syscall_addresses.count(ip) || is_jump_stub_instruction(ip, true)) {
     return false;
   }
@@ -1303,13 +1308,13 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   }
 
   if (arch == aarch64) {
-    return try_patch_syscall_aarch64(t, entering_syscall);
+    return try_patch_syscall_aarch64(t, ip, entering_syscall);
   }
-  return try_patch_syscall_x86ish(t, entering_syscall, arch);
+  return try_patch_syscall_x86ish(t, ip, entering_syscall, arch, should_retry);
 }
 
 bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruction_length,
-                                                   bool before_instruction) {
+                                                   bool before_instruction, bool &should_retry) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
     // fill tried_to_patch_syscall_addresses with addresses that we might be
@@ -1332,8 +1337,9 @@ bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruc
   // event, not a FLUSH_SYSCALLBUF event.
   t->maybe_flush_syscallbuf();
 
+  bool transient_failure = false;
   const syscall_patch_hook* hook_ptr =
-    find_syscall_hook(t, ip_of_instruction, before_instruction, instruction_length);
+    find_syscall_hook(t, ip_of_instruction, before_instruction, instruction_length, should_retry, transient_failure);
   bool success = false;
   if (hook_ptr) {
     LOG(debug) << "Patching trapping instruction at " << ip_of_instruction << " tid " << t->tid;
@@ -1343,7 +1349,7 @@ bool Monkeypatcher::try_patch_trapping_instruction(RecordTask* t, size_t instruc
   }
 
   if (!success) {
-    if (!t->retry_syscall_patching) {
+    if (!should_retry && !transient_failure) {
       LOG(debug) << "Failed to patch trapping instruction at " << ip_of_instruction << " tid " << t->tid;
       tried_to_patch_syscall_addresses.insert(ip_of_instruction + instruction_length);
     }
