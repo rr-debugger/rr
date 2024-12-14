@@ -592,6 +592,7 @@ static void install_signal_handlers(void) {
   sigaction(SIGTRAP, &sa, nullptr);
   sigaction(SIGTTIN, &sa, nullptr);
   sigaction(SIGTTOU, &sa, nullptr);
+  sigaction(SIGWINCH, &sa, nullptr);
 }
 
 static void setup_session_from_flags(RecordSession& session,
