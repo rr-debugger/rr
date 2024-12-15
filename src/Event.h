@@ -233,7 +233,8 @@ struct SyscallEvent {
         switchable(PREVENT_SWITCH),
         is_restart(false),
         failed_during_preparation(false),
-        in_sysemu(false) {}
+        in_sysemu(false),
+        should_retry_patch(false) {}
 
   std::string syscall_name() const { return rr::syscall_name(number, arch()); }
 
