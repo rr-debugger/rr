@@ -2,7 +2,7 @@
 """ rr-gdb-script-host.py <user-gdb-script> <primary binary name>"""
 # Performs a limited emulation of the runtime environment of gdb scripts so that
 # we can run them for `rr sources` to locate debug information.
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Type
 import logging
 import os
 import signal
@@ -108,7 +108,7 @@ class GdbApiEvents(GdbApiObject):
     @property
     def new_objfile(self) -> GdbNewObjfileEvents:
         logging.debug("gdb.events.new_objfile")
-        if self._new_objfile == None:
+        if self._new_objfile is None:
             self._new_objfile = GdbNewObjfileEvents(self.gdb)
         return self._new_objfile
 
@@ -158,14 +158,14 @@ class GdbApiRoot(GdbApiObject):
 
     def current_progspace(self) -> GdbProgspace:
         logging.debug("gdb.current_progspace()")
-        if self._current_progspace == None:
+        if self._current_progspace is None:
             self._current_progspace = GdbProgspace(self.gdb)
         return self._current_progspace
 
     @property
     def events(self) -> GdbApiEvents:
         logging.debug("gdb.events")
-        if self._events == None:
+        if self._events is None:
             self._events = GdbApiEvents(self.gdb)
         return self._events
 
@@ -174,7 +174,7 @@ class GdbApiRoot(GdbApiObject):
         return 13
 
     @property
-    def Command(self) -> DebuggerExtensionCommand:
+    def Command(self) -> Type[DebuggerExtensionCommand]:
         return DebuggerExtensionCommand
 
 if __name__ == '__main__':
