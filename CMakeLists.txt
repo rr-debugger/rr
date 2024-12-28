@@ -1417,6 +1417,7 @@ set(BASIC_TESTS
   unshare
   userfaultfd
   utimes
+  v4l_dmabuf
   vdso_parts
   vdso_symbols
   vfork_done

@@ -9,6 +9,7 @@
 #include <linux/blkzoned.h>
 #include <linux/capability.h>
 #include <linux/cdrom.h>
+#include <linux/dma-buf.h>
 #include <linux/elf.h>
 #include <linux/ethtool.h>
 #include <linux/fb.h>
@@ -2013,7 +2014,9 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(VIDIOC_G_INPUT):
     case IOCTL_MASK_SIZE(VIDIOC_QUERY_EXT_CTRL):
     case IOCTL_MASK_SIZE(VIDIOC_G_PRIORITY):
+    case IOCTL_MASK_SIZE(VIDIOC_EXPBUF):
     case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH):
+    case IOCTL_MASK_SIZE(DMA_BUF_IOCTL_EXPORT_SYNC_FILE):
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
