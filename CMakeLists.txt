@@ -1205,9 +1205,10 @@ set(BASIC_TESTS
   nscd
   numa
   x86/old_fork
-  orphan_process
   openat2
   openat_null
+  open_tree
+  orphan_process
   packet_mmap_disable
   x86/patch_syscall_restart
   pause
