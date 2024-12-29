@@ -1068,6 +1068,8 @@ set(BASIC_TESTS
   fd_cleanup
   fd_tracking_across_threads
   fds_clean
+  fexecve
+  fexecve_memfd
   flock
   flock_ofd
   flock2

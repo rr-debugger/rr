@@ -5566,12 +5566,15 @@ static bool is_privileged_executable(RecordTask* t, const string& path) {
       return true;
     }
   } else {
-    ASSERT(t, errno == ENODATA || errno == ENOTSUP);
-    struct stat buf;
-    stat(path.c_str(), &buf);
-    if (buf.st_mode & (S_ISUID | S_ISGID)) {
-      return true;
+    if (errno == ENOENT) {
+      return false;
     }
+    ASSERT(t, errno == ENODATA || errno == ENOTSUP);
+  }
+  struct stat buf;
+  stat(path.c_str(), &buf);
+  if (buf.st_mode & (S_ISUID | S_ISGID)) {
+    return true;
   }
   return false;
 }
