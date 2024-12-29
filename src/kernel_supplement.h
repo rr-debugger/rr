@@ -8,6 +8,7 @@
 #endif
 
 #include <linux/capability.h>
+#include <linux/dma-buf.h>
 #include <linux/if_tun.h>
 #include <linux/mman.h>
 #include <linux/seccomp.h>
@@ -560,6 +561,10 @@ enum {
 #endif
 #ifndef ARCH_REQ_XCOMP_PERM
 #define ARCH_REQ_XCOMP_PERM 0x1023
+#endif
+
+#ifndef DMA_BUF_IOCTL_EXPORT_SYNC_FILE
+#define DMA_BUF_IOCTL_EXPORT_SYNC_FILE _IOWR(DMA_BUF_BASE, 2, struct dma_buf_export_sync_file)
 #endif
 
 } // namespace rr
