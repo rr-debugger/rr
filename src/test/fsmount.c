@@ -3,6 +3,8 @@
 #include "nsutils.h"
 #include "util.h"
 
+#include <sys/mount.h>
+
 int main(void) {
   if (try_setup_ns(CLONE_NEWNS) < 0) {
     atomic_puts("EXIT-SUCCESS");
@@ -19,6 +21,11 @@ int main(void) {
   test_assert(mnt_fd >= 0);
 
   ret = syscall(RR_move_mount, mnt_fd, "", AT_FDCWD, "/tmp", MOVE_MOUNT_F_EMPTY_PATH);
+  test_assert(ret == 0);
+
+  struct mount_attr attr;
+  memset(&attr, 0, sizeof(attr));
+  ret = syscall(RR_mount_setattr, mnt_fd, "", AT_EMPTY_PATH, &attr, sizeof(attr));
   test_assert(ret == 0);
 
   atomic_puts("EXIT-SUCCESS");
