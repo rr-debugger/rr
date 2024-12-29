@@ -5,6 +5,10 @@
 #include <linux/dma-buf.h>
 
 #ifndef DMA_BUF_IOCTL_EXPORT_SYNC_FILE
+struct dma_buf_export_sync_file {
+  uint32_t flags;
+  int32_t fd;
+};
 #define DMA_BUF_IOCTL_EXPORT_SYNC_FILE _IOWR(DMA_BUF_BASE, 2, struct dma_buf_export_sync_file)
 #endif
 

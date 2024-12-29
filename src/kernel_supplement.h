@@ -565,6 +565,10 @@ enum {
 
 #ifndef DMA_BUF_IOCTL_EXPORT_SYNC_FILE
 #define DMA_BUF_IOCTL_EXPORT_SYNC_FILE _IOWR(DMA_BUF_BASE, 2, struct dma_buf_export_sync_file)
+struct dma_buf_export_sync_file {
+  uint32_t flags;
+  int32_t fd;
+};
 #endif
 
 } // namespace rr
