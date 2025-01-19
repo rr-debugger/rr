@@ -1134,6 +1134,7 @@ set(BASIC_TESTS
   kill_newborn
   kill_ptracee
   landlock
+  x86/la57
   large_hole
   large_write_deadlock
   legacy_ugid

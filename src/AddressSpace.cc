@@ -818,6 +818,14 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
     return m;
   }
 
+#if defined(__x86_64__)
+  if (t->session().is_recording() && t->arch() == SupportedArch::x86_64 &&
+      m.intersects(LA57_RANGE)) {
+    static_cast<RecordSession*>(&t->session())->trace_writer()
+      .note_virtual_address_size(57);
+  }
+#endif
+
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
   remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 

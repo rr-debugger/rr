@@ -145,6 +145,14 @@ struct Header {
   syscallbufHdrSize @26 :UInt32 = 30;
   # Result of uname(2). Possibly useful for diagnostics or LLDB qHostInfo.
   uname @27 :UtsName;
+  # The highest virtual address size (in bits) needed to replay this trace. Some
+  # platforms (e.g. x86-64) have multiple possible virtual address sizes, and
+  # trace portability requires that traces that require a higher virtual address
+  # size are not replayed on systems that only support a lower virtual address
+  # size. A value of 0, only present for traces recorded before this was added,
+  # means the default value for the relevant arch. For multiarch (i.e. mixed 32
+  # and 64 bit traces), the value is the size of the 64 bit addresses.
+  maxVirtualAddressSize @28 :UInt8 = 0;
 }
 
 # A file descriptor belonging to a task

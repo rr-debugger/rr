@@ -97,6 +97,11 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
     }
   }
 
+  uint8_t max_virtual_address_size = trace.max_virtual_address_size();
+  if (max_virtual_address_size > 0) {
+    fprintf(out, "  \"maxVirtualAddressSize\":%d,\n", max_virtual_address_size);
+  }
+
   if (!trace.uname().sysname.empty()) {
     const auto& uname = trace.uname();
     fputs("  \"uname\":{", out);

@@ -2650,4 +2650,36 @@ optional<int> read_perf_event_paranoid() {
   return value;
 }
 
+#if defined(__x86_64__)
+bool five_level_paging_works(void) {
+  size_t num_bytes = page_size();
+  void* map = mmap(LA57_RANGE_START, num_bytes, PROT_NONE,
+                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+  if (map == LA57_RANGE_START) {
+    // If we successfully mapped at a high address, five level paging works.
+    munmap(map, num_bytes);
+    return true;
+  }
+
+  if (map == MAP_FAILED) {
+    if (errno == EEXIST) {
+      // If we failed to map because something else was already at the high
+      // address, five level paging works.
+      return true;
+    }
+    // If we failed for some other reason, assume five level paging does
+    // not work.
+    return false;
+  }
+
+  // If we got back a different address, assume five level paging does not work.
+  // NB: We could potentially be on a kernel that supports five level paging (so
+  // >= 4.14) but not MAP_FIXED_NOREPLACE (so < 4.17) *and* have something
+  // already using the address we tried. Handling that situation correctly
+  // adds substantial complexity, so we just give a false negative there.
+  munmap(map, num_bytes);
+  return false;
+}
+#endif
+
 } // namespace rr

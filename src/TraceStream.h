@@ -5,6 +5,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <set>
@@ -276,6 +277,9 @@ public:
   void set_clear_fip_fdp(bool value) { clear_fip_fdp_ = value; }
   bool clear_fip_fdp() const { return clear_fip_fdp_; }
   void set_chaos_mode(bool value) { chaos_mode = value; }
+  void note_virtual_address_size(uint8_t value) {
+    max_virtual_address_size = std::max(max_virtual_address_size, value);
+  }
 
   enum CloseStatus {
     /**
@@ -330,6 +334,7 @@ private:
   // rename it, so our flock() lock stays held on it.
   ScopedFd version_fd;
   uint32_t mmap_count;
+  uint8_t max_virtual_address_size;
   bool has_cpuid_faulting_;
   bool xsave_fip_fdp_quirk_;
   bool fdp_exception_only_quirk_;
@@ -497,6 +502,9 @@ public:
   MemoryRange exclusion_range() const {
     return exclusion_range_;
   }
+  uint8_t max_virtual_address_size() const {
+    return max_virtual_address_size_;
+  }
 
   enum TraceQuirks {
     // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
@@ -537,6 +545,7 @@ private:
   bool chaos_mode_known_;
   bool chaos_mode_;
   int rrcall_base_;
+  uint8_t max_virtual_address_size_;
   uint32_t syscallbuf_fds_disabled_size_;
   uint32_t syscallbuf_hdr_size_;
   int required_forward_compatibility_version_;

@@ -385,4 +385,13 @@ template <typename Arch> static size_t user_fpregs_struct_size_arch() {
 size_t user_fpregs_struct_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(user_fpregs_struct_size_arch, arch)
 }
+
+template <typename Arch> static uint8_t default_virtual_address_size_arch() {
+  return Arch::default_virtual_address_size;
+}
+
+uint8_t default_virtual_address_size(SupportedArch arch) {
+  RR_ARCH_FUNCTION(default_virtual_address_size_arch, arch)
+}
+
 }

@@ -388,6 +388,8 @@ void RecordTask::post_exec() {
   // Newly execed tasks always have non-faulting mode (from their point of
   // view, even if rr is secretly causing faults).
   cpuid_mode = 1;
+
+  trace_writer().note_virtual_address_size(default_virtual_address_size(arch()));
 }
 
 template <typename Arch> static void do_preload_init_arch(RecordTask* t) {

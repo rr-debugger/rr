@@ -1366,13 +1366,14 @@ TraceWriter::TraceWriter(const std::string& file_name,
                   1),
       ticks_semantics_(ticks_semantics_),
       mmap_count(0),
+      max_virtual_address_size(0),
       has_cpuid_faulting_(false),
       xsave_fip_fdp_quirk_(false),
       fdp_exception_only_quirk_(false),
       clear_fip_fdp_(false),
       supports_file_data_cloning_(false),
       chaos_mode(false)
-       {
+{
   this->ticks_semantics_ = ticks_semantics_;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
@@ -1490,6 +1491,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setExclusionRangeEnd(exclusion_range.end().as_int());
   header.setRuntimePageSize(page_size());
   header.setPreloadLibraryPageSize(PRELOAD_LIBRARY_PAGE_SIZE);
+  header.setMaxVirtualAddressSize(max_virtual_address_size);
 
   {
     struct utsname uname_buf;
@@ -1651,6 +1653,7 @@ TraceReader::TraceReader(const string& dir)
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   rrcall_base_ = header.getRrcallBase();
+  max_virtual_address_size_ = header.getMaxVirtualAddressSize();
   syscallbuf_fds_disabled_size_ = header.getSyscallbufFdsDisabledSize();
   syscallbuf_hdr_size_ = header.getSyscallbufHdrSize();
   required_forward_compatibility_version_ = header.getRequiredForwardCompatibilityVersion();
@@ -1745,6 +1748,7 @@ TraceReader::TraceReader(const TraceReader& other)
   xcr0_ = other.xcr0_;
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
   rrcall_base_ = other.rrcall_base_;
+  max_virtual_address_size_ = other.max_virtual_address_size_;
   arch_ = other.arch_;
   chaos_mode_ = other.chaos_mode_;
   chaos_mode_known_ = other.chaos_mode_known_;

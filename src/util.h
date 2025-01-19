@@ -699,6 +699,14 @@ void base_name(std::string& s);
 
 std::optional<int> read_perf_event_paranoid();
 
+#if defined(__x86_64__)
+bool five_level_paging_works(void);
+#else
+inline bool five_level_paging_works(void) {
+  return false;
+}
+#endif
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
