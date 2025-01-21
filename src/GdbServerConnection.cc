@@ -1921,7 +1921,7 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
     } else if (!mem.size()) {
       write_packet("E01");
     } else {
-      write_binary_packet("", mem.data(), mem.size());
+      write_binary_packet("b", mem.data(), mem.size());
     }
   }
 
