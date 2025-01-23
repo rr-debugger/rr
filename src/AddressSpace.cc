@@ -818,6 +818,17 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
     return m;
   }
 
+  if (t->session().is_recording()) {
+    uint8_t bits = virtual_address_size(t->arch(), addr + num_bytes - 1);
+    // NB: Ignore addresses with no leading zeroes on 64 bit architectures
+    // (where they are in the kernel) but not on 32 bit x86 (where the
+    // 2-3GB range is available to userspace).
+    if (bits != 64) {
+      static_cast<RecordTask*>(t)->
+        trace_writer().note_virtual_address_size(bits);
+    }
+  }
+
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
   remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 

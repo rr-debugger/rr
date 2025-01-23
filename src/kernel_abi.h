@@ -291,6 +291,10 @@ struct WordSize32Defs {
     uint32_t n_type;
   } ElfNhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Nhdr, ElfNhdr);
+
+  static uint8_t clz_ptr(remote_ptr<void> ptr) {
+    return __builtin_clz(ptr.as_int());
+  }
 };
 
 struct WordSize64Defs {
@@ -387,6 +391,10 @@ struct WordSize64Defs {
     uint32_t n_type;
   } ElfNhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Nhdr, ElfNhdr);
+
+  static uint8_t clz_ptr(remote_ptr<void> ptr) {
+    return __builtin_clzl(ptr.as_int());
+  }
 };
 
 /**
@@ -2002,6 +2010,8 @@ struct BaseArch : public wordsize,
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   typedef X64Arch Arch64;
 
+  static const uint8_t default_virtual_address_size = 47;
+
   static const size_t elfmachine = EM::X86_64;
   static const size_t elfendian = ELFENDIAN::DATA2LSB;
 
@@ -2205,6 +2215,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   typedef X64Arch Arch64;
+
+  static const uint8_t default_virtual_address_size = 32;
 
   static const size_t elfmachine = EM::I386;
   static const size_t elfendian = ELFENDIAN::DATA2LSB;
@@ -2462,6 +2474,8 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
 struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
   typedef ARM64Arch Arch64;
 
+  static const uint8_t default_virtual_address_size = 47;
+
   static const size_t elfmachine = EM::AARCH64;
   static const size_t elfendian = ELFENDIAN::DATA2LSB;
 
@@ -2648,6 +2662,13 @@ size_t sigaction_sigset_size(SupportedArch arch);
 
 size_t user_regs_struct_size(SupportedArch arch);
 size_t user_fpregs_struct_size(SupportedArch arch);
+
+/* Returns the number of bits necessary for this particular virtual address. */
+uint8_t virtual_address_size(SupportedArch arch, remote_ptr<void> ptr);
+/* Returns the number of bits supported by default on this architecture for
+ * *userspace* virtual addresses.
+ */
+uint8_t default_virtual_address_size(SupportedArch arch);
 
 #if defined(__i386__)
 typedef X86Arch NativeArch;

@@ -380,6 +380,8 @@ private:
   ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);
 
+  void check_virtual_address_size() const;
+
   ReplayTask* revive_task_for_exec();
   ReplayTask* setup_replay_one_trace_frame(ReplayTask* t);
   void advance_to_next_trace_frame();
