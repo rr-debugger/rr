@@ -308,22 +308,17 @@ ReplaySession::~ReplaySession() {
 void ReplaySession::check_virtual_address_size() const
 {
   uint8_t virtual_address_size_needed = trace_in.max_virtual_address_size();
-  if (virtual_address_size_needed > default_virtual_address_size(NativeArch::arch()) &&
-      !rr::Flags::get().force_things) {
-#if defined(__x86_64__)
-    if (virtual_address_size_needed == 57) {
-      if (has_five_level_paging()) {
-        return;
-      }
-      CLEAN_FATAL()
-        << "Trace uses 5 level paging for addresses larger than\n"
-          "47 bits but this system does not support 5 level paging.";
-    }
-#endif
-    CLEAN_FATAL()
-        << "Trace uses an unexpected virtual address size " <<
-          (uint32_t)virtual_address_size_needed << "\nYou may need a newer rr.";
+  if (virtual_address_size_supported(virtual_address_size_needed)) {
+    return;
   }
+
+  if (rr::Flags::get().force_things) {
+    LOG(warn) << "Virtual address size is unsupported but forcing anyways.";
+    return;
+  }
+
+  CLEAN_FATAL() << "The trace uses " << (uint32_t)virtual_address_size_needed <<
+      " bit virtual addresses but this system does not support that size.";
 }
 
 ReplaySession::shr_ptr ReplaySession::clone() {

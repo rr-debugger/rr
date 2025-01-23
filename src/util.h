@@ -699,13 +699,7 @@ void base_name(std::string& s);
 
 std::optional<int> read_perf_event_paranoid();
 
-#if defined(__x86_64__)
-bool five_level_paging_works(void);
-#else
-inline bool five_level_paging_works(void) {
-  return false;
-}
-#endif
+bool virtual_address_size_supported(uint8_t bit_size);
 
 } // namespace rr
 

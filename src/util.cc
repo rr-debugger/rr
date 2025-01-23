@@ -2650,13 +2650,23 @@ optional<int> read_perf_event_paranoid() {
   return value;
 }
 
-#if defined(__x86_64__)
-bool five_level_paging_works(void) {
+bool virtual_address_size_supported(uint8_t bits) {
+  DEBUG_ASSERT(bits < 64);
+
+  // The easy, statically-determinable case.
+  // Legacy traces with bits == 0 will take this offramp too.
+  if (default_virtual_address_size(NativeArch::arch()) >= bits) {
+    return true;
+  }
+
+  // The architecture may have extensions (like five level paging) that allow
+  // higher addresses to be used. See if they're available.
   size_t num_bytes = page_size();
-  void* map = mmap(LA57_RANGE_START, num_bytes, PROT_NONE,
+  void* ptr = (void*)(1ULL << (bits - 1));
+  void* map = mmap(ptr, num_bytes, PROT_NONE,
                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-  if (map == LA57_RANGE_START) {
-    // If we successfully mapped at a high address, five level paging works.
+  if (map == ptr) {
+    // If we successfully mapped at a high address, the extensions work.
     munmap(map, num_bytes);
     return true;
   }
@@ -2664,15 +2674,14 @@ bool five_level_paging_works(void) {
   if (map == MAP_FAILED) {
     if (errno == EEXIST) {
       // If we failed to map because something else was already at the high
-      // address, five level paging works.
+      // address, the extensions work.
       return true;
     }
-    // If we failed for some other reason, assume five level paging does
-    // not work.
+    // If we failed for some other reason, assume the extensions do not work.
     return false;
   }
 
-  // If we got back a different address, assume five level paging does not work.
+  // If we got back a different address, assume the extensions do not work.
   // NB: We could potentially be on a kernel that supports five level paging (so
   // >= 4.14) but not MAP_FIXED_NOREPLACE (so < 4.17) *and* have something
   // already using the address we tried. Handling that situation correctly
@@ -2680,6 +2689,5 @@ bool five_level_paging_works(void) {
   munmap(map, num_bytes);
   return false;
 }
-#endif
 
 } // namespace rr

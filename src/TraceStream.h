@@ -278,6 +278,7 @@ public:
   bool clear_fip_fdp() const { return clear_fip_fdp_; }
   void set_chaos_mode(bool value) { chaos_mode = value; }
   void note_virtual_address_size(uint8_t value) {
+    DEBUG_ASSERT(value < 64);
     max_virtual_address_size = std::max(max_virtual_address_size, value);
   }
 

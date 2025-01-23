@@ -362,7 +362,6 @@ public:
   }
 
   static bool has_cpuid_faulting();
-  static bool has_five_level_paging();
   static const char* rr_mapping_prefix();
 
   ScopedFd& tracee_socket_fd() { return *tracee_socket; }

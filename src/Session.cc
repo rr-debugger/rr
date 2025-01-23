@@ -755,10 +755,6 @@ bool Session::has_cpuid_faulting() {
   return !Flags::get().disable_cpuid_faulting && cpuid_faulting_works();
 }
 
-bool Session::has_five_level_paging() {
-  return five_level_paging_works();
-}
-
 int Session::cpu_binding() const {
   return const_cast<Session*>(this)->trace_stream()->bound_to_cpu();
 }

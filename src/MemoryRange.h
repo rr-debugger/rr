@@ -78,14 +78,6 @@ private:
   remote_ptr<void> end_;
 };
 
-#if defined(__x86_64__)
-void* const LA57_RANGE_START = (void*)(1ULL << 47);
-const MemoryRange LA57_RANGE = {
-  remote_ptr<void>(1ULL << 47),
-  remote_ptr<void>((1ULL << 56) - 1)
-};
-#endif
-
 inline std::ostream& operator<<(std::ostream& o, const MemoryRange& m) {
   o << m.start() << "-" << m.end();
   return o;

@@ -150,8 +150,7 @@ struct Header {
   # trace portability requires that traces that require a higher virtual address
   # size are not replayed on systems that only support a lower virtual address
   # size. A value of 0, only present for traces recorded before this was added,
-  # means the default value for the relevant arch. For multiarch (i.e. mixed 32
-  # and 64 bit traces), the value is the size of the 64 bit addresses.
+  # means the default value for the relevant arch.
   maxVirtualAddressSize @28 :UInt8 = 0;
 }
 

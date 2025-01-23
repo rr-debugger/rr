@@ -386,6 +386,14 @@ size_t user_fpregs_struct_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(user_fpregs_struct_size_arch, arch)
 }
 
+template <typename Arch> static uint8_t virtual_address_size_arch(remote_ptr<void> ptr) {
+  return sizeof(typename Arch::unsigned_word) * 8 - Arch::clz_ptr(ptr);
+}
+
+uint8_t virtual_address_size(SupportedArch arch, remote_ptr<void> ptr) {
+  RR_ARCH_FUNCTION(virtual_address_size_arch, arch, ptr)
+}
+
 template <typename Arch> static uint8_t default_virtual_address_size_arch() {
   return Arch::default_virtual_address_size;
 }
