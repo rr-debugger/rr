@@ -114,7 +114,8 @@ enum CpuMicroarch {
   IntelSapphireRapid,
   IntelEmeraldRapid,
   IntelMeteorLake,
-  LastIntel = IntelMeteorLake,
+  IntelArrowLake,
+  LastIntel = IntelArrowLake,
   FirstAMD,
   AMDF15 = FirstAMD,
   AMDZen,
@@ -202,6 +203,7 @@ struct PmuConfig {
 static const PmuConfig pmu_configs[] = {
   { IntelEmeraldRapid, "Intel EmeraldRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelSapphireRapid, "Intel SapphireRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelArrowLake, "Intel Arrowlake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelMeteorLake, "Intel Meteorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelRaptorlake, "Intel Raptorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
