@@ -38,6 +38,11 @@ int main(void) {
   ret = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, ARCH_XCOMP_TILEDATA);
   if ((1 << ARCH_XCOMP_TILEDATA) & *features_perm) {
     test_assert(0 == ret);
+  } else if (0 == ret) {
+    ret = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, features_perm);
+    test_assert(0 == ret);
+    VERIFY_GUARD(features_perm);
+    test_assert((1 << ARCH_XCOMP_TILEDATA) & *features_perm);
   } else {
     test_assert(-1 == ret && errno == EOPNOTSUPP);
   }
