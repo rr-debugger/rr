@@ -1919,12 +1919,22 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
       write_hex_bytes_packet(mem.data(), mem.size());
     }
   } else {
-    if (!req.mem().len) {
-      write_packet("OK");
-    } else if (!mem.size()) {
-      write_packet("E01");
+    if (debugger_type == DebuggerType::LLDB) {
+      if (!req.mem().len) {
+        write_packet("OK");
+      } else if (!mem.size()) {
+        write_packet("E01");
+      } else {
+        write_binary_packet("", mem.data(), mem.size());
+      }
     } else {
-      write_binary_packet("", mem.data(), mem.size());
+      if (!req.mem().len) {
+        write_packet("b");
+      } else if (!mem.size()) {
+        write_packet("E01");
+      } else {
+        write_binary_packet("b", mem.data(), mem.size());
+      }
     }
   }
 
