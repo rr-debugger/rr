@@ -23,22 +23,6 @@ using namespace std;
 
 namespace rr {
 
-// Controls the command-line arguments and command syntax we'll use
-// to control the debugger.
-enum class DebuggerType {
-  GDB,
-  LLDB,
-};
-
-static DebuggerType identify_debugger(const string& debugger_name) {
-  string debugger_base_name = debugger_name;
-  base_name(debugger_base_name);
-  if (debugger_base_name.find("lldb") != string::npos) {
-    return DebuggerType::LLDB;
-  }
-  return DebuggerType::GDB;
-}
-
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
@@ -222,10 +206,11 @@ vector<string> debugger_launch_command(Task* t, int socket_domain,
                                        const string& host,
                                        unsigned short port,
                                        bool serve_files,
-                                       const string& debugger_name) {
+                                       const string& debugger_name,
+                                       DebuggerType debugger_type) {
   vector<string> cmd;
   cmd.push_back(debugger_name);
-  switch (identify_debugger(debugger_name)) {
+  switch (debugger_type) {
     case DebuggerType::GDB:
       push_default_gdb_options(cmd, serve_files);
       push_gdb_target_remote_cmd(cmd, socket_domain, host, port);
@@ -279,6 +264,7 @@ static bool needs_target(const string& option) {
  */
 void launch_debugger(ScopedFd& params_pipe_fd,
                      const string& debugger_file_path,
+                     DebuggerType debugger_type,
                      const vector<string>& options,
                      bool serve_files) {
   DebuggerParams params;
@@ -303,7 +289,7 @@ void launch_debugger(ScopedFd& params_pipe_fd,
   cmd.push_back(debugger_file_path);
   vector<string> env = current_env();
 
-  switch (identify_debugger(debugger_file_path)) {
+  switch (debugger_type) {
     case DebuggerType::GDB: {
       push_default_gdb_options(cmd, serve_files);
       string gdb_command_file = create_command_file(gdb_rr_macros());
@@ -389,18 +375,19 @@ void emergency_debug(Task* t) {
     if (gdb_cmd) {
       fputs(to_shell_string(
           debugger_launch_command(t, listen_socket.domain,
-              listen_socket.host, listen_socket.port, false, "gdb")).c_str(), gdb_cmd);
+              listen_socket.host, listen_socket.port, false, "gdb",
+              DebuggerType::GDB)).c_str(), gdb_cmd);
       fclose(gdb_cmd);
     }
     kill(pid, SIGURG);
   } else {
     vector<string> cmd = debugger_launch_command(t,
         listen_socket.domain, listen_socket.host, listen_socket.port,
-        false, "gdb");
+        false, "gdb", DebuggerType::GDB);
     fprintf(stderr, "Launch debugger with\n  %s\n", to_shell_string(cmd).c_str());
   }
   unique_ptr<GdbServerConnection> dbg =
-      GdbServerConnection::await_connection(t, listen_socket.fd, features);
+      GdbServerConnection::await_connection(t, listen_socket.fd, DebuggerType::GDB, features);
   GdbServer::serve_emergency_debugger(std::move(dbg), t);
 }
 

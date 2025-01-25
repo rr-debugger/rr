@@ -59,9 +59,11 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 #endif
 
-GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid, const Features& features)
+GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
+  DebuggerType debugger_type, const Features& features)
     : tguid(tguid),
       cpu_features_(0),
+      debugger_type(debugger_type),
       no_ack(false),
       features_(features),
       connection_alive_(true),
@@ -110,9 +112,10 @@ static uint32_t get_cpu_features(SupportedArch arch) {
 }
 
 unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
-    Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
+    Task* t, ScopedFd& listen_fd,  DebuggerType debugger_type,
+    const GdbServerConnection::Features& features) {
   auto dbg = unique_ptr<GdbServerConnection>(
-    new GdbServerConnection(t->thread_group()->tguid(), features));
+    new GdbServerConnection(t->thread_group()->tguid(), debugger_type, features));
   dbg->set_cpu_features(t->arch());
   dbg->await_debugger(listen_fd);
   return dbg;

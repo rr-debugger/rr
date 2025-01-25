@@ -479,6 +479,15 @@ static void handle_SIGINT_in_child(int sig) {
   stop_replaying_to_target = true;
 }
 
+static DebuggerType identify_debugger(const string& debugger_name) {
+  string debugger_base_name = debugger_name;
+  base_name(debugger_base_name);
+  if (debugger_base_name.find("lldb") != string::npos) {
+    return DebuggerType::LLDB;
+  }
+  return DebuggerType::GDB;
+}
+
 static int replay(const string& trace_dir, const ReplayFlags& flags) {
   GdbServer::Target target;
   switch (flags.process_created_how) {
@@ -509,7 +518,10 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       conn_flags.keep_listening = flags.keep_listening;
       conn_flags.serve_files = flags.serve_files;
-      GdbServer::serve_replay(session, target, &stop_replaying_to_target, conn_flags);
+      // For now, assume the remote target is GDB-compatible. At some point
+      // we could add a flag to control this.
+      GdbServer::serve_replay(session, target, &stop_replaying_to_target,
+                              DebuggerType::GDB, conn_flags);
     }
 
     // Everything should have been cleaned up by now.
@@ -521,6 +533,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
   if (pipe2(debugger_params_pipe, O_CLOEXEC)) {
     FATAL() << "Couldn't open debugger params pipe.";
   }
+  DebuggerType debugger_type = identify_debugger(flags.gdb_binary_file_path);
   if (0 == (waiting_for_child = fork())) {
     // Ensure only the parent has the read end of the pipe open. Then if
     // the parent dies, our writes to the pipe will error out.
@@ -550,7 +563,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
         FATAL() << "Couldn't set sigaction for SIGINT.";
       }
 
-      GdbServer::serve_replay(session, target, &stop_replaying_to_target, conn_flags);
+      GdbServer::serve_replay(session, target, &stop_replaying_to_target,
+                              debugger_type, conn_flags);
     }
     // Everything should have been cleaned up by now.
     check_for_leaks();
@@ -572,8 +586,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
     launch_debugger(params_pipe_read_fd, flags.gdb_binary_file_path,
-                    flags.gdb_options,
-                    flags.serve_files);
+                    debugger_type, flags.gdb_options, flags.serve_files);
   }
 
   // Child must have died before we were able to get debugger parameters

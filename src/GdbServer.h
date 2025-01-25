@@ -70,6 +70,7 @@ public:
   static void serve_replay(std::shared_ptr<ReplaySession> session,
                            const Target& target,
                            volatile bool* stop_replaying_to_target,
+                           DebuggerType debugger_type,
                            const ConnectionFlags& flags);
 
   /**

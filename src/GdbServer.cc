@@ -1802,6 +1802,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
 void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
                              const Target& target,
                              volatile bool* stop_replaying_to_target,
+                             DebuggerType debugger_type,
                              const ConnectionFlags& flags) {
   ReplayTimeline timeline(std::move(session));
 
@@ -1837,8 +1838,8 @@ void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
     DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
     vector<string> cmd = debugger_launch_command(t, listen_socket.domain,
-        listen_socket.host, listen_socket.port,
-        flags.serve_files, flags.debugger_name);
+        listen_socket.host, listen_socket.port, flags.serve_files,
+        flags.debugger_name, debugger_type);
     fprintf(stderr, "Launch debugger with\n  %s\n", to_shell_string(cmd).c_str());
   }
 
@@ -1854,7 +1855,8 @@ void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
 
   do {
     LOG(debug) << "initializing debugger connection";
-    auto connection = GdbServerConnection::await_connection(t, listen_socket.fd);
+    auto connection = GdbServerConnection::await_connection(t, listen_socket.fd,
+      debugger_type);
 
     GdbServer server(connection, timeline.current_session().current_task(),
                      &timeline, target);
