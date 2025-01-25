@@ -6,6 +6,7 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'get_gdb_version', 'breakpoint_at_function',
             'watchpoint_at_address', 'cont', 'backtrace', 'up',
             'expect_breakpoint_stop', 'expect_watchpoint_stop',
+            'expect_history_end', 'history_end_regex',
             'delete_watchpoint', 'expect_signal_stop',
             'set_breakpoint_commands', 'select_thread',
             'scheduler_locking_on', 'scheduler_locking_off',
@@ -120,6 +121,16 @@ def up():
 
 def backtrace():
     send_debugger('bt', 'thread backtrace')
+
+def history_end_regex():
+    if debugger_type == 'GDB':
+        return 'No more reverse-execution history|Reached end of recorded history'
+    else:
+        # Add LLDB case
+        assert False
+
+def expect_history_end():
+    expect_debugger(history_end_regex())
 
 def expect_breakpoint_stop(number):
     if debugger_type == 'GDB':

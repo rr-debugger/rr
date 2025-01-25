@@ -13,6 +13,6 @@ send_gdb('c')
 expect_gdb('Breakpoint 1')
 send_gdb('!kill -WINCH 0')
 send_gdb('reverse-cont')
-expect_gdb('No more reverse-execution history')
+expect_history_end()
 
 ok()

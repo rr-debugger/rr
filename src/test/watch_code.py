@@ -9,6 +9,6 @@ send_gdb('watch -l *(int*)$pc')
 expect_gdb('Hardware watchpoint 2')
 
 send_gdb('reverse-continue')
-expect_gdb('No more reverse-execution history')
+expect_history_end()
 
 ok()

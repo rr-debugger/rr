@@ -11,6 +11,6 @@ expect_gdb('Breakpoint 1')
 send_gdb('ignore 1 1000000')
 expect_gdb('Will ignore')
 send_gdb('reverse-continue')
-expect_gdb('No more reverse-execution history')
+expect_history_end()
 
 ok()
