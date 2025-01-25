@@ -797,6 +797,7 @@ private:
   void write_hex_bytes_packet(const uint8_t* bytes, size_t len);
   void write_xfer_response(const void* data, size_t size, uint64_t offset,
                            uint64_t len);
+  void parse_thread_suffix_threadid(char* payload, GdbThreadId* out);
   /**
    * Consume bytes in the input buffer until start-of-packet ('$') or
    * the interrupt character is seen.  Does not block.  Return true if
