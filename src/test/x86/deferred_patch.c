@@ -96,7 +96,7 @@ static void futex_wait(uintptr_t val)
 
 pid_t parent;
 
-static void *do_thread(__attribute__((unused)) void*) {
+static void *do_thread(__attribute__((unused)) void* p) {
   test_assert(1 == read(pipefds2[0], &byte, 1));
   sched_yield();
   syscall(SYS_tkill, parent, SIGALRM);
