@@ -3,6 +3,7 @@
 #include "nsutils.h"
 #include "util.h"
 
+#include <linux/mount.h>
 #include <sys/mount.h>
 
 int main(void) {
