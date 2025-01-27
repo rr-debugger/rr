@@ -11,7 +11,7 @@ static void *child_process_extra_thread(__attribute__((unused)) void *extra_thre
   sched_yield();
 
   // Now, stop ourselves. We'll be unstopped by the parent process.
-  r = kill(gettid(), SIGSTOP);
+  r = kill(sys_gettid(), SIGSTOP);
   test_assert(r == 0);
 
   // Now allow self to exit, and the thread-group-leader can continue.
