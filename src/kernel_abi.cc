@@ -34,6 +34,7 @@
 #include <linux/vt.h>
 #include <linux/wireless.h>
 #include <poll.h>
+#include <sched.h>
 #include <scsi/sg.h>
 #include <signal.h>
 #include <sound/asound.h>
