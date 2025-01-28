@@ -291,6 +291,17 @@ struct WordSize32Defs {
     uint32_t n_type;
   } ElfNhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Nhdr, ElfNhdr);
+  typedef struct {
+    uint32_t r_offset;
+    uint32_t r_info;
+  } ElfRel;
+  RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Rel, ElfRel);
+  typedef struct {
+    uint32_t r_offset;
+    uint32_t r_info;
+    int32_t r_addend;
+  } ElfRela;
+  RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Rela, ElfRela);
 
   static uint8_t clz_ptr(remote_ptr<void> ptr) {
     return __builtin_clz(ptr.as_int());
@@ -391,6 +402,17 @@ struct WordSize64Defs {
     uint32_t n_type;
   } ElfNhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Nhdr, ElfNhdr);
+  typedef struct {
+    uint64_t r_offset;
+    uint64_t r_info;
+  } ElfRel;
+  RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Rel, ElfRel);
+  typedef struct {
+    uint64_t r_offset;
+    uint64_t r_info;
+    int64_t r_addend;
+  } ElfRela;
+  RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Rela, ElfRela);
 
   static uint8_t clz_ptr(remote_ptr<void> ptr) {
     return __builtin_clzl(ptr.as_int());
