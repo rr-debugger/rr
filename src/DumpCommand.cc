@@ -247,7 +247,7 @@ static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
  */
 static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
                                  FILE* out, const string* spec,
-                                 const unordered_map<FrameTime, TraceTaskEvent>& task_events) {
+                                 const unordered_multimap<FrameTime, TraceTaskEvent>& task_events) {
 
   uint32_t start = 0, end = numeric_limits<uint32_t>::max();
   bool only_end = false;
@@ -282,8 +282,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         dump_syscallbuf_data(trace, out, frame, flags);
       }
       if (flags.dump_task_events) {
-        auto it = task_events.find(frame.time());
-        if (it != task_events.end()) {
+        auto range = task_events.equal_range(frame.time());
+        for (auto it = range.first; it != range.second; ++it) {
           dump_task_event(out, it->second);
         }
       }
@@ -387,7 +387,7 @@ void dump(const string& trace_dir, const DumpFlags& flags,
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
   }
 
-  unordered_map<FrameTime, TraceTaskEvent> task_events;
+  unordered_multimap<FrameTime, TraceTaskEvent> task_events;
   FrameTime last_time = 0;
   while (true) {
     FrameTime time;
