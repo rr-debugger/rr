@@ -4123,7 +4123,7 @@ static void move_vdso_and_vvar_mappings(AutoRemoteSyscalls& remote,
     mremap_move(remote, current.vvar_vclock.start(), vvar_vclock_temp_address,
         current.vvar_vclock.size(),
         "current.vvar_vclock.start() -> vvar_vclock_temp_address");
-  } else {
+  } else if (new_.vvar_vclock.start()) {
     bool ok = remote.infallible_munmap_syscall_if_alive(current.vvar_vclock.start(),
         current.vvar_vclock.size());
     ASSERT(t, ok) << "Duped task got killed?";
@@ -4133,8 +4133,10 @@ static void move_vdso_and_vvar_mappings(AutoRemoteSyscalls& remote,
               "vdso_temp_address -> new_.vdso.start()");
   mremap_move(remote, vvar_temp_address, new_.vvar.start(), new_.vvar.size(),
               "vvar_temp_address -> new_.vvar.start()");
-  mremap_move(remote, vvar_vclock_temp_address, new_.vvar_vclock.start(), new_.vvar_vclock.size(),
-              "vvar_vclock_temp_address -> new_.vvar_vclock.start()");
+  if (new_.vvar_vclock.start()) {
+    mremap_move(remote, vvar_vclock_temp_address, new_.vvar_vclock.start(), new_.vvar_vclock.size(),
+                "vvar_vclock_temp_address -> new_.vvar_vclock.start()");
+  }
 }
 
 const int all_rlimits[] = {
