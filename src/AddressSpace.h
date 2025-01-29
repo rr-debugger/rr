@@ -152,6 +152,7 @@ public:
   bool is_heap() const { return fsname() == "[heap]"; }
   bool is_stack() const { return fsname().find("[stack") == 0; }
   bool is_vvar() const { return fsname() == "[vvar]"; }
+  bool is_vvar_vclock() const { return fsname() == "[vvar_vclock]"; }
   bool is_vsyscall() const { return fsname() == "[vsyscall]"; }
   bool is_named_anonymous() const {
     return fsname().find("[anon:") == 0 || fsname().find("[anon_shmem:") == 0;

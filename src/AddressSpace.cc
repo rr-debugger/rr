@@ -413,7 +413,7 @@ void AddressSpace::unmap_all_but_rr_mappings(AutoRemoteSyscalls& remote,
     if (m.map.start() != AddressSpace::rr_page_start() &&
         m.map.start() != AddressSpace::preload_thread_locals_start() &&
         !m.map.is_vsyscall() &&
-        (!options.exclude_vdso_vvar || (!m.map.is_vdso() && m.map.is_vvar()))) {
+        (!options.exclude_vdso_vvar || (!m.map.is_vdso() && (m.map.is_vvar() || m.map.is_vvar_vclock())))) {
       unmaps.push_back(m.map);
     }
   }
