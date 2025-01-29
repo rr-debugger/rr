@@ -663,7 +663,9 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
       parent->send_synthetic_SIGCHLD_if_necessary();
     }
     if (status.type() == WaitStatus::EXIT || status.type() == WaitStatus::FATAL_SIGNAL) {
-      waited->record_exit_trace_event(status);
+      if (waited->thread_group()->tgid == waited->tid) {
+        waited->thread_group()->exit_status = status;
+      }
       if (!parent) {
         // The task is now dead, but so is our parent, so none of our
         // tasks care about this. We can now delete the proxy task.
