@@ -4054,6 +4054,12 @@ static void mremap_move(AutoRemoteSyscalls& remote, remote_ptr<void> src,
                              MREMAP_MAYMOVE | MREMAP_FIXED);
 }
 
+struct VMappings {
+  KernelMapping vdso;
+  KernelMapping vvar;
+  KernelMapping vvar_vclock;
+};
+
 /* Remap VDSO and VVAR to the addresses is used in the target process,
    before they get unmapped.
    Otherwise the kernel seems to put the address of the original
@@ -4062,22 +4068,25 @@ static void mremap_move(AutoRemoteSyscalls& remote, remote_ptr<void> src,
    located in libpthread.so.0 is used.
 */
 static void move_vdso_and_vvar_mappings(AutoRemoteSyscalls& remote,
-    const KernelMapping& vdso_new, const KernelMapping& vvar_new) {
-  KernelMapping vdso_current;
-  KernelMapping vvar_current;
+                                        const VMappings& new_) {
+  VMappings current;
   Task* t = remote.task();
   for (const auto& m : t->vm()->maps()) {
     if (m.map.is_vdso()) {
-      vdso_current = m.map;
+      current.vdso = m.map;
     } else if (m.map.is_vvar()) {
-      vvar_current = m.map;
+      current.vvar = m.map;
+    } else if (m.map.is_vvar_vclock()) {
+      current.vvar_vclock = m.map;
     }
   }
 
-  ASSERT(t, vdso_current.size() == vdso_new.size())
+  ASSERT(t, current.vdso.size() == new_.vdso.size())
     << "VDSO size mismatch";
-  ASSERT(t, vvar_current.size() == vvar_new.size() || !vvar_new.size())
+  ASSERT(t, current.vvar.size() == new_.vvar.size() || !new_.vvar.size())
     << "VVAR size mismatch";
+  ASSERT(t, current.vvar_vclock.size() == new_.vvar_vclock.size() || !new_.vvar_vclock.size())
+    << "VVAR VCLOCK size mismatch";
 
   // Handle case where old and new addresses overlap by finding a free range early in the
   // address space we can use as a temporary buffer. VDSOs are always at fairly high
@@ -4085,32 +4094,49 @@ static void move_vdso_and_vvar_mappings(AutoRemoteSyscalls& remote,
   // We move VDSO and VVAR to their temp addresses first, then move both of them to their
   // final address, to avoid situations where current's VDSO overlaps target's VVAR or
   // vice versa.
-  size_t temp_size = vdso_new.size() + vvar_new.size();
+  size_t temp_size = new_.vdso.size() + new_.vvar.size() + new_.vvar_vclock.size();
   remote_ptr<void> vdso_temp_address = t->vm()->find_free_memory(t,
         temp_size,
         remote_ptr<void>(65536), AddressSpace::FindFreeMemoryPolicy::STRICT_SEARCH);
-  remote_ptr<void> vvar_temp_address = vdso_temp_address + vdso_new.size();
+  remote_ptr<void> vvar_temp_address = vdso_temp_address + new_.vdso.size();
+  remote_ptr<void> vvar_vclock_temp_address = vvar_temp_address + new_.vvar.size();
   MemoryRange temp_range(vdso_temp_address, temp_size);
-  ASSERT(t, !temp_range.intersects(vdso_new))
+  ASSERT(t, !temp_range.intersects(new_.vdso))
     << "Free memory found overlaps new VDSO address";
-  ASSERT(t, !temp_range.intersects(vvar_new))
+  ASSERT(t, !temp_range.intersects(new_.vvar))
     << "Free memory found overlaps new VVAR address";
+  ASSERT(t, !temp_range.intersects(new_.vvar_vclock))
+    << "Free memory found overlaps new VVAR VCLOCK address";
 
-  mremap_move(remote, vdso_current.start(), vdso_temp_address, vdso_new.size(),
-              "vdso_current.start() -> vdso_temp_address");
-  if (vvar_new.size()) {
-    mremap_move(remote, vvar_current.start(), vvar_temp_address, vvar_current.size(),
-                "vvar_current.start() -> vvar_temp_address");
+  mremap_move(remote, current.vdso.start(), vdso_temp_address, new_.vdso.size(),
+              "current.vdso.start() -> vdso_temp_address");
+  if (new_.vvar.size()) {
+    mremap_move(remote, current.vvar.start(), vvar_temp_address, current.vvar.size(),
+                "current.vvar.start() -> vvar_temp_address");
   } else {
-    bool ok = remote.infallible_munmap_syscall_if_alive(vvar_current.start(),
-        vvar_current.size());
+    bool ok = remote.infallible_munmap_syscall_if_alive(current.vvar.start(),
+        current.vvar.size());
     ASSERT(t, ok) << "Duped task got killed?";
-    t->vm()->unmap(t, vvar_current.start(), vvar_current.size());
+    t->vm()->unmap(t, current.vvar.start(), current.vvar.size());
   }
-  mremap_move(remote, vdso_temp_address, vdso_new.start(), vdso_new.size(),
-              "vdso_temp_address -> vdso_new.start()");
-  mremap_move(remote, vvar_temp_address, vvar_new.start(), vvar_new.size(),
-              "vvar_temp_address -> vvar_new.start()");
+  if (new_.vvar_vclock.size()) {
+    mremap_move(remote, current.vvar_vclock.start(), vvar_vclock_temp_address,
+        current.vvar_vclock.size(),
+        "current.vvar_vclock.start() -> vvar_vclock_temp_address");
+  } else if (new_.vvar_vclock.start()) {
+    bool ok = remote.infallible_munmap_syscall_if_alive(current.vvar_vclock.start(),
+        current.vvar_vclock.size());
+    ASSERT(t, ok) << "Duped task got killed?";
+    t->vm()->unmap(t, current.vvar_vclock.start(), current.vvar_vclock.size());
+  }
+  mremap_move(remote, vdso_temp_address, new_.vdso.start(), new_.vdso.size(),
+              "vdso_temp_address -> new_.vdso.start()");
+  mremap_move(remote, vvar_temp_address, new_.vvar.start(), new_.vvar.size(),
+              "vvar_temp_address -> new_.vvar.start()");
+  if (new_.vvar_vclock.start()) {
+    mremap_move(remote, vvar_vclock_temp_address, new_.vvar_vclock.start(), new_.vvar_vclock.size(),
+                "vvar_vclock_temp_address -> new_.vvar_vclock.start()");
+  }
 }
 
 const int all_rlimits[] = {
@@ -4124,8 +4150,7 @@ void Task::dup_from(Task *other) {
   std::vector<KernelMapping> mappings;
   KernelMapping stack_mapping;
   bool found_stack = false;
-  KernelMapping vdso_mapping;
-  KernelMapping vvar_mapping;
+  VMappings vmaps;
 
   for (auto map : other->vm()->maps()) {
     auto km = map.map;
@@ -4146,9 +4171,11 @@ void Task::dup_from(Task *other) {
       found_stack = true;
     } else {
       if (km.is_vdso()) {
-        vdso_mapping = km;
+        vmaps.vdso = km;
       } else if (km.is_vvar()) {
-        vvar_mapping = km;
+        vmaps.vvar = km;
+      } else if (km.is_vvar_vclock()) {
+        vmaps.vvar_vclock = km;
       } else if (!km.is_vsyscall()) {
         mappings.push_back(km);
       }
@@ -4163,7 +4190,7 @@ void Task::dup_from(Task *other) {
   }
   {
     AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
-    move_vdso_and_vvar_mappings(remote, vdso_mapping, vvar_mapping);
+    move_vdso_and_vvar_mappings(remote, vmaps);
     LOG(debug) << "Unmapping memory for " << tid;
     // TODO: Only do this if the rr page isn't already mapped
     AddressSpace::UnmapOptions options;

@@ -5782,6 +5782,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
 
   KernelMapping vvar;
+  KernelMapping vvar_vclock;
   KernelMapping vdso;
 
   // get the remote executable entry point
@@ -5800,6 +5801,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       stacks.push_back(km);
     } else if (km.is_vvar()) {
       vvar = km;
+    } else if (km.is_vvar_vclock()) {
+      vvar_vclock = km;
     } else if (km.is_vdso()) {
       vdso = km;
     }
@@ -5833,6 +5836,12 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                                 vvar.start(), vvar.size());
       t->vm()->unmap(t, vvar.start(), vvar.size());
+    }
+    if (vvar_vclock.size()) {
+      // Give [vvar_vclock] the same treatment.
+      remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                                vvar_vclock.start(), vvar_vclock.size());
+      t->vm()->unmap(t, vvar_vclock.start(), vvar_vclock.size());
     }
 
     if (t->session().unmap_vdso() && vdso.size()) {
