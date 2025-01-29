@@ -1217,10 +1217,10 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       if (t->detached_proxy) {
         // We detached. Record that.
-        t->record_event(Event::exit(), RecordTask::DONT_FLUSH_SYSCALLBUF,
-          RecordTask::DONT_RESET_SYSCALLBUF);
         t->session().trace_writer().write_task_event(
             TraceTaskEvent::for_detach(t->tid));
+        t->record_event(Event::exit(), RecordTask::DONT_FLUSH_SYSCALLBUF,
+          RecordTask::DONT_RESET_SYSCALLBUF);
         step_state->continue_type = DONT_CONTINUE;
       }
 
