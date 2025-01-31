@@ -4177,6 +4177,7 @@ static long syscall_hook_internal(struct syscall_info* call) {
     CASE(creat);
 #endif
     CASE_GENERIC_NONBLOCKING_FD(dup);
+    CASE_GENERIC_NONBLOCKING_FD(epoll_ctl);
 #if defined(SYS_epoll_wait)
 case SYS_epoll_wait:
 #endif
