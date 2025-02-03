@@ -40,6 +40,7 @@
 #include <linux/videodev2.h>
 #include <linux/vt.h>
 #include <linux/wireless.h>
+#include <mtd/mtd-user.h>
 #include <poll.h>
 #include <sched.h>
 #include <scsi/sg.h>
@@ -2017,6 +2018,11 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(VIDIOC_EXPBUF):
     case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH):
     case IOCTL_MASK_SIZE(DMA_BUF_IOCTL_EXPORT_SYNC_FILE):
+    case IOCTL_MASK_SIZE(MEMWRITEOOB):
+    case IOCTL_MASK_SIZE(MEMREADOOB):
+    case IOCTL_MASK_SIZE(MEMGETREGIONINFO):
+    case IOCTL_MASK_SIZE(MEMWRITEOOB64):
+    case IOCTL_MASK_SIZE(MEMREADOOB64):
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
@@ -2065,6 +2071,13 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(HIDIOCGRDESC):
     case IOCTL_MASK_SIZE(BLKBSZGET):
     case IOCTL_MASK_SIZE(BLKGETDISKSEQ):
+    case IOCTL_MASK_SIZE(MEMGETINFO):
+    case IOCTL_MASK_SIZE(MEMGETREGIONCOUNT):
+    case IOCTL_MASK_SIZE(MEMGETOOBSEL):
+    case IOCTL_MASK_SIZE(OTPGETREGIONCOUNT):
+    case IOCTL_MASK_SIZE(OTPGETREGIONINFO):
+    case IOCTL_MASK_SIZE(ECCGETLAYOUT):
+    case IOCTL_MASK_SIZE(ECCGETSTATS):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
@@ -2081,6 +2094,18 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(USBDEVFS_SETCONFIGURATION):
     case IOCTL_MASK_SIZE(USBDEVFS_SETINTERFACE):
     case IOCTL_MASK_SIZE(USBDEVFS_SUBMITURB):
+    case IOCTL_MASK_SIZE(MEMERASE):
+    case IOCTL_MASK_SIZE(MEMLOCK):
+    case IOCTL_MASK_SIZE(MEMUNLOCK):
+    case IOCTL_MASK_SIZE(MEMGETBADBLOCK):
+    case IOCTL_MASK_SIZE(MEMSETBADBLOCK):
+    case IOCTL_MASK_SIZE(OTPSELECT):
+    case IOCTL_MASK_SIZE(OTPLOCK):
+    case IOCTL_MASK_SIZE(OTPERASE):
+    case IOCTL_MASK_SIZE(MTDFILEMODE):
+    case IOCTL_MASK_SIZE(MEMERASE64):
+    case IOCTL_MASK_SIZE(MEMISLOCKED):
+    case IOCTL_MASK_SIZE(MEMWRITE):
       // Doesn't actually seem to write to userspace
       return PREVENT_SWITCH;
 
@@ -2137,6 +2162,17 @@ static Switchable prepare_ioctl(RecordTask* t,
 
   /* These ioctls are mostly regular but require additional recording. */
   switch (IOCTL_MASK_SIZE(request)) {
+    case IOCTL_MASK_SIZE(MEMREAD): {
+      auto argsp =
+          syscall_state.reg_parameter<typename Arch::mtd_read_req>(3, IN_OUT);
+      auto args = t->read_mem(argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, usr_data),
+                                      args.len);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, usr_oob),
+                                      args.ooblen);
+      return PREVENT_SWITCH;
+    }
+
     case IOCTL_MASK_SIZE(VIDIOC_DQBUF): {
       if (size == sizeof(typename Arch::v4l2_buffer)) {
         syscall_state.reg_parameter(3, size, IN_OUT);
