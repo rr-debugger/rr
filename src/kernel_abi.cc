@@ -33,6 +33,7 @@
 #include <linux/videodev2.h>
 #include <linux/vt.h>
 #include <linux/wireless.h>
+#include <mtd/mtd-user.h>
 #include <poll.h>
 #include <sched.h>
 #include <scsi/sg.h>

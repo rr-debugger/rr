@@ -2006,6 +2006,24 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(cdrom_tocentry);
 
+  struct mtd_read_req_ecc_stats {
+    uint32_t uncorrectable_errors;
+    uint32_t corrected_bitflips;
+    uint32_t max_bitflips;
+  };
+
+  struct mtd_read_req {
+    uint64_t start;
+    uint64_t len;
+    uint64_t ooblen;
+    uint64_t usr_data;
+    uint64_t usr_oob;
+    uint8_t mode;
+    uint8_t padding[7];
+    struct mtd_read_req_ecc_stats ecc_stats;
+  };
+  RR_VERIFY_TYPE(mtd_read_req);
+
   struct ptrace_syscall_info {
     uint8_t op;
     uint32_t arch;
