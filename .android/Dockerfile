@@ -1,6 +1,6 @@
 FROM ubuntu:latest
 
-ARG ndk_version=r25c
+ARG ndk_version=r27c
 
 RUN apt-get update && apt-get install -y \
     build-essential \
