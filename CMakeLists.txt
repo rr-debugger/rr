@@ -1403,6 +1403,7 @@ set(BASIC_TESTS
   sysemu_singlestep
   x86/sysfs
   sysinfo
+  syslog
   tgkill
   thread_yield
   timer
