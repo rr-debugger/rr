@@ -5459,6 +5459,17 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::syslog: {
+      int type = regs.arg1();
+      if (type < 0 || type > 10) {
+        syscall_state.expect_errno = EINVAL;
+      } else if (type == 2 || type == 3 || type == 4) {
+        syscall_state.reg_parameter(
+            2, ParamSize::from_syscall_result<int>((size_t)regs.arg3()));
+      }
+      return PREVENT_SWITCH;
+    }
+
     default:
       // Invalid syscalls return -ENOSYS. Assume any such
       // result means the syscall was completely ignored by the
