@@ -2022,7 +2022,7 @@ struct BaseArch : public wordsize,
     uint8_t padding[7];
     struct mtd_read_req_ecc_stats ecc_stats;
   };
-  RR_VERIFY_TYPE(mtd_read_req);
+  // mtd_read_req was only added in kernel 6.1 so don't try to verify it yet.
 
   struct ptrace_syscall_info {
     uint8_t op;
