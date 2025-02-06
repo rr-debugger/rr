@@ -522,6 +522,11 @@ enum {
 #define MREMAP_DONTUNMAP 4
 #endif
 
+// New in the 5.13 kernel
+#ifndef OTPERASE
+#define OTPERASE _IOW('M', 25, struct otp_info)
+#endif
+
 // New in the 5.15 kernel
 #ifndef BLKGETDISKSEQ
 #define BLKGETDISKSEQ _IOR(0x12,128,__u64)
@@ -533,6 +538,11 @@ enum {
 #endif
 #ifndef PR_SET_VMA_ANON_NAME
 #define PR_SET_VMA_ANON_NAME 0
+#endif
+
+// New in the 6.1 kernel
+#ifndef MEMREAD
+#define MEMREAD _IOWR('M', 26, typename Arch::mtd_read_req)
 #endif
 
 // Technically not "kernel" constants, exactly, since these are defined
