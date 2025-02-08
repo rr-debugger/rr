@@ -1755,6 +1755,47 @@ static int to_gdb_signum(int sig) {
   }
 }
 
+static constexpr void write_threads_extension(
+    bool multiprocess, stringstream& stream,
+    const vector<GdbServerConnection::ThreadInfo>& threads) {
+  stream << "threads:";
+  bool first = true;
+  if (multiprocess) {
+    for (const auto& thread : threads) {
+      if (!first) {
+        stream << ",";
+      }
+      first = false;
+      stream << "p" << thread.id.to_debugger_thread_id();
+    }
+  } else {
+    for (const auto& thread : threads) {
+      if (!first) {
+        stream << ",";
+      }
+      first = false;
+      stream << thread.id.tuid.tid();
+    }
+  }
+}
+
+void GdbServerConnection::write_threads_if_supported(
+    std::stringstream& stream, const vector<ThreadInfo>& threads) {
+  if (list_threads_in_stop_reply_) {
+    write_threads_extension(multiprocess_supported(), stream, threads);
+    stream << ";thread-pcs:";
+    bool first = true;
+    for (const auto& thread : threads) {
+      if (!first) {
+        stream << ",";
+      }
+      first = false;
+      stream << thread.pc;
+    }
+    stream << ";";
+  }
+}
+
 void GdbServerConnection::send_stop_reply_packet(ExtendedTaskId thread, int sig,
                                                  const vector<ThreadInfo>& threads,
                                                  const string& reason) {
@@ -1766,34 +1807,8 @@ void GdbServerConnection::send_stop_reply_packet(ExtendedTaskId thread, int sig,
   sstr << "T" << std::setfill('0') << std::setw(2) << std::hex
       << to_gdb_signum(sig) << std::setw(0);
   sstr << "thread:" << format_thread_id(thread) << ";" << reason;
-  if (list_threads_in_stop_reply_) {
-    sstr << "threads:";
-    bool first = true;
-    for (const auto& thread : threads) {
-      if (thread.id.tguid != tguid) {
-        continue;
-      }
-      if (!first) {
-        sstr << ",";
-      }
-      first = false;
-      sstr << thread.id.tuid.tid();
-    }
-    sstr << ";thread-pcs:";
-    first = true;
-    for (const auto& thread : threads) {
-      if (thread.id.tguid != tguid) {
-        continue;
-      }
-      if (!first) {
-        sstr << ",";
-      }
-      first = false;
-      sstr << thread.pc;
-    }
-    sstr << ";";
-  }
 
+  write_threads_if_supported(sstr, threads);
   write_packet(sstr.str().c_str());
 }
 
