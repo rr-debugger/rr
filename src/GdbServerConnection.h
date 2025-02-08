@@ -845,6 +845,8 @@ private:
    */
   bool process_packet();
   void consume_request();
+  void write_threads_if_supported(std::stringstream& stream,
+                                  const vector<ThreadInfo>& threads);
   void send_stop_reply_packet(ExtendedTaskId thread, int sig,
                               const std::vector<ThreadInfo>& threads,
                               const std::string& reason);
