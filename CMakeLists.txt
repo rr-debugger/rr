@@ -1134,6 +1134,7 @@ set(BASIC_TESTS
   kill_newborn
   kill_ptracee
   landlock
+  x86/la57
   large_hole
   large_write_deadlock
   legacy_ugid
@@ -1402,6 +1403,7 @@ set(BASIC_TESTS
   sysemu_singlestep
   x86/sysfs
   sysinfo
+  syslog
   tgkill
   thread_yield
   timer

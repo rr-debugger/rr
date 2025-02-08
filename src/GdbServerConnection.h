@@ -20,6 +20,7 @@
 #include "TargetDescription.h"
 #include "TaskishUid.h"
 #include "core.h"
+#include "launch_debugger.h"
 
 namespace rr {
 
@@ -487,7 +488,8 @@ public:
    * debugging context, or it won't return.
    */
   static std::unique_ptr<GdbServerConnection> await_connection(
-    Task* t, ScopedFd& listen_fd, const Features& features = Features());
+    Task* t, ScopedFd& listen_fd, DebuggerType debugger_type,
+    const Features& features = Features());
 
   /**
    * Call this when the target of |req| is needed to fulfill the
@@ -755,7 +757,8 @@ public:
   void set_cpu_features(SupportedArch arch);
   uint32_t cpu_features() const { return cpu_features_; }
 
-  GdbServerConnection(ThreadGroupUid tguid, const Features& features);
+  GdbServerConnection(ThreadGroupUid tguid, DebuggerType debugger_type,
+    const Features& features);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
@@ -794,6 +797,7 @@ private:
   void write_hex_bytes_packet(const uint8_t* bytes, size_t len);
   void write_xfer_response(const void* data, size_t size, uint64_t offset,
                            uint64_t len);
+  void parse_thread_suffix_threadid(char* payload, GdbThreadId* out);
   /**
    * Consume bytes in the input buffer until start-of-packet ('$') or
    * the interrupt character is seen.  Does not block.  Return true if
@@ -864,6 +868,7 @@ private:
   // this thread group exists when interfacing with gdb
   ThreadGroupUid tguid;
   uint32_t cpu_features_;
+  DebuggerType debugger_type;
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;

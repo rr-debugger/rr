@@ -7,6 +7,10 @@
 // For compatibility with pre-2.38 versions of binutils.
 #define cntvctss_el0 "s3_3_c14_c0_6"
 
+#ifndef HWCAP2_ECV
+#define HWCAP2_ECV (1 << 19)
+#endif
+
 long cntfrq(void) {
   long c;
   __asm__ __volatile__("mrs %0, cntfrq_el0" : "=r"(c));

@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-struct sched_attr {
+struct rr_sched_attr {
   uint32_t size;
   uint32_t sched_policy;
   uint64_t sched_flags;
@@ -14,7 +14,7 @@ struct sched_attr {
 };
 
 int main(void) {
-  struct sched_attr* attr;
+  struct rr_sched_attr* attr;
   ALLOCATE_GUARD(attr, 'x');
   syscall(__NR_sched_getattr, 0, attr, sizeof(*attr), 0);
   /* Don't check specific scheduling parameters in case someone

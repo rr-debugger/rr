@@ -270,6 +270,8 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
   }
 
   set_intel_pt_enabled(flags.intel_pt_start_checking_event >= 0);
+
+  check_virtual_address_size();
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)
@@ -301,6 +303,22 @@ ReplaySession::~ReplaySession() {
   syscall_bp_vm = nullptr;
   DEBUG_ASSERT(task_map.empty() && vm_map.empty());
   DEBUG_ASSERT(emufs().size() == 0);
+}
+
+void ReplaySession::check_virtual_address_size() const
+{
+  uint8_t virtual_address_size_needed = trace_in.max_virtual_address_size();
+  if (virtual_address_size_supported(virtual_address_size_needed)) {
+    return;
+  }
+
+  if (rr::Flags::get().force_things) {
+    LOG(warn) << "Virtual address size is unsupported but forcing anyways.";
+    return;
+  }
+
+  CLEAN_FATAL() << "The trace uses " << (uint32_t)virtual_address_size_needed <<
+      " bit virtual addresses but this system does not support that size.";
 }
 
 ReplaySession::shr_ptr ReplaySession::clone() {

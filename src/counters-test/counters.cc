@@ -65,7 +65,10 @@ enum CpuMicroarch {
   IntelAlderlake,
   IntelRaptorlake,
   IntelSapphireRapid,
-  LastIntel = IntelSapphireRapid,
+  IntelEmeraldRapid,
+  IntelMeteorLake,
+  IntelArrowLake,
+  LastIntel = IntelArrowLake,
   FirstAMD,
   AMDF15 = FirstAMD,
   AMDZen,
@@ -136,7 +139,10 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
+  { IntelEmeraldRapid, "Intel EmeraldRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelSapphireRapid, "Intel SapphireRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelArrowLake, "Intel Arrowlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelMeteorLake, "Intel Meteorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelRaptorlake, "Intel Raptorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelRocketlake, "Intel Rocketlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
@@ -335,6 +341,12 @@ static CpuMicroarch compute_cpu_microarch(void) {
       return IntelRaptorlake;
     case 0x806f0:
       return IntelSapphireRapid;
+    case 0xc06f0:
+      return IntelEmeraldRapid;
+    case 0xa06a0:
+      return IntelMeteorLake;
+    case 0xc0660:
+      return IntelArrowLake;
     case 0xf20:
     case 0x30f00:
       return AMDF15;

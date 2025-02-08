@@ -699,6 +699,8 @@ void base_name(std::string& s);
 
 std::optional<int> read_perf_event_paranoid();
 
+bool virtual_address_size_supported(uint8_t bit_size);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

@@ -114,7 +114,8 @@ enum CpuMicroarch {
   IntelSapphireRapid,
   IntelEmeraldRapid,
   IntelMeteorLake,
-  LastIntel = IntelMeteorLake,
+  IntelArrowLake,
+  LastIntel = IntelArrowLake,
   FirstAMD,
   AMDF15 = FirstAMD,
   AMDZen,
@@ -177,13 +178,13 @@ enum CpuMicroarch {
 struct PmuConfig {
   CpuMicroarch uarch;
   const char* name;
-  unsigned rcb_cntr_event;
-  unsigned minus_ticks_cntr_event;
-  unsigned llsc_cntr_event;
+  uint64_t rcb_cntr_event;
+  uint64_t minus_ticks_cntr_event;
+  uint64_t llsc_cntr_event;
   uint32_t skid_size;
   uint32_t flags;
   const char* pmu_name = nullptr; // ARM only
-  unsigned cycle_event = PERF_COUNT_HW_CPU_CYCLES;
+  uint64_t cycle_event = PERF_COUNT_HW_CPU_CYCLES;
   int cycle_type = PERF_TYPE_HARDWARE;
   int event_type = PERF_TYPE_RAW;
 };
@@ -202,6 +203,7 @@ struct PmuConfig {
 static const PmuConfig pmu_configs[] = {
   { IntelEmeraldRapid, "Intel EmeraldRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelSapphireRapid, "Intel SapphireRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelArrowLake, "Intel Arrowlake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelMeteorLake, "Intel Meteorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelRaptorlake, "Intel Raptorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
@@ -316,7 +318,7 @@ static int get_pmu_index(int cpu_binding)
 }
 
 static void init_perf_event_attr(struct perf_event_attr* attr,
-                                 unsigned type, unsigned config) {
+                                 unsigned type, uint64_t config) {
   memset(attr, 0, sizeof(*attr));
   attr->type = perf_type_id(type);
   attr->size = sizeof(*attr);

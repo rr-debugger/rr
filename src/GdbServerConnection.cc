@@ -59,9 +59,11 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 #endif
 
-GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid, const Features& features)
+GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
+  DebuggerType debugger_type, const Features& features)
     : tguid(tguid),
       cpu_features_(0),
+      debugger_type(debugger_type),
       no_ack(false),
       features_(features),
       connection_alive_(true),
@@ -110,9 +112,10 @@ static uint32_t get_cpu_features(SupportedArch arch) {
 }
 
 unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
-    Task* t, ScopedFd& listen_fd, const GdbServerConnection::Features& features) {
+    Task* t, ScopedFd& listen_fd,  DebuggerType debugger_type,
+    const GdbServerConnection::Features& features) {
   auto dbg = unique_ptr<GdbServerConnection>(
-    new GdbServerConnection(t->thread_group()->tguid(), features));
+    new GdbServerConnection(t->thread_group()->tguid(), debugger_type, features));
   dbg->set_cpu_features(t->arch());
   dbg->await_debugger(listen_fd);
   return dbg;
@@ -828,7 +831,8 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "MemoryRegionInfo") && args) {
+  if (!strcmp(name, "MemoryRegionInfo") && args &&
+      debugger_type == DebuggerType::LLDB) {
     req = GdbRequest(DREQ_MEM_INFO);
     req.target = query_thread;
     req.mem().addr = strtoul(args, &args, 16);
@@ -846,7 +850,7 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "HostInfo")) {
+  if (!strcmp(name, "HostInfo") && debugger_type == DebuggerType::LLDB) {
     // lldb-server sends a reply like
     // triple:7838365f36342d2d6c696e75782d676e75;ptrsize:8;distribution_id:6665646f7261;
     // watchpoint_exceptions_received:after;endian:little;os_version:6.6.13;
@@ -857,12 +861,12 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "VAttachOrWaitSupported")) {
+  if (!strcmp(name, "VAttachOrWaitSupported") && debugger_type == DebuggerType::LLDB) {
     // We don't handle vAttach and variants.
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "ProcessInfo")) {
+  if (!strcmp(name, "ProcessInfo") && debugger_type == DebuggerType::LLDB) {
     // lldb-server sends a reply like
     // pid:3663df;parent-pid:3663de;real-uid:3e8;real-gid:3e8;effective-uid:3e8;effective-gid:3e8;
     // triple:7838365f36342d2d6c696e75782d676e75;ostype:linux;endian:little;ptrsize:8
@@ -871,12 +875,12 @@ bool GdbServerConnection::query(char* payload) {
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "StructuredDataPlugins")) {
+  if (!strcmp(name, "StructuredDataPlugins") && debugger_type == DebuggerType::LLDB) {
     // This isn't documented and lldb-server doesn't support it
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "ShlibInfoAddr")) {
+  if (!strcmp(name, "ShlibInfoAddr") && debugger_type == DebuggerType::LLDB) {
     // This isn't documented and lldb-server doesn't seem to support it
     write_packet("");
     return false;
@@ -887,7 +891,10 @@ bool GdbServerConnection::query(char* payload) {
 }
 
 // LLDB QThreadSuffixSupported extension
-static void parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
+void GdbServerConnection::parse_thread_suffix_threadid(char* payload, GdbThreadId* out) {
+  if (debugger_type != DebuggerType::LLDB) {
+    return;
+  }
   char* semicolon = strrchr(payload, ';');
   if (!semicolon) {
     return;
@@ -944,27 +951,32 @@ bool GdbServerConnection::set_var(char* payload) {
     write_packet("OK");
     return false;
   }
-  if (!strcmp(name, "ListThreadsInStopReply")) {
+  if (!strcmp(name, "ListThreadsInStopReply") &&
+      debugger_type == DebuggerType::LLDB) {
     write_packet("OK");
     list_threads_in_stop_reply_ = true;
     return false;
   }
 
-  if (!strcmp(name, "ThreadSuffixSupported")) {
+  if (!strcmp(name, "ThreadSuffixSupported") &&
+      debugger_type == DebuggerType::LLDB) {
     write_packet("OK");
     return false;
   }
-  if (!strcmp(name, "EnableErrorStrings")) {
+  if (!strcmp(name, "EnableErrorStrings") &&
+      debugger_type == DebuggerType::LLDB) {
     // We don't support human-readable error strings.
     write_packet("");
     return false;
   }
-  if (!strcmp(name, "SaveRegisterState")) {
+  if (!strcmp(name, "SaveRegisterState") &&
+      debugger_type == DebuggerType::LLDB) {
     req = GdbRequest(DREQ_SAVE_REGISTER_STATE);
     req.target = target;
     return true;
   }
-  if (!strcmp(name, "RestoreRegisterState")) {
+  if (!strcmp(name, "RestoreRegisterState") &&
+      debugger_type == DebuggerType::LLDB) {
     req = GdbRequest(DREQ_RESTORE_REGISTER_STATE);
     req.target = target;
     char* end;
@@ -982,6 +994,9 @@ bool GdbServerConnection::process_underscore(char* payload) {
 
   switch (payload[0]) {
     case 'M': {
+      if (debugger_type != DebuggerType::LLDB) {
+        break;
+      }
       char* end = nullptr;
       req = GdbRequest(DREQ_MEM_ALLOC);
       req.mem_alloc().size = strtol(args, &end, 16);
@@ -1003,6 +1018,9 @@ bool GdbServerConnection::process_underscore(char* payload) {
       return true;
     }
     case 'm': {
+      if (debugger_type != DebuggerType::LLDB) {
+        break;
+      }
       char* end = nullptr;
       req = GdbRequest(DREQ_MEM_FREE);
       req.mem_free().address = strtol(args, &end, 16);
@@ -1931,12 +1949,22 @@ void GdbServerConnection::reply_get_mem(const vector<uint8_t>& mem) {
       write_hex_bytes_packet(mem.data(), mem.size());
     }
   } else {
-    if (!req.mem().len) {
-      write_packet("OK");
-    } else if (!mem.size()) {
-      write_packet("E01");
+    if (debugger_type == DebuggerType::LLDB) {
+      if (!req.mem().len) {
+        write_packet("OK");
+      } else if (!mem.size()) {
+        write_packet("E01");
+      } else {
+        write_binary_packet("", mem.data(), mem.size());
+      }
     } else {
-      write_binary_packet("", mem.data(), mem.size());
+      if (!req.mem().len) {
+        write_packet("b");
+      } else if (!mem.size()) {
+        write_packet("E01");
+      } else {
+        write_binary_packet("b", mem.data(), mem.size());
+      }
     }
   }
 

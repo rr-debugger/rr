@@ -9,6 +9,6 @@ expect_gdb('Checkpoint 1 at')
 send_gdb('restart 1')
 expect_gdb('stopped')
 send_gdb('rc')
-expect_gdb('No more reverse-execution history')
+expect_history_end()
 
 ok()

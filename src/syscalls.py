@@ -568,7 +568,7 @@ ioperm = EmulatedSyscall(x86=101, x64=173)
 # through to the appropriate call.
 socketcall = IrregularEmulatedSyscall(x86=102)
 
-syslog = UnsupportedSyscall(x86=103, x64=103, generic=116)
+syslog = IrregularEmulatedSyscall(x86=103, x64=103, generic=116)
 
 #  int setitimer(int which, const struct itimerval *new_value, struct itimerval
 #*old_value);
