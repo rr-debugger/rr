@@ -115,6 +115,8 @@ class Ec2Vm:
     def ssh_options(self):
         return ['-i', self.keypair_pem_file,
                 '-o', 'StrictHostKeyChecking=no',
+                # A broken agent config can stop SSH from working. Bypass that.
+                '-o', 'IdentityAgent=none',
                 '-o', 'BatchMode=yes',
                 '-o', 'ConnectTimeout=5',
                 '-o', 'IdentitiesOnly=yes']
