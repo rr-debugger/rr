@@ -20,7 +20,7 @@ namespace rr {
 class PreserveFileMonitor : public FileMonitor {
 public:
   PreserveFileMonitor() {}
-  virtual Type type() override { return Preserve; }
+  virtual Type type() const override { return Preserve; }
   virtual bool is_rr_fd() override { return true; }
 };
 

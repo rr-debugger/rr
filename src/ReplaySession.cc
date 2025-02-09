@@ -27,6 +27,10 @@
 #include "replay_syscall.h"
 #include "util.h"
 
+#include "PersistentCheckpointing.h"
+#include "PreserveFileMonitor.h"
+#include <fcntl.h>
+
 using namespace std;
 
 namespace rr {
@@ -335,35 +339,12 @@ ReplaySession::shr_ptr ReplaySession::clone() {
   return session;
 }
 
-/**
- * Return true if it's possible/meaningful to make a checkpoint at the
- * |frame| that |t| will replay.
- */
-static bool can_checkpoint_at(const Event& ev) {
-  if (ev.has_ticks_slop()) {
-    return false;
-  }
-  switch (ev.type()) {
-    case EV_EXIT:
-    // At exits, we can't clone the exiting tasks, so
-    // don't event bother trying to checkpoint.
-    case EV_SYSCALLBUF_RESET:
-    // RESETs are usually inserted in between syscall
-    // entry/exit.  Do not attempting to checkpoint at
-    // RESETs.  Users would never want to do that anyway.
-    case EV_TRACE_TERMINATION:
-      // There's nothing to checkpoint at the end of a trace.
-      return false;
-    default:
-      return true;
-  }
-}
-
 bool ReplaySession::can_clone() {
   finish_initializing();
 
   ReplayTask* t = current_task();
-  return t && done_initial_exec() && can_checkpoint_at(current_trace_frame().event());
+  return t && done_initial_exec() &&
+         current_trace_frame().event().can_checkpoint_at();
 }
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
@@ -2262,6 +2243,344 @@ bool ReplaySession::mark_stdio() const {
 bool ReplaySession::echo_stdio() const {
   return flags().redirect_stdio && visible_execution_ &&
     current_frame_time() >= suppress_stdio_before_event_;
+}
+
+void ReplaySession::serialize_checkpoint(
+    pcp::CloneCompletionInfo::Builder& writer, CheckpointInfo& cp_info) {
+  DEBUG_ASSERT(clone_completion != nullptr);
+
+  auto addr_space_count = clone_completion->address_spaces.size();
+  auto& as_data = clone_completion->address_spaces;
+  auto addr_space_builders = writer.initAddressSpaces(addr_space_count);
+
+  for (auto i = 0u; i < addr_space_count; i++) {
+    const auto& as = as_data[i];
+    const auto leader = static_cast<ReplayTask*>(as.clone_leader);
+
+    auto addr_space_clone = addr_space_builders[i];
+    addr_space_clone.setAuxv(kj::ArrayPtr<const capnp::byte>{
+        leader->vm()->saved_auxv().data(), leader->vm()->saved_auxv().size() });
+    auto cls = addr_space_clone.initCloneLeaderState();
+    write_capture_state(cls, as.clone_leader_state);
+    auto pspace = addr_space_builders[i].initProcessSpace();
+    pspace.setTaskFirstRunEvent(leader->tg->first_run_event());
+    pspace.setVmFirstRunEvent(leader->vm()->first_run_event());
+    pspace.setExe(str_to_data(leader->vm()->exe_image()));
+    const auto orig_exe = leader->original_exe();
+    pspace.setOriginalExe(str_to_data(orig_exe));
+
+    write_vm(as.clone_leader, pspace, cp_info.data_directory());
+    auto captured_mem_list =
+        addr_space_clone.initCapturedMemory(as.captured_memory.size());
+    auto captured_idx = 0;
+    for (const auto& mem : as.captured_memory) {
+      auto cm = captured_mem_list[captured_idx++];
+      cm.setStartAddress(mem.first.as_int());
+      cm.setData(kj::ArrayPtr<const capnp::byte>(mem.second.data(),
+                                                 mem.second.size()));
+    }
+
+    auto member_states =
+        addr_space_clone.initMemberState(as.member_states.size());
+    auto cs_idx = 0;
+    for (const auto& state : as.member_states) {
+      auto ms = member_states[cs_idx++];
+      write_capture_state(ms, state);
+    }
+    clone_completion->cloned_fd_tables[as.clone_leader_state.fdtable_identity]
+        ->serialize(pspace);
+    writer.setUsesSyscallBuffering(leader->vm()->syscallbuf_enabled());
+  }
+
+  auto step = capnp::Data::Reader{ (std::uint8_t*)&current_step,
+                                   sizeof(ReplayTraceStep) };
+  writer.setSessionCurrentStep(step);
+
+  auto siginfo =
+      capnp::Data::Reader{ (std::uint8_t*)&last_siginfo_, sizeof(siginfo_t) };
+  writer.setLastSigInfo(siginfo);
+}
+
+void ReplaySession::load_checkpoint(const CheckpointInfo& cp_info) {
+  DEBUG_ASSERT(!partially_initialized());
+  ScopedFd checkpoint_fd = cp_info.open_for_read();
+  capnp::PackedFdMessageReader datum(checkpoint_fd);
+
+  auto checkpointInfo = datum.getRoot<pcp::CheckpointInfo>();
+  pcp::CloneCompletionInfo::Reader cc_reader =
+      checkpointInfo.getCloneCompletion();
+
+  const auto addr_spaces = cc_reader.getAddressSpaces();
+
+  std::vector<CloneCompletion::AddressSpaceClone> partial_init_addr_spaces{};
+  Task::ClonedFdTables cloned_fd_tables{};
+
+  std::vector<ReplayTask*> cloned_leaders{};
+  auto zygote = current_task();
+  for (const auto& as : addr_spaces) {
+    const auto taskInfo = as.getCloneLeaderState();
+    AutoRemoteSyscalls remote(zygote,
+                              AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+    Task* child = Task::os_clone(Task::SESSION_CLONE_LEADER, this, remote,
+                                 taskInfo.getRecTid(), taskInfo.getSerial(),
+                                 SIGCHLD, nullptr);
+    cloned_leaders.push_back(static_cast<ReplayTask*>(child));
+  }
+
+  auto clone_leader_index = 0;
+  LOG(debug) << "Restoring " << addr_spaces.size() << " clone leaders";
+  for (const auto& as : addr_spaces) {
+    ReplayTask* leader = cloned_leaders[clone_leader_index++];
+    const auto proc_space = as.getProcessSpace();
+    const auto cleader_captured_state = as.getCloneLeaderState();
+
+    leader->is_stopped_ = true;
+    leader->os_exec_stub(arch());
+    std::string exe_name = data_to_str(proc_space.getExe());
+    std::string original_exe_name = data_to_str(proc_space.getOriginalExe());
+    leader->post_exec(original_exe_name);
+    static_cast<Task*>(leader)->post_exec_syscall(original_exe_name);
+
+    // set up the/a stack mapping in which we can make remote syscalls in
+    // afterwards
+    auto mappings_data = proc_space.getVirtualAddressSpace();
+    auto mappings_it = mappings_data.begin();
+
+    // Map an executable mapping first, so we can use that memory for remote sys
+    // calls
+    {
+      AutoRemoteSyscalls remote(leader,
+                                AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+      leader->vm()->unmap_all_but_rr_mappings(remote);
+      DEBUG_ASSERT(mappings_it->getMapType().isPrivateAnon() &&
+                   (mappings_it->getProtection() & (PROT_READ | PROT_WRITE)) ==
+                       (PROT_READ | PROT_WRITE));
+      KernelMapping stack_mapping{ mappings_it->getStart(),
+                                   mappings_it->getEnd(),
+                                   data_to_str(mappings_it->getFsname()),
+                                   mappings_it->getDevice(),
+                                   mappings_it->getInode(),
+                                   mappings_it->getProtection(),
+                                   mappings_it->getFlags(),
+                                   static_cast<off64_t>(
+                                       mappings_it->getOffset()) };
+      map_private_anonymous(remote, stack_mapping);
+      restore_map_contents(
+          leader,
+          data_to_str(
+              mappings_it->getMapType().getPrivateAnon().getContentsPath()),
+          stack_mapping);
+      mappings_it++;
+    }
+
+    auto scratchPointer =
+        remote_ptr<void>(cleader_captured_state.getScratchPtr());
+    ASSERT(leader, scratchPointer != nullptr) << "No scratch pointer found!";
+    if (proc_space.getBreakpointFaultAddress() != 0) {
+      leader->vm()->set_breakpoint_fault_addr(
+          proc_space.getBreakpointFaultAddress());
+    }
+
+    leader->thread_group()->set_first_run_event(
+        proc_space.getTaskFirstRunEvent());
+    leader->vm()->set_first_run_event(proc_space.getVmFirstRunEvent());
+
+    std::vector<std::pair<KernelMapping, std::string>> syscallbuf_mappings;
+    std::unique_ptr<std::pair<KernelMapping, std::string>> scratch_mem =
+        nullptr;
+    {
+      AutoRemoteSyscalls remote(leader);
+      for (; mappings_it != std::end(mappings_data); mappings_it++) {
+        const auto& km_data = *mappings_it;
+        auto map = km_data.getMapType();
+        KernelMapping km(
+            remote_ptr<void>(km_data.getStart()), km_data.getEnd(),
+            km_data.hasFsname() ? data_to_str(km_data.getFsname()) : "",
+            km_data.getDevice(), km_data.getInode(), km_data.getProtection(),
+            km_data.getFlags(), km_data.getOffset());
+        if (km.contains(scratchPointer)) {
+          scratch_mem = std::make_unique<std::pair<KernelMapping, std::string>>(
+              std::make_pair(
+                  km, data_to_str(map.getPrivateAnon().getContentsPath())));
+        } else if (map.isGuardSegment()) {
+          // Guard segments: empty private anon mappings, where no data has been
+          // written.
+          map_private_anonymous(remote, km);
+        } else if (map.isFile()) {
+          auto p = data_to_str(map.getFile().getContentsPath());
+          map_region_file(remote, km, p);
+        } else if (map.isSharedAnon()) {
+          auto sa = map.getSharedAnon();
+          auto emufile = leader->session().emufs().get_or_create(km);
+          struct stat real_file;
+          std::string real_file_name;
+          remote.finish_direct_mmap(
+              km.start(), km.size(), km.prot(),
+              (km.flags() | MAP_FIXED) & ~MAP_ANONYMOUS, emufile->proc_path(),
+              O_RDWR, km.file_offset_bytes(), real_file, real_file_name);
+          leader->vm()->map(leader, km.start(), km.size(), km.prot(),
+                            km.flags(), km.file_offset_bytes(), real_file_name,
+                            real_file.st_dev, real_file.st_ino, nullptr, &km,
+                            emufile);
+          restore_map_contents(leader, data_to_str(sa.getContentsPath()), km);
+          if (sa.getIsSysVSegment()) {
+            leader->vm()->set_shm_size(km.start(), km.size());
+          }
+        } else if (map.isPrivateAnon()) {
+          auto f = map.getPrivateAnon();
+          auto path = data_to_str(f.getContentsPath());
+          map_private_anonymous(remote, km);
+          restore_map_contents(leader, path, km);
+        } else if (map.isRrPage()) {
+          const auto path = data_to_str(map.getRrPage().getContentsPath());
+          restore_map_contents(leader, path, km);
+        } else if (map.isSyscallBuffer()) {
+          const auto path =
+              data_to_str(map.getSyscallBuffer().getContentsPath());
+          syscallbuf_mappings.push_back(std::make_pair(km, path));
+        } else {
+          FATAL() << "Unknown serialized map type";
+        }
+      }
+
+      auto index = original_exe_name.rfind('/');
+      auto name = "rr:" + original_exe_name.substr(
+                              index == std::string::npos ? 0 : index + 1);
+      leader->set_name(remote, name);
+    }
+
+    ASSERT(leader, scratch_mem != nullptr)
+        << "Scratch memory mapping could not be restored.";
+    {
+      auto& km = scratch_mem->first;
+      auto& path = scratch_mem->second;
+      init_scratch_memory(leader, km);
+      restore_map_contents(leader, path, km);
+    }
+
+    std::vector<uint8_t> auxv{};
+    auto auxv_data = as.getAuxv().asChars();
+    std::copy(auxv_data.begin(), auxv_data.end(), std::back_inserter(auxv));
+
+    leader->vm()->restore_auxv(leader, std::move(auxv));
+    syscall(SYS_rrcall_reload_auxv, leader->tid);
+    std::vector<Task::CapturedState> member_states;
+
+    for (const auto& member_state : as.getMemberState()) {
+      member_states.push_back(reconstitute_captured_state(*this, member_state));
+    }
+
+    CapturedMemory captured_memory;
+    for (const auto& captured_mem : as.getCapturedMemory()) {
+      std::vector<uint8_t> mem;
+      auto mem_reader = captured_mem.getData();
+      std::copy(mem_reader.begin(), mem_reader.end(), std::back_inserter(mem));
+      captured_memory.push_back(
+          std::make_pair(captured_mem.getStartAddress(), std::move(mem)));
+    }
+
+    Task::CapturedState cloneLeaderCaptureState =
+        reconstitute_captured_state(*this, as.getCloneLeaderState());
+    auto fd_table_key = cloneLeaderCaptureState.fdtable_identity;
+    leader->preload_globals = cloneLeaderCaptureState.preload_globals;
+    partial_init_addr_spaces.push_back(CloneCompletion::AddressSpaceClone{
+        .clone_leader = leader,
+        .clone_leader_state = std::move(cloneLeaderCaptureState),
+        .member_states = std::move(member_states),
+        .captured_memory = std::move(captured_memory) });
+    on_create(leader);
+    deserialize_fdtable(leader, proc_space);
+
+    if (cc_reader.getUsesSyscallBuffering()) {
+      leader->vm()->set_uses_syscall_buffer();
+      for (const auto& sysbuf : syscallbuf_mappings) {
+        const auto& km = sysbuf.first;
+        const auto& path = sysbuf.second;
+        AutoRemoteSyscalls remote(leader);
+        if (km.contains(cleader_captured_state.getSyscallbufChild())) {
+          const auto map_hint = km.start();
+          leader->syscallbuf_size = cleader_captured_state.getSyscallbufSize();
+          leader->init_syscall_buffer(remote, map_hint);
+          leader->desched_fd_child = cleader_captured_state.getDeschedFdChild();
+          if (!leader->fd_table()->get_monitor(leader->desched_fd_child)) {
+            leader->fd_table()->add_monitor(leader, leader->desched_fd_child,
+                                            new PreserveFileMonitor());
+          }
+          if (cleader_captured_state.getClonedFileDataFdChild() >= 0) {
+            leader->cloned_file_data_fd_child =
+                cleader_captured_state.getClonedFileDataFdChild();
+            leader->cloned_file_data_fname =
+                trace_reader().file_data_clone_file_name(leader->tuid());
+            ScopedFd clone_file(leader->cloned_file_data_fname.c_str(),
+                                O_RDONLY);
+            ASSERT(leader, clone_file.is_open());
+            remote.infallible_send_fd_dup(
+                clone_file, leader->cloned_file_data_fd_child, O_CLOEXEC);
+            leader->fd_table()->replace_monitor(
+                leader, leader->cloned_file_data_fd_child,
+                new PreserveFileMonitor());
+          }
+          for (const auto& mem :
+               partial_init_addr_spaces.back().captured_memory) {
+            if (km.contains(mem.first)) {
+              leader->write_bytes_helper(mem.first, mem.second.size(),
+                                         mem.second.data());
+            }
+          }
+          restore_map_contents(leader, path, km);
+        } else {
+          // recreate shared map, i.e. some _other_ task's (A) syscall buffer
+          // for this task (B), the mappings that just "float" due to being
+          // inherited after a fork, but from what I understood, isn't ever
+          // actually used. It's just "there". To keep the process' address
+          // space identical with normal execution, it is therefore mapped here.
+          char name[4096];
+          strncpy(name, km.fsname().c_str(), sizeof(name) - 1);
+          name[sizeof(name) - 1] = 0;
+          create_shared_mmap(remote, km.size(), km.start(),
+                             extract_name(name, sizeof(name)), km.prot(), 0,
+                             nullptr);
+          remote.task()->vm()->mapping_flags_of(km.start()) |=
+              AddressSpace::Mapping::IS_SYSCALLBUF;
+          restore_map_contents(leader, path, km);
+        }
+      }
+      ASSERT(leader, leader->vm()->syscallbuf_enabled())
+          << "syscall buffering should be enabled at this point";
+      // Fool Task::copy_state that syscall buf has not been initialized. For
+      // pcp we need to since we never hit the events where syscall buffers get
+      // initialized like a normal executed tracee-replay would.
+      leader->syscallbuf_child = nullptr;
+    }
+    leader->ticks = cleader_captured_state.getTicks();
+
+    cloned_fd_tables[fd_table_key] = leader->fd_table();
+  } // end of 1 clone leader setup iteration
+
+  clone_completion = std::make_unique<CloneCompletion>();
+  clone_completion->address_spaces = std::move(partial_init_addr_spaces);
+  clone_completion->cloned_fd_tables = std::move(cloned_fd_tables);
+
+  memcpy(&current_step, cc_reader.getSessionCurrentStep().begin(),
+         sizeof(ReplayTraceStep));
+
+  trace_reader().rewind();
+  trace_reader().forward_to(cp_info.clone_data.time);
+
+  trace_frame = trace_reader().read_frame();
+  memcpy(&last_siginfo_, cc_reader.getLastSigInfo().begin(), sizeof(siginfo_t));
+  restore_session_info(cp_info);
+}
+
+std::vector<CheckpointInfo> ReplaySession::get_persistent_checkpoints() {
+  return rr::get_checkpoint_infos(resolve_trace_name(trace_reader().dir()),
+                                  arch(), trace_reader().cpuid_records());
+}
+
+void ReplaySession::restore_session_info(const CheckpointInfo& cp) {
+  ticks_at_start_of_event = cp.clone_data.ticks_at_event_start;
+  next_task_serial_ = cp.next_serial;
+  statistics_ = cp.stats;
 }
 
 } // namespace rr

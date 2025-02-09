@@ -23,6 +23,8 @@
 #include "TraceFrame.h"
 #include "remote_ptr.h"
 #include "kernel_supplement.h"
+#include <capnp/c++.capnp.h>
+#include "rr_trace.capnp.h"
 
 /* This is pretty arbitrary. On Linux SIGPWR is sent to PID 1 (init) on
  * power failure, and it's unlikely rr will be recording that.
@@ -698,6 +700,34 @@ void replace_in_buffer(MemoryRange src, const uint8_t* src_data,
 void base_name(std::string& s);
 
 std::optional<int> read_perf_event_paranoid();
+char* extract_name(char* name_buffer, size_t buffer_size);
+
+std::string default_rr_trace_dir();
+
+std::string resolve_trace_name(const std::string& trace_name);
+
+std::string trace_save_dir();
+
+std::string latest_trace_symlink();
+
+/** Convert `Registers` to data blob used in capnp */
+capnp::Data::Reader regs_to_raw(const Registers&);
+
+/** Write `ExtraRegisters` using the data from data blob reader `raw` */
+void set_extra_regs_from_raw(SupportedArch arch,
+                             const std::vector<CPUIDRecord>& records,
+                             capnp::Data::Reader& raw, ExtraRegisters& out);
+
+/** Convert `ExtraRegisters` to data blob used in capnp. */
+capnp::Data::Reader extra_regs_to_raw(const ExtraRegisters&);
+
+trace::Arch to_trace_arch(SupportedArch arch);
+
+/** Convert rr's capnp string representation into std::string. */
+std::string data_to_str(const kj::ArrayPtr<const capnp::byte>& data);
+
+/** Convert std::string into rr's capnp string representation. */
+kj::ArrayPtr<const capnp::byte> str_to_data(const std::string& str);
 
 bool virtual_address_size_supported(uint8_t bit_size);
 

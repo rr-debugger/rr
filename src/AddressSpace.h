@@ -662,6 +662,14 @@ public:
    * Dies if no shm size is registered for the address.
    */
   size_t get_shm_size(remote_ptr<void> addr) { return shm_sizes[addr]; }
+
+  /**
+   * Check if `map` is shared memory
+   */
+  bool has_shm_at(const KernelMapping& map) const {
+    return shm_sizes.find(map.start()) != std::cend(shm_sizes);
+  }
+
   void remove_shm_size(remote_ptr<void> addr) { shm_sizes.erase(addr); }
 
   /**
@@ -795,6 +803,9 @@ public:
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
 
+  /* Used when restoring persistent checkpoints. */
+  void restore_auxv(Task* t, std::vector<uint8_t>&& auxv);
+
   remote_ptr<void> saved_interpreter_base() { return saved_interpreter_base_; }
   void save_interpreter_base(Task* t, std::vector<uint8_t> auxv);
 
@@ -873,6 +884,15 @@ public:
 
   bool legacy_breakpoint_mode() { return stopping_breakpoint_table_ != nullptr; }
   remote_code_ptr do_breakpoint_fault_addr() { return do_breakpoint_fault_addr_; }
+
+  void set_breakpoint_fault_addr(remote_code_ptr addr) {
+    do_breakpoint_fault_addr_ = addr;
+  }
+
+  void set_uses_syscall_buffer(bool uses_syscall_buffer = true) {
+    syscallbuf_enabled_ = uses_syscall_buffer;
+  }
+
   remote_code_ptr stopping_breakpoint_table() { return stopping_breakpoint_table_; }
   int stopping_breakpoint_table_entry_size() { return stopping_breakpoint_table_entry_size_; }
 

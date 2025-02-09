@@ -7,14 +7,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <limits>
 
+#include "CheckpointInfo.h"
 #include "Command.h"
 #include "Flags.h"
 #include "GdbServer.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "WaitManager.h"
+#include "TraceTaskEvent.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "launch_debugger.h"
@@ -79,13 +82,17 @@ ReplayCommand ReplayCommand::singleton(
     "  --serve-files              Serve all files from the trace rather than\n"
     "                             assuming they exist on disk. Debugging will\n"
     "                             be slower, but be able to tolerate missing files\n"
-    "  --tty <file>               Redirect tracee replay output to <file>\n");
+    "  --tty <file>               Redirect tracee replay output to <file>\n"
+    "  --ignore-pcp               Don't spawn session from persistent checkpoint\n");
 
 struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
   // event at which reached this event AND target_process has
   // been "created".
   FrameTime goto_event;
+
+  // Ignore persistent checkpoints and start session from beginning
+  bool ignore_persistent_cp;
 
   FrameTime singlestep_to_event;
 
@@ -146,6 +153,7 @@ struct ReplayFlags {
 
   ReplayFlags()
       : goto_event(0),
+        ignore_persistent_cp(false),
         singlestep_to_event(0),
         target_process(0),
         process_created_how(CREATED_NONE),
@@ -189,7 +197,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 3, "serve-files", NO_PARAMETER },
     { 4, "tty", HAS_PARAMETER },
     { 5, "intel-pt-start-checking-event", HAS_PARAMETER },
-    { 6, "retry-transient-errors", NO_PARAMETER }
+    { 6, "retry-transient-errors", NO_PARAMETER },
+    { 7, "ignore-pcp", NO_PARAMETER },
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -295,10 +304,32 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     case 6:
       flags.retry_transient_errors = true;
       break;
+    case 7:
+      flags.ignore_persistent_cp = true;
+      break;
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
   }
   return true;
+}
+
+/**
+ * Return event time when `pid` is created or first found in trace.
+ */
+static FrameTime process_spawn_time(const string& trace_dir, pid_t pid) {
+  TraceReader trace(trace_dir);
+  FrameTime time = -1;
+  for (auto e = trace.read_task_event(&time); e.type() != TraceTaskEvent::NONE;
+       e = trace.read_task_event(&time)) {
+    if ((e.type() == TraceTaskEvent::CLONE ||
+         e.type() == TraceTaskEvent::EXEC) &&
+        e.tid() == pid) {
+      LOG(debug) << "Process " << pid << " created at " << time;
+      return time;
+    }
+  }
+  return -1;
 }
 
 static int find_pid_for_command(const string& trace_dir,
@@ -512,6 +543,17 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       serve_replay_no_debugger(trace_dir, flags);
     } else {
       auto session = ReplaySession::create(trace_dir, session_flags(flags, false));
+      if (!flags.ignore_persistent_cp) {
+        const auto cps = session->get_persistent_checkpoints();
+        const auto cp = find_if(rbegin(cps), rend(cps), [&](const auto& cp) {
+          return target.event >= cp.event_time();
+        });
+        if (cp != rend(cps)) {
+          LOG(debug) << "Spawning from persistent checkpoint at "
+                     << cp->event_time();
+          session->load_checkpoint(*cp);
+        }
+      }
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
@@ -544,6 +586,22 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
       ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
       auto session = ReplaySession::create(trace_dir, session_flags(flags, false));
+      if (!flags.ignore_persistent_cp) {
+        const auto event_when_created =
+            process_spawn_time(trace_dir, flags.target_process);
+        const auto pcps = session->get_persistent_checkpoints();
+        const auto cp = find_if(rbegin(pcps), rend(pcps), [&](const auto& cp) {
+          return target.event >= cp.event_time() ||
+                 event_when_created > cp.event_time();
+        });
+
+        if (cp != rend(pcps)) {
+          LOG(debug) << "Spawning session from persistent checkpoint at "
+                     << cp->event_time();
+          session->load_checkpoint(*cp);
+        }
+      }
+
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;

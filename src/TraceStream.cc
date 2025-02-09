@@ -80,78 +80,6 @@ static TraceStream::Substream operator++(TraceStream::Substream& s) {
   return s;
 }
 
-static bool dir_exists(const string& dir) {
-  struct stat dummy;
-  return !dir.empty() && stat(dir.c_str(), &dummy) == 0;
-}
-
-static string default_rr_trace_dir() {
-  static string cached_dir;
-
-  if (!cached_dir.empty()) {
-    return cached_dir;
-  }
-
-  string dot_dir;
-  const char* home = getenv("HOME");
-  if (home) {
-    dot_dir = string(home) + "/.rr";
-  }
-  string xdg_dir;
-  const char* xdg_data_home = getenv("XDG_DATA_HOME");
-  if (xdg_data_home) {
-    xdg_dir = string(xdg_data_home) + "/rr";
-  } else if (home) {
-    xdg_dir = string(home) + "/.local/share/rr";
-  }
-
-  // If XDG dir does not exist but ~/.rr does, prefer ~/.rr for backwards
-  // compatibility.
-  if (dir_exists(xdg_dir)) {
-    cached_dir = xdg_dir;
-  } else if (dir_exists(dot_dir)) {
-    cached_dir = dot_dir;
-  } else if (!xdg_dir.empty()) {
-    cached_dir = xdg_dir;
-  } else {
-    cached_dir = "/tmp/rr";
-  }
-
-  return cached_dir;
-}
-
-string trace_save_dir() {
-  const char* output_dir = getenv("_RR_TRACE_DIR");
-  return output_dir ? output_dir : default_rr_trace_dir();
-}
-
-string latest_trace_symlink() {
-  return trace_save_dir() + "/latest-trace";
-}
-
-string resolve_trace_name(const string& trace_name)
-{
-  if (trace_name.empty()) {
-    return latest_trace_symlink();
-  }
-
-  // Single-component paths are looked up first in the current directory, next
-  // in the default trace dir.
-
-  if (trace_name.find('/') == string::npos) {
-    if (dir_exists(trace_name)) {
-      return trace_name;
-    }
-
-    string resolved_trace_name = trace_save_dir() + "/" + trace_name;
-    if (dir_exists(resolved_trace_name)) {
-      return resolved_trace_name;
-    }
-  }
-
-  return trace_name;
-}
-
 class CompressedWriterOutputStream : public kj::OutputStream {
 public:
   CompressedWriterOutputStream(CompressedWriter& writer) : writer(writer) {}
@@ -228,35 +156,6 @@ bool TraceReader::good() const {
     }
   }
   return true;
-}
-
-static kj::ArrayPtr<const capnp::byte> str_to_data(const string& str) {
-  return kj::ArrayPtr<const capnp::byte>(
-      reinterpret_cast<const capnp::byte*>(str.data()), str.size());
-}
-
-static string data_to_str(const kj::ArrayPtr<const capnp::byte>& data) {
-  if (!data.begin()) {
-    return string();
-  }
-  if (memchr(data.begin(), 0, data.size())) {
-    FATAL() << "Invalid string: contains null character";
-  }
-  return string(reinterpret_cast<const char*>(data.begin()), data.size());
-}
-
-static trace::Arch to_trace_arch(SupportedArch arch) {
-  switch (arch) {
-    case x86:
-      return trace::Arch::X86;
-    case x86_64:
-      return trace::Arch::X8664;
-    case aarch64:
-      return trace::Arch::AARCH64;
-    default:
-      FATAL() << "Unknown arch";
-      return trace::Arch::X86;
-  }
 }
 
 static trace::CpuTriState to_tristate(bool value) {
@@ -1792,6 +1691,58 @@ uint64_t TraceReader::xcr0() const {
     return 3;
   }
   return (uint64_t(record->out.edx) << 32) | record->out.eax;
+}
+
+// the dump command repurposed to a `forward_to` API.
+void TraceReader::forward_to(FrameTime next_event_to_start_consuming) {
+  const auto stop_at = next_event_to_start_consuming - 1;
+  while (!at_end()) {
+    const auto frame = read_frame();
+    // means the EVENTS stream is at the correct time, now RAW_DATA and MMAPS
+    // must catch up 1 "step"
+    if (frame.time() == stop_at) {
+      auto& mmaps = reader(MMAPS);
+      auto mmaps_pos_found = false;
+      while (!mmaps.at_end() && !mmaps_pos_found) {
+        // save state, if we find the MMAP record _after_ the one we're looking
+        // for we need to restore it to this point.
+        mmaps.save_state();
+        CompressedReaderInputStream stream(mmaps);
+        PackedMessageReader map_msg(stream);
+        trace::MMap::Reader map = map_msg.getRoot<trace::MMap>();
+        if (map.getFrameTime() > frame.time()) {
+          mmaps.restore_state();
+          mmaps_pos_found = true;
+        } else {
+          mmaps.discard_state();
+        }
+      }
+
+      // consume RawData for frame (next_event_to_start_at - 1)
+      TraceReader::RawDataMetadata data;
+      TraceReader::RawData raw;
+      while (read_raw_data_metadata_for_frame(data)) {
+        read_raw_data_for_frame(raw);
+      }
+      return;
+    } else {
+      while (true) {
+        TraceReader::MappedData data;
+        bool found;
+        KernelMapping km =
+            read_mapped_region(&data, &found, TraceReader::DONT_VALIDATE,
+                               TimeConstraint::CURRENT_TIME_ONLY);
+        if (!found) {
+          break;
+        }
+      }
+      TraceReader::RawDataMetadata data;
+      while (read_raw_data_metadata_for_frame(data)) {
+      }
+    }
+  }
+  FATAL() << "Could not forward stream(s) to event "
+          << next_event_to_start_consuming;
 }
 
 } // namespace rr

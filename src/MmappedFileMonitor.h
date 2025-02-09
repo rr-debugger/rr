@@ -18,8 +18,9 @@ class MmappedFileMonitor : public FileMonitor {
 public:
   MmappedFileMonitor(Task* t, int fd);
   MmappedFileMonitor(Task* t, EmuFile::shr_ptr f);
+  MmappedFileMonitor(bool dead, dev_t device, ino_t inode) noexcept;
 
-  virtual Type type() override { return Mmapped; }
+  virtual Type type() const override { return Mmapped; }
   void revive() { dead_ = false; }
   // If this write could potentially affect memory we need to PREVENT_SWITCH,
   // since the timing of the write is otherwise unpredictable from our
@@ -35,6 +36,8 @@ public:
                          LazyOffset& offset) override;
 
 private:
+  void serialize_type(
+      pcp::FileMonitor::Builder& builder) const noexcept override;
   // Whether this monitor is still actively monitoring
   bool dead_;
   dev_t device_;
