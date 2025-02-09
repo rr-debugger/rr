@@ -46,7 +46,7 @@ class Ec2Vm:
         if len(images) == 0:
             raise Exception('No AMIs match filter')
         latest_image = sorted(map(lambda image: (
-            datetime.strptime(image['CreationDate'], '%Y-%m-%dT%H:%M:%S.%f%z'),
+            datetime.strptime(image['CreationDate'], '%Y-%m-%dT%H:%M:%S.%f%z').timestamp(),
             image
         ), response['Images']))[-1][1]
         ami = latest_image['ImageId']
