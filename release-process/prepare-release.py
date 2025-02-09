@@ -14,7 +14,7 @@ import time
 dist_packaging = {
     ('ubuntu20-lts', 'x86_64'): 'TGZ;DEB',
     ('ubuntu22-lts', 'arm64'): 'TGZ;DEB',
-    ('centos8', 'x86_64'): 'RPM',
+    ('centos9', 'x86_64'): 'RPM',
     ('centos9', 'arm64'): 'RPM',
 }
 
