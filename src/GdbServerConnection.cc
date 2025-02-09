@@ -59,8 +59,13 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 #endif
 
+ExtendedTaskId extended_task_id(Task* t) {
+  return ExtendedTaskId(t->thread_group()->tguid(), t->tuid());
+}
+
 GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
-  DebuggerType debugger_type, const Features& features)
+                                         DebuggerType debugger_type,
+                                         const Features& features)
     : tguid(tguid),
       cpu_features_(0),
       debugger_type(debugger_type),

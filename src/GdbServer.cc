@@ -18,9 +18,11 @@
 #include <vector>
 
 #include "BreakpointCondition.h"
+#include "CheckpointInfo.h"
 #include "ElfReader.h"
 #include "Event.h"
 #include "DebuggerExtensionCommandHandler.h"
+#include "GdbServerConnection.h"
 #include "GdbServerExpression.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -49,10 +51,6 @@ GdbServer::ConnectionFlags::ConnectionFlags()
     keep_listening(false),
     serve_files(false),
     debugger_params_write_pipe(nullptr) {}
-
-static ExtendedTaskId extended_task_id(Task* t) {
-  return ExtendedTaskId(t->thread_group()->tguid(), t->tuid());
-}
 
 GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& connection,
                      Task* t, ReplayTimeline* timeline,
@@ -1764,8 +1762,33 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   if (checkpoint_to_restore.mark) {
     timeline_->seek_to_mark(checkpoint_to_restore.mark);
-    last_query_task = last_continue_task =
-        checkpoint_to_restore.last_continue_task;
+    const auto at_followed_process = [&](const auto& target) {
+      return timeline()->current_session().current_task()->tgid() == target.pid;
+    };
+    if (at_followed_process(target)) {
+      // normal checkpoint restart branch, because checkpoint was created via
+      // GDB. last_continue_tuid is therefore serialized, so we can set it from
+      // that.
+      DEBUG_ASSERT(timeline()->current_session().current_task()->tuid() ==
+                   checkpoint_to_restore.last_continue_task.tuid);
+      last_query_task = last_continue_task =
+          checkpoint_to_restore.last_continue_task;
+    } else {
+      // Persistent checkpoints might have been created during another process'
+      // execution which GDB is not "following" thus, we need to tell
+      // ReplayTimeline to play until it reaches |Target.pid|.
+      while (!at_followed_process(target)) {
+        ReplayResult result = timeline()->replay_step_forward(RUN_CONTINUE);
+        // We should never reach the end of the trace without hitting the stop
+        // condition below.
+        DEBUG_ASSERT(result.status != REPLAY_EXITED);
+      }
+      auto t = timeline()->current_session().current_task();
+      ASSERT(t, t != nullptr)
+          << "Could not find current task at checkpoint restore";
+      last_query_task = last_continue_task = extended_task_id(t);
+    }
+
     if (debugger_restart_checkpoint.is_explicit == Checkpoint::EXPLICIT) {
       timeline_->remove_explicit_checkpoint(debugger_restart_checkpoint.mark);
     }
@@ -2113,6 +2136,46 @@ static void remove_trailing_guard_pages(ReplaySession::MemoryRanges& ranges) {
       ranges.insert(MemoryRange(r.start(), end));
     }
     ptr = end;
+  }
+}
+
+bool GdbServer::persistent_checkpoint_is_loaded(size_t unique_id) {
+  for (const auto& cp : checkpoints) {
+    if (cp.second.unique_id == unique_id)
+      return true;
+  }
+  return false;
+}
+
+Checkpoint::Checkpoint(ReplayTimeline& timeline,
+                       ExtendedTaskId last_continue_task, Explicit e,
+                       const std::string& where)
+    : last_continue_task(last_continue_task), is_explicit(e), where(where) {
+  if (e == EXPLICIT) {
+    mark = timeline.add_explicit_checkpoint();
+  } else {
+    mark = timeline.mark();
+    const auto prior = timeline.find_closest_mark_with_clone(mark);
+    if (prior) {
+      prior->get_internal()->inc_refcount();
+    }
+  }
+}
+
+// Used when deserializing persistent checkpoints
+Checkpoint::Checkpoint(ReplayTimeline& timeline, const CheckpointInfo& cp,
+                       ReplaySession::shr_ptr session)
+    : last_continue_task(cp.last_continue_task),
+      is_explicit(EXPLICIT),
+      where(cp.where),
+      unique_id(cp.unique_id) {
+  if (cp.non_explicit_mark_data) {
+    LOG(debug) << "checkpoint clone at " << cp.clone_data.time
+               << "; GDB checkpoint at " << cp.non_explicit_mark_data->time;
+    mark = timeline.recreate_marks_for_non_explicit(cp, session);
+  } else {
+    mark = timeline.recreate_mark_from_data(cp.clone_data, session);
+    timeline.register_mark_as_checkpoint(mark);
   }
 }
 

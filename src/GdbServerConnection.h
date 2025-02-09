@@ -73,6 +73,8 @@ struct ExtendedTaskId {
   }
 };
 
+ExtendedTaskId extended_task_id(Task* t);
+
 inline std::ostream& operator<<(std::ostream& o, const ExtendedTaskId& t) {
   o << t.tguid.tid() << "." << t.tuid.tid();
   return o;
