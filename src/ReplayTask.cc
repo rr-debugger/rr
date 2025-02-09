@@ -238,4 +238,27 @@ bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   return false;
 }
 
+std::string ReplayTask::original_exe() const {
+  TraceReader task_original_exe_reader = trace_reader();
+  task_original_exe_reader.rewind();
+  auto tid = rec_tid;
+  for (;;) {
+    auto tte = task_original_exe_reader.read_task_event();
+    if (tte.type() == TraceTaskEvent::NONE) {
+      FATAL()
+          << "Could not find process of origin to grab original exe name from";
+    }
+    if (tte.tid() == tid) {
+      if (tte.type() == TraceTaskEvent::CLONE) {
+        tid = tte.parent_tid();
+        task_original_exe_reader.rewind();
+      } else if (tte.type() == TraceTaskEvent::EXEC) {
+        return tte.file_name();
+      }
+    }
+  }
+  FATAL() << "Could not find process of origin to grab original exe name from";
+  return "";
+}
+
 } // namespace rr

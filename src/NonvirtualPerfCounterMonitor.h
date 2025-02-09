@@ -15,7 +15,7 @@ class NonvirtualPerfCounterMonitor : public FileMonitor {
 public:
   NonvirtualPerfCounterMonitor() {}
 
-  virtual Type type() override { return NonvirtualPerfCounter; }
+  virtual Type type() const override { return NonvirtualPerfCounter; }
 };
 
 } // namespace rr
