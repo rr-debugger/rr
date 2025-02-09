@@ -89,7 +89,7 @@ function xvnc-runner { CMD=$1 EXPECT=$2
 if [[ $test_firefox == 1 ]]; then
   rm -rf /tmp/firefox /tmp/firefox-profile || true
   mkdir /tmp/firefox-profile
-  ( cd /tmp; curl -L 'https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US' | tar -jxf - )
+  ( cd /tmp; curl -L 'https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US' | tar -Jxf - )
   xvnc-runner "/tmp/firefox/firefox --profile /tmp/firefox-profile $HOME/rr/release-process/test-data/test.html" "rr Test Page"
 fi
 
