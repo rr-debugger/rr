@@ -114,4 +114,10 @@ std::string file_monitor_type_name(FileMonitor::Type t) {
   }
 }
 
+void FileMonitor::serialize(int fd,
+                            pcp::FileMonitor::Builder& builder) const noexcept {
+  builder.setFd(fd);
+  builder.setType(type());
+  serialize_type(builder);
+}
 }

@@ -21,7 +21,7 @@ public:
   PidFdMonitor(TaskUid tuid)
     : tuid(tuid) {}
 
-  virtual Type type() override { return PidFd; }
+  virtual Type type() const override { return PidFd; }
 
   static PidFdMonitor* get(FdTable* fd_table, int fd);
 

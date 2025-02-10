@@ -13,6 +13,7 @@ class Task;
 
 #include "preload/preload_interface.h"
 #include "util.h"
+#include "rr_pcp.capnp.h"
 
 namespace rr {
 
@@ -43,7 +44,7 @@ public:
     PidFd,
   };
 
-  virtual Type type() { return Base; }
+  virtual Type type() const { return Base; }
 
   /**
    * Overriding this to return true will cause close() (and related fd-smashing
@@ -129,6 +130,13 @@ public:
   virtual enum syscallbuf_fd_classes get_syscallbuf_class() {
     return FD_CLASS_TRACED;
   }
+
+  /** Serialize this file monitor for persistent checkpoints. */
+  void serialize(int fd, pcp::FileMonitor::Builder& builder) const noexcept;
+
+private:
+  // default serialize_type does nothing
+  virtual void serialize_type(pcp::FileMonitor::Builder&) const noexcept {}
 };
 
 std::string file_monitor_type_name(FileMonitor::Type t);

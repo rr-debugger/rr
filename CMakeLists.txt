@@ -556,17 +556,26 @@ endforeach(generated_file)
 
 add_custom_target(Generated DEPENDS ${GENERATED_FILES})
 
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
-                          "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
-                   COMMAND capnp compile
-                           "--src-prefix=${CMAKE_CURRENT_SOURCE_DIR}/src"
-                           "-oc++:${CMAKE_CURRENT_BINARY_DIR}"
-                           "${CMAKE_CURRENT_SOURCE_DIR}/src/rr_trace.capnp"
-                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/rr_trace.capnp")
-set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
-                            PROPERTIES GENERATED true)
-set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
-                            PROPERTIES GENERATED true HEADER_FILE_ONLY true)
+
+set(CAPNP_FILES
+  rr_trace
+  rr_pcp
+)
+
+# Compile capnproto files
+foreach(capnp_file ${CAPNP_FILES})
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${capnp_file}.capnp.c++"
+                            "${CMAKE_CURRENT_BINARY_DIR}/${capnp_file}.capnp.h"
+                     COMMAND capnp compile
+                             "--src-prefix=${CMAKE_CURRENT_SOURCE_DIR}/src"
+                             "-oc++:${CMAKE_CURRENT_BINARY_DIR}"
+                             "${CMAKE_CURRENT_SOURCE_DIR}/src/${capnp_file}.capnp"
+                     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/${capnp_file}.capnp")
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/${capnp_file}.capnp.c++"
+                              PROPERTIES GENERATED true)
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/${capnp_file}.capnp.h"
+                              PROPERTIES GENERATED true HEADER_FILE_ONLY true)
+endforeach()
 
 if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
   set(BLAKE_ARCH_DIR third-party/blake2/neon)
@@ -578,12 +587,14 @@ set(RR_SOURCES
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
   src/BuildidCommand.cc
+  src/CheckpointInfo.cc
   src/Command.cc
   src/CompressedReader.cc
   src/CompressedWriter.cc
   src/ContextSwitchEvent.cc
   src/CPUFeaturesCommand.cc
   src/CPUIDBugDetector.cc
+  src/CreateCheckpointsCommand.cc
   src/DiversionSession.cc
   src/DumpCommand.cc
   src/Dwarf.cc
@@ -621,6 +632,7 @@ set(RR_SOURCES
   src/PackCommand.cc
   src/PerfCounters.cc
   src/PerfCounterBuffers.cc
+  src/PersistentCheckpointing.cc
   src/PidFdMonitor.cc
   src/processor_trace_check.cc
   src/ProcFdDirMonitor.cc
@@ -660,6 +672,7 @@ set(RR_SOURCES
   src/WaitManager.cc
   src/WaitStatus.cc
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
+  ${CMAKE_CURRENT_BINARY_DIR}/rr_pcp.capnp.c++
   ${BLAKE_ARCH_DIR}/blake2b.c
 )
 

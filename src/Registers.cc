@@ -10,6 +10,7 @@
 
 #include "ReplayTask.h"
 #include "core.h"
+#include "kernel_abi.h"
 #include "log.h"
 
 using namespace std;
@@ -623,6 +624,25 @@ void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
   DEBUG_ASSERT(arch() == x86);
   DEBUG_ASSERT(size == sizeof(u.x86regs));
   memcpy(&u.x86regs, data, sizeof(u.x86regs));
+}
+
+void Registers::restore_from_persistent_checkpoint(SupportedArch arch,
+                                                   const void* data,
+                                                   size_t size) {
+  switch (arch) {
+    case x86:
+      DEBUG_ASSERT(sizeof(u.x86regs) == size);
+      memcpy(&u.x86regs, data, size);
+      break;
+    case x86_64:
+      DEBUG_ASSERT(sizeof(u.x64regs) == size);
+      memcpy(&u.x64regs, data, size);
+      break;
+    case aarch64:
+      DEBUG_ASSERT(sizeof(u.x64regs) == size);
+      memcpy(&u.arm64regs, data, size);
+      break;
+  }
 }
 
 void Registers::set_from_trace(SupportedArch a, const void* data,

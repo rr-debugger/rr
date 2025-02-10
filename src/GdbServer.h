@@ -22,6 +22,25 @@
 
 namespace rr {
 
+struct Checkpoint {
+  enum Explicit { EXPLICIT, NOT_EXPLICIT };
+  Checkpoint(ReplayTimeline& timeline, ExtendedTaskId last_continue_task,
+             Explicit e, const std::string& where);
+  Checkpoint() : is_explicit(NOT_EXPLICIT) {}
+  // Used when creating deserialized checkpoints
+  Checkpoint(ReplayTimeline& timeline, const CheckpointInfo& cp,
+             ReplaySession::shr_ptr session);
+
+  bool persistent() const { return unique_id != 0; }
+
+  ReplayTimeline::Mark mark;
+  ExtendedTaskId last_continue_task;
+  Explicit is_explicit;
+  std::string where;
+  // Only persistent checkpoints have unique id's.
+  size_t unique_id = 0;
+};
+
 class GdbServer {
   // Not ideal but we can't inherit friend from DebuggerExtensionCommand
   friend std::string invoke_checkpoint(GdbServer&, Task*,
@@ -30,6 +49,10 @@ class GdbServer {
                                               const std::vector<std::string>&);
   friend std::string invoke_info_checkpoints(GdbServer&, Task*,
                                              const std::vector<std::string>&);
+  friend std::string invoke_write_checkpoints(GdbServer&, Task*,
+                                              const std::vector<std::string>&);
+  friend std::string invoke_load_checkpoint(GdbServer&, Task*,
+                                            const std::vector<std::string>&);
 
 public:
   struct Target {
@@ -180,6 +203,11 @@ private:
   int open_file(Session& session, Task *continue_task, const std::string& file_name);
 
   /**
+   * Check if persistent checkpoint with id `unique_id` has been loaded in this session.
+   */
+  bool persistent_checkpoint_is_loaded(size_t unique_id);
+
+  /**
    * Allocates debugger-owned memory region.
    * We pretend this memory exists in all sessions, but it actually only
    * exists in diversion sessions. When there is no diversion session,
@@ -258,23 +286,6 @@ private:
   ReplayTimeline* timeline_;
   Session* emergency_debug_session;
 
-  struct Checkpoint {
-    enum Explicit { EXPLICIT, NOT_EXPLICIT };
-    Checkpoint(ReplayTimeline& timeline, ExtendedTaskId last_continue_task, Explicit e,
-               const std::string& where)
-        : last_continue_task(last_continue_task), is_explicit(e), where(where) {
-      if (e == EXPLICIT) {
-        mark = timeline.add_explicit_checkpoint();
-      } else {
-        mark = timeline.mark();
-      }
-    }
-    Checkpoint() : is_explicit(NOT_EXPLICIT) {}
-    ReplayTimeline::Mark mark;
-    ExtendedTaskId last_continue_task;
-    Explicit is_explicit;
-    std::string where;
-  };
   // |debugger_restart_mark| is the point where we will restart from with
   // a no-op debugger "run" command.
   Checkpoint debugger_restart_checkpoint;

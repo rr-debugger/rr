@@ -17,7 +17,7 @@ class ODirectFileMonitor : public FileMonitor {
 public:
   ODirectFileMonitor() : FileMonitor() {};
 
-  virtual Type type() override { return ODirect; }
+  virtual Type type() const override { return ODirect; }
 };
 
 } // namespace rr

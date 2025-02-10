@@ -4,7 +4,11 @@
 
 #include <math.h>
 #include <sstream>
+#include <algorithm>
+#include <vector>
 
+#include "CheckpointInfo.h"
+#include "EmuFs.h"
 #include "core.h"
 #include "fast_forward.h"
 #include "log.h"
@@ -99,8 +103,29 @@ static bool equal_regs(const Registers& r1, const Registers& r2) {
   return r1.ip() == r2.ip() && r1.matches(r2);
 }
 
+bool ReplayTimeline::InternalMark::equal_states(
+    const InternalMark& mark) const {
+  if (this == &mark) {
+    return true;
+  }
+  if (ticks_at_event_start != mark.ticks_at_event_start) {
+    return false;
+  }
+
+  return proto.equal_states(mark.proto);
+}
+
 bool ReplayTimeline::InternalMark::equal_states(ReplaySession& session) const {
   return proto.equal_states(session);
+}
+
+bool ReplayTimeline::ProtoMark::equal_states(
+    const ReplayTimeline::ProtoMark& proto) const {
+  if (key != proto.key) {
+    return false;
+  }
+  return equal_regs(regs, proto.regs) &&
+         return_addresses == proto.return_addresses;
 }
 
 bool ReplayTimeline::ProtoMark::equal_states(ReplaySession& session) const {
@@ -218,6 +243,39 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   return result;
 }
 
+ReplayTimeline::Mark ReplayTimeline::recreate_mark_from_data(
+    const MarkData& mark_data, ReplaySession::shr_ptr session) {
+  Mark result;
+  auto m = make_shared<InternalMark>(this, mark_data, session);
+  m->inc_refcount();
+  auto& mark_vector = marks[m->proto.key];
+  // If we are recreating a mark, in the same debug sesssion where we actually
+  // created the persistent checkpoint in there's a pretty high likelihood that
+  // the same `InternalMark` still exists for that original checkpoint
+
+  for (std::shared_ptr<InternalMark>& internal_mark : mark_vector) {
+    if (internal_mark->equal_states(*m)) {
+      // swap out the existing mark with this one - they're the same, but `m`
+      // contains the deserialized session
+      internal_mark = m;
+      result.ptr = internal_mark;
+      return result;
+    }
+  }
+
+  mark_vector.push_back(m);
+  result.ptr = mark_vector.back();
+  return result;
+}
+
+void ReplayTimeline::register_mark_as_checkpoint(Mark& m) {
+  DEBUG_ASSERT(m.ptr && m.ptr->checkpoint &&
+               "Can't register mark as checkpoint if no checkpoint exists");
+  auto key = m.ptr->proto.key;
+  increase_mark_with_checkpoints(key);
+  m.ptr->inc_refcount();
+}
+
 void ReplayTimeline::mark_after_singlestep(const Mark& from,
                                            const ReplayResult& result) {
   DEBUG_ASSERT(result.break_status.singlestep_complete);
@@ -288,6 +346,15 @@ ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from,
   return Mark();
 }
 
+void ReplayTimeline::increase_mark_with_checkpoints(
+    const MarkKey& key) noexcept {
+  if (marks_with_checkpoints.find(key) == marks_with_checkpoints.end()) {
+    marks_with_checkpoints[key] = 1;
+  } else {
+    marks_with_checkpoints[key]++;
+  }
+}
+
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
   DEBUG_ASSERT(current->can_clone());
 
@@ -296,13 +363,9 @@ ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
     unapply_breakpoints_and_watchpoints();
     m.ptr->checkpoint = current->clone();
     auto key = m.ptr->proto.key;
-    if (marks_with_checkpoints.find(key) == marks_with_checkpoints.end()) {
-      marks_with_checkpoints[key] = 1;
-    } else {
-      marks_with_checkpoints[key]++;
-    }
+    increase_mark_with_checkpoints(key);
   }
-  ++m.ptr->checkpoint_refcount;
+  m.ptr->inc_refcount();
   return m;
 }
 
@@ -314,8 +377,7 @@ void ReplayTimeline::remove_mark_with_checkpoint(const MarkKey& key) {
 }
 
 void ReplayTimeline::remove_explicit_checkpoint(const Mark& mark) {
-  DEBUG_ASSERT(mark.ptr->checkpoint_refcount > 0);
-  if (--mark.ptr->checkpoint_refcount == 0) {
+  if (mark.ptr->dec_refcount() == 0) {
     mark.ptr->checkpoint = nullptr;
     remove_mark_with_checkpoint(mark.ptr->proto.key);
   }
@@ -767,6 +829,20 @@ void ReplayTimeline::apply_breakpoints_and_watchpoints() {
       vm->add_watchpoint(get<1>(wp), get<2>(wp), get<3>(wp));
     }
   }
+}
+
+ReplayTimeline::Mark ReplayTimeline::recreate_marks_for_non_explicit(
+    const CheckpointInfo& cp, std::shared_ptr<ReplaySession> clone) {
+  DEBUG_ASSERT(cp.non_explicit_mark_data && clone.get() != nullptr);
+  // first add the mark with an actual clone, this is not a GDB checkpoint, but
+  // an RR checkpoint
+  auto mark = recreate_mark_from_data(cp.clone_data, clone);
+  reverse_exec_checkpoints[mark] = estimate_progress_of(*clone);
+  register_mark_as_checkpoint(mark);
+  // then add the mark with no clone, the one that will be visible to GDB, i.e.
+  // non explicit checkpoint
+  Mark result = recreate_mark_from_data(*cp.non_explicit_mark_data, nullptr);
+  return result;
 }
 
 void ReplayTimeline::unapply_breakpoints_internal() {
@@ -1493,7 +1569,13 @@ ReplayResult ReplayTimeline::reverse_singlestep(
 }
 
 ReplayTimeline::Progress ReplayTimeline::estimate_progress() {
-  Session::Statistics stats = current->statistics();
+  return estimate_progress_of(*current);
+}
+
+/* static */
+ReplayTimeline::Progress ReplayTimeline::estimate_progress_of(
+    ReplaySession& session) {
+  Session::Statistics stats = session.statistics();
   // The following parameters were estimated by running Firefox startup
   // and shutdown in an opt build on a Lenovo W530 laptop, replaying with
   // DUMP_STATS_PERIOD set to 100 (twice, and using only values from the
@@ -1667,5 +1749,56 @@ ReplayTimeline::Mark ReplayTimeline::set_short_checkpoint() {
   swap(m, reverse_exec_short_checkpoint);
   return reverse_exec_short_checkpoint;
 }
+
+ReplayTimeline::ProtoMark ReplayTimeline::ProtoMark::from_serialized_markdata(
+    const MarkData& md) {
+  auto proto_mark = ProtoMark{ MarkKey{
+      md.time, md.ticks, ReplayStepKey{ (ReplayTraceStepType)md.step_key } } };
+  proto_mark.regs = md.regs;
+  proto_mark.return_addresses = md.return_addresses;
+  return proto_mark;
+}
+
+std::shared_ptr<ReplayTimeline::Mark>
+ReplayTimeline::find_closest_mark_with_clone(const Mark& mark) {
+  if (marks_with_checkpoints.empty())
+    return nullptr;
+
+  const MarkKey* k = &marks_with_checkpoints.begin()->first;
+  for (const auto& kvp : marks_with_checkpoints) {
+    if (kvp.first < mark.ptr->proto.key && kvp.first > *k) {
+      k = &kvp.first;
+    }
+  }
+
+  auto marks_found = std::find_if(std::cbegin(marks), std::cend(marks),
+                                  [&](auto& kvp) { return kvp.first == *k; });
+
+  if (marks_found == std::end(marks))
+    return nullptr;
+
+  for (auto it = std::rbegin(marks_found->second);
+       it != std::rend(marks_found->second); it++) {
+    DEBUG_ASSERT(it->get() != nullptr);
+    if ((*it)->checkpoint) {
+      auto result = std::make_shared<Mark>();
+      result->ptr = *(it);
+      return result;
+    }
+  }
+  return nullptr;
+}
+
+ReplayTimeline::InternalMark::InternalMark(ReplayTimeline* owner,
+                                           const MarkData& serialized,
+                                           ReplaySession::shr_ptr session)
+    : owner(owner),
+      proto(ProtoMark::from_serialized_markdata(serialized)),
+      extra_regs(serialized.extra_regs),
+      checkpoint(session),
+      ticks_at_event_start(serialized.ticks_at_event_start),
+      singlestep_to_next_mark_no_signal(
+          serialized.singlestep_to_next_mark_no_signal),
+      checkpoint_refcount(0) {}
 
 } // namespace rr
