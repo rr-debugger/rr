@@ -5,6 +5,7 @@
 #include "GdbServerConnection.h"
 #include "ReplayTimeline.h"
 #include "ReturnAddressList.h"
+#include "kernel_abi.h"
 #include "rr_pcp.capnp.h"
 #include "util.h"
 #include <dirent.h>
@@ -31,8 +32,7 @@ struct MarkData {
   // Constructor when serializing
   MarkData(const ReplayTimeline::Mark& m);
   // Constructor when de-serializing
-  MarkData(rr::pcp::MarkData::Reader reader, SupportedArch arch,
-           const CPUIDRecords& cpuid_recs);
+  MarkData(rr::pcp::MarkData::Reader reader, const CPUIDRecords& cpuid_recs);
 
   FrameTime time;
   Ticks ticks;
@@ -42,6 +42,7 @@ struct MarkData {
   ExtraRegisters extra_regs;
   ReturnAddressList return_addresses;
   bool singlestep_to_next_mark_no_signal;
+  SupportedArch arch;
 };
 
 class CheckpointInfo {
@@ -66,7 +67,7 @@ public:
                  const ReplayTimeline::Mark& mark_with_checkpoint);
   // When deserializing from capnproto stream
   CheckpointInfo(std::string metadata_file,
-                 rr::pcp::CheckpointInfo::Reader reader, SupportedArch arch,
+                 rr::pcp::CheckpointInfo::Reader reader,
                  const CPUIDRecords& cpuid_recs);
 
   bool serialize(ReplaySession& session);
@@ -116,7 +117,6 @@ std::string checkpoints_index_file(const std::string& trace_dir);
  * order by event time.
  */
 std::vector<CheckpointInfo> get_checkpoint_infos(
-    const std::string& trace_dir, SupportedArch arch,
-    const CPUIDRecords& cpuid_recs);
+    const std::string& trace_dir, const CPUIDRecords& cpuid_recs);
 
 } // namespace rr

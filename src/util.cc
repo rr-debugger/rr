@@ -2734,6 +2734,20 @@ std::string default_rr_trace_dir() {
   return cached_dir;
 }
 
+SupportedArch from_trace_arch(trace::Arch arch) {
+  switch (arch) {
+    case trace::Arch::X86:
+      return x86;
+    case trace::Arch::X8664:
+      return x86_64;
+    case trace::Arch::AARCH64:
+      return aarch64;
+    default:
+      FATAL() << "Unknown arch";
+      return x86;
+  }
+}
+
 trace::Arch to_trace_arch(SupportedArch arch) {
   switch (arch) {
     case x86:

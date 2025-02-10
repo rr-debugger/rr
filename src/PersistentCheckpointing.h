@@ -2,6 +2,7 @@
 
 #include "AddressSpace.h"
 #include "CheckpointInfo.h"
+#include "kernel_abi.h"
 #include "log.h"
 #include "rr_pcp.capnp.h"
 #include <capnp/blob.h>
@@ -57,7 +58,8 @@ void write_monitor(rr::pcp::FileMonitor::Builder& builder, int fd,
  * Restores Task::CapturedState from capnproto data.
  */
 Task::CapturedState reconstitute_captured_state(
-    ReplaySession& s, pcp::CapturedState::Reader reader);
+    SupportedArch arch, const std::vector<CPUIDRecord>& cpuid_records,
+    pcp::CapturedState::Reader reader);
 
 void map_private_anonymous(AutoRemoteSyscalls& remote, const KernelMapping& km);
 

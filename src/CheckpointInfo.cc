@@ -3,6 +3,7 @@
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
 #include "rr_pcp.capnp.h"
+#include "util.h"
 #include <algorithm>
 #include <capnp/blob.h>
 #include <capnp/message.h>
@@ -22,9 +23,10 @@ MarkData::MarkData(const ReplayTimeline::Mark& m)
       extra_regs(m.extra_regs()),
       return_addresses(m.get_internal()->proto.return_addresses),
       singlestep_to_next_mark_no_signal(
-          m.get_internal()->singlestep_to_next_mark_no_signal) {}
+          m.get_internal()->singlestep_to_next_mark_no_signal),
+      arch(m.get_internal()->extra_regs.arch()) {}
 
-MarkData::MarkData(rr::pcp::MarkData::Reader reader, SupportedArch arch,
+MarkData::MarkData(rr::pcp::MarkData::Reader reader,
                    const CPUIDRecords& cpuid_recs)
     : time(reader.getTime()),
       ticks(reader.getTicks()),
@@ -34,7 +36,8 @@ MarkData::MarkData(rr::pcp::MarkData::Reader reader, SupportedArch arch,
       extra_regs(),
       return_addresses(),
       singlestep_to_next_mark_no_signal(
-          reader.getSinglestepToNextMarkNoSignal()) {
+          reader.getSinglestepToNextMarkNoSignal()),
+      arch(from_trace_arch(reader.getArch())) {
   regs.set_arch(arch);
   regs.set_from_trace(arch, reader.getRegs().getRaw().begin(),
                       reader.getRegs().getRaw().size());
@@ -69,8 +72,7 @@ static std::vector<string> checkpoint_directories(const string& trace_dir) {
 }
 
 std::vector<CheckpointInfo> get_checkpoint_infos(
-    const std::string& trace_dir, SupportedArch arch,
-    const CPUIDRecords& cpuid_recs) {
+    const std::string& trace_dir, const CPUIDRecords& cpuid_recs) {
 
   std::vector<CheckpointInfo> checkpoints;
   for (auto checkpoint_dir : checkpoint_directories(trace_dir)) {
@@ -81,8 +83,8 @@ std::vector<CheckpointInfo> get_checkpoint_infos(
     }
     capnp::PackedFdMessageReader reader(fd);
     auto checkpointsInfoReader = reader.getRoot<pcp::CheckpointInfo>();
-    auto info = CheckpointInfo{ checkpoint_dir, checkpointsInfoReader, arch,
-                                cpuid_recs };
+    auto info =
+        CheckpointInfo{ checkpoint_dir, checkpointsInfoReader, cpuid_recs };
     checkpoints.push_back(info);
   }
 
@@ -138,6 +140,7 @@ bool CheckpointInfo::serialize(ReplaySession& session) {
     builder.setTicksAtEventStart(mark_data.ticks_at_event_start);
     builder.setSinglestepToNextMarkNoSignal(
         mark_data.singlestep_to_next_mark_no_signal);
+    builder.setArch(to_trace_arch(mark_data.arch));
   };
 
   if (is_explicit()) {
@@ -220,7 +223,6 @@ CheckpointInfo::CheckpointInfo(const Checkpoint& non_explicit_cp,
 
 CheckpointInfo::CheckpointInfo(std::string metadata_file,
                                rr::pcp::CheckpointInfo::Reader reader,
-                               SupportedArch arch,
                                const CPUIDRecords& cpuid_recs)
     : capnp_directory(std::move(metadata_file)),
       unique_id(reader.getId()),
@@ -228,10 +230,10 @@ CheckpointInfo::CheckpointInfo(std::string metadata_file,
       next_serial(reader.getNextSerial()),
       clone_data(reader.isExplicit() ? reader.getExplicit()
                                      : reader.getNonExplicit().getCloneMark(),
-                 arch, cpuid_recs),
+                 cpuid_recs),
       non_explicit_mark_data(
           reader.isNonExplicit()
-              ? new MarkData{ reader.getNonExplicit().getCheckpointMark(), arch,
+              ? new MarkData{ reader.getNonExplicit().getCheckpointMark(),
                               cpuid_recs }
               : nullptr),
       stats() {

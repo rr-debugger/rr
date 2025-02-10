@@ -24,6 +24,7 @@
 #include "TraceFrame.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "kernel_abi.h"
 #include "log.h"
 #include "replay_syscall.h"
 #include "rr_pcp.capnp.h"
@@ -165,7 +166,7 @@ static void write_map(const WriteVmConfig& cfg,
                           << map.map.size();
 
     auto bytes_read = 0ull;
-    while(static_cast<size_t>(bytes_read) < map.map.size()) {
+    while (static_cast<size_t>(bytes_read) < map.map.size()) {
       const auto current_read = cfg.pread(bytes_read, map.map);
       if (current_read == -1)
         FILE_OP_FATAL(file) << " couldn't read contents of " << map.map.str();
@@ -309,20 +310,17 @@ void map_private_anonymous(AutoRemoteSyscalls& remote,
 }
 
 Task::CapturedState reconstitute_captured_state(
-    ReplaySession& s, pcp::CapturedState::Reader reader) {
+    SupportedArch arch, const std::vector<CPUIDRecord>& cpuid_records,
+    pcp::CapturedState::Reader reader) {
   Task::CapturedState res;
   res.ticks = reader.getTicks();
-  {
-    auto register_raw = reader.getRegs().getRaw();
-    res.regs = Registers{ s.arch() };
-    res.regs.set_from_trace(s.arch(), register_raw.begin(),
-                            register_raw.size());
-  }
-  {
-    auto raw = reader.getExtraRegs().getRaw();
-    set_extra_regs_from_raw(s.arch(), s.trace_reader().cpuid_records(), raw,
-                            res.extra_regs);
-  }
+  auto register_raw = reader.getRegs().getRaw();
+  res.regs = Registers{ arch };
+  res.regs.restore_from_persistent_checkpoint(arch, register_raw.begin(),
+                                              register_raw.size());
+
+  auto raw = reader.getExtraRegs().getRaw();
+  set_extra_regs_from_raw(arch, cpuid_records, raw, res.extra_regs);
 
   res.prname = data_to_str(reader.getPrname());
   res.fdtable_identity = reader.getFdtableIdentity();
@@ -380,6 +378,13 @@ void init_scratch_memory(ReplayTask* t, const KernelMapping& km) {
   }
 }
 
+kj::Array<capnp::byte> prepare_user_desc(const X86Arch::user_desc& desc) {
+  kj::Array<capnp::byte> data =
+      kj::heapArray<capnp::byte>(sizeof(X86Arch::user_desc));
+  memcpy(data.begin(), &desc, sizeof(X86Arch::user_desc)); // Copy raw bytes
+  return data;
+}
+
 void write_capture_state(pcp::CapturedState::Builder& sb,
                          const Task::CapturedState& state) {
   sb.setTicks(state.ticks);
@@ -421,7 +426,9 @@ void write_capture_state(pcp::CapturedState::Builder& sb,
   auto thread_areas = sb.initThreadAreas(state.thread_areas.size());
   auto i = 0;
   for (const auto& ta : state.thread_areas) {
-    thread_areas[i++] = capnp::Data::Builder{ (std::uint8_t*)&ta, sizeof(ta) };
+    thread_areas.set(
+        i++, kj::ArrayPtr<const capnp::byte>(
+                 reinterpret_cast<const capnp::byte*>(&ta), sizeof(ta)));
   }
 }
 

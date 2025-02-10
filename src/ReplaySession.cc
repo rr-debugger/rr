@@ -2260,6 +2260,7 @@ void ReplaySession::serialize_checkpoint(
     auto addr_space_clone = addr_space_builders[i];
     addr_space_clone.setAuxv(kj::ArrayPtr<const capnp::byte>{
         leader->vm()->saved_auxv().data(), leader->vm()->saved_auxv().size() });
+    addr_space_clone.setArch(to_trace_arch(as.clone_leader->arch()));
     auto cls = addr_space_clone.initCloneLeaderState();
     write_capture_state(cls, as.clone_leader_state);
     auto pspace = addr_space_builders[i].initProcessSpace();
@@ -2334,8 +2335,9 @@ void ReplaySession::load_checkpoint(const CheckpointInfo& cp_info) {
     const auto proc_space = as.getProcessSpace();
     const auto cleader_captured_state = as.getCloneLeaderState();
 
+    SupportedArch address_space_arch = from_trace_arch(as.getArch());
     leader->is_stopped_ = true;
-    leader->os_exec_stub(arch());
+    leader->os_exec_stub(address_space_arch);
     std::string exe_name = data_to_str(proc_space.getExe());
     std::string original_exe_name = data_to_str(proc_space.getOriginalExe());
     leader->post_exec(original_exe_name);
@@ -2465,9 +2467,9 @@ void ReplaySession::load_checkpoint(const CheckpointInfo& cp_info) {
     leader->vm()->restore_auxv(leader, std::move(auxv));
     syscall(SYS_rrcall_reload_auxv, leader->tid);
     std::vector<Task::CapturedState> member_states;
-
     for (const auto& member_state : as.getMemberState()) {
-      member_states.push_back(reconstitute_captured_state(*this, member_state));
+      member_states.push_back(reconstitute_captured_state(
+          address_space_arch, trace_in.cpuid_records(), member_state));
     }
 
     CapturedMemory captured_memory;
@@ -2478,9 +2480,8 @@ void ReplaySession::load_checkpoint(const CheckpointInfo& cp_info) {
       captured_memory.push_back(
           std::make_pair(captured_mem.getStartAddress(), std::move(mem)));
     }
-
-    Task::CapturedState cloneLeaderCaptureState =
-        reconstitute_captured_state(*this, as.getCloneLeaderState());
+    Task::CapturedState cloneLeaderCaptureState = reconstitute_captured_state(
+        address_space_arch, trace_in.cpuid_records(), as.getCloneLeaderState());
     auto fd_table_key = cloneLeaderCaptureState.fdtable_identity;
     leader->preload_globals = cloneLeaderCaptureState.preload_globals;
     partial_init_addr_spaces.push_back(CloneCompletion::AddressSpaceClone{
@@ -2574,7 +2575,7 @@ void ReplaySession::load_checkpoint(const CheckpointInfo& cp_info) {
 
 std::vector<CheckpointInfo> ReplaySession::get_persistent_checkpoints() {
   return rr::get_checkpoint_infos(resolve_trace_name(trace_reader().dir()),
-                                  arch(), trace_reader().cpuid_records());
+                                  trace_reader().cpuid_records());
 }
 
 void ReplaySession::restore_session_info(const CheckpointInfo& cp) {

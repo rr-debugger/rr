@@ -162,20 +162,6 @@ static trace::CpuTriState to_tristate(bool value) {
   return value ? trace::CpuTriState::KNOWN_TRUE : trace::CpuTriState::KNOWN_FALSE;
 }
 
-static SupportedArch from_trace_arch(trace::Arch arch) {
-  switch (arch) {
-    case trace::Arch::X86:
-      return x86;
-    case trace::Arch::X8664:
-      return x86_64;
-    case trace::Arch::AARCH64:
-      return aarch64;
-    default:
-      FATAL() << "Unknown arch";
-      return x86;
-  }
-}
-
 static trace::SignalDisposition to_trace_disposition(
     SignalResolvedDisposition disposition) {
   switch (disposition) {

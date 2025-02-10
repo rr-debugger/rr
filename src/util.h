@@ -722,6 +722,7 @@ void set_extra_regs_from_raw(SupportedArch arch,
 capnp::Data::Reader extra_regs_to_raw(const ExtraRegisters&);
 
 trace::Arch to_trace_arch(SupportedArch arch);
+SupportedArch from_trace_arch(trace::Arch arch);
 
 /** Convert rr's capnp string representation into std::string. */
 std::string data_to_str(const kj::ArrayPtr<const capnp::byte>& data);

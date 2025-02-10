@@ -141,6 +141,8 @@ struct AddressSpaceClone {
   memberState @2 :List(CapturedState);
   capturedMemory @3 :List(CapturedMemory);
   auxv @4 :Data;
+  # We need to know how to reconstitute the Register/ExtraRegister's in CapturedState
+  arch @5 :Arch;
 }
 
 struct CloneCompletionInfo {
@@ -161,6 +163,8 @@ struct MarkData {
   returnAddresses @5 :List(RemotePtr);
   extraRegs @6: ExtraRegisters;
   singlestepToNextMarkNoSignal @7 :Bool;
+  # The arch required to configure regs and extraRegs with the peristed data
+  arch @8 :Arch;
 }
 
 
