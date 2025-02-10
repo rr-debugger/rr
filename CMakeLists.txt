@@ -1512,6 +1512,7 @@ set(TESTS_WITH_PROGRAM
   # check_session_leaks
   checkpoint_dying_threads
   checkpoint_mixed_mode
+  checkpoint_persistent_shmem
   checksum_sanity
   check_lost_interrupts
   clone_file_range
