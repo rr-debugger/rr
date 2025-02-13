@@ -45,10 +45,10 @@ class Ec2Vm:
             raise Exception('Too many AMIs match filter')
         if len(images) == 0:
             raise Exception('No AMIs match filter')
-        latest_image = sorted(map(lambda image: (
-            datetime.strptime(image['CreationDate'], '%Y-%m-%dT%H:%M:%S.%f%z').timestamp(),
-            image
-        ), response['Images']))[-1][1]
+        latest_image = sorted(response['Images'],
+            key=lambda img: datetime.strptime(img['CreationDate'], '%Y-%m-%dT%H:%M:%S.%f%z').timestamp(),
+            reverse=True
+        )[0]
         ami = latest_image['ImageId']
         block_device = None
         for mapping in latest_image['BlockDeviceMappings']:
