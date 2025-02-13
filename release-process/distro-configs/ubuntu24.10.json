@@ -3,7 +3,7 @@
   "ami_owner": "099720109477",
   "ami_name_pattern": "ubuntu/images/hvm-ssd-gp3/ubuntu-oracular-24.10-*",
   "user": "ubuntu",
-  "archs": ["x86_64", "arm64"],
+  "archs": ["x86_64"],
   "setup_commands": [
     "cloud-init status --wait",
     "sudo apt-get update -y",
