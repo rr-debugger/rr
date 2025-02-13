@@ -224,6 +224,11 @@ public:
   std::string proc_exe_path();
 
   /**
+   * Return the path of /proc/<pid>/mem
+   */
+  std::string proc_mem_path() const;
+
+  /**
    * Return the path of the executable (i.e. what
    * /proc/<pid>/exe points to).
    */
@@ -457,6 +462,10 @@ public:
    */
   virtual std::string name() const;
 
+  /**
+   * Sets the OS-name of this task by injecting system call for PR_SET_NAME.
+   * Also updates |prname| to |name|.
+   */
   virtual void set_name(AutoRemoteSyscalls& remote, const std::string& name);
 
   /**
