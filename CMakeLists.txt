@@ -48,7 +48,7 @@ set(WILL_RUN_TESTS ${BUILD_TESTS} CACHE BOOL "Run tests")
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
 # is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 5)
-set(rr_VERSION_MINOR 8)
+set(rr_VERSION_MINOR 9)
 set(rr_VERSION_PATCH 0)
 
 if(ANDROID)
