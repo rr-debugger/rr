@@ -157,6 +157,11 @@ private:
                                 remote_ptr<void> map_start,
                                 size_t map_size,
                                 size_t map_offset);
+  void patch_aarch64_have_lse_atomics(RecordTask* t, ElfReader& reader,
+                                      uintptr_t elf_addr,
+                                      remote_ptr<void> map_start,
+                                      size_t map_size,
+                                      size_t map_offset);
 
   /**
    * `ip` is the address of the instruction that triggered the syscall or trap

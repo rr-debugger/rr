@@ -1593,6 +1593,80 @@ void Monkeypatcher::unpatch_dl_runtime_resolves(RecordTask* t) {
   saved_dl_runtime_resolve_code.clear();
 }
 
+// https://documentation-service.arm.com/static/67581b3355451e3c38d97c22
+static bool is_aarch64_bti(uint32_t instruction) {
+  if ((instruction >> 12) == 0b11010101000000110010 && (instruction & 0x1f) == 0b11111) {
+    // Hint instruction.
+    uint32_t crm = (instruction >> 8) & ((1 << 4) - 1);
+    uint32_t op2 = (instruction >> 5) & ((1 << 3) - 1);
+    return crm == 0b0100 && (op2 & 1) == 0;
+  }
+  return false;
+}
+
+static bool is_aarch64_adrp(uint32_t instruction, remote_ptr<void> pc, remote_ptr<void>* address) {
+  if ((instruction >> 31) == 1 && ((instruction >> 24) & 0x1f) == 0b10000) {
+    uint64_t base = (pc.as_int() >> 12) << 12;
+    uint64_t imm =  ((instruction >> 29) & 0x3) +
+        (((instruction >> 5) & ((1 << 19) - 1)) << 2);
+    *address = remote_ptr<void>(base + (imm << 12));
+    return true;
+  }
+  return false;
+}
+
+static bool is_aarch64_ldrb(uint32_t instruction, uint32_t* offset) {
+  if ((instruction >> 22) == 0b0011100101) {
+    *offset = (instruction >> 10) & ((1 << 12) - 1);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Patch the __aarch64_have_lse_atomics variable to ensure that LSE atomics are
+ * always used even if init_lse_atomics
+ */
+void Monkeypatcher::patch_aarch64_have_lse_atomics(RecordTask* t, ElfReader& reader,
+                                                   uintptr_t ldadd4_addr,
+                                                   remote_ptr<void> map_start,
+                                                   size_t map_size,
+                                                   size_t map_offset) {
+  ASSERT(t, t->arch() == aarch64);
+  remote_ptr<void> addr =
+    resolve_address(reader, ldadd4_addr, map_start, map_size, map_offset);
+  if (!addr) {
+    return;
+  }
+
+  bool ok = true;
+  uint8_t instruction_bytes[12];
+  t->read_bytes_helper(addr, sizeof(instruction_bytes), instruction_bytes, &ok);
+  if (!ok) {
+    LOG(warn) << "Can't read ldadd4 instruction bytes at " << addr;
+    return;
+  }
+  uint32_t instructions[3];
+  memcpy(instructions, instruction_bytes, sizeof(instructions));
+  int index = 0;
+  if (is_aarch64_bti(instructions[0])) {
+    ++index;
+  }
+  remote_ptr<void> adrp_address;
+  if (!is_aarch64_adrp(instructions[index], addr + index*4, &adrp_address)) {
+    LOG(warn) << "Instruction 0x" << HEX(instructions[index]) << " is not ADRP";
+    return;
+  }
+  uint32_t ldrb_offset;
+  if (!is_aarch64_ldrb(instructions[index + 1], &ldrb_offset)) {
+    LOG(warn) << "Instruction 0x" << HEX(instructions[index + 1]) << " is not LDRB";
+    return;
+  }
+  remote_ptr<void> have_lse_atomics_addr = adrp_address + ldrb_offset;
+  uint8_t enable = 1;
+  write_and_record_mem(t, have_lse_atomics_addr.cast<uint8_t>(), &enable, 1);
+}
+
 static bool file_may_need_instrumentation(const AddressSpace::Mapping& map) {
   size_t file_part = map.map.fsname().rfind('/');
   if (file_part == string::npos) {
@@ -1609,73 +1683,89 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
                                      size_t size, size_t offset_bytes,
                                      int child_fd, MmapMode mode) {
   const auto& map = t->vm()->mapping_of(start);
-  if (file_may_need_instrumentation(map) &&
-      (t->arch() == x86 || t->arch() == x86_64)) {
-    ScopedFd open_fd;
-    if (child_fd >= 0) {
-      open_fd = t->open_fd(child_fd, O_RDONLY);
-      ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
-    } else {
-      char buf[100];
-      sprintf(buf, "/proc/%d/map_files/%llx-%llx", t->tid,
-              (long long)start.as_int(), (long long)start.as_int() + size);
-      // Reading these directly requires CAP_SYS_ADMIN, so open the link target
-      // instead.
-      char link[PATH_MAX];
-      int ret = readlink(buf, link, sizeof(link) - 1);
-      if (ret < 0) {
-        return;
-      }
-      link[ret] = 0;
-      open_fd = ScopedFd(link, O_RDONLY);
-      if (!open_fd.is_open()) {
-        return;
-      }
+  if (!file_may_need_instrumentation(map)) {
+    return;
+  }
+  if (t->arch() == aarch64 && mode != MMAP_EXEC) {
+    return;
+  }
+  ScopedFd open_fd;
+  if (child_fd >= 0) {
+    open_fd = t->open_fd(child_fd, O_RDONLY);
+    ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
+  } else {
+    char buf[100];
+    sprintf(buf, "/proc/%d/map_files/%llx-%llx", t->tid,
+            (long long)start.as_int(), (long long)start.as_int() + size);
+    // Reading these directly requires CAP_SYS_ADMIN, so open the link target
+    // instead.
+    char link[PATH_MAX];
+    int ret = readlink(buf, link, sizeof(link) - 1);
+    if (ret < 0) {
+      return;
     }
-    ElfFileReader reader(open_fd, t->arch());
-    // Check for symbols first in the library itself, regardless of whether
-    // there is a debuglink.  For example, on Fedora 26, the .symtab and
-    // .strtab sections are stripped from the debuginfo file for
-    // libpthread.so.
-    SymbolTable syms = reader.read_symbols(".symtab", ".strtab");
-    if (syms.size() == 0) {
-      ScopedFd debug_fd = reader.open_debug_file(map.map.fsname());
-      if (debug_fd.is_open()) {
-        ElfFileReader debug_reader(debug_fd, t->arch());
-        syms = debug_reader.read_symbols(".symtab", ".strtab");
-      }
+    link[ret] = 0;
+    open_fd = ScopedFd(link, O_RDONLY);
+    if (!open_fd.is_open()) {
+      return;
     }
-    for (size_t i = 0; i < syms.size(); ++i) {
-      if (syms.is_name(i, "__elision_aconf")) {
-        static const int zero = 0;
-        // Setting __elision_aconf.retry_try_xbegin to zero means that
-        // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
-        // in glibc's elide.h.
-        set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
-                             start, size, offset_bytes);
-      }
-      if (syms.is_name(i, "elision_init")) {
-        // Make elision_init return without doing anything. This means
-        // the __elision_available and __pthread_force_elision flags will
-        // remain zero, disabling elision for mutexes. See glibc's
-        // elision-conf.c.
-        static const uint8_t ret = 0xC3;
-        set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
-                             size, offset_bytes);
-      }
-      // The following operations can only be applied once because after the
-      // patch is applied the code no longer matches the expected template.
-      // For replaying a replay to work, we need to only apply these changes
-      // during a real exec, not during the mmap operations performed when rr
-      // replays an exec.
-      if (mode == MMAP_EXEC &&
-          (syms.is_name(i, "_dl_runtime_resolve_fxsave") ||
-           syms.is_name(i, "_dl_runtime_resolve_xsave") ||
-           syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
-        patch_dl_runtime_resolve(t, reader, syms.addr(i), start, size,
-                                 offset_bytes);
-      }
+  }
+  ElfFileReader reader(open_fd, t->arch());
+  // Check for symbols first in the library itself, regardless of whether
+  // there is a debuglink.  For example, on Fedora 26, the .symtab and
+  // .strtab sections are stripped from the debuginfo file for
+  // libpthread.so.
+  SymbolTable syms = reader.read_symbols(".symtab", ".strtab");
+  if (syms.size() == 0) {
+    ScopedFd debug_fd = reader.open_debug_file(map.map.fsname());
+    if (debug_fd.is_open()) {
+      ElfFileReader debug_reader(debug_fd, t->arch());
+      syms = debug_reader.read_symbols(".symtab", ".strtab");
     }
+  }
+  switch (t->arch()) {
+    case x86:
+    case x86_64:
+      for (size_t i = 0; i < syms.size(); ++i) {
+        if (syms.is_name(i, "__elision_aconf")) {
+          static const int zero = 0;
+          // Setting __elision_aconf.retry_try_xbegin to zero means that
+          // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
+          // in glibc's elide.h.
+          set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
+                               start, size, offset_bytes);
+        }
+        if (syms.is_name(i, "elision_init")) {
+          // Make elision_init return without doing anything. This means
+          // the __elision_available and __pthread_force_elision flags will
+          // remain zero, disabling elision for mutexes. See glibc's
+          // elision-conf.c.
+          static const uint8_t ret = 0xC3;
+          set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
+                               size, offset_bytes);
+        }
+        // The following operations can only be applied once because after the
+        // patch is applied the code no longer matches the expected template.
+        // For replaying a replay to work, we need to only apply these changes
+        // during a real exec, not during the mmap operations performed when rr
+        // replays an exec.
+        if (mode == MMAP_EXEC &&
+            (syms.is_name(i, "_dl_runtime_resolve_fxsave") ||
+             syms.is_name(i, "_dl_runtime_resolve_xsave") ||
+             syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
+          patch_dl_runtime_resolve(t, reader, syms.addr(i), start, size,
+                                   offset_bytes);
+        }
+      }
+      break;
+    case aarch64:
+      for (size_t i = 0; i < syms.size(); ++i) {
+        if (syms.is_name(i, "__aarch64_ldadd4_relax")) {
+          patch_aarch64_have_lse_atomics(t, reader, syms.addr(i), start, size,
+                                         offset_bytes);
+        }
+      }
+      break;
   }
 }
 
