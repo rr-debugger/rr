@@ -211,7 +211,7 @@ private:
    * the next runnable task after 't' in round-robin order.
    * Sets 'by_waitpid' to true if we determined the task was runnable by
    * calling waitpid on it and observing a state change. This task *must*
-   * be returned by get_next_thread, and is_runnable_task must not be called
+   * be returned by get_next_thread, and is_task_runnable must not be called
    * on it again until it has run.
    * Considers only tasks with priority <= priority_threshold.
    */

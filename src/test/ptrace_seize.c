@@ -40,9 +40,25 @@ int main(void) {
   test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f));
 
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, 0));
+  /* Most likely there is no context switch between these two syscalls, rr does
+   * not actually restart the tracee, and this PTRACE_INTERRUPT sees the task
+   * is already stopped internally, and is emulated as a noop.
+   */
   test_assert(0 == ptrace(PTRACE_INTERRUPT, child, NULL, 0));
-  test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f) ||
-              status == (((SIGTRAP | 0x80) << 8) | 0x7f));
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f));
+
+  test_assert(WIFSTOPPED(status));
+
+  test_assert(0 == ptrace(PTRACE_CONT, child, NULL, 0));
+  /* Use a sched_yield() to force rr to context switch and restart the tracee,
+   * so when we PTRACE_INTERRUPT below rr is forced to PTRACE_INTERRUPT the
+   * tracee.
+   */
+  sched_yield();
+  test_assert(0 == ptrace(PTRACE_INTERRUPT, child, NULL, 0));
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(status == ((PTRACE_EVENT_STOP << 16) | (SIGSTOP << 8) | 0x7f));
 
   test_assert(WIFSTOPPED(status));
 
