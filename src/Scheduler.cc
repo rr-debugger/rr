@@ -345,7 +345,22 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
       WaitAggregator::try_wait_exit(t);
       // N.B.: If we supported ptrace exit notifications for killed tracee's
       // that would need handling here, but we don't at the moment.
-      return t->seen_ptrace_exit_event();
+      if (t->seen_ptrace_exit_event()) {
+        LOGM(debug) << "  ... but it died";
+        return true;
+      }
+      if (t->is_stopped()) {
+        return false;
+      }
+      // If we're not stopped, we need to get to the stop.
+      // AFAIK we can only get here with group stops, which are eagerly applied
+      // to every task in the group. If I'm wrong, die here.
+      ASSERT(t, t->emulated_stop_type == GROUP_STOP);
+      LOGM(debug) << "  interrupting and waiting";
+      t->do_ptrace_interrupt();
+      // Wait on the task to get the kernel to kick it into the group stop.
+      // If it died, we can deal with it later.
+      return t->wait();
     }
   }
 
@@ -787,8 +802,8 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       double wait_duration = monotonic_now_sec() - now;
       if (wait_duration >= 0.010) {
-        log_warn("Waiting for unswitchable %s took %g ms",
-                 strevent(current_->event), 1000.0 * wait_duration);
+        LOGM(warn) << "Waiting for unswitchable " << current_->ev()
+                   << " took " << 1000.0 * wait_duration << "ms";
       }
 #endif
     }

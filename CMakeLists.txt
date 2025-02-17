@@ -1261,6 +1261,7 @@ set(BASIC_TESTS
   x86/ptrace_debug_regs
   ptrace_exec
   x86/ptrace_exec32
+  ptrace_group_stop
   ptrace_kill_grandtracee
   x86/ptrace_tls
   ptrace_seize

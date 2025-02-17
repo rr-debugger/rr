@@ -247,6 +247,10 @@ public:
    */
   bool is_sig_ignored(int sig) const;
   /**
+   * Return true iff |sig| is a stopping signal.
+   */
+  bool is_sig_stopping(int sig) const;
+  /**
    * Return the applications current disposition of |sig|.
    */
   SignalDisposition sig_disposition(int sig) const;
