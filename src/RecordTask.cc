@@ -997,9 +997,10 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
   RecordTask* from_task = nullptr;
   for (RecordTask* tracee : emulated_ptrace_tracees) {
     if (tracee->emulated_ptrace_SIGCHLD_pending) {
-      from_task = tracee;
-      from_task->emulated_ptrace_SIGCHLD_pending = false;
-      break;
+      if (!from_task) {
+        from_task = tracee;
+      }
+      tracee->emulated_ptrace_SIGCHLD_pending = false;
     }
   }
 
@@ -1008,13 +1009,11 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
       for (Task* child : child_tg->task_set()) {
         auto rchild = static_cast<RecordTask*>(child);
         if (rchild->emulated_SIGCHLD_pending) {
-          from_task = rchild;
-          from_task->emulated_SIGCHLD_pending = false;
-          break;
+          if (!from_task) {
+            from_task = rchild;
+          }
+          rchild->emulated_SIGCHLD_pending = false;
         }
-      }
-      if (from_task) {
-        break;
       }
     }
 
