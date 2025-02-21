@@ -4736,6 +4736,23 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_SET_THP_DISABLE:
         case PR_SET_SECUREBITS:
         case PR_GET_SECUREBITS:
+        case PR_GET_TAGGED_ADDR_CTRL:
+          break;
+
+        case PR_SET_TAGGED_ADDR_CTRL:
+          if (regs.arg2() & ~PR_TAGGED_ADDR_ENABLE) {
+            // For now we only support enabling the tagged address ABI which
+            // only affects the semantics of syscalls. We don't support setting
+            // any of the MTE-related bits because they affect the semantics of
+            // normal load/store instructions (implying replay is required) as
+            // well as exposing non-determinism in the following ways:
+            // 1) With a non-empty tag inclusion mask, the tag computed by the
+            //    IRG instruction will be effectively random.
+            // 2) It is indeterminate when a SIGSEGV/SEGV_MTEAERR signal will
+            //    be raised if an asynchronous tag check fault is taken.
+            // Both of these issues should be fixable with some kernel changes.
+            syscall_state.emulate_result(-EINVAL);
+          }
           break;
 
         case PR_SET_DUMPABLE:

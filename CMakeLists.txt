@@ -1406,6 +1406,7 @@ set(BASIC_TESTS
   x86/sysfs
   sysinfo
   syslog
+  arm/tagged_addr_ctrl
   tgkill
   thread_yield
   timer
