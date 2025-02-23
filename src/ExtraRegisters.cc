@@ -78,18 +78,30 @@ static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
 static const size_t xsave_header_end = xsave_header_offset + xsave_header_size;
 struct RegisterConfig {
+  // Feature bits given by CPUID
   int8_t feature;
   GdbServerRegister base;
+  // Width in bytes in the xsave area
   int8_t size;
+  // The stride of the register (how far between the start of this register to
+  // the next register of the same type, in the xsave area)
   int stride;
 
   int register_offset(GdbServerRegister reg, int base_offset) const noexcept {
+    DEBUG_ASSERT(reg >= base && reg < (base + 16));
     const auto& layout = xsave_native_layout();
-    return layout.feature_layouts[feature].offset + base_offset + (reg - base) * stride;
+    return layout.feature_layouts[feature].offset + base_offset +
+           (reg - base) * stride;
   }
 };
 
-static constexpr std::array<RegisterConfig, 6> RegisterConfigLookupTable{
+/**
+ * These configurations describe the layout of the XSAVE area for avx2 and
+ * avx512 extensions. where the actual contents for the registers get read from.
+ * `RegisterConfig::feature` is used to index into `XSaveFeatureLayout` to get
+ * the base offset for a particular range.
+ */
+static constexpr std::array<RegisterConfig, 6> register_config_lookup_table{
   { { AVX_FEATURE_BIT, DREG_64_YMM0H, 16, 16 },
     { AVX_ZMM_HI16_FEATURE_BIT, DREG_64_XMM16, 16, 64 },
     { AVX_ZMM_HI16_FEATURE_BIT, DREG_64_YMM16H, 16, 64 },
@@ -98,24 +110,45 @@ static constexpr std::array<RegisterConfig, 6> RegisterConfigLookupTable{
     { AVX_OPMASK_FEATURE_BIT, DREG_64_K0, 8, 8 } }
 };
 
-static constexpr auto YMM16_31 = 0b10;
-static constexpr auto ZMM16_31 = 0b100;
+// The two ranges that require an offset into the sub-region of the xsave area.
+// In these ranges, the registers are laid out like [xmmN, ymmN, zmmN],
+// instead of [xmm0..N], [ymm0..N]. So to get e.g. zmm18 we need 3 offsets;
+// 1. offset to the sub-region of xsave for [xmmN, ymmN, zmmN] are found (N>15)
+// 2. offset to where register-range N=18 begins, e.g. [xmm18, ymm18, zmm18]
+// 3. offset to where zmm begins; which is 32 bytes.
+// It's only YMM16_31H and ZMM16_31H that require that 3rd offset.
+static constexpr auto YMM16_31H = 2;
+static constexpr auto ZMM16_31H = 4;
 
-// Every range of registers (except K0-7) are 16 registers long. We use this fact to build
-// a lookup table, for the AVX2 and AVX512 registers.
+// Every range of registers (except K0-7) are 16 registers long. We use this
+// fact to build a lookup table, for the AVX2 and AVX512 registers.
 static bool reg_is_avx2_or_512(GdbServerRegister reg, RegData& out) noexcept {
-  if(reg < DREG_64_YMM0H || reg > DREG_64_K7) {
+  if (reg < DREG_64_YMM0H || reg > DREG_64_K7) {
     return false;
   }
 
-  const auto selector = (reg - DREG_64_YMM0H) >> 4;
-  DEBUG_ASSERT(selector >= 0 && selector <= 5 && "GdbServerRegister enum values has been changed.");
-  const auto cfg = RegisterConfigLookupTable[selector];
+  uint64_t index = 0;
+  if (reg >= DREG_64_YMM0H && reg < DREG_64_XMM16) {
+    index = 0;
+  } else if (reg >= DREG_64_XMM16 && reg < DREG_64_YMM16H) {
+    index = 1;
+  } else if (reg >= DREG_64_YMM16H && reg < DREG_64_ZMM0H) {
+    index = 2;
+  } else if (reg >= DREG_64_ZMM0H && reg < DREG_64_ZMM16H) {
+    index = 3;
+  } else if (reg >= DREG_64_ZMM16H && reg < DREG_64_K0) {
+    index = 4;
+  } else if (reg >= DREG_64_K0 && reg < (DREG_64_K7 + 1)) {
+    index = 5;
+  }
+
+  const auto cfg = register_config_lookup_table[index];
   out.xsave_feature_bit = cfg.feature;
   out.size = cfg.size;
 
   // only YMM16-31 and ZMM16-31 have a base offset (16 and 32 respectively)
-  const auto base_offset = cfg.size * (selector == YMM16_31) | cfg.size * (selector == ZMM16_31);
+  const auto base_offset =
+      ((index == YMM16_31H) || (index == ZMM16_31H)) ? cfg.size : 0;
   out.offset = cfg.register_offset(reg, base_offset);
   return true;
 }
