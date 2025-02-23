@@ -225,7 +225,7 @@ private:
   void read_back_debugger_mem(DiversionSession& session);
 
   // Get the last GdbServerRegister for "this" arch. If it hasn't be determined, configure it.
-  GdbServerRegister arch_reg_end(SupportedArch arch) noexcept;
+  const vector<GdbServerRegister>& target_registers(SupportedArch arch);
 
   // dbg is never null.
   std::unique_ptr<GdbServerConnection> dbg;
@@ -320,7 +320,7 @@ private:
   };
   std::unordered_map<int, SavedRegisters> saved_register_states;
 
-  GdbServerRegister target_regs_end = GdbServerRegister(0);
+  vector<GdbServerRegister> register_description;
 };
 
 } // namespace rr

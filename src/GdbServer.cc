@@ -22,6 +22,7 @@
 #include "Event.h"
 #include "DebuggerExtensionCommandHandler.h"
 #include "GdbServerExpression.h"
+#include "GdbServerRegister.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "ScopedFd.h"
@@ -186,10 +187,11 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
 
 void GdbServer::dispatch_regs_request(const Registers& regs,
                                       const ExtraRegisters& extra_regs) {
-  const GdbServerRegister end = arch_reg_end(regs.arch());
+  const auto& registers = target_registers(regs.arch());
+  // TODO: Do we really need to allocate this every time for a reg request?q
   vector<GdbServerRegisterValue> rs;
-  rs.reserve(end);
-  for (GdbServerRegister r = GdbServerRegister(0); r <= end; r = GdbServerRegister(r + 1)) {
+  rs.reserve(registers.size());
+  for (const auto r : registers) {
     rs.push_back(get_reg(regs, extra_regs, r));
   }
   dbg->reply_get_regs(rs);
@@ -2299,47 +2301,63 @@ void GdbServer::read_back_debugger_mem(DiversionSession& session) {
   }
 }
 
-GdbServerRegister GdbServer::arch_reg_end(SupportedArch arch) noexcept {
-  if(target_regs_end != GdbServerRegister(0)) {
-    return target_regs_end;
+const vector<GdbServerRegister>& GdbServer::target_registers(
+    SupportedArch arch) {
+  if (!register_description.empty()) {
+    return register_description;
   }
 
-  // Send values for all the registers we sent XML register descriptions for.
-  // Those descriptions are controlled by GdbServerConnection::cpu_features().
+  const auto add_range = [&](GdbServerRegister start, GdbServerRegister end) {
+    for (auto reg = start; reg < end; reg = GdbServerRegister(reg + 1)) {
+      register_description.push_back(reg);
+    }
+  };
+
   bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
   bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
   bool have_AVX512 = dbg->cpu_features() & GdbServerConnection::CPU_AVX512;
   switch (arch) {
-    case x86:
-      if(have_PKU) {
-        target_regs_end = DREG_PKRU;
-      } else if(have_AVX512) {
-        target_regs_end = DREG_K7;
-      } else if(have_AVX) {
-        target_regs_end = DREG_YMM7H;
-      } else {
-        target_regs_end = DREG_ORIG_EAX;
+    case x86: {
+      add_range(GdbServerRegister(0), GdbServerRegister(DREG_ORIG_EAX + 1));
+
+      if (have_AVX) {
+        add_range(GdbServerRegister::DREG_YMM0H,
+                  GdbServerRegister(DREG_YMM7H + 1));
+      }
+
+      if (have_AVX512) {
+        add_range(GdbServerRegister::DREG_ZMM0H,
+                  GdbServerRegister(DREG_K7 + 1));
+      }
+
+      if (have_PKU) {
+        register_description.push_back(DREG_PKRU);
       }
       break;
-    case x86_64:
-      if(have_PKU) {
-        target_regs_end = DREG_64_PKRU;
-      } else if(have_AVX512) {
-        target_regs_end = DREG_64_K7;
-      } else if(have_AVX) {
-        target_regs_end = DREG_64_YMM15H;
-      } else {
-        target_regs_end = DREG_GS_BASE;
+    }
+    case x86_64: {
+      add_range(GdbServerRegister(0), GdbServerRegister(DREG_GS_BASE + 1));
+      if (have_AVX) {
+        add_range(GdbServerRegister::DREG_64_YMM0H,
+                  GdbServerRegister(DREG_64_YMM15H + 1));
+      }
+      if (have_AVX512) {
+        add_range(GdbServerRegister::DREG_64_XMM16,
+                  GdbServerRegister(DREG_64_K7 + 1));
+      }
+      if (have_PKU) {
+        register_description.push_back(DREG_64_PKRU);
       }
       break;
+    }
     case aarch64:
-      target_regs_end = DREG_FPCR;
+      add_range(GdbServerRegister::DREG_X0,
+                GdbServerRegister::DREG_NUM_LINUX_AARCH64);
       break;
     default:
       FATAL() << "Unknown architecture";
-      return target_regs_end;
   }
-  return target_regs_end;
+  return register_description;
 }
 
 bool GdbServer::debugger_mem_region(ThreadGroupUid tguid, remote_ptr<void> addr,
