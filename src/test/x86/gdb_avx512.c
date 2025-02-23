@@ -1,7 +1,5 @@
 #include <immintrin.h>
 
-#if defined(__AVX512F__)
-
 static int set_registers(void) {
 
     __attribute__((aligned(64))) unsigned char increasing[64];
@@ -17,12 +15,12 @@ static int set_registers(void) {
     __asm__ volatile (
         "vmovdqu64 %0, %%zmm0  \n\t"  // Load increasing bytes into zmm0
         :: "m"(increasing)
-        : "zmm0"
+        :
     );
     __asm__ volatile (
         "vmovdqu64 %0, %%zmm1  \n\t"  // Load increasing bytes into zmm0
         :: "m"(decreasing)
-        : "zmm1"
+        :
     );
     return 0;
 }
@@ -39,13 +37,13 @@ static int broadcast_to_three_zmm(void) {
         "vpbroadcastb %0, %%zmm16 \n\t"
         :
         : "r"(0x5b)
-        : "zmm16"
+        :
     );
     asm volatile (
         "vpbroadcastb %0, %%zmm30 \n\t"
         :
         : "r"(0xff)
-        : "zmm30"
+        :
     );
 #else // 32-bit only has 0-8 vector registers
     asm volatile (
@@ -63,15 +61,11 @@ static int broadcast_to_three_zmm(void) {
 #endif
     return 0;
 }
-#endif
 
 int
 main(void)
 {
-#ifdef __AVX512F__
   int a = set_registers();
   int b = broadcast_to_three_zmm();
   return a + b;
-#endif
-  return 1;
 }

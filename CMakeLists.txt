@@ -1544,6 +1544,7 @@ set(TESTS_WITH_PROGRAM
   fork_syscalls
   function_calls
   x86/fxregs
+  x86/gdb_avx512
   getcwd
   gdb_bogus_breakpoint
   gdb_qpasssignals
@@ -1726,7 +1727,6 @@ set(TESTS_WITHOUT_PROGRAM
   final_sigkill
   first_instruction
   fork_exec_info_thr
-  x86/gdb_avx512
   get_thread_list
   hardlink_mmapped_files
   hbreak
@@ -1875,13 +1875,6 @@ if(BUILD_TESTS)
 
   add_executable(prctl_tsc_supported src/test/prctl_tsc_supported.c)
   post_build_executable(prctl_tsc_supported)
-  if (x86ish)
-    add_executable(gdb_avx512 src/test/x86/gdb_avx512.c)
-    post_build_executable(gdb_avx512)
-    set_target_properties(gdb_avx512
-      PROPERTIES COMPILE_FLAGS "${RR_TEST_FLAGS} -g3 -mavx512f")
-    add_dependencies(gdb_avx512 Generated)
-  endif()
 
   # Test disabled because it requires libuvc to be built and installed, and a
   # working USB camera
@@ -2024,11 +2017,6 @@ if(BUILD_TESTS)
                                   PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
 
-    if (x86ish)
-      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/x86/gdb_avx512.c" "${CMAKE_CURRENT_BINARY_DIR}/32/gdb_avx512.c" COPYONLY)
-      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c" PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g3 -mavx512f")
-    endif()
-
     foreach(test ${BASIC_CPP_TESTS})
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
@@ -2096,16 +2084,6 @@ if(BUILD_TESTS)
       PROPERTIES LINK_FLAGS "-m32"
       COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g -O3")
     add_dependencies(watchpoint_unaligned2_32 Generated)
-
-    if (x86ish)
-      add_executable(gdb_avx512_32 "${CMAKE_CURRENT_BINARY_DIR}/32/gdb_avx512.c")
-      post_build_executable(gdb_avx512_32)
-      set_target_properties(gdb_avx512_32
-        PROPERTIES
-          LINK_FLAGS "-m32"
-          COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS} -g3 -mavx512f")
-      add_dependencies(gdb_avx512_32 Generated)
-    endif()
 
     add_library(test_lib_32
       "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
