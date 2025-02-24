@@ -188,7 +188,6 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
 void GdbServer::dispatch_regs_request(const Registers& regs,
                                       const ExtraRegisters& extra_regs) {
   const auto& registers = target_registers(regs.arch());
-  // TODO: Do we really need to allocate this every time for a reg request?q
   vector<GdbServerRegisterValue> rs;
   rs.reserve(registers.size());
   for (const auto r : registers) {
@@ -2307,8 +2306,8 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
     return register_description;
   }
 
-  const auto add_range = [&](GdbServerRegister start, GdbServerRegister end) {
-    for (auto reg = start; reg < end; reg = GdbServerRegister(reg + 1)) {
+  const auto add_range = [&](GdbServerRegister start, GdbServerRegister end_inclusive) {
+    for (auto reg = start; reg <= end_inclusive; reg = GdbServerRegister(reg + 1)) {
       register_description.push_back(reg);
     }
   };
@@ -2318,16 +2317,16 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
   bool have_AVX512 = dbg->cpu_features() & GdbServerConnection::CPU_AVX512;
   switch (arch) {
     case x86: {
-      add_range(GdbServerRegister(0), GdbServerRegister(DREG_ORIG_EAX + 1));
+      add_range(GdbServerRegister(0), GdbServerRegister(DREG_ORIG_EAX));
 
       if (have_AVX) {
         add_range(GdbServerRegister::DREG_YMM0H,
-                  GdbServerRegister(DREG_YMM7H + 1));
+                  GdbServerRegister(DREG_YMM7H));
       }
 
       if (have_AVX512) {
         add_range(GdbServerRegister::DREG_ZMM0H,
-                  GdbServerRegister(DREG_K7 + 1));
+                  GdbServerRegister(DREG_K7));
       }
 
       if (have_PKU) {
@@ -2336,14 +2335,14 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
       break;
     }
     case x86_64: {
-      add_range(GdbServerRegister(0), GdbServerRegister(DREG_GS_BASE + 1));
+      add_range(GdbServerRegister(0), GdbServerRegister(DREG_GS_BASE));
       if (have_AVX) {
         add_range(GdbServerRegister::DREG_64_YMM0H,
-                  GdbServerRegister(DREG_64_YMM15H + 1));
+                  GdbServerRegister(DREG_64_YMM15H));
       }
       if (have_AVX512) {
         add_range(GdbServerRegister::DREG_64_XMM16,
-                  GdbServerRegister(DREG_64_K7 + 1));
+                  GdbServerRegister(DREG_64_K7));
       }
       if (have_PKU) {
         register_description.push_back(DREG_64_PKRU);

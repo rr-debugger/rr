@@ -1,5 +1,3 @@
-#include <immintrin.h>
-
 static int set_registers(void) {
 
     __attribute__((aligned(64))) unsigned char increasing[64];
@@ -62,8 +60,7 @@ static int broadcast_to_three_zmm(void) {
     return 0;
 }
 
-int
-main(void)
+int main(void)
 {
   int a = set_registers();
   int b = broadcast_to_three_zmm();
