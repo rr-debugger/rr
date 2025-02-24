@@ -788,11 +788,13 @@ set_source_files_properties(src/exec_stub.c
 
 set(RR_GDB_RESOURCES
   32bit-avx.xml
+  32bit-avx512.xml
   32bit-core.xml
   32bit-linux.xml
   32bit-sse.xml
   32bit-pkeys.xml
   64bit-avx.xml
+  64bit-avx512.xml
   64bit-core.xml
   64bit-linux.xml
   64bit-seg.xml
@@ -1542,6 +1544,7 @@ set(TESTS_WITH_PROGRAM
   fork_syscalls
   function_calls
   x86/fxregs
+  x86/gdb_avx512
   getcwd
   gdb_bogus_breakpoint
   gdb_qpasssignals
@@ -1993,7 +1996,7 @@ if(BUILD_TESTS)
       bash source_dir/src/test/${test}.run ${testname} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
-
+  
   # Run 32-bit tests on 64-bit builds.
   # We copy the test files into '32' subdirectories in the output
   # directory, so we can set different compile options on them.

@@ -17,6 +17,7 @@ enum class TargetFeature : uint32_t {
   Linux,
   Segment,
   AVX,
+  AVX512,
   PKeys,
   FPU,
 };

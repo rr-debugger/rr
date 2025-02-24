@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include "GdbServerRegister.h"
 #include "ReplayTask.h"
 #include "core.h"
 #include "log.h"
@@ -66,17 +67,91 @@ static bool reg_in_range(GdbServerRegister regno, GdbServerRegister low, GdbServ
   return true;
 }
 
-static const int AVX_FEATURE_BIT = 2;
-static const int PKRU_FEATURE_BIT = 9;
+static constexpr int AVX_FEATURE_BIT = 2;
+static constexpr int AVX_OPMASK_FEATURE_BIT = 5;
+static constexpr int AVX_ZMM_HI256_FEATURE_BIT = 6;
+static constexpr int AVX_ZMM_HI16_FEATURE_BIT = 7;
+static constexpr int PKRU_FEATURE_BIT = 9;
 
 static const uint64_t PKRU_FEATURE_MASK = 1 << PKRU_FEATURE_BIT;
 
 static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
 static const size_t xsave_header_end = xsave_header_offset + xsave_header_size;
-// This is always at 576 since AVX is always the first optional feature,
-// if present.
-static const size_t AVX_xsave_offset = 576;
+struct RegisterDescriptor {
+  // Feature bits given by CPUID
+  int8_t feature;
+  // Width in bytes in the xsave area
+  int8_t size;
+  // If the registers described by this descriptor is laid out in Hi16 ranges,
+  // value can be non-zero.
+  int8_t hi16_offset;
+  // Range of registers described by descriptor
+  GdbServerRegister base;
+  GdbServerRegister end_inclusive;
+  // The stride of the register (how far between the start of this register to
+  // the next register of the same type, in the xsave area)
+  int stride;
+
+  int register_offset(GdbServerRegister reg) const noexcept {
+    DEBUG_ASSERT(reg >= base && reg < (base + 16));
+    const auto& layout = xsave_native_layout();
+    return layout.feature_layouts[feature].offset + hi16_offset +
+           (reg - base) * stride;
+  }
+
+  bool describes_register(GdbServerRegister gdb_register) const {
+    // compare end first because we search table linerarly.
+    return gdb_register <= end_inclusive && gdb_register >= base;
+  }
+};
+
+/**
+ * These descriptors describe the layout of the XSAVE area for avx2 and
+ * avx512 extensions. where the actual contents for the registers get read from.
+ * `RegisterDescriptor::feature` is used to index into `XSaveFeatureLayout` to
+ * get the base offset for a particular range.
+ *
+ * Register ranges in the xsave area that differ is the Hi16 ones.
+ * In these ranges, the registers are laid out like [xmmN, ymmN, zmmN],
+ * instead of [xmm0..N], [ymm0..N]. So to get e.g. zmm18 we need 3 offsets;
+ * 1. offset to the sub-region of xsave for [xmmN, ymmN, zmmN] are found (N>15)
+ * 2. offset to where register-range N=18 begins, e.g. [xmm18, ymm18, zmm18]
+ * 3. offset to where zmm begins; which is 32 bytes.
+ */
+static constexpr std::array<RegisterDescriptor, 6> register_config_lookup_table{
+  { { AVX_FEATURE_BIT, 16, 0, DREG_64_YMM0H,
+      GdbServerRegister(DREG_64_YMM15H), 16 },
+    { AVX_ZMM_HI16_FEATURE_BIT, 16, 0, DREG_64_XMM16,
+      GdbServerRegister(DREG_64_XMM31), 64 },
+    { AVX_ZMM_HI16_FEATURE_BIT, 16, 16, DREG_64_YMM16H,
+      GdbServerRegister(DREG_64_YMM31H), 64 },
+    { AVX_ZMM_HI256_FEATURE_BIT, 32, 0, DREG_64_ZMM0H,
+      GdbServerRegister(DREG_64_ZMM15H), 32 },
+    { AVX_ZMM_HI16_FEATURE_BIT, 32, 32, DREG_64_ZMM16H,
+      GdbServerRegister(DREG_64_ZMM31H), 64 },
+    { AVX_OPMASK_FEATURE_BIT, 8, 0, DREG_64_K0,
+      GdbServerRegister(DREG_64_K7), 8 } }
+};
+
+// Every range of registers (except K0-7) are 16 registers long. We use this
+// fact to build a lookup table, for the AVX2 and AVX512 registers.
+static bool reg_is_avx2_or_512(GdbServerRegister reg, RegData& out) noexcept {
+  if (reg < DREG_64_YMM0H || reg > DREG_64_K7) {
+    return false;
+  }
+
+  for (const auto& descriptor : register_config_lookup_table) {
+    if (descriptor.describes_register(reg)) {
+      out.xsave_feature_bit = descriptor.feature;
+      out.size = descriptor.size;
+      out.offset = descriptor.register_offset(reg);
+      return true;
+    }
+  }
+  FATAL() << "Unknown AVX512F register: " << reg;
+  return true;
+}
 
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
@@ -93,6 +168,14 @@ static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) 
       }
       if (regno >= DREG_YMM0H && regno <= DREG_YMM7H) {
         regno = (GdbServerRegister)(regno - DREG_YMM0H + DREG_64_YMM0H);
+        break;
+      }
+      if (regno >= DREG_ZMM0H && regno <= DREG_ZMM7H) {
+        regno = (GdbServerRegister)(regno - DREG_ZMM0H + DREG_64_ZMM0H);
+        break;
+      }
+      if (regno >= DREG_K0 && regno <= DREG_K7) {
+        regno = (GdbServerRegister)(regno - DREG_K0 + DREG_64_K0);
         break;
       }
       if (regno == DREG_MXCSR) {
@@ -123,9 +206,7 @@ static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) 
     return result;
   }
 
-  if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
-                   16, &result)) {
-    result.xsave_feature_bit = AVX_FEATURE_BIT;
+  if (reg_is_avx2_or_512(regno, result)) {
     return result;
   }
 

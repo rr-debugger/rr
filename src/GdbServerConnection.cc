@@ -87,7 +87,11 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
       if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
         // PKU (Skylake) implies AVX (Sandy Bridge).
-        cpu_features |= GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_PKU;
+        cpu_features |= GdbServerConnection::CPU_PKU;
+      }
+
+      if ((cpuid_data.ebx & AVX_512_FOUNDATION_FLAG) == AVX_512_FOUNDATION_FLAG) {
+        cpu_features |= GdbServerConnection::CPU_AVX512 | GdbServerConnection::CPU_AVX;
         break;
       }
 
@@ -107,6 +111,8 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       FATAL() << "Unknown architecture";
       return 0;
   }
+
+  LOG(debug) << "cpu features " << std::hex << cpu_features;
 
   return cpu_features;
 }

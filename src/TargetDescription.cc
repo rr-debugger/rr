@@ -66,6 +66,9 @@ FeatureStream& operator<<(FeatureStream& stream, TargetFeature feature) {
     case TargetFeature::AVX:
       stream << "avx.xml";
       break;
+    case TargetFeature::AVX512:
+      stream << "avx512.xml";
+      break;
     case TargetFeature::PKeys:
       stream << "pkeys.xml";
       break;
@@ -106,6 +109,11 @@ TargetDescription::TargetDescription(rr::SupportedArch arch,
   if (cpu_features & rr::GdbServerConnection::CPU_AVX) {
     DEBUG_ASSERT((arch == rr::x86 || arch == rr::x86_64) && "unexpected arch");
     target_features.push_back(TargetFeature::AVX);
+  }
+
+  if (cpu_features & rr::GdbServerConnection::CPU_AVX512) {
+    DEBUG_ASSERT((arch == rr::x86 || arch == rr::x86_64) && "unexpected arch");
+    target_features.push_back(TargetFeature::AVX512);
   }
 
   if (cpu_features & rr::GdbServerConnection::CPU_PKU) {
