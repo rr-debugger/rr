@@ -3061,12 +3061,19 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_INTERRUPT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid, false);
       if (tracee) {
+        uint64_t result = 0;
         if (!tracee->is_stopped()) {
           // Running in a blocked syscall. Forward the PTRACE_INTERRUPT.
           // Regular syscall exit handling will take over from here.
+          LOG(debug) << "Interrupting " << tracee->tid;
           errno = 0;
           tracee->fallible_ptrace(PTRACE_INTERRUPT, nullptr, nullptr);
-          syscall_state.emulate_result(-errno);
+          result = -errno;
+          // Technically PTRACE_INTERRUPT stops are distinct from group stops,
+          // but not in any way we currently care about.
+          // NB: Despite the ptrace man page claiming the kernel sends SIGTRAP
+          // in practice it actually sends SIGSTOP.
+          tracee->apply_group_stop(SIGSTOP);
         } else if (tracee->status().is_syscall()) {
           tracee->emulate_ptrace_stop(tracee->status(), SYSCALL_EXIT_STOP);
         } else if (tracee->emulated_stop_pending == NOT_STOPPED) {
@@ -3075,7 +3082,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           tracee->apply_group_stop(SIGSTOP);
         }
         // Otherwise, there's nothing to do.
-        syscall_state.emulate_result(0);
+        syscall_state.emulate_result(result);
       }
       break;
     }
