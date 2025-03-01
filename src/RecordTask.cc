@@ -1185,34 +1185,28 @@ void RecordTask::emulate_SIGCONT() {
 }
 
 void RecordTask::signal_delivered(int sig) {
+  bool needs_SIGCHLD = true;
   Sighandler& h = sighandlers->get(sig);
   if (h.resethand) {
     reset_handler(&h, arch());
   }
 
-  if (!is_sig_ignored(sig)) {
-    switch (sig) {
-      case SIGTSTP:
-      case SIGTTIN:
-      case SIGTTOU:
-        if (h.disposition() == SIGNAL_HANDLER) {
-          break;
-        }
-        RR_FALLTHROUGH;
-      case SIGSTOP:
-        // All threads in the process are stopped.
-        for (Task* t : thread_group()->task_set()) {
-          auto rt = static_cast<RecordTask*>(t);
-          rt->apply_group_stop(sig);
-        }
-        break;
-      case SIGCONT:
-        emulate_SIGCONT();
-        break;
+  if (is_sig_stopping(sig)) {
+    // All threads in the process are stopped.
+    for (Task* t : thread_group()->task_set()) {
+      auto rt = static_cast<RecordTask*>(t);
+      rt->apply_group_stop(sig);
     }
+    // apply_group_stop calls send_synthetic_SIGCHLD_if_necessary(). Don't
+    // do it again.
+    needs_SIGCHLD = false;
+  } else if (sig == SIGCONT && !is_sig_ignored(sig)) {
+    emulate_SIGCONT();
   }
 
-  send_synthetic_SIGCHLD_if_necessary();
+  if (needs_SIGCHLD) {
+    send_synthetic_SIGCHLD_if_necessary();
+  }
 }
 
 bool RecordTask::signal_has_user_handler(int sig) const {
@@ -1257,6 +1251,21 @@ bool RecordTask::is_sig_ignored(int sig) const {
     default:
       return false;
   }
+}
+
+bool RecordTask::is_sig_stopping(int sig) const {
+  switch (sig) {
+    case SIGTSTP:
+    case SIGTTIN:
+    case SIGTTOU:
+      if (sig_disposition(sig) != SIGNAL_DEFAULT) {
+        break;
+      }
+      RR_FALLTHROUGH;
+    case SIGSTOP:
+      return true;
+  }
+  return false;
 }
 
 SignalDisposition RecordTask::sig_disposition(int sig) const {
