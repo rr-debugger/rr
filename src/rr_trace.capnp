@@ -152,6 +152,10 @@ struct Header {
   # size. A value of 0, only present for traces recorded before this was added,
   # means the default value for the relevant arch.
   maxVirtualAddressSize @28 :UInt8 = 0;
+  # One of our pre-flight checks found the CPU has issues (e.g. the Zen SpecLockMap
+  # optimization is not disabled) but the user chose to force recording to
+  # continue regardless.
+  cpuImproperlyConfigured @29 :CpuTriState = unknown;
 }
 
 # A file descriptor belonging to a task

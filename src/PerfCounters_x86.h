@@ -322,6 +322,8 @@ static void check_for_xen_pmi_bug(const perf_event_attrs &perf_attr) {
              "virtualization bug.\n"
              "Aborting. Retry with -F to override, but it will probably\n"
              "fail.";
+    } else {
+      cpu_improperly_configured = true;
     }
   }
 }
@@ -353,6 +355,8 @@ static void check_for_zen_speclockmap() {
                 "On Zen CPUs, rr will not work reliably unless you disable the "
                 "hardware SpecLockMap optimization.\nFor instructions on how to "
                 "do this, see https://github.com/rr-debugger/rr/wiki/Zen\n");
+      } else {
+        cpu_improperly_configured = true;
       }
     }
   }
@@ -386,6 +390,8 @@ static void check_for_freeze_on_smi() {
               "to automatically apply this setting on every reboot.\n"
               "See 'man 5 sysfs', 'man 5 tmpfiles.d'.\n"
               "If you are seeing this message, the setting has not been enabled.\n");
+    } else {
+      cpu_improperly_configured = true;
     }
   } else {
     LOG(warn) << "Unrecognized freeze_on_smi value " << freeze_on_smi;

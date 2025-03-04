@@ -102,6 +102,12 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
     fprintf(out, "  \"maxVirtualAddressSize\":%d,\n", max_virtual_address_size);
   }
 
+  bool cpu_improperly_configured_known;
+  bool cpu_improperly_configured = trace.cpu_improperly_configured(&cpu_improperly_configured_known);
+  if (cpu_improperly_configured_known) {
+    fprintf(out, "  \"cpuImproperlyConfigured\":%s,\n", cpu_improperly_configured ? "true" : "false");
+  }
+
   if (!trace.uname().sysname.empty()) {
     const auto& uname = trace.uname();
     fputs("  \"uname\":{", out);

@@ -272,6 +272,18 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
   set_intel_pt_enabled(flags.intel_pt_start_checking_event >= 0);
 
   check_virtual_address_size();
+
+  bool cpu_improperly_configured_known, cpu_improperly_configured;
+  cpu_improperly_configured = trace_in.cpu_improperly_configured(&cpu_improperly_configured_known);
+  if (cpu_improperly_configured_known && cpu_improperly_configured) {
+    if (rr::Flags::get().force_things) {
+      LOG(warn) << "CPU was improperly configured at recording but forcing anyways.";
+    } else {
+      CLEAN_FATAL() << "This trace was recorded on a CPU determined to be improperly configured " <<
+        "but rr's automated checks were overridden by the user. If you really want to " <<
+        "replay this trace override those checks again with -F";
+    }
+  }
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)

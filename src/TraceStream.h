@@ -506,6 +506,10 @@ public:
   uint8_t max_virtual_address_size() const {
     return max_virtual_address_size_;
   }
+  bool cpu_improperly_configured(bool* known) const {
+    *known = cpu_improperly_configured_known_;
+    return cpu_improperly_configured_;
+  }
 
   enum TraceQuirks {
     // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
@@ -547,6 +551,8 @@ private:
   bool chaos_mode_;
   int rrcall_base_;
   uint8_t max_virtual_address_size_;
+  bool cpu_improperly_configured_known_;
+  bool cpu_improperly_configured_;
   uint32_t syscallbuf_fds_disabled_size_;
   uint32_t syscallbuf_hdr_size_;
   int required_forward_compatibility_version_;
