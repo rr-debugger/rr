@@ -1492,6 +1492,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setRuntimePageSize(page_size());
   header.setPreloadLibraryPageSize(PRELOAD_LIBRARY_PAGE_SIZE);
   header.setMaxVirtualAddressSize(max_virtual_address_size);
+  header.setCpuImproperlyConfigured(to_tristate(PerfCounters::improperly_configured()));
 
   {
     struct utsname uname_buf;
@@ -1715,6 +1716,21 @@ TraceReader::TraceReader(const string& dir)
   }
   exclusion_range_ = MemoryRange(remote_ptr<void>(header.getExclusionRangeStart()),
                                  remote_ptr<void>(header.getExclusionRangeEnd()));
+
+  switch (header.getCpuImproperlyConfigured()) {
+    case trace::CpuTriState::UNKNOWN:
+      cpu_improperly_configured_known_ = false;
+      cpu_improperly_configured_ = false;
+      break;
+    case trace::CpuTriState::KNOWN_TRUE:
+      cpu_improperly_configured_known_ = true;
+      cpu_improperly_configured_ = true;
+      break;
+    case trace::CpuTriState::KNOWN_FALSE:
+      cpu_improperly_configured_known_ = true;
+      cpu_improperly_configured_ = false;
+      break;
+  }
 
   const auto& uname = header.getUname();
   uname_.sysname = data_to_str(uname.getSysname());

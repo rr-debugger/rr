@@ -178,6 +178,12 @@ public:
   static void start_pt_copy_thread();
 
   /**
+   * Returns true iff we detected issues with performance counter configuration
+   * and wanted to die but the user forced continuation.
+   */
+  static bool improperly_configured();
+
+  /**
    * Try to use BPF to accelerate async signal processing
    */
 #ifdef BPF
