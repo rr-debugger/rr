@@ -351,10 +351,10 @@ static void check_for_zen_speclockmap() {
     } else {
       LOG(debug) << "SpecLockMap is not disabled";
       if (!Flags::get().force_things) {
-        fprintf(stderr,
+        CLEAN_FATAL() <<
                 "On Zen CPUs, rr will not work reliably unless you disable the "
                 "hardware SpecLockMap optimization.\nFor instructions on how to "
-                "do this, see https://github.com/rr-debugger/rr/wiki/Zen\n");
+                "do this, see https://github.com/rr-debugger/rr/wiki/Zen\n";
       } else {
         cpu_improperly_configured = true;
       }
@@ -381,7 +381,7 @@ static void check_for_freeze_on_smi() {
   } else if (freeze_on_smi == '0') {
     LOG(warn) << "freeze_on_smi is not set";
     if (!Flags::get().force_things) {
-      fprintf(stderr,
+      CLEAN_FATAL() <<
               "Freezing performance counters on SMIs should be enabled for maximum rr\n"
               "reliability on Comet Lake and later CPUs. To manually enable this setting, run\n"
               "\techo 1 | sudo tee /sys/devices/cpu/freeze_on_smi\n"
@@ -389,7 +389,7 @@ static void check_for_freeze_on_smi() {
               "'w /sys/devices/cpu/freeze_on_smi - - - - 1' into /etc/tmpfiles.d/10-rr.conf\n"
               "to automatically apply this setting on every reboot.\n"
               "See 'man 5 sysfs', 'man 5 tmpfiles.d'.\n"
-              "If you are seeing this message, the setting has not been enabled.\n");
+              "If you are seeing this message, the setting has not been enabled.\n";
     } else {
       cpu_improperly_configured = true;
     }
