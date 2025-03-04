@@ -348,7 +348,7 @@ static void check_for_zen_speclockmap() {
       LOG(debug) << "SpecLockMap is disabled";
     } else {
       LOG(debug) << "SpecLockMap is not disabled";
-      if (!Flags::get().suppress_environment_warnings) {
+      if (!Flags::get().force_things) {
         fprintf(stderr,
                 "On Zen CPUs, rr will not work reliably unless you disable the "
                 "hardware SpecLockMap optimization.\nFor instructions on how to "
@@ -376,7 +376,7 @@ static void check_for_freeze_on_smi() {
     LOG(debug) << "freeze_on_smi is set";
   } else if (freeze_on_smi == '0') {
     LOG(warn) << "freeze_on_smi is not set";
-    if (!Flags::get().suppress_environment_warnings) {
+    if (!Flags::get().force_things) {
       fprintf(stderr,
               "Freezing performance counters on SMIs should be enabled for maximum rr\n"
               "reliability on Comet Lake and later CPUs. To manually enable this setting, run\n"
