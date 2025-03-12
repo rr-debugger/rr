@@ -175,6 +175,8 @@ struct FcntlConstants {
     OFD_SETLK = 37,
     OFD_SETLKW = 38,
     // Other Linux-specific operations
+    SETLEASE = 0x400,
+    GETLEASE = 0x400 + 1,
     NOTIFY = 0x400 + 2,
     DUPFD_CLOEXEC = 0x400 + 6,
     SETPIPE_SZ = 0x400 + 7,

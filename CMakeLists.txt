@@ -1061,6 +1061,7 @@ set(BASIC_TESTS
   fatal_sigsegv_thread
   x86/fault_in_code_page
   fcntl_dupfd
+  fcntl_lease
   fcntl_misc
   fcntl_notify
   fcntl_owner_ex
