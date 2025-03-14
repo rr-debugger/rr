@@ -394,6 +394,12 @@ struct Event {
   /** Return a string naming |ev|'s type. */
   std::string type_name() const;
 
+  /**
+   * Return true if it's possible/meaningful to make a checkpoint at the
+   * |frame| that |t| will replay.
+   */
+  bool can_checkpoint_at() const;
+
   static Event noop() { return Event(EV_NOOP); }
   static Event trace_termination() { return Event(EV_TRACE_TERMINATION); }
   static Event instruction_trap() { return Event(EV_INSTRUCTION_TRAP); }
