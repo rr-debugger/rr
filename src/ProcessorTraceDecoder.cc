@@ -138,6 +138,7 @@ void ProcessorTraceDecoder::maybe_process_events(int status) {
       case ptev_exec_mode:
       case ptev_cbr:
       case ptev_tsx:
+      case ptev_async_vmcs:
         break;
       case ptev_overflow:
         FATAL() << "Detected ptev_overflow";
