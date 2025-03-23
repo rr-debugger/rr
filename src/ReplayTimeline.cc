@@ -1300,10 +1300,13 @@ ReplayResult ReplayTimeline::reverse_singlestep(
               RUN_SINGLESTEP_FAST_FORWARD);
           constraints.stop_before_states.push_back(&end.ptr->proto.regs);
           result = current->replay_step(constraints);
+          ReplayResult result_with_breakpoints_and_watchpoints = result;
           update_observable_break_status(now, result);
+          bool stopped_before_watchpoint =
+            !result.break_status.data_watchpoints_hit().empty() &&
+            arch_watch_fires_before_instr(current->arch());
           if (result.break_status.hardware_or_software_breakpoint_hit() ||
-              (!result.break_status.data_watchpoints_hit().empty() &&
-               arch_watch_fires_before_instr(current->arch()))) {
+              stopped_before_watchpoint) {
             // If we hit a breakpoint while singlestepping, we didn't
             // make any progress.
             unapply_breakpoints_and_watchpoints();
@@ -1325,10 +1328,18 @@ ReplayResult ReplayTimeline::reverse_singlestep(
                          << " pretending we stopped earlier.";
               break;
             }
-            destination_candidate = step_start;
+            if (stopped_before_watchpoint) {
+              // On ARM, watchpoints fire before the instruction executes.
+              // This instruction triggered the watchpoint so we need to
+              // stop before the instruction is reverse-executed, i.e. after
+              // it actually executed.
+              destination_candidate = now;
+            } else {
+              destination_candidate = step_start;
+            }
             LOG(debug) << "Setting candidate after step: "
                        << destination_candidate;
-            destination_candidate_result = result;
+            destination_candidate_result = result_with_breakpoints_and_watchpoints;
             destination_candidate_tuid = result.break_status.task()->tuid();
             destination_candidate_saw_other_task_break = seen_other_task_break;
             seen_other_task_break = false;
