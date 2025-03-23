@@ -2,7 +2,7 @@
 
 if ! lscpu | grep -q "avx512f"; then
     echo "not running avx512 test"
-    return 0
+    exit 0
 fi
 
 source `dirname $0`/util.sh
