@@ -27,6 +27,10 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
   inode_ = f->inode();
 }
 
+MmappedFileMonitor::MmappedFileMonitor(bool dead, dev_t device,
+                                       ino_t inode) noexcept
+    : dead_(dead), device_(device), inode_(inode) {}
+
 void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                    LazyOffset& offset) {
   // If there are no remaining mappings that we care about, those can't reappear
@@ -106,6 +110,13 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
       }
     }
   }
+}
+
+void MmappedFileMonitor::serialize_type(pcp::FileMonitor::Builder& builder) const noexcept {
+  auto mmap = builder.initMmap();
+  mmap.setDead(dead_);
+  mmap.setDevice(device_);
+  mmap.setInode(inode_);
 }
 
 } // namespace rr
