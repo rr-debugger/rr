@@ -1,0 +1,27 @@
+source `dirname $0`/util.sh
+
+function dir_exists { checkDir=$1;
+  if [ -d "$checkDir" ]; then
+    echo "$checkDir" exists
+  else
+    failed "$checkDir doesn't exist"
+    exit 1
+  fi
+}
+
+RECORD_ARGS="--save-as test-name"
+record hello
+dir_exists "$workdir/test-name-0"
+
+record hello
+dir_exists "$workdir/test-name-1"
+
+
+# Check that --save-as plays nice with -o <trace dir>
+RECORD_ARGS="-o $workdir/arbitrary-dir --save-as test-name"
+record hello
+dir_exists "$workdir/arbitrary-dir/test-name-0"
+record hello
+dir_exists "$workdir/arbitrary-dir/test-name-1"
+
+passed_msg "--save-as and --save-as -o combination succeeded"
