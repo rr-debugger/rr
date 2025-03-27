@@ -103,8 +103,9 @@
 
 using namespace std;
 
+#ifndef HAVE_TERMIOS2
 // The kernel header that defines this conflicts badly with glibc headers
-// so we define it ourselves.
+// (but not bionic, which does define this) so we define it ourselves.
 // NB: We need this struct defined so that the preprocessor macro for
 // TCGETS2 will evaluate. But we use IOCTL_MASK_SIZE on it and we use
 // the size from the tracee to determine how many bytes to record, so
@@ -119,6 +120,7 @@ struct termios2 {
   speed_t c_ispeed;
   speed_t c_ospeed;
 };
+#endif
 
 namespace rr {
 

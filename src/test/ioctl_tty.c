@@ -2,7 +2,8 @@
 
 #include "util.h"
 
-/* We have to define termios2 ourselves. See
+#ifndef HAVE_TERMIOS2
+/* We have to define termios2 ourselves with glibc. See
  * https://github.com/npat-efault/picocom/blob/1acf1ddabaf3576b4023c4f6f09c5a3e4b086fb8/termios2.txt
  * for the long explanation.
  */
@@ -16,6 +17,7 @@ struct termios2 {
   speed_t c_ispeed;
   speed_t c_ospeed;
 };
+#endif
 
 int main(void) {
   int fd;
