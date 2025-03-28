@@ -1662,6 +1662,7 @@ static Switchable prepare_ioctl(RecordTask* t,
    * conventions.  Special case them here. */
   switch (request) {
     case 0xc020462a: // Nvidia driver ioctl
+    case 0xc0181b01: // RDMA ioctl
       syscall_state.emulate_result(-ENOTTY);
       return PREVENT_SWITCH;
 
