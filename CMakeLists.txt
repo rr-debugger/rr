@@ -1008,6 +1008,7 @@ set(BASIC_TESTS
   bpf_query
   brk
   brk2
+  arm/brk_nonzero
   capget
   chew_cpu
   x86/chew_cpu_cpuid

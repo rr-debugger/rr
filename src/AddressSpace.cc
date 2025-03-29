@@ -757,8 +757,20 @@ bool AddressSpace::is_breakpoint_instruction(Task* t, remote_code_ptr ip) {
   uint8_t data[MAX_BKPT_INSTRUCTION_LENGTH];
   t->read_bytes_helper(ip.to_data_ptr<uint8_t>(),
     bkpt_instruction_length(t->arch()), data, &ok);
-  return memcmp(data, breakpoint_insn(t->arch()),
-    bkpt_instruction_length(t->arch())) == 0 && ok;
+  if (!ok) {
+    return false;
+  }
+  switch (t->arch()) {
+    case x86:
+    case x86_64:
+      return data[0] == 0xcc;
+    case aarch64:
+      return (data[0] & 0x1f) == 0 && (data[2] & 0xe0) == 0x20 &&
+             data[3] == 0xd4;
+    default:
+      DEBUG_ASSERT(0 && "Must define breakpoint insn for this architecture");
+      return false;
+  }
 }
 
 static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
