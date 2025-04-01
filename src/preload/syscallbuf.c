@@ -1598,7 +1598,7 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
  */
 static void rdtsc_recording_only(uint32_t buf[2]) {
   unsigned char tmp_in_replay = *rr_page_replay_flag_addr();
-  __asm__ __volatile__("test %%eax,%%eax\n\t"
+  __asm__ __volatile__("test %%al,%%al\n\t"
                        "jne 1f\n\t"
                        "rdtsc\n\t"
                        "mov %%eax,(%1)\n\t"
