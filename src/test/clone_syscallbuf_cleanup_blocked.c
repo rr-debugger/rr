@@ -35,9 +35,10 @@ static int exec_proc(__attribute__((unused)) void* arg) {
   char wchan[1024] = {0};
   do {
     FILE *f = fopen(wchan_path, "r");
-    fread(wchan, 1, 1024, f);
+    size_t s = fread(wchan, 1, sizeof(wchan) - 1, f);
     fclose(f);
-  } while (strncmp(wchan, "pipe_read", 1024) != 0);
+    wchan[s] = 0;
+  } while (strstr(wchan, "pipe_read") == 0);
 
   sleep(1);
 
