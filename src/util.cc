@@ -1849,11 +1849,20 @@ const char* tmp_dir() {
     ensure_dir(string(dir), "temporary file directory (TMPDIR)", S_IRWXU);
     return dir;
   }
+  // NB: We can't use P_tmpdir here because bionic also defines it to /tmp
+  // (which is not world-writable).
+  const char* DEFAULT_TMP_DIR =
+#ifdef __BIONIC__
+    "/data/local/tmp"
+#else
+    "/tmp"
+#endif
+    ;
   // Don't try to create "/tmp", that probably won't work well.
-  if (access("/tmp", W_OK)) {
-    FATAL() << "Can't write to temporary file directory /tmp.";
+  if (access(DEFAULT_TMP_DIR, W_OK)) {
+    FATAL() << "Can't write to temporary file directory " << DEFAULT_TMP_DIR << ".";
   }
-  return "/tmp";
+  return DEFAULT_TMP_DIR;
 }
 
 TempFile create_temporary_file(const char* pattern) {
