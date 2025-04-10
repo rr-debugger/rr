@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-static char data[10] = "0123456789";
+static char data[11] = "0123456789";
 
 static void test(int use_pwritev) {
   static const char name[] = "temp";
