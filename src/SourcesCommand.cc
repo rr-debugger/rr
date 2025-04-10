@@ -157,6 +157,27 @@ public:
   ~DebugDirManager();
 
   DebugDirs initial_directories() {
+    if (!input_pipe_fd.is_open()) {
+      // Try known alternatives.
+      if (char* nix_debug_info_dirs = getenv("NIX_DEBUG_INFO_DIRS")) {
+        // NIX_DEBUG_INFO_DIRS is a colon separated list of paths to search for debug info.
+        DebugDirs result;
+
+        // Make a copy that we can run strtok on.
+        nix_debug_info_dirs = strdup(nix_debug_info_dirs);
+        char* token = strtok(nix_debug_info_dirs, ":");
+        while (token != nullptr) {
+          string s(token);
+          s = real_path(s);
+          result.debug_file_directories.push_back(s);
+          LOG(debug) << "NIX_DEBUG_INFO_DIRS added debug dir '" << s << "'";
+          token = strtok(nullptr, ":");
+        }
+        free(nix_debug_info_dirs);
+        return result;
+      }
+    }
+
     return read_result();
   }
   DebugDirs process_one_binary(const string& binary_path);
