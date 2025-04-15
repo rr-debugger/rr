@@ -661,6 +661,7 @@ set(RR_SOURCES
   src/Task.cc
   src/ThreadGroup.cc
   src/TraceeAttentionSet.cc
+  src/TraceField.cc
   src/TraceFrame.cc
   src/TraceInfoCommand.cc
   src/TraceStream.cc
