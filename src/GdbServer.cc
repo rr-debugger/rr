@@ -1189,7 +1189,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     Task* t = diversion_session->find_task(last_continue_task.tuid);
     DEBUG_ASSERT(t != nullptr);
 
-    int signal_to_deliver;
+    int signal_to_deliver = 0;
     RunCommand command = DIVERSION_SINGLESTEP_PRINT.empty() ? 
         compute_run_command_from_actions(t, req, &signal_to_deliver) : RUN_SINGLESTEP;
     auto result =
