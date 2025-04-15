@@ -29,6 +29,7 @@
 #include "StringVectorToCharArray.h"
 #include "Task.h"
 #include "ThreadGroup.h"
+#include "TraceField.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "launch_debugger.h"
@@ -44,6 +45,12 @@ namespace rr {
  * "Restoring" it exits the diversion and restores all state of the tracee.
  */
 const int DIVERSION_SAVED_REGISTER_STATE = 1;
+
+/**
+ * If non-empty, the trace fields to print when singlestepping a diversion
+ * session. Only intended for debugging rr itself.
+ */
+const string DIVERSION_SINGLESTEP_PRINT = "";
 
 GdbServer::ConnectionFlags::ConnectionFlags()
   : dbg_port(-1),
@@ -1158,6 +1165,9 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     }
   }
 
+  vector<TraceField> fields;
+  parse_trace_fields(DIVERSION_SINGLESTEP_PRINT, &fields);
+
   while (true) {
     if (!diverter_process_debugger_requests(*diversion_session,
                                            diversion_refcount, &req)) {
@@ -1180,8 +1190,8 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     DEBUG_ASSERT(t != nullptr);
 
     int signal_to_deliver;
-    RunCommand command =
-        compute_run_command_from_actions(t, req, &signal_to_deliver);
+    RunCommand command = DIVERSION_SINGLESTEP_PRINT.empty() ? 
+        compute_run_command_from_actions(t, req, &signal_to_deliver) : RUN_SINGLESTEP;
     auto result =
         diversion_session->diversion_step(t, command, signal_to_deliver);
 
@@ -1199,6 +1209,11 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
     }
 
     DEBUG_ASSERT(result.status == DiversionSession::DIVERSION_CONTINUE);
+
+    if (!DIVERSION_SINGLESTEP_PRINT.empty() && result.break_status.singlestep_complete) {
+      print_trace_fields(t->as_replay(), 0, 0, false, fields, stdout);
+      continue;
+    }
 
     maybe_notify_stop(*diversion_session, req, result.break_status);
   }
