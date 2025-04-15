@@ -1166,7 +1166,9 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
   }
 
   vector<TraceField> fields;
-  parse_trace_fields(DIVERSION_SINGLESTEP_PRINT, &fields);
+  if (!DIVERSION_SINGLESTEP_PRINT.empty()) {
+    parse_trace_fields(DIVERSION_SINGLESTEP_PRINT, &fields);
+  }
 
   while (true) {
     if (!diverter_process_debugger_requests(*diversion_session,
