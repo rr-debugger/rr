@@ -26,6 +26,8 @@ ProcFdDirMonitor::ProcFdDirMonitor(Task* t, const string& pathname) {
   }
 }
 
+ProcFdDirMonitor::ProcFdDirMonitor(TaskUid tuid) noexcept : tuid(tuid) {}
+
 // returns the number of valid dirent structs left in the buffer
 template <typename D>
 static int filter_dirent_structs(RecordTask* t, uint8_t* buf, size_t size) {
@@ -122,6 +124,13 @@ void ProcFdDirMonitor::filter_getdents(RecordTask* t) {
   }
 
   filter_dirents(t);
+}
+
+void ProcFdDirMonitor::serialize_type(
+    pcp::FileMonitor::Builder& builder) const noexcept {
+  auto pfd = builder.initProcFd();
+  pfd.setTid(tuid.tid());
+  pfd.setSerial(tuid.serial());
 }
 
 } // namespace rr
