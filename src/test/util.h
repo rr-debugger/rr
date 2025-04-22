@@ -294,9 +294,18 @@ inline static void* allocate_guard(size_t size, char value) {
  * (of size 'size') is still valid.
  */
 inline static void verify_guard(__attribute__((unused)) size_t size, void* p) {
+  int tmp_errno = errno;
   char* cp = (char*)p;
   test_assert(
       memcmp(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
+
+  /* Create a "checksum" from the memory and get it checked at syscall boundary. */
+  int verify_guard_checksum;
+  for (size_t i = 0; i < size; i++) {
+      verify_guard_checksum += ((unsigned char*)p)[i];
+  }
+  syscall(-1, verify_guard_checksum);
+  errno = tmp_errno;
 }
 
 /**
