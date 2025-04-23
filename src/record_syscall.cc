@@ -1502,7 +1502,7 @@ static void get_ethtool_gstrings(RecordTask* t) {
 }
 
 template <typename Arch> void prepare_ethtool_ioctl(RecordTask* t, TaskSyscallState& syscall_state) {
-  auto ifrp = syscall_state.reg_parameter<typename Arch::ifreq>(3, IN);
+  auto ifrp = syscall_state.reg_parameter<typename Arch::ifreq>(3, IN_OUT);
   bool ok = true;
   auto ifreq = t->read_mem(ifrp, &ok);
   if (!ok) {
