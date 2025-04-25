@@ -29,6 +29,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <numeric>
@@ -1303,6 +1304,14 @@ string find_helper_library(const char *basepath)
   if (access(file_name.c_str(), F_OK) == 0) {
     return lib_path;
   }
+
+  std::string full_libdir = filesystem::path(FULL_LIBDIR).lexically_normal().string();
+  lib_path = full_libdir + "/rr/";
+  file_name = lib_path + basepath;
+  if (access(file_name.c_str(), F_OK) == 0) {
+    return lib_path;
+  }
+
   // File does not exist. Assume install put it in LD_LIBRARY_PATH.
   lib_path = "";
   return lib_path;

@@ -715,6 +715,8 @@ if (intel_pt_decoding)
 endif()
 
 add_executable(rr ${RR_SOURCES})
+target_compile_definitions(rr PRIVATE 
+  "FULL_LIBDIR=\"${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}\"")
 set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
 post_build_executable(rr)
 set(RR_BIN rr)
