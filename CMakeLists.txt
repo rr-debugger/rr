@@ -1,6 +1,6 @@
 # *-* Mode: cmake; *-*
 
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.12)
 project(rr C CXX ASM)
 
 # "Do not add flags to export symbols from executables without the ENABLE_EXPORTS target property."
