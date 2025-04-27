@@ -124,6 +124,9 @@ public:
   void set_from_trace(SupportedArch arch, const void* data,
                       size_t size);
 
+  void restore_from_persistent_checkpoint(SupportedArch arch, const void* data,
+                                          size_t size);
+
 #define ARCH_SWITCH_CASE(rettype, x86case, x64case, arm64case)                 \
 (([=](void) -> rettype {                                                       \
   switch (arch()) {                                                            \
