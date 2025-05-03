@@ -1626,6 +1626,7 @@ set(TESTS_WITH_PROGRAM
   rr_ps_ns
   rseq
   rseq_syscallbuf
+  rseq_cpu_id_reset_longrunning
   search
   seccomp_blocks_rr
   seccomp_open

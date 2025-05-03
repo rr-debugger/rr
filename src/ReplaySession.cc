@@ -298,6 +298,7 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       last_siginfo_(other.last_siginfo_),
       flags_(other.flags_),
       fast_forward_status(other.fast_forward_status),
+      last_task_tuid(other.last_task_tuid),
       skip_next_execution_event(other.skip_next_execution_event),
       replay_stops_at_first_execve_(other.replay_stops_at_first_execve_),
       detected_transient_error_(other.detected_transient_error_),
