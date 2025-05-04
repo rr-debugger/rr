@@ -300,7 +300,7 @@ inline static void verify_guard(__attribute__((unused)) size_t size, void* p) {
       memcmp(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
 
   /* Create a "checksum" from the memory and get it checked at syscall boundary. */
-  int verify_guard_checksum;
+  int verify_guard_checksum = 0;
   for (size_t i = 0; i < size; i++) {
       verify_guard_checksum += ((unsigned char*)p)[i];
   }
