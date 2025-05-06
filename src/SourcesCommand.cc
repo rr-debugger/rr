@@ -35,6 +35,8 @@ const char* DWP = "dwp";
 /// Prints JSON containing
 /// "relevant_binaries": an array of strings, trace-relative binary file names (or build-ids, for explicit-sources).
 ///   These are ELF files in the trace that our collected data is relevant to.
+/// "loaded_elf_binaries": an array of strings of absolute paths.
+///   These are the paths to all the loaded ELF objects mapped at any point in the trace, including both shared libraries and executables.
 /// "external_debug_info": an array of objects, {"path":<path>, "build_id":<build-id>, "type":<type>}
 ///   These are ELF files in the filesystem that contain separate debuginfo. "build-id" is the
 ///   build-id of the file from whence it originated, as a string. "type" is the type of
@@ -1055,6 +1057,7 @@ static int sources(const iterable& binary_file_names,
                    unique_ptr<DebugDirManager>& debug_dirs,
                    bool is_explicit) {
   vector<string> relevant_binary_names;
+  set<string> original_loaded_elf_names;
   // Must be absolute.
   set<string> file_names;
   set<ExternalDebugInfo> external_debug_info;
@@ -1080,9 +1083,11 @@ static int sources(const iterable& binary_file_names,
       LOG(info) << "Probably not an ELF file, skipping";
       continue;
     }
+
     if (!is_explicit) {
       base_name(trace_relative_name);
     }
+    original_loaded_elf_names.insert(original_name);
     base_name(original_name);
     Debugaltlink debugaltlink = reader.read_debugaltlink();
 
@@ -1205,6 +1210,15 @@ static int sources(const iterable& binary_file_names,
            i == relevant_binary_names.size() - 1 ? "" : ",");
   }
   printf("  ],\n");
+
+  printf("  \"loaded_elf_binaries\": [\n");
+  for (auto it = original_loaded_elf_names.begin(); it != original_loaded_elf_names.end(); ++it) {
+    printf("    \"%s\"%s\n",
+      json_escape(*it).c_str(),
+      std::next(it) == original_loaded_elf_names.end() ? "" : ",");
+  }
+  printf("  ],\n");
+
   printf("  \"comp_dir_substitutions\":{\n");
   for (size_t i = 0; i < output_comp_dir_substitutions.size(); ++i) {
     auto& sub = output_comp_dir_substitutions[i];
