@@ -4767,9 +4767,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_SET_THP_DISABLE:
         case PR_SET_SECUREBITS:
         case PR_GET_SECUREBITS:
+          break;
+#ifdef PR_GET_TAGGED_ADDR_CTRL
         case PR_GET_TAGGED_ADDR_CTRL:
           break;
-
         case PR_SET_TAGGED_ADDR_CTRL:
           if (regs.arg2() & ~PR_TAGGED_ADDR_ENABLE) {
             // For now we only support enabling the tagged address ABI which
@@ -4785,7 +4786,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             syscall_state.emulate_result(-EINVAL);
           }
           break;
-
+#endif
         case PR_SET_DUMPABLE:
           if (regs.arg2() == 0) {
             // Don't let processes make themselves undumpable. If a process
