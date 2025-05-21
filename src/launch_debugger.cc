@@ -93,6 +93,7 @@ static const string& gdb_rr_macros() {
        << "  rr-set-suppress-run-hook 0\n"
        << "end\n"
        << "set unwindonsignal on\n"
+       << "set non-stop off\n"
        << "handle SIGURG stop\n"
        << "set prompt (rr) \n"
        // Try both "set target-async" and "maint set target-async" since
