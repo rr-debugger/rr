@@ -5,7 +5,7 @@
 
 static void* do_thread(void* arg) {
   int pipe_fd = *(int*)arg;
-  uint32_t tid = gettid();
+  uint32_t tid = sys_gettid();
 
   write(pipe_fd, &tid, 4);
   /* Sleep long enough that it will be noticed if it's not interrupted. */
