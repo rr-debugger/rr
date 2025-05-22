@@ -4905,6 +4905,13 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
         }
 
+        case PR_GET_AUXV: {
+          syscall_state.reg_parameter(
+              2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
+                  (size_t)regs.arg3()));
+          break;
+        }
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;

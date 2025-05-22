@@ -551,6 +551,9 @@ struct open_how {
 #ifndef PR_SET_VMA_ANON_NAME
 #define PR_SET_VMA_ANON_NAME 0
 #endif
+#ifndef PR_GET_AUXV
+#define PR_GET_AUXV 0x41555856
+#endif
 
 #ifndef BLKGETDISKSEQ
 #define BLKGETDISKSEQ _IOR(0x12,128,__u64)
