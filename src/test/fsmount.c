@@ -33,8 +33,13 @@ int main(void) {
   struct rr_mount_attr attr;
   memset(&attr, 0, sizeof(attr));
   ret = syscall(RR_mount_setattr, mnt_fd, "", AT_EMPTY_PATH, &attr, sizeof(attr));
+  if (ret < 0 && errno == ENOSYS) {
+    // This was added in kernel 5.12 so may not be available.
+    goto skip_mount_setattr;
+  }
   test_assert(ret == 0);
 
+skip_mount_setattr:
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
