@@ -506,6 +506,14 @@ enum {
 #define RR_RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT 2
 #define RR_RSEQ_CPU_ID_UNINITIALIZED -1
 
+// New in the 4.20 kernel
+#ifndef BLKGETZONESZ
+#define BLKGETZONESZ _IOR(0x12, 132, __u32)
+#endif
+#ifndef BLKGETNRZONES
+#define BLKGETNRZONES _IOR(0x12, 133, __u32)
+#endif
+
 // New in the 5.4 kernel
 #ifndef PR_SET_TAGGED_ADDR_CTRL
 #define PR_SET_TAGGED_ADDR_CTRL 55
