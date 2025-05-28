@@ -618,4 +618,11 @@ enum {
   RR_BPF_TOKEN_CREATE,
 };
 
+#ifndef FSCONFIG_CMD_CREATE
+#define FSCONFIG_CMD_CREATE 6
+#endif
+#ifndef MOVE_MOUNT_F_EMPTY_PATH
+#define MOVE_MOUNT_F_EMPTY_PATH 0x00000004
+#endif
+
 #endif /* RRUTIL_H */
