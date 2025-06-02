@@ -1884,39 +1884,8 @@ TempFile create_temporary_file(const char* pattern) {
   return result;
 }
 
-static ScopedFd create_memfd_file(const string &real_name) {
-  ScopedFd fd(syscall(SYS_memfd_create, real_name.c_str(), 0));
-  return fd;
-}
-
-static void replace_char(string& s, char c, char replacement) {
-  size_t i = 0;
-  while (string::npos != (i = s.find(c, i))) {
-    s[i] = replacement;
-  }
-}
-
-// Used only when memfd_create is not available, i.e. Linux < 3.17
-static ScopedFd create_tmpfs_file(const string &real_name) {
-  std::string name = real_name;
-  replace_char(name, '/', '\\');
-  name = string(tmp_dir()) + '/' + name;
-  name = name.substr(0, 255);
-
-  ScopedFd fd =
-      ScopedFd(name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
-  /* Remove the fs name so that we don't have to worry about
-   * cleaning up this segment in error conditions. */
-  unlink(name.c_str());
-  return fd;
-}
-
-ScopedFd open_memory_file(const std::string &name)
-{
-  ScopedFd fd(create_memfd_file(name));
-  if (!fd.is_open()) {
-    fd = create_tmpfs_file(name);
-  }
+ScopedFd open_memory_file(const std::string &name) {
+  ScopedFd fd(syscall(SYS_memfd_create, name.c_str(), 0));
   return fd;
 }
 
