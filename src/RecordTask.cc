@@ -2235,6 +2235,7 @@ bool RecordTask::waiting_for_pid_namespace_tasks_to_exit() const {
 // much address space to play with and it gets tricky.
 bool RecordTask::enable_chaos_memory_allocations() const {
   return session().enable_chaos() &&
+    !as->layout_randomization_disabled() &&
     (session().excluded_ranges().empty() || word_size(arch()) >= 8);
 }
 

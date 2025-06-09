@@ -1759,6 +1759,7 @@ set(TESTS_WITHOUT_PROGRAM
   pack_dir
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
+  personality_chaos
   post_exec_fpu_regs
   proc_maps
   read_bad_mem

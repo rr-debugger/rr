@@ -5260,12 +5260,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
 
       if (t->session().enable_chaos()) {
-        // XXX fix this to actually disable chaos mode ASLR?
-        ASSERT(t,
-               !(p & (ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE |
-                      ADDR_LIMIT_32BIT | ADDR_LIMIT_3GB)))
-            << "Personality value " << HEX(p)
-            << " not compatible with chaos mode address-space randomization";
+        bool disable_randomize =
+          (p & (ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE |
+                ADDR_LIMIT_32BIT | ADDR_LIMIT_3GB)) != 0;
+        t->vm()->disable_layout_randomization(disable_randomize);
       }
       if (p & 0xffffff00 &
           ~(ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE | ADDR_LIMIT_32BIT |

@@ -711,6 +711,12 @@ public:
   }
 
   bool syscallbuf_enabled() const { return syscallbuf_enabled_; }
+  bool layout_randomization_disabled() const {
+    return layout_randomization_disabled_;
+  }
+  void disable_layout_randomization(bool disable) {
+    layout_randomization_disabled_ = disable;
+  }
 
   /**
    * We'll map a page of memory here into every exec'ed process for our own
@@ -1210,6 +1216,7 @@ private:
   remote_code_ptr traced_syscall_ip_;
   remote_code_ptr privileged_traced_syscall_ip_;
   bool syscallbuf_enabled_;
+  bool layout_randomization_disabled_;
 
   remote_code_ptr do_breakpoint_fault_addr_;
   // These fields are deprecated and have been replaced by the
