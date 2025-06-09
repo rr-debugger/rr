@@ -120,11 +120,13 @@ static string gdb_rr_macros(const string* file_to_delete) {
   return ss.str();
 }
 
-static const string& lldb_python_rr_macros(const string* file_to_delete) {
+static const string& lldb_python_rr_macros(
+    const string* file_to_delete, const string* module_name) {
   static string s;
 
   if (s.empty()) {
-    auto cmds = DebuggerExtensionCommandHandler::lldb_python_macros();
+    auto cmds = DebuggerExtensionCommandHandler::lldb_python_macros(
+        module_name);
     stringstream ss;
     ss << cmds.toplevel_definitions
        << "import os\n"
@@ -316,11 +318,11 @@ void launch_debugger(ScopedFd& params_pipe_fd,
                     RENAME_NOREPLACE)) {
         FATAL() << "Can't fix temp file name";
       }
-      file.name = new_name;
-      string script = lldb_python_rr_macros(&file.name);
+      string module_name(basename(file.name.c_str()));
+      string script = lldb_python_rr_macros(&new_name, &module_name);
       write_all(file.fd, script.data(), script.size());
       cmd.push_back("-o");
-      cmd.push_back("command script import " + file.name);
+      cmd.push_back("command script import " + new_name);
       env.push_back("LLDB_UNDER_RR=1");
       break;
     }
@@ -392,6 +394,6 @@ void emergency_debug(Task* t) {
 
 string gdb_init_script() { return gdb_rr_macros(nullptr); }
 
-string lldb_init_script() { return lldb_python_rr_macros(nullptr); }
+string lldb_init_script() { return lldb_python_rr_macros(nullptr, nullptr); }
 
 } // namespace rr

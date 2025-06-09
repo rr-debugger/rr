@@ -192,6 +192,7 @@ end
 }
 
 static void lldb_macro_binding(ostream& def_stream, ostream& call_stream,
+                               const string* module_name,
                                const DebuggerExtensionCommand& cmd) {
   string func_name = "rr_command_";
   for (char ch : cmd.name()) {
@@ -214,12 +215,15 @@ static void lldb_macro_binding(ostream& def_stream, ostream& call_stream,
   def_stream << "\n"
              << "    command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args)\n"
              << "\n";
-  call_stream << "    debugger.HandleCommand('command script add -f " << func_name
-              << " " << cmd.name() << "')\n";
+  call_stream << "    debugger.HandleCommand('command script add -f ";
+  if (module_name) {
+    call_stream << *module_name << ".";
+  }
+  call_stream << func_name << " " << cmd.name() << "')\n";
 }
 
 DebuggerExtensionCommandHandler::LldbCommands
-DebuggerExtensionCommandHandler::lldb_python_macros() {
+DebuggerExtensionCommandHandler::lldb_python_macros(const string* module_name) {
   DebuggerExtensionCommand::init_auto_args();
   stringstream ss;
   ss << R"Delimiter(import lldb
@@ -259,7 +263,7 @@ def command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args):
   stringstream call_stream;
   if (debugger_command_list) {
     for (auto& it : *debugger_command_list) {
-      lldb_macro_binding(ss, call_stream, *it);
+      lldb_macro_binding(ss, call_stream, module_name, *it);
     }
   }
   LldbCommands cmds;

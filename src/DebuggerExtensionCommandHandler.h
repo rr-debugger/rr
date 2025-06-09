@@ -30,7 +30,7 @@ public:
     // 2-space-indented code to run on startup.
     std::string run_on_startup;
   };
-  static LldbCommands lldb_python_macros();
+  static LldbCommands lldb_python_macros(const string* module_name);
 
   static void register_command(DebuggerExtensionCommand& cmd);
 
