@@ -26,108 +26,115 @@ namespace rr {
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
-static const string& gdb_rr_macros() {
-  static string s;
-
-  if (s.empty()) {
-    stringstream ss;
-    ss << DebuggerExtensionCommandHandler::gdb_macros()
-       // gdb warns about redefining inbuilt commands, silence that by
-       // wrapping it in python code
-       << "python gdb.execute('define jump\\nrr-denied jump\\nend')\n"
-       << "python gdb.execute('define restart\\nrun c$arg0\\nend')\n"
-       << "document restart\n"
-       << "restart at checkpoint N\n"
-       << "checkpoints are created with the 'checkpoint' command\n"
-       << "end\n"
-       << "define seek-ticks\n"
-       << "  run t$arg0\n"
-       << "end\n"
-       << "document seek-ticks\n"
-       << "restart at given ticks value\n"
-       << "end\n"
-       // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
-       // issued before any user-generated resume-execution command
-       // results in gdb hanging just after the inferior hits an internal
-       // gdb breakpoint.  This happens outside of rr, with gdb
-       // controlling gdbserver, as well.  We work around that by
-       // ensuring *some* resume-execution command has been issued before
-       // restarting the session.  But, only if the inferior hasn't
-       // already finished execution ($_thread != 0).  If it has and we
-       // issue the "stepi" command, then gdb refuses to restart
-       // execution.
-       << "define hook-run\n"
-       << "  rr-hook-run\n"
-       << "end\n"
-       << "define hookpost-continue\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-step\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-stepi\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-next\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-nexti\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-finish\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-reverse-continue\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-reverse-step\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-reverse-stepi\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-reverse-finish\n"
-       << "  rr-set-suppress-run-hook 1\n"
-       << "end\n"
-       << "define hookpost-run\n"
-       << "  rr-set-suppress-run-hook 0\n"
-       << "end\n"
-       << "set unwindonsignal on\n"
-       << "set non-stop off\n"
-       << "handle SIGURG stop\n"
-       << "set prompt (rr) \n"
-       // Try both "set target-async" and "maint set target-async" since
-       // that changed recently.
-       << "python\n"
-       << "import re\n"
-       << "m = re.compile(r"
-       << "'[^0-9]*([0-9]+)\\.([0-9]+)(\\.([0-9]+))?'"
-       << ").match(gdb.VERSION)\n"
-       << "ver = int(m.group(1))*10000 + int(m.group(2))*100\n"
-       << "if m.group(4):\n"
-       << "    ver = ver + int(m.group(4))\n"
-       << "\n"
-       << "if ver == 71100:\n"
-       << "    gdb.write("
-       << "'This version of gdb (7.11.0) has known bugs that break rr. "
-       << "Install 7.11.1 or later.\\n', gdb.STDERR)\n"
-       << "\n"
-       << "if ver < 71101:\n"
-       << "    gdb.execute('set target-async 0')\n"
-       << "    gdb.execute('maint set target-async 0')\n"
-       << "end\n";
-    s = ss.str();
+static string gdb_rr_macros(const string* file_to_delete) {
+  stringstream ss;
+  ss << DebuggerExtensionCommandHandler::gdb_macros()
+     // gdb warns about redefining inbuilt commands, silence that by
+     // wrapping it in python code
+     << "python gdb.execute('define jump\\nrr-denied jump\\nend')\n"
+     << "python gdb.execute('define restart\\nrun c$arg0\\nend')\n"
+     << "document restart\n"
+     << "restart at checkpoint N\n"
+     << "checkpoints are created with the 'checkpoint' command\n"
+     << "end\n"
+     << "define seek-ticks\n"
+     << "  run t$arg0\n"
+     << "end\n"
+     << "document seek-ticks\n"
+     << "restart at given ticks value\n"
+     << "end\n"
+     // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
+     // issued before any user-generated resume-execution command
+     // results in gdb hanging just after the inferior hits an internal
+     // gdb breakpoint.  This happens outside of rr, with gdb
+     // controlling gdbserver, as well.  We work around that by
+     // ensuring *some* resume-execution command has been issued before
+     // restarting the session.  But, only if the inferior hasn't
+     // already finished execution ($_thread != 0).  If it has and we
+     // issue the "stepi" command, then gdb refuses to restart
+     // execution.
+     << "define hook-run\n"
+     << "  rr-hook-run\n"
+     << "end\n"
+     << "define hookpost-continue\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-step\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-stepi\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-next\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-nexti\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-finish\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-reverse-continue\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-reverse-step\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-reverse-stepi\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-reverse-finish\n"
+     << "  rr-set-suppress-run-hook 1\n"
+     << "end\n"
+     << "define hookpost-run\n"
+     << "  rr-set-suppress-run-hook 0\n"
+     << "end\n"
+     << "set unwindonsignal on\n"
+     << "set non-stop off\n"
+     << "handle SIGURG stop\n"
+     << "set prompt (rr) \n"
+     // Try both "set target-async" and "maint set target-async" since
+     // that changed recently.
+     << "python\n"
+     << "import re\n"
+     << "import os\n"
+     << "m = re.compile(r"
+     << "'[^0-9]*([0-9]+)\\.([0-9]+)(\\.([0-9]+))?'"
+     << ").match(gdb.VERSION)\n"
+     << "ver = int(m.group(1))*10000 + int(m.group(2))*100\n"
+     << "if m.group(4):\n"
+     << "    ver = ver + int(m.group(4))\n"
+     << "\n"
+     << "if ver == 71100:\n"
+     << "    gdb.write("
+     << "'This version of gdb (7.11.0) has known bugs that break rr. "
+     << "Install 7.11.1 or later.\\n', gdb.STDERR)\n"
+     << "\n"
+     << "if ver < 71101:\n"
+     << "    gdb.execute('set target-async 0')\n"
+     << "    gdb.execute('maint set target-async 0')\n";
+  if (file_to_delete) {
+    ss << "os.unlink('" << *file_to_delete << "')\n";
   }
-  return s;
+  ss << "end\n";
+  return ss.str();
 }
 
-static const string& lldb_python_rr_macros() {
+static const string& lldb_python_rr_macros(const string* file_to_delete) {
   static string s;
 
   if (s.empty()) {
+    auto cmds = DebuggerExtensionCommandHandler::lldb_python_macros();
     stringstream ss;
-    ss << DebuggerExtensionCommandHandler::lldb_python_macros()
-       << "lldb.debugger.HandleCommand('set set prompt \"(rr) \"')\n";
+    ss << cmds.toplevel_definitions
+       << "import os\n"
+       << "def  __lldb_init_module(debugger, internal_dict):\n"
+       << cmds.run_on_startup
+       << "    debugger.HandleCommand('set set prompt \"(rr) \"')\n";
+    if (file_to_delete) {
+      ss << "    os.unlink('" << *file_to_delete << "')\n";
+    }
+    ss << "\n";
     s = ss.str();
   }
   return s;
@@ -229,24 +236,6 @@ vector<string> debugger_launch_command(Task* t, int socket_domain,
   return cmd;
 }
 
-static string create_command_file(const string& macros) {
-  TempFile file = create_temporary_file("rr-debugger-commands-XXXXXX");
-  // This fd is just leaked. That's fine since we only call this once
-  // per rr invocation at the moment.
-  int fd = file.fd.extract();
-  unlink(file.name.c_str());
-
-  ssize_t len = macros.size();
-  int written = write(fd, macros.c_str(), len);
-  if (written != len) {
-    FATAL() << "Failed to write gdb command file";
-  }
-
-  stringstream procfile;
-  procfile << "/proc/" << getpid() << "/fd/" << fd;
-  return procfile.str();
-}
-
 string to_shell_string(const vector<string>& args) {
   stringstream ss;
   for (auto& a : args) {
@@ -290,12 +279,16 @@ void launch_debugger(ScopedFd& params_pipe_fd,
   cmd.push_back(debugger_file_path);
   vector<string> env = current_env();
 
+  // LLDB 'command script import' requires the filename to be a valid Python
+  // identifier.
+  TempFile file = create_temporary_file("rr_debugger_commands_XXXXXX");
   switch (debugger_type) {
     case DebuggerType::GDB: {
       push_default_gdb_options(cmd, serve_files);
-      string gdb_command_file = create_command_file(gdb_rr_macros());
+      string script = gdb_rr_macros(&file.name);
+      write_all(file.fd, script.data(), script.size());
       cmd.push_back("-x");
-      cmd.push_back(gdb_command_file);
+      cmd.push_back(file.name);
 
       bool did_set_remote = false;
       for (size_t i = 0; i < options.size(); ++i) {
@@ -317,12 +310,17 @@ void launch_debugger(ScopedFd& params_pipe_fd,
       cmd.push_back("--source-quietly");
       cmd.insert(cmd.end(), options.begin(), options.end());
       push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
-      // We have to load the commands as a Python script. If we
-      // use the "script" command to launch a nested Python interpreter,
-      // Python emits some annoying text that we dont want to see.
-      string lldb_command_file = create_command_file(lldb_python_rr_macros());
+      // LLDB 'command script import' requires the file to end in '.py'.
+      string new_name = file.name + ".py";
+      if (renameat2(AT_FDCWD, file.name.c_str(), AT_FDCWD, new_name.c_str(),
+                    RENAME_NOREPLACE)) {
+        FATAL() << "Can't fix temp file name";
+      }
+      file.name = new_name;
+      string script = lldb_python_rr_macros(&file.name);
+      write_all(file.fd, script.data(), script.size());
       cmd.push_back("-o");
-      cmd.push_back("script exec(open('" + lldb_command_file + "').read())");
+      cmd.push_back("command script import " + file.name);
       env.push_back("LLDB_UNDER_RR=1");
       break;
     }
@@ -392,8 +390,8 @@ void emergency_debug(Task* t) {
   GdbServer::serve_emergency_debugger(std::move(dbg), t);
 }
 
-string gdb_init_script() { return gdb_rr_macros(); }
+string gdb_init_script() { return gdb_rr_macros(nullptr); }
 
-string lldb_init_script() { return lldb_python_rr_macros(); }
+string lldb_init_script() { return lldb_python_rr_macros(nullptr); }
 
 } // namespace rr

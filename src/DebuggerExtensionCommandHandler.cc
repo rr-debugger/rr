@@ -58,7 +58,6 @@ def hex_escape(string):
             curr_char = ord(curr_char)
         result += format(curr_char, '02x')
     return result
-
 )Delimiter";
 
 string DebuggerExtensionCommandHandler::gdb_macros() {
@@ -66,11 +65,10 @@ string DebuggerExtensionCommandHandler::gdb_macros() {
   stringstream ss;
   ss << R"Delimiter(set python print-stack full
 python
+import re
 )Delimiter"
     << shared_python
     << R"Delimiter(
-import re
-
 class RRWhere(gdb.Command):
     """Helper to get the location for checkpoints/history. Used by auto-args"""
     def __init__(self):
@@ -193,7 +191,8 @@ end
   return ss.str();
 }
 
-static void lldb_macro_binding(ostream& ss, const DebuggerExtensionCommand& cmd) {
+static void lldb_macro_binding(ostream& def_stream, ostream& call_stream,
+                               const DebuggerExtensionCommand& cmd) {
   string func_name = "rr_command_";
   for (char ch : cmd.name()) {
     if (ch == ' ') {
@@ -205,29 +204,30 @@ static void lldb_macro_binding(ostream& ss, const DebuggerExtensionCommand& cmd)
     }
     func_name.push_back(ch);
   }
-  ss << "def " << func_name << "(debugger, command, exe_ctx, result, internal_dict):\n";
+  def_stream << "def " << func_name << "(debugger, command, exe_ctx, result, internal_dict):\n";
   if (!cmd.docs().empty()) {
-    ss << "    \"\"\"" << cmd.docs() << "\"\"\"\n";
+    def_stream << "    \"\"\"" << cmd.docs() << "\"\"\"\n";
   }
-  ss << "    cmd_name = '" << cmd.name() << "'\n"
-     << "    auto_args = ";
-  print_python_string_array(ss, cmd.auto_args());
-  ss << "\n"
-     << "    command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args)\n"
-     << "\n"
-     << "lldb.debugger.HandleCommand('command script add -f " << func_name
-     << " " << cmd.name() << "')\n\n";
+  def_stream << "    cmd_name = '" << cmd.name() << "'\n"
+             << "    auto_args = ";
+  print_python_string_array(def_stream, cmd.auto_args());
+  def_stream << "\n"
+             << "    command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args)\n"
+             << "\n";
+  call_stream << "    debugger.HandleCommand('command script add -f " << func_name
+              << " " << cmd.name() << "')\n";
 }
 
-string DebuggerExtensionCommandHandler::lldb_python_macros() {
+DebuggerExtensionCommandHandler::LldbCommands
+DebuggerExtensionCommandHandler::lldb_python_macros() {
   DebuggerExtensionCommand::init_auto_args();
   stringstream ss;
-  ss << shared_python
-     << R"Delimiter(
-import lldb
+  ss << R"Delimiter(import lldb
 import re
 import shlex
-
+)Delimiter"
+     << shared_python
+     << R"Delimiter(
 def run_command_and_get_output(debugger, command):
     result = lldb.SBCommandReturnObject()
     debugger.GetCommandInterpreter().HandleCommand(command, result)
@@ -256,12 +256,16 @@ def command_impl(debugger, command, exe_ctx, result, cmd_name, auto_args):
 
 )Delimiter";
 
+  stringstream call_stream;
   if (debugger_command_list) {
     for (auto& it : *debugger_command_list) {
-      lldb_macro_binding(ss, *it);
+      lldb_macro_binding(ss, call_stream, *it);
     }
   }
-  return ss.str();
+  LldbCommands cmds;
+  cmds.toplevel_definitions = ss.str();
+  cmds.run_on_startup = call_stream.str();
+  return cmds;
 }
 
 /*static*/ DebuggerExtensionCommand* DebuggerExtensionCommandHandler::command_for_name(const string& name) {

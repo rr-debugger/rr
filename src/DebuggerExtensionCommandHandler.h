@@ -25,7 +25,12 @@ public:
 
   // Declare any registered command with supporting
   // wrapper code --- LLDB Python script.
-  static std::string lldb_python_macros();
+  struct LldbCommands {
+    std::string toplevel_definitions;
+    // 2-space-indented code to run on startup.
+    std::string run_on_startup;
+  };
+  static LldbCommands lldb_python_macros();
 
   static void register_command(DebuggerExtensionCommand& cmd);
 
