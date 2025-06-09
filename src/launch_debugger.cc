@@ -315,14 +315,14 @@ void launch_debugger(ScopedFd& params_pipe_fd,
     }
     case DebuggerType::LLDB: {
       cmd.push_back("--source-quietly");
+      cmd.insert(cmd.end(), options.begin(), options.end());
+      push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
       // We have to load the commands as a Python script. If we
       // use the "script" command to launch a nested Python interpreter,
       // Python emits some annoying text that we dont want to see.
       string lldb_command_file = create_command_file(lldb_python_rr_macros());
       cmd.push_back("-o");
       cmd.push_back("script exec(open('" + lldb_command_file + "').read())");
-      cmd.insert(cmd.end(), options.begin(), options.end());
-      push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
       env.push_back("LLDB_UNDER_RR=1");
       break;
     }
