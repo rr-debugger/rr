@@ -554,6 +554,11 @@ void AddressSpace::save_auxv(Task* t) {
   save_interpreter_base(t, saved_auxv());
 }
 
+void AddressSpace::restore_auxv(Task* t, std::vector<uint8_t>&& auxv) {
+  saved_auxv_ = std::move(auxv);
+  save_interpreter_base(t, saved_auxv());
+}
+
 void AddressSpace::save_interpreter_base(Task* t, std::vector<uint8_t> auxv) {
   saved_interpreter_base_ = read_interpreter_base(auxv);
   save_ld_path(t, saved_interpreter_base());

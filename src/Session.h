@@ -29,6 +29,18 @@ class Task;
 class ThreadGroup;
 class AutoRemoteSyscalls;
 
+struct CloneCompletion {
+  struct AddressSpaceClone {
+    Task* clone_leader;
+    Task::CapturedState clone_leader_state;
+    std::vector<Task::CapturedState> member_states;
+    std::vector<std::pair<remote_ptr<void>, std::vector<uint8_t>>>
+        captured_memory;
+  };
+  std::vector<AddressSpaceClone> address_spaces;
+  Task::ClonedFdTables cloned_fd_tables;
+};
+
 // The following types are used by step() APIs in Session subclasses.
 
 /**
@@ -229,6 +241,8 @@ public:
               pid_t new_rec_tid = -1);
 
   uint32_t next_task_serial() { return next_task_serial_++; }
+
+  uint32_t current_task_serial() const { return next_task_serial_; }
 
   /**
    * Return the task created with |rec_tid|, or nullptr if no such
@@ -443,8 +457,6 @@ protected:
 
   void copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs);
 
-  // XXX Move CloneCompletion/CaptureState etc to ReplayTask/ReplaySession
-  struct CloneCompletion;
   // Call this before doing anything that requires access to the full set
   // of tasks (i.e., almost anything!). Not really const!
   void finish_initializing() const;
