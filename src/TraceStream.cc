@@ -70,7 +70,11 @@ static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
 
 static const SubstreamData& substream(TraceStream::Substream s) {
   if (!substreams[TraceStream::RAW_DATA].threads) {
-    substreams[TraceStream::RAW_DATA].threads = min(8, get_num_cpus());
+    int cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cpus < 1) {
+      FATAL() << "sysconf failed";
+    }
+    substreams[TraceStream::RAW_DATA].threads = min(8, cpus);
   }
   return substreams[s];
 }
