@@ -317,7 +317,11 @@ static bool get_file_extents_hash(const string& file_name, FsExtentsHash* result
 // The keys of the returned map are the full file names of the mapped files.
 static map<string, FileHash> gather_file_info(const string& trace_dir) {
   vector<TraceReader::MappedData> files = gather_files(trace_dir);
-  int use_cpus = min(20, get_num_cpus());
+  int online_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+  if (online_cpus < 1) {
+    FATAL() << "sysconf(_SC_NPROCESSORS_ONLN) failed";
+  }
+  int use_cpus = min(20, online_cpus);
   use_cpus = min((int)files.size(), use_cpus);
 
   // List of files indexed by their extents hash. All files
