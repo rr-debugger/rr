@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 
 #include <limits.h>
 #include <memory>
@@ -314,7 +315,7 @@ void launch_debugger(ScopedFd& params_pipe_fd,
       push_lldb_target_remote_cmd(cmd, socket_domain, host, port);
       // LLDB 'command script import' requires the file to end in '.py'.
       string new_name = file.name + ".py";
-      if (renameat2(AT_FDCWD, file.name.c_str(), AT_FDCWD, new_name.c_str(),
+      if (::syscall(SYS_renameat2, AT_FDCWD, file.name.c_str(), AT_FDCWD, new_name.c_str(),
                     RENAME_NOREPLACE)) {
         FATAL() << "Can't fix temp file name";
       }
