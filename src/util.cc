@@ -1916,15 +1916,6 @@ vector<string> current_env() {
   return env;
 }
 
-int get_num_cpus() {
-  cpu_set_t affinity_mask;
-  int ret = sched_getaffinity(0, sizeof(affinity_mask), &affinity_mask);
-  if (ret < 0) {
-    FATAL() << "sched_getaffinity failed";
-  }
-  return CPU_COUNT(&affinity_mask);
-}
-
 const uint8_t rdtsc_insn[2] = { 0x0f, 0x31 };
 
 static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
