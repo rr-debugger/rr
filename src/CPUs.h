@@ -15,7 +15,9 @@ public:
 
   std::vector<int> initial_affinity() const;
   static bool set_affinity_to_cpu(int cpu);
-  void restore_initial_affinity() const;
+  // Restore the initial affinity mask to the given tid.
+  // If unspecified, defaults to this thread.
+  void restore_initial_affinity(pid_t tid = 0) const;
 
   struct Group {
     int start_cpu;

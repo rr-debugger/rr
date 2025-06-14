@@ -3756,7 +3756,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   // restore that.
   // For now honor whatever affinity rr itself has (e.g. for running on P-cores
   // on Alder Lake).
-  CPUs::get().restore_initial_affinity();
+  CPUs::get().restore_initial_affinity(new_t->tid);
   // Task::spawn my lave the task in a group-stop if the task SIGSTOPs itself
   // before we can PTRACE_SEIZE it. Kick it out of that group-stop now.
   ::kill(new_tid, SIGCONT);

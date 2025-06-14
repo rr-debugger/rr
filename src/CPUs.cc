@@ -43,8 +43,8 @@ bool CPUs::set_affinity_to_cpu(int cpu) {
   return true;
 }
 
-void CPUs::restore_initial_affinity() const {
-  int ret = sched_setaffinity(0, sizeof(initial_affinity_), &initial_affinity_);
+void CPUs::restore_initial_affinity(pid_t tid) const {
+  int ret = sched_setaffinity(tid, sizeof(initial_affinity_), &initial_affinity_);
   if (ret < 0) {
     FATAL() << "restore_initial_affinity failed";
   }
