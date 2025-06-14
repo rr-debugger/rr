@@ -18,6 +18,7 @@
 
 #include <algorithm>
 
+#include "CPUs.h"
 #include "Flags.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
@@ -126,12 +127,6 @@ Scheduler::Scheduler(RecordSession& session)
  * to have.
  */
 void Scheduler::regenerate_affinity_mask() {
-  int ret = sched_getaffinity(0, sizeof(pretend_affinity_mask_),
-                              &pretend_affinity_mask_);
-  if (ret) {
-    FATAL() << "Failed sched_getaffinity";
-  }
-
   int cpu = session.trace_writer().bound_to_cpu();
   if (cpu < 0) {
     // We only run one thread at a time but we're not limiting
@@ -141,7 +136,9 @@ void Scheduler::regenerate_affinity_mask() {
     // when explicitly requested by the user.
     return;
   }
-  if (!CPU_ISSET(cpu, &pretend_affinity_mask_)) {
+  auto initial_affinity = CPUs::get().initial_affinity();
+  if (find(initial_affinity.begin(), initial_affinity.end(), cpu)
+      == initial_affinity.end()) {
     LOGM(warn) << "Bound CPU " << cpu << " not in affinity mask";
     // Use the original affinity mask since something strange is
     // going on.

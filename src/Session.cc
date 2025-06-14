@@ -13,6 +13,7 @@
 #include "rr/rr.h"
 
 #include "AutoRemoteSyscalls.h"
+#include "CPUs.h"
 #include "EmuFs.h"
 #include "Flags.h"
 #include "PerfCounters.h"
@@ -77,7 +78,6 @@ Session::Session(const Session& other)
       syscallbuf_hdr_size_(other.syscallbuf_hdr_size_),
       syscall_seccomp_ordering_(other.syscall_seccomp_ordering_),
       ticks_semantics_(other.ticks_semantics_),
-      original_affinity_(other.original_affinity_),
       done_initial_exec_(other.done_initial_exec_),
       visible_execution_(other.visible_execution_),
       intel_pt_(other.intel_pt_) {}
@@ -759,30 +759,13 @@ int Session::cpu_binding() const {
   return const_cast<Session*>(this)->trace_stream()->bound_to_cpu();
 }
 
-// Returns true if we succeeded, false if we failed because the
-// requested CPU does not exist/is not available.
-static bool set_cpu_affinity(int cpu) {
-  DEBUG_ASSERT(cpu >= 0);
-
-  cpu_set_t mask;
-  CPU_ZERO(&mask);
-  CPU_SET(cpu, &mask);
-  if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
-    if (errno == EINVAL) {
-      return false;
-    }
-    FATAL() << "Couldn't bind to CPU " << cpu;
-  }
-  return true;
-}
-
 void Session::do_bind_cpu() {
   if (intel_pt_) {
     PerfCounters::start_pt_copy_thread();
   }
 
-  sched_getaffinity(0, sizeof(original_affinity_), &original_affinity_);
-
+  // Ensure initial affinity is initialized.
+  const CPUs& cpus = CPUs::get();
   int cpu_index = this->cpu_binding();
   if (cpu_index >= 0) {
     // Set CPU affinity now, after we've created any helper threads
@@ -790,10 +773,10 @@ void Session::do_bind_cpu() {
     // tracees (so they are all affected).
     // Note that we're binding rr itself to the same CPU as the
     // tracees, since this seems to help performance.
-    if (!set_cpu_affinity(cpu_index)) {
+    if (!cpus.set_affinity_to_cpu(cpu_index)) {
       if (has_cpuid_faulting() && !is_recording()) {
         cpu_index = choose_cpu(BIND_CPU, cpu_lock);
-        if (!set_cpu_affinity(cpu_index)) {
+        if (!cpus.set_affinity_to_cpu(cpu_index)) {
           FATAL() << "Can't bind to requested CPU " << cpu_index
                   << " even after we re-selected it";
         }

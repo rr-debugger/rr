@@ -593,6 +593,7 @@ set(RR_SOURCES
   src/ContextSwitchEvent.cc
   src/CPUFeaturesCommand.cc
   src/CPUIDBugDetector.cc
+  src/CPUs.cc
   src/DiversionSession.cc
   src/DumpCommand.cc
   src/Dwarf.cc

@@ -75,6 +75,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "BpfMapMonitor.h"
+#include "CPUs.h"
 #include "DiversionSession.h"
 #include "ElfReader.h"
 #include "FileMonitor.h"
@@ -3755,8 +3756,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   // restore that.
   // For now honor whatever affinity rr itself has (e.g. for running on P-cores
   // on Alder Lake).
-  cpu_set_t mask = t->session().original_affinity();
-  syscall(SYS_sched_setaffinity, new_t->tid, sizeof(mask), &mask);
+  CPUs::get().restore_initial_affinity();
   // Task::spawn my lave the task in a group-stop if the task SIGSTOPs itself
   // before we can PTRACE_SEIZE it. Kick it out of that group-stop now.
   ::kill(new_tid, SIGCONT);
