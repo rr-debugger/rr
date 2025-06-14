@@ -8,6 +8,18 @@ static bool supports_txcp;
 /**
  * Return the detected, known microarchitecture of this CPU, or don't
  * return; i.e. never return UnknownCpu.
+ *
+ * Another way to do this would be to read the pmu type under
+ * /sys/devices/.../caps/pmu_name. There are tradeoffs:
+ *   * With the current approach, rr works with old kernels that haven't
+ * been updated with specific knowledge of the CPU type. Reading
+ * `pmu_name`, rr would not work.
+ *   * Reading `pmu_name`, rr would work with new CPUs that use an
+ * existing PMU type, if the kernel is new enough to know about those
+ * CPUs. With the current approach users have to have an rr that has
+ * been updated for those CPUs.
+ * Assuming that it's easier to update rr than update one's kernel,
+ * the current approach seems a little better.
  */
 static CpuMicroarch compute_cpu_microarch() {
   auto cpuid_vendor = cpuid(CPUID_GETVENDORSTRING, 0);
