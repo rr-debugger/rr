@@ -83,29 +83,29 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x706e0:
     case 0x606a0:
     case 0x80660:
-      return IntelIcelake;
+      return IntelIceLake;
     case 0x806c0:
     case 0x806d0:
-      return IntelTigerlake;
+      return IntelTigerLake;
     case 0x806e0:
     case 0x906e0:
-      return IntelKabylake;
+      return IntelKabyLake;
     case 0xa0650:
     case 0xa0660:
-      return IntelCometlake;
+      return IntelCometLake;
     case 0xa0670:
-      return IntelRocketlake;
+      return IntelRocketLake;
     case 0x90670:
     case 0x906a0:
-      return IntelAlderlake;
+      return IntelAlderLake;
     case 0xb0670:
     case 0xb06a0:
     case 0xb06f0:
-      return IntelRaptorlake;
+      return IntelRaptorLake;
     case 0x806f0:
-      return IntelSapphireRapid;
+      return IntelSapphireRapids;
     case 0xc06f0:
-      return IntelEmeraldRapid;
+      return IntelEmeraldRapids;
     case 0xa06a0:
       return IntelMeteorLake;
     case 0xb06d0:
@@ -419,7 +419,7 @@ static void check_for_arch_bugs(perf_event_attrs &perf_attr) {
     check_for_kvm_in_txcp_bug(perf_attr);
     check_for_xen_pmi_bug(perf_attr);
   }
-  if (uarch >= IntelCometlake && uarch <= LastIntel) {
+  if (uarch >= IntelCometLake && uarch <= LastIntel) {
     check_for_freeze_on_smi();
   }
   if (uarch >= AMDZen && uarch <= LastAMD) {
