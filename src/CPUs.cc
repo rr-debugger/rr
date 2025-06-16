@@ -5,10 +5,6 @@
 #include <sched.h>
 #include <unistd.h>
 
-#include <fstream>
-#include <filesystem>
-#include <sstream>
-
 #include "log.h"
 
 using namespace std;
@@ -50,64 +46,6 @@ void CPUs::restore_initial_affinity(pid_t tid) const {
   if (ret < 0) {
     FATAL() << "restore_initial_affinity failed";
   }
-}
-
-static vector<CPUs::Group> get_cpu_arch_groups_from_sysfs() {
-  vector<CPUs::Group> result;
-  filesystem::path dir_path = "/sys/devices";
-  if (!filesystem::is_directory(dir_path)) {
-    return result;
-  }
-  for (const auto& entry : filesystem::directory_iterator(dir_path)) {
-    if (entry.path().filename().string().find("cpu_") != 0) {
-      continue;
-    }
-    ifstream file(entry.path() / "cpus");
-    if (!file.good()) {
-      LOG(warn) << "File " << entry.path().string() << "/cpus not found";
-      continue;
-    }
-    ostringstream sstr;
-    sstr << file.rdbuf();
-    string s = sstr.str();
-    size_t dash = s.find('-');
-    if (dash == string::npos) {
-      size_t end;
-      int cpu_index = stoi(s, &end);
-      if (end != s.size()) {
-        LOG(warn) << "Bad CPU index";
-        continue;
-      }
-      result.push_back(CPUs::Group{cpu_index, cpu_index + 1});
-    } else {
-      size_t end;
-      int cpu_index = stoi(s.substr(0, dash), &end);
-      if (end != dash) {
-        LOG(warn) << "Bad CPU index";
-        continue;
-      }
-      int cpu_index_end = stoi(s.substr(dash + 1), &end);
-      if (end != dash) {
-        LOG(warn) << "Bad end CPU index";
-        continue;
-      }
-      result.push_back(CPUs::Group{cpu_index, cpu_index_end + 1});
-    }
-  }
-  return result;
-}
-
-std::vector<CPUs::Group> CPUs::cpu_arch_groups() const {
-  std::vector<CPUs::Group> result = get_cpu_arch_groups_from_sysfs();
-  if (result.empty()) {
-    // Assume they're all the same arch.
-    int configured = sysconf(_SC_NPROCESSORS_CONF);
-    if (configured < 1) {
-      FATAL() << "sysconf failed";
-    }
-    result.push_back(Group{0, configured});
-  }
-  return result;
 }
 
 CPUs::CPUs() {

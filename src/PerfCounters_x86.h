@@ -20,6 +20,10 @@ static bool supports_txcp;
  * been updated for those CPUs.
  * Assuming that it's easier to update rr than update one's kernel,
  * the current approach seems a little better.
+ *
+ * This detects the overall microarchitecture, which we also use
+ * as the microarchitecture identifier for the P-cores of that architecture
+ * in a hybrid setup.
  */
 static CpuMicroarch compute_cpu_microarch() {
   auto cpuid_vendor = cpuid(CPUID_GETVENDORSTRING, 0);
@@ -172,8 +176,172 @@ static CpuMicroarch compute_cpu_microarch() {
   return UnknownCpu; // not reached
 }
 
-static std::vector<CpuMicroarch> compute_cpu_microarchs() {
-  return { compute_cpu_microarch() };
+struct CPUGroup {
+  int start_cpu;
+  // Exclusive
+  int end_cpu;
+  string name;
+  int type;
+};
+
+static bool hybrid_cpu_arch_parse_cpus(const filesystem::path& dir,
+                                       CPUGroup* group) {
+  ifstream file(dir / "cpus");
+  if (!file.good()) {
+    LOG(warn) << "File " << dir.string() << "/cpus not found";
+    return false;
+  }
+  ostringstream sstr;
+  sstr << file.rdbuf();
+  string s = sstr.str();
+  while (!s.empty() && s[s.size() - 1] == '\n') {
+    s.resize(s.size() - 1);
+  }
+  size_t dash = s.find('-');
+  if (dash == string::npos) {
+    size_t end;
+    group->start_cpu = stoi(s, &end);
+    if (end != s.size()) {
+      LOG(warn) << "Bad CPU index";
+      return false;
+    }
+    group->end_cpu = group->start_cpu + 1;
+    return true;
+  }
+  size_t end;
+  group->start_cpu = stoi(s.substr(0, dash), &end);
+  if (end != dash) {
+    LOG(warn) << "Bad CPU index";
+    return false;
+  }
+  int last_cpu = stoi(s.substr(dash + 1), &end);
+  if (end != s.size() - (dash + 1)) {
+    LOG(warn) << "Bad end CPU index";
+    return false;
+  }
+  group->end_cpu = last_cpu + 1;
+  return true;
+}
+
+static bool hybrid_cpu_arch_parse_type(const filesystem::path& dir,
+                                       CPUGroup* group) {
+  // See https://github.com/torvalds/linux/blob/master/tools/perf/Documentation/intel-hybrid.txt
+  ifstream file(dir / "type");
+  if (!file.good()) {
+    LOG(warn) << "File " << dir.string() << "/type not found";
+    return false;
+  }
+  ostringstream sstr;
+  sstr << file.rdbuf();
+  string s = sstr.str();
+  while (!s.empty() && s[s.size() - 1] == '\n') {
+    s.resize(s.size() - 1);
+  }
+  size_t end;
+  group->type = stoi(s, &end);
+  if (end != s.size()) {
+    LOG(warn) << "Bad type";
+    return false;
+  }
+  return true;
+}
+
+// Returns an empty list on many (all?) systems that aren't using hybrid cores.
+// In that case, assume all CPUs have the same microarch.
+static vector<CPUGroup> hybrid_cpu_arch_groups() {
+  vector<CPUGroup> result;
+  filesystem::path dir_path = "/sys/devices";
+  if (!filesystem::is_directory(dir_path)) {
+    return result;
+  }
+  for (const auto& entry : filesystem::directory_iterator(dir_path)) {
+    auto file_name = entry.path().filename().string();
+    if (file_name.find("cpu_") != 0) {
+      continue;
+    }
+    CPUGroup group;
+    group.name = file_name.substr(4);
+    if (!hybrid_cpu_arch_parse_cpus(entry.path(), &group)) {
+      continue;
+    }
+    if (!hybrid_cpu_arch_parse_type(entry.path(), &group)) {
+      continue;
+    }
+    result.push_back(std::move(group));
+  }
+  return result;
+}
+
+static vector<CPUInfo> compute_cpus_info() {
+  vector<CPUInfo> result;
+  auto groups = hybrid_cpu_arch_groups();
+  if (groups.empty()) {
+    // Only one kind of CPU core.
+    result.push_back({compute_cpu_microarch(), PERF_TYPE_RAW});
+    return result;
+  }
+
+  for (int cpu : CPUs::get().initial_affinity()) {
+    if (cpu < static_cast<int>(result.size()) &&
+        result[cpu].microarch != UnknownCpu) {
+      // This cpu belongs to a group we already computed the microarch for.
+      // Using groups like this lets us avoid having to schedule this thread
+      // on every single CPU in the system.
+      continue;
+    }
+    while (static_cast<int>(result.size()) < cpu) {
+      result.push_back({UnknownCpu, PERF_TYPE_RAW});
+    }
+    if (!CPUs::set_affinity_to_cpu(cpu)) {
+      FATAL() << "Can't set affinity to previously allowed CPU";
+    }
+    CpuMicroarch uarch = compute_cpu_microarch();
+    // May be overwritten below if this is part of a known hybrid core grouping.
+    result.push_back({uarch, PERF_TYPE_RAW});
+    // Fill in `result` for all CPUs in the same group as the current CPU.
+    // This avoids having to schedule this thread on every single CPU in the
+    // system.
+    for (auto group : groups) {
+      if (group.start_cpu <= cpu && cpu < group.end_cpu) {
+        result.resize(group.end_cpu);
+        if (group.name == "atom") {
+          switch (uarch) {
+          case IntelAlderLake:
+          case IntelRaptorLake:
+            uarch = IntelGracemont;
+            break;
+          case IntelMeteorLake:
+            uarch = IntelCrestmont;
+            break;
+          case IntelLunarLake:
+          case IntelArrowLake:
+            // Some Arrow Lakes use Crestmont E-cores maybe? Hopefully doesn't matter
+            // for the PMU.
+            uarch = IntelSkymont;
+            break;
+          default:
+            FATAL() << "Atom architecture detected but not known for " << uarch;
+          }
+        } else if (group.name == "lowpower") {
+          switch (uarch) {
+          case IntelArrowLake:
+            uarch = IntelCrestmont;
+            break;
+          default:
+            FATAL() << "Lowpower architecture detected but not known for " << uarch;
+          }
+        } else if (group.name != "core") {
+          FATAL() << "Hybrid architecture group name not known: " << group.name;
+        }
+        for (int i = group.start_cpu; i < group.end_cpu; ++i) {
+          result[i] = {uarch, group.type};
+        }
+        break;
+      }
+    }
+  }
+  CPUs::get().restore_initial_affinity();
+  return result;
 }
 
 static void check_for_kvm_in_txcp_bug(const perf_event_attrs &perf_attr) {
@@ -412,8 +580,8 @@ static void check_for_freeze_on_smi() {
   }
 }
 
+// Must be run on the CPU where we're checking for bugs.
 static void check_for_arch_bugs(perf_event_attrs &perf_attr) {
-  DEBUG_ASSERT(rr::perf_attrs.size() == 1);
   CpuMicroarch uarch = (CpuMicroarch)perf_attr.bug_flags;
   if (uarch >= FirstIntel && uarch <= LastIntel) {
     check_for_kvm_in_txcp_bug(perf_attr);
@@ -427,12 +595,8 @@ static void check_for_arch_bugs(perf_event_attrs &perf_attr) {
   }
 }
 
-static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
-{
-  if (pmu_uarchs.size() != 1) {
-    CLEAN_FATAL() << "rr only support a single PMU on x86, "
-                  << pmu_uarchs.size() << " specified.";
-  }
+static void post_init_pmu_uarchs(std::vector<PmuConfig> &) {
+
 }
 
 static bool always_recreate_counters(const perf_event_attrs &perf_attr) {
@@ -455,10 +619,9 @@ static void arch_check_restricted_counter() {
 }
 
 template <typename Arch>
-void PerfCounters::reset_arch_extras() {
-  DEBUG_ASSERT(rr::perf_attrs.size() == 1);
+void PerfCounters::reset_arch_extras(int pmu_index) {
   if (supports_txcp) {
-    struct perf_event_attr attr = rr::perf_attrs[0].ticks;
+    struct perf_event_attr attr = rr::perf_attrs[pmu_index].ticks;
     if (has_kvm_in_txcp_bug) {
       // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
       // used,

@@ -23,12 +23,15 @@
 #endif
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <limits>
 #include <regex>
 #include <string>
 #include <unordered_set>
 
+#include "CPUs.h"
 #include "Flags.h"
 #include "Session.h"
 #include "Task.h"
@@ -119,7 +122,10 @@ enum CpuMicroarch {
   IntelSilvermont,
   IntelGoldmont,
   IntelTremont,
-  LastIntel = IntelTremont,
+  IntelGracemont,
+  IntelCrestmont,
+  IntelSkymont,
+  LastIntel = IntelSkymont,
   FirstAMD,
   AMDF15 = FirstAMD,
   AMDZen,
@@ -205,7 +211,12 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 // Match order of CpuMicroarch.
+// For the Intel Core lineage, we use the name of the product rather than
+// the official name of the microarchitecture. For hybrid products the
+// data in this table is for the P-cores of that product. For E-cores
+// we use their actual Atom ("mont") microarchitecture.
 static const PmuConfig pmu_configs[] = {
+  { UnknownCpu, "Unknown", 0, 0, 0, 0, 0 },
   { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
   { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
   { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
@@ -230,6 +241,9 @@ static const PmuConfig pmu_configs[] = {
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelTremont, "Intel Tremont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelGracemont, "Intel Gracemont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelCrestmont, "Intel Crestmont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelSkymont, "Intel Skymont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { AMDF15, "AMD Family 15h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
@@ -460,6 +474,14 @@ static void do_branches() {
   accumulator_sink = accumulator;
 }
 
+struct CPUInfo {
+  // The microarch of the CPU core.
+  CpuMicroarch microarch;
+  // Either PERF_TYPE_RAW or some alternative type that should be used
+  // instead of PERF_TYPE_RAW for raw events on this core.
+  int raw_perf_event_type;
+};
+
 // Architecture specific detection code
 #if defined(__i386__) || defined(__x86_64__)
 #include "PerfCounters_x86.h"
@@ -469,7 +491,7 @@ static void do_branches() {
 #error Must define microarchitecture detection code for this architecture
 #endif
 
-static void check_working_counters(perf_event_attrs &perf_attr) {
+static void check_working_counters(perf_event_attrs &perf_attr, int pmu_index) {
   struct perf_event_attr attr = perf_attr.ticks;
   attr.sample_period = 0;
   struct perf_event_attr attr2 = perf_attr.cycles;
@@ -494,8 +516,9 @@ static void check_working_counters(perf_event_attrs &perf_attr) {
         << "\nGot " << events << " branch events, expected at least "
         << NUM_BRANCHES
         << ".\n"
-           "\nThe hardware performance counter seems to not be working. Check\n"
-           "that hardware performance counters are working by running\n"
+           "\nThe hardware performance counter seems to not be working on cpu "
+        << pmu_index << "\n"
+           "Check that hardware performance counters are working by running\n"
            "  "
         << perf_cmdline
         << "\n"
@@ -515,17 +538,18 @@ static void check_working_counters(perf_event_attrs &perf_attr) {
 }
 
 // Returns the ticks minimum period.
-static uint32_t check_for_bugs(perf_event_attrs &perf_attr) {
+// Must be run on the CPU that we're checking for bugs.
+static uint32_t check_for_bugs(perf_event_attrs &perf_attr, int pmu_index) {
   DEBUG_ASSERT(!running_under_rr());
   cpu_improperly_configured = false;
 
   uint32_t min_period = check_for_ioc_period_bug(perf_attr);
-  check_working_counters(perf_attr);
+  check_working_counters(perf_attr, pmu_index);
   check_for_arch_bugs(perf_attr);
   return min_period;
 }
 
-static std::vector<CpuMicroarch> get_cpu_microarchs() {
+static vector<CPUInfo> get_cpus_info() {
   string forced_uarch = lowercase(Flags::get().forced_uarch);
   if (!forced_uarch.empty()) {
     for (size_t i = 0; i < array_length(pmu_configs); ++i) {
@@ -533,34 +557,40 @@ static std::vector<CpuMicroarch> get_cpu_microarchs() {
       string name = lowercase(pmu.name);
       if (name.npos != name.find(forced_uarch)) {
         LOG(info) << "Using forced uarch " << pmu.name;
-        return { pmu.uarch };
+        return {
+          { pmu.uarch, PERF_TYPE_RAW }
+        };
       }
     }
     CLEAN_FATAL() << "Forced uarch " << Flags::get().forced_uarch
                   << " isn't known.";
   }
-  return compute_cpu_microarchs();
+  return compute_cpus_info();
 }
 
 // Similar to rr::perf_attrs, if this contains more than one element,
 // it's indexed by the CPU index.
 static std::vector<PmuConfig> get_pmu_microarchs() {
   std::vector<PmuConfig> pmu_uarchs;
-  auto uarchs = get_cpu_microarchs();
+  auto cpus_info = get_cpus_info();
   bool found_working_pmu = false;
-  for (auto uarch : uarchs) {
+  for (const auto& info : cpus_info) {
     bool found = false;
-    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-      if (uarch == pmu_configs[i].uarch) {
+    for (const auto& pmu_config : pmu_configs) {
+      if (info.microarch == pmu_config.uarch) {
         found = true;
-        if (pmu_configs[i].flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES)) {
+        if (pmu_config.flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES)) {
           found_working_pmu |= true;
         }
-        pmu_uarchs.push_back(pmu_configs[i]);
+        pmu_uarchs.push_back(pmu_config);
+        pmu_uarchs.back().event_type = info.raw_perf_event_type;
         break;
       }
     }
-    DEBUG_ASSERT(found);
+    if (!found) {
+      FATAL() << "Can't find PMU config for " << info.microarch;
+    }
+    LOG(info) << "Found PMU config for " << info.microarch;
   }
   if (!found_working_pmu) {
     CLEAN_FATAL() << "No supported microarchitectures found.";
@@ -634,8 +664,7 @@ static void init_attributes() {
   }
 }
 
-bool PerfCounters::support_cpu(int cpu)
-{
+bool PerfCounters::support_cpu(int cpu) {
   // We could probably make cpu=-1 mean whether all CPUs are supported
   // if there's a need for it...
   DEBUG_ASSERT(cpu >= 0);
@@ -665,7 +694,14 @@ static void check_pmu(int pmu_index) {
     return;
   }
 
-  perf_attr.ticks_min_period = check_for_bugs(perf_attr);
+  if (perf_attrs.size() > 1 && !CPUs::set_affinity_to_cpu(pmu_index)) {
+    FATAL() << "Couldn't set affinity to the right PMU";
+  }
+  perf_attr.ticks_min_period = check_for_bugs(perf_attr, pmu_index);
+  if (perf_attrs.size() > 1) {
+    CPUs::get().restore_initial_affinity();
+  }
+
   /*
    * For maintainability, and since it doesn't impact performance when not
    * needed, we always activate this. If it ever turns out to be a problem,
@@ -944,7 +980,7 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
     }
 
     if (!perf_attr.only_one_counter && !running_under_rr()) {
-      reset_arch_extras<NativeArch>();
+      reset_arch_extras<NativeArch>(pmu_index);
     }
 
     if (perf_attr.activate_useless_counter && !fd_useless_counter.is_open()) {

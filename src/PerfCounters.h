@@ -199,7 +199,7 @@ public:
 #endif
 
 private:
-  template <typename Arch> void reset_arch_extras();
+  template <typename Arch> void reset_arch_extras(int pmu_index);
 
   /**
    * Use a separate skid_size for recording since we seem to see more skid

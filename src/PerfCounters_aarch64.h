@@ -256,8 +256,9 @@ static inline void get_cpuinfo_procfs(std::vector<CPUID> &res)
   reset();
 }
 
-static std::vector<CpuMicroarch> compute_cpu_microarchs() {
-  std::vector<CPUID> cpuids;
+static vector<CPUInfo> compute_cpus_info() {
+  vector<CPUInfo> result;
+  vector<CPUID> cpuids;
   get_cpuinfo_sysfs(cpuids);
   if (cpuids.empty()) {
     LOG(warn) << "Unable to read CPU type from sysfs, trying procfs instead.";
@@ -280,13 +281,13 @@ static std::vector<CpuMicroarch> compute_cpu_microarchs() {
     }
   }
   if (single_uarch) {
-    return { compute_cpu_microarch(cpuid0) };
+    result.push_back({compute_cpu_microarch(cpuid0), PERF_TYPE_RAW});
+    return result;
   }
-  std::vector<CpuMicroarch> uarchs;
   for (auto &cpuid : cpuids) {
-    uarchs.push_back(compute_cpu_microarch(cpuid));
+    result.push_back({compute_cpu_microarch(cpuid), PERF_TYPE_RAW});
   }
-  return uarchs;
+  return result;
 }
 
 static void arch_check_restricted_counter() {
@@ -405,7 +406,7 @@ static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
 }
 
 template <>
-void PerfCounters::reset_arch_extras<ARM64Arch>() {
+void PerfCounters::reset_arch_extras<ARM64Arch>(int pmu_index) {
   // LL/SC can't be recorded reliably. Start a counter to detect
   // any usage, such that we can give an intelligent error message.
   struct perf_event_attr attr = perf_attrs[pmu_index].llsc_fail;

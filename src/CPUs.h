@@ -13,19 +13,12 @@ class CPUs {
 public:
   static const CPUs& get();
 
+  // Returns the CPU indices in the initial affinity mask, in increasing order.
   std::vector<int> initial_affinity() const;
   static bool set_affinity_to_cpu(int cpu);
   // Restore the initial affinity mask to the given tid.
   // If unspecified, defaults to this thread.
   void restore_initial_affinity(pid_t tid = 0) const;
-
-  struct Group {
-    int start_cpu;
-    int end_cpu;
-  };
-  // Returns a list of CPU groups that all have the same microarchitecture.
-  // This list covers all available CPUs.
-  std::vector<Group> cpu_arch_groups() const;
 
 private:
   CPUs();
