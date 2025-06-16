@@ -299,8 +299,7 @@ static string lowercase(const string& s) {
 // The index of the PMU we are using within perf_attrs.
 // This is always 0 if we detected a single PMU type
 // and will be the same as the CPU index if we detected multiple PMU types.
-static int get_pmu_index(int cpu_binding)
-{
+static int get_pmu_index(int cpu_binding) {
   if (cpu_binding < 0) {
     if (perf_attrs.size() > 1) {
       CLEAN_FATAL() << "\nMultiple PMU types detected. Unbinding CPU is not supported.";
@@ -314,7 +313,7 @@ static int get_pmu_index(int cpu_binding)
     // Single PMU type.
     return 0;
   }
-  if ((size_t)cpu_binding > perf_attrs.size()) {
+  if ((size_t)cpu_binding >= perf_attrs.size()) {
     CLEAN_FATAL() << "\nUnable to find PMU type for CPU " << cpu_binding;
   }
   return cpu_binding;
