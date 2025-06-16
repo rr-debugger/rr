@@ -89,6 +89,8 @@ static uint32_t pmu_semantics_flags;
  * For example "Revision Guide for AMD Family 19h Models 00h-0Fh Processors"
  * has a "Table 2" with "CPUID Values for AMD" showing the specific model and
  * revisions.
+ *
+ * These are roughly sorted by vendor, then by lineage, and then by time.
  */
 enum CpuMicroarch {
   UnknownCpu,
@@ -102,9 +104,6 @@ enum CpuMicroarch {
   IntelHaswell,
   IntelBroadwell,
   IntelSkylake,
-  IntelSilvermont,
-  IntelGoldmont,
-  IntelTremont,
   IntelKabylake,
   IntelCometlake,
   IntelIcelake,
@@ -117,7 +116,10 @@ enum CpuMicroarch {
   IntelMeteorLake,
   IntelLunarLake,
   IntelArrowLake,
-  LastIntel = IntelArrowLake,
+  IntelSilvermont,
+  IntelGoldmont,
+  IntelTremont,
+  LastIntel = IntelTremont,
   FirstAMD,
   AMDF15 = FirstAMD,
   AMDZen,
@@ -202,31 +204,32 @@ struct PmuConfig {
 // - cb = eventsel for event HW_INTERRUPTS.RECEIVED
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
+// Match order of CpuMicroarch.
 static const PmuConfig pmu_configs[] = {
-  { IntelEmeraldRapid, "Intel EmeraldRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelSapphireRapid, "Intel SapphireRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelArrowLake, "Intel Arrowlake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelLunarLake, "Intel Lunarlake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelMeteorLake, "Intel Meteorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelRaptorlake, "Intel Raptorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
-  { IntelRocketlake, "Intel Rocketlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelTigerlake, "Intel Tigerlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelTigerlake, "Intel Tigerlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelRocketlake, "Intel Rocketlake", 0x5111c4, 0, 0, 100, PMU_TICKS_RCB },
+  { IntelAlderlake, "Intel Alderlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelRaptorlake, "Intel Raptorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelSapphireRapid, "Intel SapphireRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelEmeraldRapid, "Intel EmeraldRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelMeteorLake, "Intel Meteorlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelLunarLake, "Intel Lunarlake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
+  { IntelArrowLake, "Intel Arrowlake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelTremont, "Intel Tremont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0, 100, PMU_TICKS_RCB },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
-  { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
   { AMDF15, "AMD Family 15h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
@@ -247,6 +250,7 @@ static const PmuConfig pmu_configs[] = {
     "armv8_pmuv3_0", 0x11, -1, -1 },
   { ARMNeoverseN3, "ARM Neoverse N3", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3_0", 0x11, -1, -1 },
+  { ARMNeoverseE1, "ARM Neoverse E1", 0, 0, 0, 0, 0 },
   { ARMNeoverseV1, "ARM Neoverse V1", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3_0", 0x11, -1, -1 },
   { ARMNeoverseV2, "ARM Neoverse V2", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
@@ -255,14 +259,6 @@ static const PmuConfig pmu_configs[] = {
     "armv8_pmuv3_0", 0x11, -1, -1 },
   { ARMNeoverseV3, "ARM Neoverse V3", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3_0", 0x11, -1, -1 },
-  { ARMCortexA76, "ARM Cortex A76", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
-    "armv8_pmuv3", 0x11, -1, -1 },
-  { ARMCortexA77, "ARM Cortex A77", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
-    "armv8_pmuv3", 0x11, -1, -1 },
-  { ARMCortexA78, "ARM Cortex A78", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
-    "armv8_pmuv3", 0x11, -1, -1 },
-  { ARMCortexX1, "ARM Cortex X1", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
-    "armv8_pmuv3", 0x11, -1, -1 },
   // cortex-a55, cortex-a75 and neoverse-e1 counts uarch ISB
   // as retired branches so the BR_RETIRED counter is not reliable.
   // There are some counters that are somewhat more reliable than
@@ -273,9 +269,16 @@ static const PmuConfig pmu_configs[] = {
   // 0xCD (BR_INDIRECT_ADDR_PRED)
   // but according to tests on the LITTLE core on a snapdragon 865
   // none of them (including the sums) seems to be useful/reliable enough.
-  { ARMNeoverseE1, "ARM Neoverse E1", 0, 0, 0, 0, 0 },
   { ARMCortexA55, "ARM Cortex A55", 0, 0, 0, 0, 0 },
   { ARMCortexA75, "ARM Cortex A75", 0, 0, 0, 0, 0 },
+  { ARMCortexA76, "ARM Cortex A76", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexA77, "ARM Cortex A77", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexA78, "ARM Cortex A78", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexX1, "ARM Cortex X1", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
   { AmpereOne, "AmpereOne", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3_0", 0x11, -1, -1 },
   { AppleM1Icestorm, "Apple M1 Icestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
