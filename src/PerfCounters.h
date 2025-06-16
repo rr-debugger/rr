@@ -219,6 +219,7 @@ private:
   // Only valid while 'counting' is true
   Ticks counting_period;
   pid_t tid;
+  // Either 0 or the cpu index. Used to index into `perf_attrs`.
   int pmu_index;
   // We use separate fds for counting ticks and for generating interrupts. The
   // former ignores ticks in aborted transactions, and does not support
