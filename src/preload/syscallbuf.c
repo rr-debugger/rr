@@ -804,6 +804,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_00_f0_ff_ff(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_85_c0(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_45_f8(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_c3(void);
@@ -874,6 +875,11 @@ static void __attribute__((constructor)) init_process(void) {
       5,
       { 0x3d, 0x00, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_3d_00_f0_ff_ff },
+    /* Some application has'syscall' followed by 'test %rax,%rax' */
+    { 0,
+      3,
+      { 0x48, 0x85, 0xc0 },
+      (uintptr_t)_syscall_hook_trampoline_48_85_c0 },
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
      * by
      * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */

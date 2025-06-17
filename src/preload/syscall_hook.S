@@ -463,6 +463,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
         cmpq $0xfffffffffffff000,%rax
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_85_c0)
+        callq __morestack
+        test %rax,%rax
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_85_c0)
+
 SYSCALLHOOK_START(_syscall_hook_trampoline_3d_00_f0_ff_ff)
         callq __morestack
         cmpl $0xfffff000,%eax

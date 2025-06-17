@@ -1278,6 +1278,16 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall, bool
     // Never try to patch the traced-syscall in our preload library!
     return false;
   }
+  int syscallno = t->regs().original_syscallno();
+  if (is_clone_syscall(syscallno, t->arch()) ||
+      is_fork_syscall(syscallno, t->arch()) ||
+      is_vfork_syscall(syscallno, t->arch()) ||
+      is_clone3_syscall(syscallno, t->arch())) {
+    // If these end up in the syscallbuf when we fork/clone then very bad
+    // things happen. Of course if these are called via some
+    // syscall()-type multiplexer we're in trouble anyway...
+    return false;
+  }
 
   // We should not get here for untraced syscalls or anything else from the rr page.
   // These should be normally prevented by our seccomp filter
