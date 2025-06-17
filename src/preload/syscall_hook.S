@@ -498,7 +498,7 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_4c_8b_0d)
         mov 16(%rsp),%rbx
         /* Get PC-relative offset of patched instruction into %eax */
         mov -4(%rbx),%eax
-        movsxd %eax,%rax
+        movsx %eax,%rax
         mov (%rbx,%rax),%r9
         pop %rbx
         pop %rax
