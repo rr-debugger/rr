@@ -825,6 +825,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_11_01_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_b8_ca_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_be_18_00_00_00(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_4c_8b_0d(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_e5(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_fb(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8d_b3_f0_08_00_00(void);
@@ -981,6 +982,12 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x##rex, 0x89, 0x##op }, \
       (uintptr_t)_syscall_hook_trampoline_##rex##_89_##op },
     MOV_RDX_VARIANTS
+    /* Some application has RDTSC followed by 'mov xxxxxx(%rip),%r9' */
+    {
+      PATCH_NO_MATCH_TRAILING_4_BYTES,
+      7,
+      { 0x4c, 0x8b, 0x0d },
+      (uintptr_t)_syscall_hook_trampoline_4c_8b_0d },
     /* Some application has RDTSC followed by 'shl $32,%rdx' */
     {
       0,

@@ -494,7 +494,9 @@ remote_code_ptr Monkeypatcher::get_jump_stub_exit_breakpoint(remote_code_ptr ip,
 
 static bool hook_can_ignore_interfering_branches(const syscall_patch_hook& hook, size_t jump_patch_size) {
   return hook.patch_region_length >= jump_patch_size &&
-    (hook.flags & (PATCH_IS_MULTIPLE_INSTRUCTIONS | PATCH_IS_NOP_INSTRUCTIONS)) == PATCH_IS_NOP_INSTRUCTIONS;
+    (hook.flags & (PATCH_IS_MULTIPLE_INSTRUCTIONS |
+                   PATCH_IS_NOP_INSTRUCTIONS |
+                   PATCH_NO_MATCH_TRAILING_4_BYTES)) == PATCH_IS_NOP_INSTRUCTIONS;
 }
 
 /**
@@ -580,7 +582,11 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
   vector<uint8_t> jump_patch;
-  jump_patch.resize(patch_region_size, NOP);
+  int patch_size = patch_region_size;
+  if (hook.flags & PATCH_NO_MATCH_TRAILING_4_BYTES) {
+    patch_size -= 4;
+  }
+  jump_patch.resize(patch_size, NOP);
   if (hook_can_ignore_interfering_branches(hook, JumpPatch::size)) {
     // If the preceding instruction is long enough to contain the entire jump,
     // and is a nop, replace the original instruction by a jump back to the
@@ -588,7 +594,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
     // but nevertheless), interfering branches, because whether we jump to the
     // instruction or the start of the patch region, the effect is the same.
     jump_patch[patch_region_size-2] = 0xeb; // jmp rel
-    jump_patch[patch_region_size-1] = (int8_t)-patch_region_size;
+    jump_patch[patch_region_size-1] = (int8_t)-patch_size;
   }
   JumpPatch::substitute(jump_patch.data(), jump_offset32);
   bool ok = true;
@@ -978,6 +984,14 @@ static uint64_t jump_patch_size(SupportedArch arch)
   }
 }
 
+static bool patch_matches(const syscall_patch_hook& hook, const uint8_t* bytes) {
+  int region_len = hook.patch_region_length;
+  if (hook.flags & PATCH_NO_MATCH_TRAILING_4_BYTES) {
+    region_len -= 4;
+  }
+  return memcmp(bytes, hook.patch_region_bytes, region_len) == 0;
+}
+
 const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
                                                            remote_code_ptr ip,
                                                            bool entering_syscall,
@@ -1025,14 +1039,11 @@ const syscall_patch_hook* Monkeypatcher::find_syscall_hook(RecordTask* t,
     bool matches_hook = false;
     if ((!(hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
          following_bytes_count >= hook.patch_region_length &&
-         memcmp(following_bytes, hook.patch_region_bytes,
-                hook.patch_region_length) == 0)) {
+         patch_matches(hook, following_bytes))) {
       matches_hook = true;
     } else if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
                hook.patch_region_length <= preceding_bytes_count &&
-               memcmp(bytes + LOOK_BACK - hook.patch_region_length,
-                      hook.patch_region_bytes,
-                      hook.patch_region_length) == 0) {
+               patch_matches(hook, bytes + LOOK_BACK - hook.patch_region_length)) {
       if (entering_syscall) {
         // A patch that uses bytes before the syscall can't be done when
         // entering the syscall, it must be done when exiting. So set a flag on

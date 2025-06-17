@@ -485,6 +485,20 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
          movq (%rdi),%rdi
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_4c_8b_0d)
+        callq __morestack
+        push %rax
+        push %rbx
+        /* Get return address into %rbx */
+        mov 16(%rsp),%rbx
+        /* Get PC-relative offset of patched instruction into %eax */
+        mov -4(%rbx),%eax
+        movsxd %eax,%rax
+        mov (%rbx,%rax),%r9
+        pop %rbx
+        pop %rax
+SYSCALLHOOK_END(_syscall_hook_trampoline_4c_8b_0d)
+
 SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
         .cfi_offset %rip, 16
         RSP_IS_CFA_PLUS_OFFSET(24)

@@ -1607,6 +1607,7 @@ set(TESTS_WITH_PROGRAM
   pack
   patch_page_end
   x86/patch_40_80_f6_81
+  x86/patch_pc_rel
   prctl_tsc
   priority
   ptrace_remote_unmap

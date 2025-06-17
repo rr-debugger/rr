@@ -189,6 +189,11 @@ static inline const char* extract_file_name(const char* s) {
  * observable. This may allow more aggressive handling of interfering branches.
  */
 #define PATCH_IS_NOP_INSTRUCTIONS (1 << 2)
+/* The trailing 4 bytes of the instruction following the syscall/rdtsc are
+ * variable. Do not try to match on them.
+ * Also we preserve those bytes instead of overwriting with NOPs.
+ */
+#define PATCH_NO_MATCH_TRAILING_4_BYTES (1 << 3)
 
 
 /**
