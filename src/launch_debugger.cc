@@ -16,6 +16,7 @@
 #include "DebuggerExtensionCommandHandler.h"
 #include "GdbServer.h"
 #include "GdbServerConnection.h"
+#include "kernel_supplement.h"
 #include "log.h"
 #include "StringVectorToCharArray.h"
 #include "util.h"

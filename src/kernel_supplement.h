@@ -605,6 +605,10 @@ struct dma_buf_export_sync_file {
 };
 #endif
 
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE 1
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.
