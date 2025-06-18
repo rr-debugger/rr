@@ -3,6 +3,7 @@
 #include "CPUs.h"
 
 #include <sched.h>
+#include <unistd.h>
 
 #include <fstream>
 #include <filesystem>
