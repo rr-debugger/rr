@@ -8,6 +8,9 @@ static void breakpoint(void) {
 }
 
 int main(void) {
+  // glibc write() might only be patched after the first time it is executed.
+  atomic_puts("Ensure glibc write() is patched...");
+  // The test requires this write() be buffered:
   atomic_puts("EXIT-SUCCESS");
   breakpoint();
   return 0;
