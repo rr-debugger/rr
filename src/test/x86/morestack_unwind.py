@@ -1,6 +1,6 @@
 from util import *
 
-send_gdb('break main')
+send_gdb('break start_test')
 expect_gdb('Breakpoint 1')
 send_gdb('c')
 expect_gdb('Breakpoint 1')
