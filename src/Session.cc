@@ -755,8 +755,12 @@ bool Session::has_cpuid_faulting() {
   return !Flags::get().disable_cpuid_faulting && cpuid_faulting_works();
 }
 
-int Session::cpu_binding() const {
-  return const_cast<Session*>(this)->trace_stream()->bound_to_cpu();
+BindCPU Session::cpu_binding() const {
+  int binding = const_cast<Session*>(this)->trace_stream()->bound_to_cpu();
+  if (binding < 0) {
+    return BindCPU(BindCPU::UNBOUND);
+  }
+  return BindCPU(binding);
 }
 
 void Session::do_bind_cpu() {
@@ -766,16 +770,17 @@ void Session::do_bind_cpu() {
 
   // Ensure initial affinity is initialized.
   const CPUs& cpus = CPUs::get();
-  int cpu_index = this->cpu_binding();
-  if (cpu_index >= 0) {
+  BindCPU binding = this->cpu_binding();
+  if (binding.mode == BindCPU::SPECIFIED_CORE) {
     // Set CPU affinity now, after we've created any helper threads
     // (so they aren't affected), but before we create any
     // tracees (so they are all affected).
     // Note that we're binding rr itself to the same CPU as the
     // tracees, since this seems to help performance.
-    if (!cpus.set_affinity_to_cpu(cpu_index)) {
+    if (!cpus.set_affinity_to_cpu(binding.specified_core)) {
       if (has_cpuid_faulting() && !is_recording()) {
-        cpu_index = choose_cpu(BIND_CPU, cpu_lock);
+        // We can replay on any CPU.
+        int cpu_index = choose_cpu(BindCPU(BindCPU::ANY), cpu_lock);
         if (!cpus.set_affinity_to_cpu(cpu_index)) {
           FATAL() << "Can't bind to requested CPU " << cpu_index
                   << " even after we re-selected it";
@@ -786,12 +791,12 @@ void Session::do_bind_cpu() {
                   << "Hoping tracee doesn't use LSL instruction!";
         trace_stream()->set_bound_cpu(cpu_index);
       } else {
-        FATAL() << "Can't bind to requested CPU " << cpu_index
+        FATAL() << "Can't bind to requested CPU " << binding.specified_core
                 << ", and CPUID faulting not available";
       }
     } else if (!is_recording()) {
       // Make sure to mark this CPU as in use in the cpu_lock.
-      (void)choose_cpu((BindCPU)cpu_index, cpu_lock);
+      (void)choose_cpu(binding, cpu_lock);
     }
   }
 }

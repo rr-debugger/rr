@@ -5,9 +5,43 @@
 
 #include <sched.h>
 
+#include <string>
 #include <vector>
 
 namespace rr {
+
+struct BindCPU {
+  enum Mode {
+    // Bind to any core.
+    ANY,
+    // Perfer high-performance core if CPU affinity settings allow.
+    PREFER_PERF_CORE,
+    // Bind to a specified core unconditionally.
+    SPECIFIED_CORE,
+    // Don't bind.
+    UNBOUND,
+  };
+
+  explicit BindCPU(Mode mode) : mode(mode) {}
+  explicit BindCPU(int specified_core)
+    : mode(SPECIFIED_CORE), specified_core(specified_core) {}
+
+  Mode mode;
+  int specified_core;
+};
+
+struct CPUGroup {
+  enum Kind { P_CORE, E_CORE, UNKNOWN };
+
+  int start_cpu;
+  // Exclusive
+  int end_cpu;
+  std::string name;
+  // PERF_TYPE_RAW or something else usable in the perf-attr
+  // event_type field.
+  int type;
+  Kind kind;
+};
 
 class CPUs {
 public:
@@ -20,10 +54,15 @@ public:
   // If unspecified, defaults to this thread.
   void restore_initial_affinity(pid_t tid = 0) const;
 
+  // Returns the CPU group list. May be empty on systems where that
+  // information is not available or relevant.
+  const std::vector<CPUGroup>& cpu_groups() const { return cpu_groups_; }
+
 private:
   CPUs();
 
   cpu_set_t initial_affinity_;
+  std::vector<CPUGroup> cpu_groups_;
 };
 
 }

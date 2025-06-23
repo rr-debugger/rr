@@ -65,7 +65,7 @@ public:
       const DisableCPUIDFeatures& features,
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
       unsigned char syscallbuf_desched_sig = SIGPWR,
-      BindCPU bind_cpu = BIND_CPU,
+      BindCPU bind_cpu = BindCPU(BindCPU::ANY),
       const std::string& output_trace_dir = "",
       const TraceUuid* trace_id = nullptr,
       bool use_audit = false,

@@ -3,6 +3,10 @@
 #ifndef RR_UTIL_H_
 #define RR_UTIL_H_
 
+/* This header should not declare any interface types. It should mainly be included
+   in .cc files.
+ */
+
 #include <signal.h>
 #include <stdio.h>
 #include <math.h>
@@ -18,6 +22,7 @@
 #include <x86intrin.h>
 #endif
 
+#include "CPUs.h"
 #include "MemoryRange.h"
 #include "ScopedFd.h"
 #include "TraceFrame.h"
@@ -53,8 +58,6 @@ class Task;
 class TraceFrame;
 class RecordTask;
 class ReplayTask;
-
-typedef int BindCPU;
 
 enum Completion { COMPLETE, INCOMPLETE };
 
@@ -511,19 +514,14 @@ size_t special_instruction_len(SpecialInstOpcode insn);
  */
 bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip);
 
-/**
- * BIND_CPU means binding to a randomly chosen CPU.
- * UNBOUND_CPU means not binding to a particular CPU.
- * A non-negative value means binding to the specific CPU number.
- */
-enum { BIND_CPU = -2, UNBOUND_CPU = -1 };
-
 /* Get the path of the cpu lock file */
 std::string get_cpu_lock_file();
 
 /* Convert a BindCPU to a specific CPU number. If possible, the cpu_lock_fd_out
    will be set to an fd that holds an advisory fcntl lock for the chosen CPU
-   for coordination with other rr processes */
+   for coordination with other rr processes.
+   Returns -1 if there should be no binding.
+*/
 int choose_cpu(BindCPU bind_cpu, ScopedFd& cpu_lock_fd_out);
 
 /* Updates an IEEE 802.3 CRC-32 least significant bit first from each byte in

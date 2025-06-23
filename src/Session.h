@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "AddressSpace.h"
+#include "CPUs.h"
 #include "MonitoredSharedMemory.h"
 #include "Task.h"
 #include "TaskishUid.h"
@@ -372,7 +373,8 @@ public:
   virtual TraceStream* trace_stream() { return nullptr; }
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
-  virtual int cpu_binding() const;
+  // Must be `UNBOUND` or `SPECIFIED_CORE`.
+  virtual BindCPU cpu_binding() const;
 
   int syscall_number_for_rrcall_init_preload() const {
     return SYS_rrcall_init_preload - RR_CALL_BASE + rrcall_base_;

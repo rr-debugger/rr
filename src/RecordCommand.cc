@@ -80,8 +80,8 @@ RecordCommand RecordCommand::singleton(
     "option\n"
     "                             can cause replay divergence: use with\n"
     "                             caution.\n"
-    "  --bind-to-cpu=<NUM>        Bind to a particular CPU\n"
-    "                             instead of a randomly chosen one.\n"
+    "  --bind-to-cpu=<CORE>       Bind to a CPU core. <CORE> can be 'any',\n"
+    "                             'p-core' (default), or a specific number.\n"
     "  -v, --env=NAME=VALUE       value to add to the environment of the\n"
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
@@ -203,7 +203,7 @@ struct RecordFlags {
         output_trace_dir(""),
         use_file_cloning(true),
         use_read_cloning(true),
-        bind_cpu(BIND_CPU),
+        bind_cpu(BindCPU::PREFER_PERF_CORE),
         always_switch(false),
         chaos(false),
         num_cores(0),
@@ -362,10 +362,16 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.setuid_sudo = true;
       break;
     case 6:
-      if (!opt.verify_valid_int(0, INT32_MAX)) {
-        return false;
+      if (opt.value == "any") {
+        flags.bind_cpu = BindCPU(BindCPU::ANY);
+      } else if (opt.value == "p-core") {
+        flags.bind_cpu = BindCPU(BindCPU::PREFER_PERF_CORE);
+      } else {
+        if (!opt.verify_valid_int(0, INT32_MAX)) {
+          return false;
+        }
+        flags.bind_cpu = BindCPU(opt.int_value);
       }
-      flags.bind_cpu = BindCPU(opt.int_value);
       break;
     case 7: {
       vector<uint32_t> bits = parse_feature_bits(opt);
@@ -512,7 +518,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.continue_through_sig = opt.int_value;
       break;
     case 'u':
-      flags.bind_cpu = UNBOUND_CPU;
+      flags.bind_cpu = BindCPU(BindCPU::UNBOUND);
       break;
     case 'v':
       flags.extra_env.push_back(opt.value);

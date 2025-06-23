@@ -23,9 +23,7 @@
 #endif
 
 #include <algorithm>
-#include <filesystem>
 #include <fstream>
-#include <sstream>
 #include <limits>
 #include <regex>
 #include <string>
@@ -316,24 +314,28 @@ static string lowercase(const string& s) {
 // The index of the PMU we are using within perf_attrs.
 // This is always 0 if we detected a single PMU type
 // and will be the same as the CPU index if we detected multiple PMU types.
-static int get_pmu_index(int cpu_binding) {
-  if (cpu_binding < 0) {
+static int get_pmu_index(BindCPU cpu_binding) {
+  if (cpu_binding.mode == BindCPU::UNBOUND) {
     if (perf_attrs.size() > 1) {
       CLEAN_FATAL() << "\nMultiple PMU types detected. Unbinding CPU is not supported.";
     }
     return 0;
   }
-  if (!PerfCounters::support_cpu(cpu_binding)) {
-    CLEAN_FATAL() << "\nPMU on cpu " << cpu_binding << " is not supported.";
+  if (cpu_binding.mode != BindCPU::SPECIFIED_CORE) {
+    FATAL() << "Only specified-core mode supported at this point";
+  }
+  int cpu = cpu_binding.specified_core;
+  if (!PerfCounters::support_cpu(cpu)) {
+    CLEAN_FATAL() << "\nPMU on cpu " << cpu << " is not supported.";
   }
   if (perf_attrs.size() == 1) {
     // Single PMU type.
     return 0;
   }
-  if ((size_t)cpu_binding >= perf_attrs.size()) {
-    CLEAN_FATAL() << "\nUnable to find PMU type for CPU " << cpu_binding;
+  if ((size_t)cpu >= perf_attrs.size()) {
+    CLEAN_FATAL() << "\nUnable to find PMU type for CPU " << cpu;
   }
-  return cpu_binding;
+  return cpu;
 }
 
 static void init_perf_event_attr(struct perf_event_attr* attr,
@@ -755,7 +757,7 @@ uint32_t PerfCounters::skid_size() {
       perf_attrs[pmu_index].ticks_min_period;
 }
 
-PerfCounters::PerfCounters(pid_t tid, int cpu_binding,
+PerfCounters::PerfCounters(pid_t tid, BindCPU cpu_binding,
                            TicksSemantics ticks_semantics, Enabled enabled,
                            IntelPTEnabled enable_pt)
     : tid(tid), pmu_index(get_pmu_index(cpu_binding)), ticks_semantics_(ticks_semantics),

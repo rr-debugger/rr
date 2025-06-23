@@ -89,6 +89,7 @@ public:
   /** Return the directory storing this trace's files. */
   const string& dir() const { return trace_dir; }
 
+  /** Returns -1 if the CPU isn't/wasn't bound. */
   int bound_to_cpu() const { return bind_to_cpu; }
   void set_bound_cpu(int bound) { bind_to_cpu = bound; }
 

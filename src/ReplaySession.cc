@@ -429,9 +429,9 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   return session;
 }
 
-int ReplaySession::cpu_binding() const {
+BindCPU ReplaySession::cpu_binding() const {
   if (flags_.cpu_unbound) {
-    return -1;
+    return BindCPU(BindCPU::UNBOUND);
   }
   return Session::cpu_binding();
 }

@@ -426,9 +426,11 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   t->record_local(random_seed_ptr, &random_seed);
 
   auto cpu_binding = t->session().cpu_binding();
+  int core_num = cpu_binding.mode == BindCPU::SPECIFIED_CORE ?
+    cpu_binding.specified_core : -1;
   auto cpu_binding_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), cpu_binding);
-  t->write_mem(cpu_binding_ptr, cpu_binding);
-  t->record_local(cpu_binding_ptr, &cpu_binding);
+  t->write_mem(cpu_binding_ptr, core_num);
+  t->record_local(cpu_binding_ptr, &core_num);
 
   auto context_switch_event_strategy = ContextSwitchEvent::strategy();
   auto context_switch_event_strategy_ptr =

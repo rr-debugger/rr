@@ -283,7 +283,7 @@ function skip_if_syscall_buf {
 
 function just_record { exe="$1"; exeargs=$2;
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err \
-        $RR_EXE $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
+        $RR_EXE $GLOBAL_OPTIONS record --bind-to-cpu=any $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
 }
 
 function save_exe { exe=$1;

@@ -14,7 +14,7 @@ using namespace std;
 
 namespace rr {
 
-DiversionSession::DiversionSession(int cpu_binding) :
+DiversionSession::DiversionSession(BindCPU cpu_binding) :
   emu_fs(EmuFs::create()), fake_timer_counter(uint64_t(1) << 60), cpu_binding_(cpu_binding) {}
 
 DiversionSession::~DiversionSession() {

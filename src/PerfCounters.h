@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "CPUs.h"
 #include "PerfCounterBuffers.h"
 #include "ScopedFd.h"
 #include "Ticks.h"
@@ -64,7 +65,8 @@ public:
     PT_DISABLE,
     PT_ENABLE
   };
-  PerfCounters(pid_t tid, int cpu_binding, TicksSemantics ticks_semantics,
+  // `cpu_binding` must be `UNBOUND` or `SPECIFIED_CORE`.
+  PerfCounters(pid_t tid, BindCPU cpu_binding, TicksSemantics ticks_semantics,
                Enabled enabled, IntelPTEnabled enable_pt);
   ~PerfCounters() { close(); }
 
