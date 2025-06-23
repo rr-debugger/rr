@@ -903,32 +903,25 @@ static string bytes_to_string(uint8_t* bytes, size_t size) {
   return ss.str();
 }
 
-static bool task_safe_for_syscall_patching(RecordTask* t, remote_code_ptr start,
-                                           remote_code_ptr end) {
-  if (t->is_stopped()) {
-    remote_code_ptr ip = t->ip();
-    if (start <= ip && ip < end) {
-      return false;
-    }
-  }
-  for (auto& e : t->pending_events) {
-    if (e.is_syscall_event()) {
-      remote_code_ptr ip = e.Syscall().regs.ip();
+static bool safe_for_syscall_patching(remote_code_ptr start,
+                                      remote_code_ptr end,
+                                      RecordTask* exclude_stopped) {
+  for (auto& p : exclude_stopped->session().tasks()) {
+    RecordTask* rt = static_cast<RecordTask*>(p.second);
+    if (rt != exclude_stopped && rt->is_stopped()) {
+      remote_code_ptr ip = rt->ip();
       if (start <= ip && ip < end) {
         return false;
       }
     }
-  }
-  return true;
-}
 
-static bool safe_for_syscall_patching(remote_code_ptr start,
-                                      remote_code_ptr end,
-                                      RecordTask* exclude) {
-  for (auto& p : exclude->session().tasks()) {
-    RecordTask* rt = static_cast<RecordTask*>(p.second);
-    if (rt != exclude && !task_safe_for_syscall_patching(rt, start, end)) {
-      return false;
+    for (auto& e : rt->pending_events) {
+      if (e.is_syscall_event()) {
+        remote_code_ptr ip = e.Syscall().regs.ip();
+        if (start <= ip && ip < end) {
+          return false;
+        }
+      }
     }
   }
   return true;
