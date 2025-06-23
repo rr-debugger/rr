@@ -3,7 +3,7 @@
 #include "util.h"
 
 int main(void) {
-  unsigned long iteration = 0;
+  uint64_t iteration = 0;
   int pipe_fds[2];
   pipe(pipe_fds);
 
@@ -16,7 +16,7 @@ int main(void) {
   // Write again.
   write(pipe_fds[1], "hi\n", 3);
 
-  while (iteration < ULONG_MAX) {
+  while (iteration < UINT64_MAX) {
     iteration += 1;
     // Don't let the compiler delete this loop.
     asm("" : : : "memory");
