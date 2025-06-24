@@ -30,6 +30,10 @@ static bool hybrid_cpu_arch_parse_cpus(const filesystem::path& dir,
   while (!s.empty() && s[s.size() - 1] == '\n') {
     s.resize(s.size() - 1);
   }
+  if (s.empty()) {
+    LOG(info) << "File " << dir.string() << "/cpus is empty after trimming.";
+    return false;
+  }
   size_t dash = s.find('-');
   if (dash == string::npos) {
     size_t end;
