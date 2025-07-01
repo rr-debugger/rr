@@ -1175,6 +1175,7 @@ set(BASIC_TESTS
   mlock
   mlock_madvise
   mmap_adjacent_to_rr_usage
+  mmap_huge
   mmap_private
   mmap_private_grow_under_map
   mmap_recycle

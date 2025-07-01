@@ -3186,12 +3186,15 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
 }
 
 /**
- * This function exists to work around
+ * This function was initially created to work around
  * https://bugzilla.kernel.org/show_bug.cgi?id=99101.
  * On some kernels pwrite() to /proc/.../mem fails when writing to a region
- * that's PROT_NONE.
- * Also, writing through MAP_SHARED readonly mappings fails (even if the
- * file was opened read-write originally), so we handle that here too.
+ * that's PROT_NONE. Actually this was fixed in kernel 4.8 but we still
+ * support 4.7 for now and there's no point in bumping the version
+ * requirement just to avoid this, especially because...
+ * Writing through MAP_SHARED readonly mappings fails (even if the
+ * file was opened read-write originally), so we handle that here too. This
+ * seems to be an issue for all kernel versions up to the present day.
  */
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
@@ -3205,9 +3208,14 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
       continue;
     }
     if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED)) {
-      mappings_to_fix.push_back(m.map);
+      // Limit the mapping change to the region we're actually going to write to.
+      // Kernel 6.15 reports ENOMEM trying mprotect PROT_WRITE colossal
+      // MAP_PRIVATE mappings. For some reason MAP_SHARED is OK...
+      auto start = floor_page_size(addr);
+      auto end = ceil_page_size(addr + buf_size);
+      mappings_to_fix.push_back(m.map.subrange(start, end));
     }
-  };
+  }
 
   if (mappings_to_fix.empty()) {
     return pwrite_all_fallible(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
