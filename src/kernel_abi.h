@@ -782,6 +782,22 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(serial_struct);
 
+  struct serial_icounter_struct {
+    int cts;
+    int dsr;
+    int rng;
+    int dcd;
+    int rx;
+    int tx;
+    int frame;
+    int overrun;
+    int parity;
+    int brk;
+    int buf_overrun;
+    int reserved[9];
+  };
+  RR_VERIFY_TYPE(serial_icounter_struct);
+
   struct winsize {
     unsigned_short ws_row;
     unsigned_short ws_col;
