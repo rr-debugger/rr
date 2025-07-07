@@ -7,6 +7,7 @@ int main(void) {
   int fd;
   int* mbits;
   struct serial_icounter_struct* sicnt;
+  int* lsr;
 
   fd = open("/dev/ttyS0", O_RDWR);
   if (fd < 0) {
@@ -28,6 +29,11 @@ int main(void) {
   atomic_printf("TIOCGICOUNT returned %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n",
                 sicnt->cts, sicnt->dsr, sicnt->rng, sicnt->dcd, sicnt->rx, sicnt->tx,
                 sicnt->frame, sicnt->overrun, sicnt->parity, sicnt->brk, sicnt->buf_overrun);
+
+  ALLOCATE_GUARD(lsr, 'c');
+  test_assert(0 == ioctl(fd, TIOCSERGETLSR, lsr));
+  VERIFY_GUARD(lsr);
+  atomic_printf("TIOCSERGETLSR returned lsr=0x%x\n", *lsr);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
