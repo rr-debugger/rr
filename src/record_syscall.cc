@@ -1800,6 +1800,8 @@ static Switchable prepare_ioctl(RecordTask* t,
     case TIOCINQ: // == FIONREAD
     case TIOCOUTQ:
     case TIOCGETD:
+    case TIOCMGET:
+    case TIOCMSET:
     case VT_OPENQRY:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;
