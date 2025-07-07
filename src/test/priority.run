@@ -1,4 +1,6 @@
 source `dirname $0`/util.sh
-renice -n 1 $$ && record $TESTNAME
-renice -n 2 $$ && replay
+# note: we use a value that is below the regular "nice" value
+#       of 10, allowing to run `nice ctest` as well
+renice -n 11 $$ && record $TESTNAME
+renice -n 22 $$ && replay
 check 'EXIT-SUCCESS'
