@@ -1797,10 +1797,11 @@ static Switchable prepare_ioctl(RecordTask* t,
     case BLKALIGNOFF:
     case KDGKBMODE:
     case RNDGETENTCNT:
-    case TIOCINQ: // == FIONREAD
+    case TIOCINQ: // == FIONREAD == SIOCOUTQ
     case TIOCOUTQ:
     case TIOCGETD:
     case VT_OPENQRY:
+    case SIOCOUTQNSD:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;
 
