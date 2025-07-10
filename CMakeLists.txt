@@ -1141,6 +1141,7 @@ set(BASIC_TESTS
   ioctl_pty
   ioctl_sg
   ioctl_tty
+  ioctl_ttyS
   ioctl_vt
   ioprio
   x86/ioperm
