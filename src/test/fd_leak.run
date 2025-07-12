@@ -1,0 +1,17 @@
+source `dirname $0`/util.sh
+num_baseline=$(ls -la /proc/self/fd | wc -l)
+just_record $(which rr) "record --nested=detach ls -la /proc/self/fd"
+replay
+num_replay=$(cat replay.out | wc -l)
+# We allow for two extra fds in the recorded process,
+# one for the RR fd 999 and one for the perf_events
+# fd opened by the syscall buf (if present).
+expected_extra_fds=2
+if [[ "-n" == "$LIB_ARG" ]]; then
+expected_extra_fds=$((expected_extra_fds - 1))
+fi
+if [[ $num_replay -gt $((num_baseline + expected_extra_fds)) || $num_replay -lt $num_baseline ]]; then
+    failed
+else
+    passed
+fi
