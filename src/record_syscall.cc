@@ -6538,7 +6538,7 @@ static bool is_rr_terminal(const string& pathname) {
 static int dev_tty_fd() {
   static int fd = -1;
   if (fd < 0) {
-    fd = open("/dev/tty", O_WRONLY);
+    fd = open("/dev/tty", O_WRONLY | O_CLOEXEC);
   }
   return fd;
 }

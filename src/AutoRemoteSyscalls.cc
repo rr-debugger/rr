@@ -724,6 +724,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     // pidfd_getfd requires a threadgroup leader, so find one if we can.
     Task* tg_leader_for_fds = thread_group_leader_for_fds(t);
     if (tg_leader_for_fds) {
+      // N.B.: pidfd_open fds are always cloexec
       pid_fd = ScopedFd(::syscall(NativeArch::pidfd_open, tg_leader_for_fds->tid, 0));
       ASSERT(t, pid_fd.is_open() || errno == ENOSYS)
         << "Error in pidfd_open errno=" << errno_name(errno);
