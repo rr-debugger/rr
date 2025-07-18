@@ -1812,6 +1812,7 @@ set(TESTS_WITHOUT_PROGRAM
   trace_version
   term_trace_cpu
   trace_events
+  traceinfo
   transient_fault_replay_all
   tty
   unmap_vdso

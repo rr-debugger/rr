@@ -11,7 +11,7 @@
     "sudo dnf install -y epel-release epel-next-release",
     "sudo dnf update -y"
   ],
-  "install_build_deps": "sudo dnf install -y rpm ccache cmake gcc gcc-c++ gdb lldb glibc-devel libstdc++-devel zlib-devel git python3 python3-pexpect rpm-build ninja-build capnproto capnproto-libs capnproto-devel libzstd libzstd-devel",
+  "install_build_deps": "sudo dnf install -y rpm ccache cmake gcc gcc-c++ gdb lldb glibc-devel libstdc++-devel zlib-devel git python3 python3-pexpect rpm-build ninja-build capnproto capnproto-libs capnproto-devel libzstd libzstd-devel jq",
   "install_build_deps_x86_64": "sudo dnf install -y glibc-devel.i686 libstdc++-devel.i686",
   "install_app_test_deps": "sudo dnf install -y gtk3 dbus-glib xorg-x11-utils gnutls-devel libacl-devel openldap-devel tigervnc-server-minimal curl tar bzip2 libreoffice-writer",
   "exclude_tests_arm64": ["when.*"]

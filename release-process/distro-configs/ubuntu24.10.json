@@ -9,7 +9,7 @@
     "sudo apt-get update -y",
     "sudo apt-get dist-upgrade -f -y"
   ],
-  "install_build_deps": "sudo apt-get install -y rpm ccache cmake g++ pkg-config zlib1g-dev git python-dev-is-python3 libacl1-dev ninja-build manpages-dev capnproto libcapnp-dev gdb lldb python3-pexpect libzstd1 libzstd-dev",
+  "install_build_deps": "sudo apt-get install -y rpm ccache cmake g++ pkg-config zlib1g-dev git python-dev-is-python3 libacl1-dev ninja-build manpages-dev capnproto libcapnp-dev gdb lldb python3-pexpect libzstd1 libzstd-dev jq",
   "install_build_deps_x86_64": "sudo apt-get install -y g++-multilib",
   "install_app_test_deps": "sudo apt-get install -y tightvncserver xtightvncviewer curl tar bzip2 libdbus-glib-1-2 libreoffice"
 }

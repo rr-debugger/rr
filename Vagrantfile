@@ -10,7 +10,7 @@ Vagrant.configure("2") do |config|
 	config.vm.provision "shell", inline: <<-SHELL
 		apt-get update
 		# DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
-		DEBIAN_FRONTEND=noninteractive apt-get -y install ccache cmake make g++-multilib gdb pkg-config realpath python-pexpect manpages-dev git ninja-build capnproto libcapnp-dev zlib1g-dev
+		DEBIAN_FRONTEND=noninteractive apt-get -y install ccache cmake make g++-multilib gdb pkg-config realpath python-pexpect manpages-dev git ninja-build capnproto libcapnp-dev zlib1g-dev jq
 		apt-get clean
 	SHELL
 

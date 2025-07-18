@@ -9,7 +9,7 @@
     "sudo apt-get dist-upgrade -f -y"
   ],
   "install_build_deps": [
-    "sudo apt-get install -y rpm ccache cmake g++ pkg-config zlib1g-dev git python-dev libacl1-dev ninja-build manpages-dev capnproto libcapnp-dev gdb lldb-18 python3-pexpect libzstd1 libzstd-dev",
+    "sudo apt-get install -y rpm ccache cmake g++ pkg-config zlib1g-dev git python-dev libacl1-dev ninja-build manpages-dev capnproto libcapnp-dev gdb lldb-18 python3-pexpect libzstd1 libzstd-dev jq",
     "sudo update-alternatives --install /usr/bin/lldb lldb /usr/bin/lldb-18 50"
   ],
   "install_build_deps_x86_64": "sudo apt-get install -y g++-multilib",
