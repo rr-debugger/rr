@@ -760,8 +760,12 @@ uint32_t PerfCounters::skid_size() {
 PerfCounters::PerfCounters(pid_t tid, BindCPU cpu_binding,
                            TicksSemantics ticks_semantics, Enabled enabled,
                            IntelPTEnabled enable_pt)
-    : tid(tid), pmu_index(get_pmu_index(cpu_binding)), ticks_semantics_(ticks_semantics),
+    : tid(tid), pmu_index(0), ticks_semantics_(ticks_semantics),
       enabled(enabled), opened(false), counting(false) {
+  if (enabled == Enabled::DISABLE) {
+    return;
+  }
+  pmu_index = get_pmu_index(cpu_binding);
   if (!supports_ticks_semantics(ticks_semantics)) {
     FATAL() << "Ticks semantics " << ticks_semantics << " not supported";
   }
