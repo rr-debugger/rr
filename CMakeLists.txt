@@ -1433,6 +1433,7 @@ set(BASIC_TESTS
   timerfd
   times
   truncate_temp
+  tty_tostop
   tun
   two_signals_with_mask
   ulimit_low

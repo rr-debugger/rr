@@ -1787,7 +1787,8 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // unless they're deterministic.
       bool is_fatal = t->ev().Signal().disposition == DISPOSITION_FATAL &&
         (!t->is_container_init() || is_deterministic);
-      Switchable can_switch = ((is_fatal && is_coredumping_signal(sig)) || sig == SIGSTOP) ?
+      Switchable can_switch =
+        ((is_fatal && is_coredumping_signal(sig)) || t->is_sig_stopping(sig)) ?
         ALLOW_SWITCH : PREVENT_SWITCH;
 
       // We didn't record this event above, so do that now.
