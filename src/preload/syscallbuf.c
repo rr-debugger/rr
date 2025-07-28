@@ -51,8 +51,6 @@
 #include <asm/errno.h>
 #include <asm/ioctls.h>
 #include <asm/poll.h>
-#include <asm/signal.h>
-#include <asm/siginfo.h>
 #include <asm/stat.h>
 #include <asm/statfs.h>
 #include <linux/eventpoll.h>
@@ -68,19 +66,18 @@
 #include <linux/quota.h>
 #include <linux/resource.h>
 #include <linux/stat.h>
-#include <linux/socket.h>
-#include <linux/stat.h>
-#include <linux/time.h>
 #include <linux/types.h>
-#include <linux/uio.h>
 #include <linux/un.h>
 #include <linux/utsname.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <syscall.h>
 #include <sysexits.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "preload_interface.h"
@@ -3236,36 +3233,6 @@ static long sys_recvfrom(struct syscall_info* call) {
 #endif
 
 #ifdef SYS_recvmsg
-
-/* These macros are from musl Copyright © 2005-2020 Rich Felker, et al. (MIT LICENSE) */
-#define __CMSG_LEN(cmsg) (((cmsg)->cmsg_len + sizeof(long) - 1) & ~(long)(sizeof(long) - 1))
-#define __CMSG_NEXT(cmsg) ((unsigned char *)(cmsg) + __CMSG_LEN(cmsg))
-#define __MHDR_END(mhdr) ((unsigned char *)(mhdr)->msg_control + (mhdr)->msg_controllen)
-
-#define CMSG_DATA(cmsg) ((unsigned char *) (((struct cmsghdr *)(cmsg)) + 1))
-#define CMSG_NXTHDR(mhdr, cmsg) ((cmsg)->cmsg_len < sizeof (struct cmsghdr) || \
-	(__CMSG_LEN(cmsg) + sizeof(struct cmsghdr) >= (unsigned long)(__MHDR_END(mhdr) - (unsigned char *)(cmsg))) \
-	? 0 : (struct cmsghdr *)__CMSG_NEXT(cmsg))
-#define CMSG_FIRSTHDR(mhdr) ((size_t) (mhdr)->msg_controllen >= sizeof (struct cmsghdr) ? (struct cmsghdr *) (mhdr)->msg_control : (struct cmsghdr *) 0)
-
-struct cmsghdr {
-  __kernel_size_t	cmsg_len;
-  int cmsg_level;
-  int cmsg_type;
-};
-
-struct msghdr /* struct user_msghdr in the kernel */ {
-  void* msg_name;
-  int msg_namelen;
-  struct iovec* msg_iov;
-  __kernel_size_t msg_iovlen;
-  void* msg_control;
-  __kernel_size_t msg_controllen;
-  unsigned int msg_flags;
-};
-
-#define SCM_RIGHTS 0x01
-#define SOL_PACKET 263
 
 static int msg_received_file_descriptors(struct msghdr* msg) {
   struct cmsghdr* cmh;
