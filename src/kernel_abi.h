@@ -750,7 +750,6 @@ struct BaseArch : public wordsize,
     unsigned char c_line;
     unsigned char c_cc[8];
   };
-  RR_VERIFY_TYPE(termio);
 
   struct seccomp_notif_sizes {
     uint16_t seccomp_notif;
