@@ -66,6 +66,7 @@ enum CpuMicroarch {
   IntelRaptorlake,
   IntelSapphireRapid,
   IntelEmeraldRapid,
+  IntelGraniteRapid,
   IntelMeteorLake,
   IntelArrowLake,
   LastIntel = IntelArrowLake,
@@ -139,6 +140,7 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
+  { IntelGraniteRapid, "Intel GraniteRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelEmeraldRapid, "Intel EmeraldRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelSapphireRapid, "Intel SapphireRapid", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelArrowLake, "Intel Arrowlake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
@@ -343,6 +345,8 @@ static CpuMicroarch compute_cpu_microarch(void) {
       return IntelSapphireRapid;
     case 0xc06f0:
       return IntelEmeraldRapid;
+    case 0xa06d0:
+      return IntelGraniteRapid;
     case 0xa06a0:
       return IntelMeteorLake;
     case 0xc0660:

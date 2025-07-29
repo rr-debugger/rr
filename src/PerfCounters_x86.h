@@ -110,6 +110,8 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelSapphireRapids;
     case 0xc06f0:
       return IntelEmeraldRapids;
+    case 0xa06d0:
+      return IntelGraniteRapids;
     case 0xa06a0:
       return IntelMeteorLake;
     case 0xb06d0:
