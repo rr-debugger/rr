@@ -3,3 +3,5 @@ Zen workaround kernel module, Copyright 2020, Mike Hommey.
 This has the same effect as `scripts/zen_workaround.py`, but persists after resuming from sleep.
 
 There is no upstream, but we put it in third-party because it's technically a derived work of the Linux kernel. The license is GPL 2.0. See LICENSE at the root of this repo.
+
+If you rely on Secure Boot, assuming you have properly enrolled a new MOK key, you can issue `make signed` to build and sign the kernel module (signature will trigger sudo prompt). It will use the default path of `/var/lib/shim-signed/mok/` for the key.
