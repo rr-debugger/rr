@@ -64,7 +64,6 @@
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
 #include <linux/quota.h>
-#include <linux/resource.h>
 #include <linux/stat.h>
 #include <linux/types.h>
 #include <linux/un.h>
@@ -76,6 +75,7 @@
 #include <sysexits.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -1771,13 +1771,18 @@ static long sys_clock_gettime(struct syscall_info* call) {
 
 #ifdef SYS_clock_gettime64
 
+struct kernel_timespec {
+  long long tv_sec;
+  long long tv_nsec;
+};
+
 static long sys_clock_gettime64(struct syscall_info* call) {
   const int syscallno = SYS_clock_gettime64;
   __kernel_clockid_t clk_id = (__kernel_clockid_t)call->args[0];
-  struct __kernel_timespec* tp = (struct __kernel_timespec*)call->args[1];
+  struct kernel_timespec* tp = (struct kernel_timespec*)call->args[1];
 
   void* ptr = prep_syscall();
-  struct __kernel_timespec* tp2 = NULL;
+  struct kernel_timespec* tp2 = NULL;
   long ret;
 
   assert(syscallno == call->no);
