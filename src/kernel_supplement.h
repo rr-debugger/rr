@@ -281,6 +281,12 @@ struct rr_input_mask {
 #ifndef MADV_COLLAPSE
 #define MADV_COLLAPSE 25
 #endif
+#ifndef MADV_GUARD_INSTALL
+#define MADV_GUARD_INSTALL 102
+#endif
+#ifndef MADV_GUARD_REMOVE
+#define MADV_GUARD_REMOVE 103
+#endif
 
 #ifndef BUS_MCEERR_AR
 #define BUS_MCEERR_AR 4
