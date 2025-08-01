@@ -5245,6 +5245,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           t->set_regs(r);
           break;
         }
+        case MADV_GUARD_INSTALL:
+        case MADV_GUARD_REMOVE:
+          syscall_state.emulate_result(-EINVAL);
+          break;
         default:
           syscall_state.expect_errno = EINVAL;
           break;
