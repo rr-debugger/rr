@@ -19,12 +19,24 @@ struct termios2 {
 };
 #endif
 
+/* glibc 2.42 removed termio:
+   https://sourceware.org/git/?p=glibc.git;a=commit;h=e04afb71771710cdc6025fe95908f5f17de7b72d
+*/
+struct rr_termio {
+  unsigned short c_iflag;
+  unsigned short c_oflag;
+  unsigned short c_cflag;
+  unsigned short c_lflag;
+  unsigned char c_line;
+  unsigned char c_cc[8];
+};
+
 int main(void) {
   int fd;
   int ret;
   struct termios* tc;
   struct termios2* tc2;
-  struct termio* tio;
+  struct rr_termio* tio;
   pid_t* pgrp;
   int* navail;
   int* outq;
