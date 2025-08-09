@@ -615,6 +615,10 @@ struct dma_buf_export_sync_file {
 #define RENAME_NOREPLACE 1
 #endif
 
+#ifndef ZFS_SUPER_MAGIC
+#define ZFS_SUPER_MAGIC 0x2fc12fc1
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.

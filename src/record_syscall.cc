@@ -6112,11 +6112,66 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   return our_mapping_writable;
 }
 
+static bool os_has_broken_zfs() {
+  static bool is_broken = true, did_check = false;
+  if (did_check) {
+    return is_broken;
+  }
+  did_check = true;
+  DIR* zfs_dir = opendir("/sys/module/zfs");
+  if (!zfs_dir) {
+    // No ZFS, so no bug
+    is_broken = false;
+    return false;
+  }
+  ScopedFd version_file_fd =
+      ScopedFd(openat(dirfd(zfs_dir), "version", O_RDONLY));
+  closedir(zfs_dir);
+  char version[50];
+  memset(version, 0, sizeof(version));
+  read(version_file_fd, version, sizeof(version) - 1);
+  int zfs_major = 0, zfs_minor = 0, zfs_patch = 0;
+  if (3 != sscanf(version, "%d.%d.%d", &zfs_major, &zfs_minor, &zfs_patch)) {
+    LOG(warn)
+        << "Failed to parse /sys/module/zfs/version; assuming ZFS is broken";
+    return true;
+  }
+  is_broken = !(zfs_major > 2 || (zfs_major == 2 && zfs_minor > 2));
+  return is_broken;
+}
+
+// On some versions of ZFS, SEEK_HOLE/SEEK_DATA is known to not be reliable
+// and potentially return spurious holes. Such holes would cause trace
+// corruption, so we must skip this optimizations on such ZFS versions.
+static bool may_have_zfs_seek_bug(ScopedFd& fd) {
+  static bool did_warn = false;
+  if (!os_has_broken_zfs())
+    return false;
+  // Check if this file is on ZFS.
+  struct statfs buf;
+  if (0 != fstatfs(fd, &buf)) {
+    // This really shouldn't fail, but let's be conservative
+    LOG(warn) << "Failed to determine file system type for fd";
+    return true;
+  }
+  int bad_file = (buf.f_type == ZFS_SUPER_MAGIC);
+  if (bad_file && !did_warn) {
+    LOG(warn)
+        << "Detected access to file on ZFS < 2.3.0 which has known bugs.\n"
+        << "Sparse file optimizations will be disabled.";
+    did_warn = true;
+  }
+  return bad_file;
+}
+
 // The returned hole offsets are relative to 'offset'
 static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, uint64_t size) {
   vector<WriteHole> ret;
   ScopedFd fd = t->open_fd(desc, O_RDONLY);
   if (!fd.is_open()) {
+    return ret;
+  }
+  if (may_have_zfs_seek_bug(fd)) {
     return ret;
   }
   uint64_t file_start = offset;
