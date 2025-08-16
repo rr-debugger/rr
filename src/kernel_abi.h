@@ -1357,7 +1357,8 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE_EXPLICIT(struct ::statfs, statfs_t);
 
-  struct statfs64_t {
+  /* Don't align for the 64-bit values on 32-bit x86 */
+  struct __attribute__((packed)) statfs64_t {
     __statfs_word f_type;
     __statfs_word f_bsize;
     uint64_t f_blocks;

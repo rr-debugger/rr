@@ -6019,8 +6019,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
                                               TraceWriter::EXEC_MAPPING) ==
         TraceWriter::RECORD_IN_TRACE) {
       if (st.st_size > 0) {
-        off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
-        t->record_remote(km.start(), min(end, (off64_t)km.size()));
+        off_t end = (off_t)st.st_size - km.file_offset_bytes();
+        t->record_remote(km.start(), min(end, (off_t)km.size()));
       } else {
         // st_size is not valid. Some device files are mmappable but have zero
         // size. We also take this path if there's no file at all (vdso etc).
@@ -6122,7 +6122,7 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
   uint64_t file_start = offset;
   uint64_t file_end = offset + size;
   while (offset < file_end) {
-    off64_t r = lseek(fd, offset, SEEK_HOLE);
+    off_t r = lseek(fd, offset, SEEK_HOLE);
     if (r < 0) {
       // SEEK_HOLE not supported?
       return ret;
@@ -6198,7 +6198,7 @@ static void check_outside_mappings(const KernelMapping& tracee_km, const RecordS
 }
 
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
-                         int fd, off64_t offset) {
+                         int fd, off_t offset) {
   if (t->regs().syscall_failed()) {
     // We purely emulate failed mmaps.
     return;
@@ -6266,8 +6266,8 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                                             TraceWriter::SYSCALL_MAPPING,
                                             !monitor_this_fd) ==
       TraceWriter::RECORD_IN_TRACE) {
-    off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
-    off64_t nbytes = min(end, (off64_t)km.size());
+    off_t end = (off_t)st.st_size - km.file_offset_bytes();
+    off_t nbytes = min(end, (off_t)km.size());
     vector<WriteHole> holes = find_holes(t, fd, km.file_offset_bytes(), (uint64_t)nbytes);
     ssize_t nread = t->record_remote_fallible(addr, nbytes, holes);
     if (!adjusted_size && nread != nbytes) {
@@ -6376,10 +6376,10 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
   if (t->trace_writer().write_mapped_region(t, km, st, km.fsname(),
                                             vector<TraceRemoteFd>()) ==
       TraceWriter::RECORD_IN_TRACE) {
-    off64_t end = max<off64_t>(st.st_size - km.file_offset_bytes(), 0);
+    off_t end = max<off_t>(st.st_size - km.file_offset_bytes(), 0);
     // Allow failure; the underlying file may have true zero size, in which
     // case this may try to record unmapped memory.
-    t->record_remote_fallible(km.start(), min(end, (off64_t)km.size()));
+    t->record_remote_fallible(km.start(), min(end, (off_t)km.size()));
   }
 
   // If the original mapping was monitored, we'll continue monitoring it

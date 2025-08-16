@@ -278,7 +278,7 @@ public:
                           int prot, int flags,
                           const std::string& backing_file_name,
                           int backing_file_open_flags,
-                          off64_t backing_offset_bytes,
+                          off_t backing_offset_bytes,
                           struct stat& real_file, std::string& real_file_name);
 
   // Calling this with allow_death false is DEPRECATED.

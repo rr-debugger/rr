@@ -534,7 +534,7 @@ uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len);
 void write_all(int fd, const void* buf, size_t size);
 
 /* Like pwrite64(2) but we try to write all bytes by looping on short writes. */
-ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset);
+ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off_t offset);
 
 /* Returns true if |path| is an accessible directory. Returns false if there
  * was an error.

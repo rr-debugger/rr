@@ -72,7 +72,7 @@ configure_file(
   ${CMAKE_BINARY_DIR}/extra_version_string.h
 )
 
-set(FLAGS_COMMON "-D__USE_LARGEFILE64 -pthread")
+set(FLAGS_COMMON "-D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -pthread")
 set(supports32bit true)
 set(x86ish false)
 set(has_syscallbuf false)

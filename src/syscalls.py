@@ -1128,7 +1128,7 @@ fcntl64 = IrregularEmulatedSyscall(x86=221)
 # gettid() returns the caller's thread ID (TID).
 gettid = EmulatedSyscall(x86=224, x64=186, generic=178)
 
-#  ssize_t readahead(int fd, off64_t offset, size_t count);
+#  ssize_t readahead(int fd, off_t offset, size_t count);
 #
 # readahead() populates the page cache with data from a file so that
 # subsequent reads from that file will not block on disk I/O.  The fd
@@ -1169,7 +1169,7 @@ lremovexattr = EmulatedSyscall(x86=236, x64=198, generic=15)
 fremovexattr = EmulatedSyscall(x86=237, x64=199, generic=16)
 tkill = EmulatedSyscall(x86=238, x64=200, generic=130)
 
-# ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t
+# ssize_t sendfile64 (int __out_fd, int __in_fd, __off_t *__offset, size_t
 #__count);
 #
 # Send up to COUNT bytes from file associated with IN_FD starting at

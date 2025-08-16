@@ -43,9 +43,9 @@ int main(void) {
   test_assert(status == ((SIGSTOP << 8) | 0x7f));
 
   test_assert(bkpt_size ==
-    pread(mem_fd, saved_bytes, bkpt_size, (off_t)breakpoint));
+    pread(mem_fd, saved_bytes, bkpt_size, (uintptr_t)breakpoint));
   test_assert(bkpt_size ==
-    pwrite(mem_fd, breakpoint_instruction, bkpt_size, (off_t)breakpoint));
+    pwrite(mem_fd, breakpoint_instruction, bkpt_size, (uintptr_t)breakpoint));
 
   test_assert(1 == write(pipe_fds[1], "x", 1));
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)0));
@@ -54,7 +54,7 @@ int main(void) {
   ptrace_getregs(child, &regs);
   test_assert((char*)regs.IP == (char*)breakpoint + ip_after_breakpoint ? bkpt_size : 0);
 
-  test_assert(bkpt_size == pwrite(mem_fd, saved_bytes, bkpt_size, (off_t)breakpoint));
+  test_assert(bkpt_size == pwrite(mem_fd, saved_bytes, bkpt_size, (uintptr_t)breakpoint));
   if (ip_after_breakpoint) {
     regs.IP -= bkpt_size;
   }

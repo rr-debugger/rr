@@ -7,14 +7,14 @@
 static void dump_statfs(const char* label, const struct statfs* s) {
   atomic_printf("%s: {\n"
                 "    type:0x%lx, bsize:%ld, \n"
-                "    blocks:%ld, bfree:%ld, bavail:%ld,\n"
-                "    files:%lu, ffree:%lu,\n"
+                "    blocks:%lld, bfree:%lld, bavail:%lld,\n"
+                "    files:%llu, ffree:%llu,\n"
                 "    fsid: { %d, %d },\n"
                 "    namelen:%ld, frsize:%ld,\n"
                 "    flags:0x%lx\n"
                 "}\n",
-                label, (long)s->f_type, (long)s->f_bsize, s->f_blocks,
-                s->f_bfree, s->f_bavail, s->f_files, s->f_ffree,
+                label, (long)s->f_type, (long)s->f_bsize, (long long)s->f_blocks,
+                (long long)s->f_bfree, (long long)s->f_bavail, (unsigned long long)s->f_files, (unsigned long long)s->f_ffree,
                 s->f_fsid.__val[0], s->f_fsid.__val[1], (long)s->f_namelen,
                 (long)s->f_frsize, (long)s->f_flags);
 }

@@ -815,7 +815,7 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 
 KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
                                 size_t num_bytes, int prot, int flags,
-                                off64_t offset_bytes, const string& fsname,
+                                off_t offset_bytes, const string& fsname,
                                 dev_t device, ino_t inode,
                                 unique_ptr<struct stat> mapped_file_stat,
                                 const KernelMapping* recorded_map,
@@ -1633,7 +1633,7 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
     return false;
   }
   if (mleft.is_real_device() &&
-      mleft.file_offset_bytes() + off64_t(mleft.size()) !=
+      mleft.file_offset_bytes() + off_t(mleft.size()) !=
           mright.file_offset_bytes()) {
     return false;
   }

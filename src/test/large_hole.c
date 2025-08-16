@@ -4,7 +4,7 @@
 
 int main(void) {
 #ifdef __x86_64__
-  off64_t size = ((off64_t)100)*1024*1024*1024;
+  off_t size = ((off_t)100)*1024*1024*1024;
   char* p;
   int fd = open("big", O_RDWR | O_TRUNC | O_CREAT, 0700);
   test_assert(pwrite64(fd, "x", 1, size) == 1);

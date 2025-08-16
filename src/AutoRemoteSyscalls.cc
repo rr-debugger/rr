@@ -917,7 +917,7 @@ void AutoRemoteSyscalls::finish_direct_mmap(
                                int prot, int flags,
                                const string& backing_file_name,
                                int backing_file_open_flags,
-                               off64_t backing_offset_bytes,
+                               off_t backing_offset_bytes,
                                struct stat& real_file, string& real_file_name) {
   int fd;
 

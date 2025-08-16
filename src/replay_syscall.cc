@@ -598,7 +598,7 @@ static void write_mapped_data(ReplayTask* t,
 
 static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                 remote_ptr<void> rec_addr, size_t length,
-                                int prot, int flags, off64_t offset_bytes,
+                                int prot, int flags, off_t offset_bytes,
                                 const KernelMapping& km,
                                 TraceReader::MappedData& data) {
   LOG(debug) << "  finishing private mmap of " << km.fsname();
@@ -622,7 +622,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                remote_ptr<void> rec_addr, size_t length,
                                int prot, int flags, const vector<TraceRemoteFd>& fds,
-                               off64_t offset_bytes,
+                               off_t offset_bytes,
                                const KernelMapping& km,
                                TraceReader::MappedData& data) {
   // Ensure there's a virtual file for the file that was mapped
@@ -680,7 +680,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                          size_t length, int prot, int flags, int fd,
-                         off64_t offset_bytes, ReplayTraceStep* step) {
+                         off_t offset_bytes, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
   {

@@ -2223,7 +2223,7 @@ void write_all(int fd, const void* buf, size_t size) {
   }
 }
 
-ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset) {
+ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off_t offset) {
   ssize_t written = 0;
   while (size > 0) {
     ssize_t ret = ::pwrite64(fd, buf, size, offset);

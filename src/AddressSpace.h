@@ -63,7 +63,7 @@ public:
   KernelMapping() : device_(0), inode_(0), prot_(0), flags_(0), offset(0) {}
   KernelMapping(remote_ptr<void> start, remote_ptr<void> end,
                 const std::string& fsname, dev_t device, ino_t inode, int prot,
-                int flags, off64_t offset = 0)
+                int flags, off_t offset = 0)
       : MemoryRange(start, end),
         fsname_(fsname),
         device_(device),
@@ -441,7 +441,7 @@ public:
    */
   KernelMapping map(
       Task* t, remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
-      off64_t offset_bytes, const std::string& fsname,
+      off_t offset_bytes, const std::string& fsname,
       dev_t device = KernelMapping::NO_DEVICE,
       ino_t inode = KernelMapping::NO_INODE,
       std::unique_ptr<struct stat> mapped_file_stat = nullptr,

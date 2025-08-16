@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
         volatile uintptr_t stackval = 0;
         int fd = open("/proc/self/mem", O_RDWR);
         test_assert(fd >= 0);
-        test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off64_t)(uintptr_t)&stackval));
+        test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off_t)(uintptr_t)&stackval));
         test_assert(stackval == 1);
 
         // Check that rlimits survive
@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
         do_rdtsc();
 
         newval = 2;
-        test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off64_t)(uintptr_t)&stackval));
+        test_assert(sizeof(stackval) == pwrite64(fd, &newval, sizeof(stackval), (off_t)(uintptr_t)&stackval));
         test_assert(stackval == 2);
 
         // Validate that rr reset the scheduler affinity mask.

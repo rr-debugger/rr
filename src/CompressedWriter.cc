@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#define _LARGEFILE64_SOURCE
-
 #include "CompressedWriter.h"
 
 #include <brotli/encode.h>
