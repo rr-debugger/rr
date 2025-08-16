@@ -11,6 +11,8 @@
 #include "log.h"
 #include "remote_ptr.h"
 
+#undef loff_t
+
 namespace rr {
 
 class remote_code_ptr;
