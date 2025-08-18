@@ -2379,24 +2379,21 @@ static long sys_madvise(struct syscall_info* call) {
   long ret;
 
   switch (advice) {
-    // Whitelist advice values that we know are OK to pass through to the
-    // kernel directly.
+    // Advice values that we buffer and are ok to pass through to the kernel
+    // directly.
     case MADV_NORMAL:
     case MADV_RANDOM:
     case MADV_SEQUENTIAL:
     case MADV_WILLNEED:
-    case MADV_DONTNEED:
     case MADV_MERGEABLE:
     case MADV_UNMERGEABLE:
     case MADV_HUGEPAGE:
     case MADV_NOHUGEPAGE:
     case MADV_DONTDUMP:
     case MADV_DODUMP:
-      break;
+    // Advice values that we buffer but require special handling.
+    case MADV_DONTNEED:
     case MADV_FREE:
-      // See record_syscall. We disallow MADV_FREE because it creates
-      // nondeterminism.
-      advice = -1;
       break;
     default:
       return traced_raw_syscall(call);
@@ -2410,7 +2407,13 @@ static long sys_madvise(struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
-  if (advice == MADV_DONTNEED) {
+  if (advice == MADV_FREE) {
+    // See record_syscall. We disallow MADV_FREE because it creates
+    // nondeterminism. NB: Since we veto this, we *don't* need to
+    // execute it during replay.
+    ret = privileged_untraced_syscall3(syscallno, addr, length, -1);
+    return commit_raw_syscall(syscallno, ptr, ret);
+  } else if (advice == MADV_DONTNEED) {
     ret = privileged_untraced_syscall3(syscallno, addr, length, MADV_COLD);
     commit_raw_syscall(syscallno, ptr, ret);
     if (ret < 0) {

@@ -1331,6 +1331,7 @@ set(BASIC_TESTS
   seccomp_clone_fail
   seccomp_desched
   seccomp_kill_exit
+  seccomp_madvise
   seccomp_null
   seccomp_sigsys_args
   seccomp_sigsys_sigtrap
