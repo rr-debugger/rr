@@ -138,6 +138,13 @@ struct rr_rseq {
 #endif
 #define memcpy you_must_use_local_memcpy
 
+/* POSIX defines it as int while glibc defines it as size_t */
+#if defined (__GLIBC__) || defined (__ANDROID__)
+typedef size_t rr_iovlen_t;
+#else
+typedef int rr_iovlen_t;
+#endif
+
 static long _traced_init_syscall(int syscallno, long a0, long a1, long a2,
                                  long a3, long a4, long a5)
 {
@@ -3270,7 +3277,7 @@ static long sys_recvmsg(struct syscall_info* call) {
   void* ptr_overwritten_end;
   void* ptr_bytes_start;
   void* ptr_end;
-  size_t i;
+  rr_iovlen_t i;
 
   assert(syscallno == call->no);
 
@@ -3327,7 +3334,6 @@ static long sys_recvmsg(struct syscall_info* call) {
 
   if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     size_t bytes = ret;
-    size_t i;
     if (msg->msg_name) {
       local_memcpy(msg->msg_name, msg2->msg_name, msg2->msg_namelen);
     }
