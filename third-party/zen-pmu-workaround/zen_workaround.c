@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/tracepoint.h>
 #include <linux/suspend.h>
+#include <asm/msr.h>
 
 #define MODULE_NAME "zen_workaround"
 
