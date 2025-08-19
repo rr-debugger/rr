@@ -11,11 +11,11 @@
 
 #define SPECLOCKMAP_DISABLE BIT_64(54)
 
-u64 set_speclockmap_disable(u64 msr) {
+static u64 set_speclockmap_disable(u64 msr) {
 	return msr | SPECLOCKMAP_DISABLE;
 }
 
-u64 unset_speclockmap_disable(u64 msr) {
+static u64 unset_speclockmap_disable(u64 msr) {
 	return msr & ~SPECLOCKMAP_DISABLE;
 }
 
