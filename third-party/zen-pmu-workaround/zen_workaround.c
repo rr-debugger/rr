@@ -1,21 +1,30 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright 2020 Mike Hommey <mh@glandium.org>
+ * Copyright 2025 RR Community
 */
 
 #include <linux/module.h>
 #include <linux/tracepoint.h>
 #include <linux/suspend.h>
+#include <linux/version.h>
+#include <asm/msr.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,16,0)
+#define wrmsrq_safe 	wrmsrl_safe
+#define rdmsrq_safe 	rdmsrl_safe
+#define native_wrmsrq	native_wrmsrl
+#endif
 
 #define MODULE_NAME "zen_workaround"
 
 #define SPECLOCKMAP_DISABLE BIT_64(54)
 
-u64 set_speclockmap_disable(u64 msr) {
+static u64 set_speclockmap_disable(u64 msr) {
 	return msr | SPECLOCKMAP_DISABLE;
 }
 
-u64 unset_speclockmap_disable(u64 msr) {
+static u64 unset_speclockmap_disable(u64 msr) {
 	return msr & ~SPECLOCKMAP_DISABLE;
 }
 
@@ -26,10 +35,10 @@ static void edit_ls_cfg_on_cpu(void *info)
 	int cpu = get_cpu();
 	u64 value = 0;
 
-	if (!rdmsrl_safe(MSR_AMD64_LS_CFG, &value)) {
+	if (!rdmsrq_safe(MSR_AMD64_LS_CFG, &value)) {
 		edit_msr_func_t edit_msr = (edit_msr_func_t) info;
 		u64 new_value = edit_msr(value);
-		if (!wrmsrl_safe(MSR_AMD64_LS_CFG, new_value)) {
+		if (!wrmsrq_safe(MSR_AMD64_LS_CFG, new_value)) {
 			pr_info("MSR_AMD64_LS_CFG for cpu %d was 0x%llx, setting to 0x%llx\n",
 			        cpu, value, new_value);
 		} else {
@@ -50,7 +59,7 @@ static void do_zen_workaround(edit_msr_func_t edit_msr)
 void on_write_msr(void *data, unsigned int msr, u64 val, int failed)
 {
 	if (msr == MSR_AMD64_LS_CFG && !(val & SPECLOCKMAP_DISABLE)) {
-		native_wrmsrl(MSR_AMD64_LS_CFG, set_speclockmap_disable(val));
+		native_wrmsrq(MSR_AMD64_LS_CFG, set_speclockmap_disable(val));
 	}
 }
 
