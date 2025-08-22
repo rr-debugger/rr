@@ -147,12 +147,14 @@ static CpuMicroarch compute_cpu_microarch() {
       }
       break;
     case 0x30f10: // Rome, Castle Peak (Zen 2)
-    case 0x60f00: // Renoir (Zen 2)
+    case 0x60f00: // Renoir (Zen 2), Krackan Point (Zen 5) (EXPERIMENTAL)
     case 0x70f10: // Matisse (Zen 2)
     case 0x60f80: // Lucienne (Zen 2)
     case 0x90f00: // Van Gogh (Zen 2)
       if (ext_family == 8) {
         return AMDZen2;
+      } else if (ext_family == 0xb) {
+        return AMDZen5;
       }
       break;
     case 0x20f10: // Vermeer (Zen 3)
