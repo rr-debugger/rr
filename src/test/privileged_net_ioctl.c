@@ -25,7 +25,7 @@ void buf_put_attr(char** cur_buf_pos, uint16_t opt, void* data, size_t size) {
   *cur_buf_pos += RTA_ALIGN(size) - size;
 }
 
-#ifndef htonl
+#ifdef __ANDROID__
 #define htonl(x) __bswap_32(x)
 #endif
 
