@@ -1106,7 +1106,8 @@ struct BaseArch : public wordsize,
     off_t l_len;
     pid_t l_pid;
   };
-  RR_VERIFY_TYPE_EXPLICIT(struct ::flock, _flock);
+  // Doesn't verify on x86-32 where our system off_t is 64 bits because
+  // we need to access large files.
 
   struct flock64 {
     signed_short l_type;
@@ -1325,7 +1326,8 @@ struct BaseArch : public wordsize,
     rlim_t rlim_cur;
     rlim_t rlim_max;
   };
-  RR_VERIFY_TYPE(rlimit);
+  // Doesn't verify on x86-32 where our system off_t is 64 bits because
+  // we need to access large files.
 
   struct rlimit64 {
     rlim64_t rlim_cur;
@@ -1355,7 +1357,8 @@ struct BaseArch : public wordsize,
     __statfs_word f_flags;
     __statfs_word f_spare[4];
   };
-  RR_VERIFY_TYPE_EXPLICIT(struct ::statfs, statfs_t);
+  // Doesn't verify on x86-32 where our system __fsblkcnt_t is 64 bits because
+  // we need to access large files.
 
   /* Don't align for the 64-bit values on 32-bit x86 */
   struct __attribute__((packed)) statfs64_t {
@@ -1568,7 +1571,8 @@ struct BaseArch : public wordsize,
     //    uint8_t d_type;
     uint8_t d_name[256];
   };
-  RR_VERIFY_TYPE(dirent);
+  // Doesn't verify on x86-32 where our system dirent uses 64-bit ino/off because
+  // we need to access large files.
 
   struct dirent64 {
     ino64_t d_ino;
@@ -2271,6 +2275,11 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     uint32_t rule_locs[0];
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::ethtool_rxnfc, struct ethtool_rxnfc);
+
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::flock, _flock);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::rlimit, rlimit);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::statfs, statfs_t);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::dirent, dirent);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
@@ -2433,7 +2442,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     unsigned_long __unused4;
     unsigned_long __unused5;
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat_t);
+  // Doesn't verify on x86-32 where various fields are 64 bits because
+  // we need to access large files/filesystems.
 
   struct __attribute__((packed)) stat64_t {
     dev_t st_dev;
@@ -2643,6 +2653,11 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     uint32_t rule_locs[0];
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::ethtool_rxnfc, struct ethtool_rxnfc);
+
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::flock, _flock);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::rlimit, rlimit);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::statfs, statfs_t);
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::dirent, dirent);
 
   struct user_pac_address_keys {
     __uint128_t apiakey;
