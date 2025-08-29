@@ -131,11 +131,11 @@ void ReplayTask::validate_regs(uint32_t flags) {
       << comparison;
 }
 
-const TraceFrame& ReplayTask::current_trace_frame() {
+const TraceFrame& ReplayTask::current_trace_frame() const {
   return session().current_trace_frame();
 }
 
-FrameTime ReplayTask::current_frame_time() {
+FrameTime ReplayTask::current_frame_time() const {
   return current_trace_frame().time();
 }
 

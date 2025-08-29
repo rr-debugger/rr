@@ -201,7 +201,7 @@ public:
    * Updates tick count from the current performance counter values if
    * necessary.
    */
-  Ticks tick_count() { return ticks; }
+  Ticks tick_count() const { return ticks; }
 
   /**
    * Return the path of this fd as /proc/<pid>/fd/<fd>
