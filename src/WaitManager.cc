@@ -47,7 +47,7 @@ pid_t WaitState::do_wait(pid_t tid, bool consume, int type, double block_seconds
   memset(&siginfo, 0, sizeof(siginfo));
   if (block_seconds <= 0.0) {
     options |= WNOHANG;
-  } else if (block_seconds < WAIT_BLOCK_MAX) {
+  } else if (block_seconds < static_cast<double>(WAIT_BLOCK_MAX)) {
     struct itimerval timer = { { 0, 0 }, to_timeval(block_seconds) };
     if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
       FATAL() << "Failed to set itimer";
@@ -60,7 +60,7 @@ pid_t WaitState::do_wait(pid_t tid, bool consume, int type, double block_seconds
     CLEAN_FATAL() << "waitid(options=" << options
       << ") returned EINVAL; rr requires Linux kernel 4.7 or greater";
   }
-  if (!(block_seconds <= 0.0) && block_seconds < WAIT_BLOCK_MAX) {
+  if (!(block_seconds <= 0.0) && block_seconds < static_cast<double>(WAIT_BLOCK_MAX)) {
     int err = errno;
     struct itimerval timer = { { 0, 0 }, { 0, 0 } };
     if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
