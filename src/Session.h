@@ -135,7 +135,7 @@ struct BreakStatus {
     return result;
   }
 
-  bool any_break() {
+  bool any_break() const {
     return !watchpoints_hit.empty() || signal || breakpoint_hit ||
            singlestep_complete || approaching_ticks_target;
   }
