@@ -3,6 +3,23 @@
 cmake_minimum_required(VERSION 3.12)
 project(rr C CXX ASM)
 
+# Require c++17 as minimum
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+
+# Configure so that we use -std=c++17 (as previously done) not -std=gnu++17
+if(NOT DEFINED CMAKE_CXX_EXTENSIONS)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
+
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Because `CMAKE_CXX_STANDARD_REQUIRED ON` does not enforce this for us.
+if(CMAKE_CXX_STANDARD LESS 17)
+  message(FATAL_ERROR "C++ standard too low: CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}. Minimum required is C++17.")
+endif()
+
 # "Do not add flags to export symbols from executables without the ENABLE_EXPORTS target property."
 # This avoids linking executables with -rdynamic. -rdynamic has been observed
 # to cause rr_exec_stub to be linked with the dynamic linker with some
@@ -104,7 +121,7 @@ endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++17")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS")
 
 # We support three build types:
 # DEBUG: suitable for debugging rr
