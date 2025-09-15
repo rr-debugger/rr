@@ -124,6 +124,7 @@ int main(void) {
   VERIFY_GUARD(nread);
   atomic_printf("FIONREAD returned nread=%d\n", *nread);
 
+#ifdef TCGETS2
   ALLOCATE_GUARD(tc2, 'i');
   test_assert(0 == ioctl(fd, TCGETS2, tc));
   VERIFY_GUARD(tc2);
@@ -136,6 +137,7 @@ int main(void) {
   // NB: leaving the TCSETS2 as the last word seems to mess up the terminal,
   // so fix it.
   test_assert(0 == ioctl(fd, TCSETS, tc));
+#endif
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
