@@ -7,13 +7,13 @@
 #include <linux/ipc.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
-#include <linux/prctl.h>
 #include <linux/unistd.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/personality.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/time.h>
