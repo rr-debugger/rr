@@ -102,6 +102,13 @@
 #include "log.h"
 #include "util.h"
 
+// muslc defines those, but we want a typedef instead
+#if defined(loff_t)
+typedef loff_t __musl_loff_t;
+#undef loff_t
+typedef __musl_loff_t loff_t;
+#endif
+
 using namespace std;
 
 #ifndef HAVE_TERMIOS2
