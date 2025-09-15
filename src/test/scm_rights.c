@@ -37,8 +37,8 @@ static void child(int sock, int fd_minus_one) {
   atomic_printf("c: receiving msg ...\n");
   nread = recvmsg(sock, &msg, 0);
 
-  atomic_printf("c:   ... got %#x (%zd bytes), %zu control bytes\n",
-                mbuf.ints[0], nread, msg.msg_controllen);
+  atomic_printf("c:   ... got %#x (%zd bytes), %ju control bytes\n",
+                mbuf.ints[0], nread, (uintmax_t)msg.msg_controllen);
   test_assert(nread == sizeof(mbuf.ints[0]));
   test_assert(MAGIC == mbuf.ints[0]);
   test_assert(~MAGIC == mbuf.ints[1]);
