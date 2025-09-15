@@ -16,6 +16,7 @@
 /* need to include sys/mount.h before linux/fs.h */
 #include <sys/mount.h>
 
+#include <asm/termbits.h> // constants for sys/ioctl in muslc
 #include <arpa/inet.h>
 #include <assert.h>
 #include <ctype.h>

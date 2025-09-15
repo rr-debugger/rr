@@ -1,5 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#include <asm/termbits.h> // constants for sys/ioctl in muslc
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
