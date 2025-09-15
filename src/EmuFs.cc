@@ -10,6 +10,13 @@
 #include <sstream>
 #include <string>
 
+// muslc defines those, but we want a typedef instead
+#if defined(loff_t)
+typedef loff_t __musl_loff_t;
+#undef loff_t
+typedef __musl_loff_t loff_t;
+#endif
+
 #include "AddressSpace.h"
 #include "ReplaySession.h"
 #include "core.h"

@@ -3,6 +3,9 @@
 #ifndef RR_SCOPED_FD_H_
 #define RR_SCOPED_FD_H_
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
