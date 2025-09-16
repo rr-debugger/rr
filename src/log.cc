@@ -182,6 +182,7 @@ void apply_log_spec(const char *spec) {
     }
   }
   free(env);
+  log_modules->clear();
 }
 
 void apply_log_spec_from_env() {
