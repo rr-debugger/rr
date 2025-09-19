@@ -2511,21 +2511,21 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
   typedef uint32_t legacy_gid_t;
 
   struct stat_t {
-    typename Base<Arch>::dev_t st_dev;
-    typename Base<Arch>::ino_t st_ino;
-    typename Base<Arch>::mode_t st_mode;
-    typename Base<Arch>::nlink_t st_nlink;
-    typename Base<Arch>::uid_t st_uid;
-    typename Base<Arch>::gid_t st_gid;
-    typename Base<Arch>::dev_t st_rdev;
+    typename BaseArch<arch_, wordsize>::dev_t st_dev;
+    typename BaseArch<arch_, wordsize>::ino_t st_ino;
+    typename BaseArch<arch_, wordsize>::mode_t st_mode;
+    typename BaseArch<arch_, wordsize>::nlink_t st_nlink;
+    typename BaseArch<arch_, wordsize>::uid_t st_uid;
+    typename BaseArch<arch_, wordsize>::gid_t st_gid;
+    typename BaseArch<arch_, wordsize>::dev_t st_rdev;
     unsigned long __pad1;
-    typename Base<Arch>::off_t st_size;
-    typename Base<Arch>::blksize_t st_blksize;
+    typename BaseArch<arch_, wordsize>::off_t st_size;
+    typename BaseArch<arch_, wordsize>::blksize_t st_blksize;
     int __pad2;
-    typename Base<Arch>::blkcnt_t st_blocks;
-    struct typename Base<Arch>::timespec st_atim;
-    struct typename Base<Arch>::timespec st_mtim;
-    struct typename Base<Arch>::timespec st_ctim;
+    typename BaseArch<arch_, wordsize>::blkcnt_t st_blocks;
+    typename BaseArch<arch_, wordsize>::timespec st_atim;
+    typename BaseArch<arch_, wordsize>::timespec st_mtim;
+    typename BaseArch<arch_, wordsize>::timespec st_ctim;
     int __rr_unused[2];
   };
 
