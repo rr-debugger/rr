@@ -2511,21 +2511,21 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
   typedef uint32_t legacy_gid_t;
 
   struct stat_t {
-    dev_t st_dev;
-    ino_t st_ino;
-    mode_t st_mode;
-    nlink_t st_nlink;
-    uid_t st_uid;
-    gid_t st_gid;
-    dev_t st_rdev;
+    typename Base<Arch>::dev_t st_dev;
+    typename Base<Arch>::ino_t st_ino;
+    typename Base<Arch>::mode_t st_mode;
+    typename Base<Arch>::nlink_t st_nlink;
+    typename Base<Arch>::uid_t st_uid;
+    typename Base<Arch>::gid_t st_gid;
+    typename Base<Arch>::dev_t st_rdev;
     unsigned long __pad1;
-    off_t st_size;
-    blksize_t st_blksize;
+    typename Base<Arch>::off_t st_size;
+    typename Base<Arch>::blksize_t st_blksize;
     int __pad2;
-    blkcnt_t st_blocks;
-    struct timespec st_atim;
-    struct timespec st_mtim;
-    struct timespec st_ctim;
+    typename Base<Arch>::blkcnt_t st_blocks;
+    struct typename Base<Arch>::timespec st_atim;
+    struct typename Base<Arch>::timespec st_mtim;
+    struct typename Base<Arch>::timespec st_ctim;
     int __rr_unused[2];
   };
 
