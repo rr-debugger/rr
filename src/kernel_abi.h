@@ -2628,6 +2628,7 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     struct ucontext uc;
   };
 
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::stat, struct stat_t);
   RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::semid64_ds, struct semid64_ds);
 
   struct ethtool_rx_flow_spec {
