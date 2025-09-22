@@ -3595,7 +3595,7 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
       syscall_state.syscall_entry_registers.original_syscallno());
   new_r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
   new_task->set_regs(new_r);
-  new_task->canonicalize_regs(new_task->arch());
+  new_task->canonicalize_regs(Arch::arch());
   new_task->set_termination_signal(termination_signal);
   // If the task got killed right away, we need to treat this
   // as if we are just finished a syscall
@@ -3649,7 +3649,7 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
   r.set_original_syscallno(
       syscall_state.syscall_entry_registers.original_syscallno());
   t->set_regs(r);
-  t->canonicalize_regs(t->arch());
+  t->canonicalize_regs(Arch::arch());
 
   // We're in a PTRACE_EVENT_FORK/VFORK/CLONE so the next PTRACE_SYSCALL for
   // |t| will go to the exit of the syscall, as expected.
@@ -5646,7 +5646,7 @@ static void rec_prepare_restart_syscall_arch(RecordTask* t,
       r.set_original_syscallno(
           syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
-      t->canonicalize_regs(t->arch());
+      t->canonicalize_regs(Arch::arch());
       t->in_wait_type = WAIT_TYPE_NONE;
       t->in_wait_options = 0;
       break;

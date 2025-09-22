@@ -1048,7 +1048,7 @@ bool Task::exit_syscall_and_prepare_restart(SupportedArch syscall_arch) {
   // the tracee trapped at the syscall.
   r.set_original_syscallno(-1);
   r.set_syscallno(syscallno);
-  r.set_ip(r.ip() - syscall_instruction_length(r.arch()));
+  r.set_ip(r.ip() - syscall_instruction_length(syscall_arch));
   set_regs(r);
   return true;
 }
