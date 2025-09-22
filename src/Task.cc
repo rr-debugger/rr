@@ -945,7 +945,7 @@ void Task::move_ip_before_breakpoint() {
   set_regs(r);
 }
 
-bool Task::enter_syscall(bool allow_exit) {
+bool Task::enter_syscall(SupportedArch syscall_arch, bool allow_exit) {
   bool need_ptrace_syscall_event = !seccomp_bpf_enabled ||
                                    session().syscall_seccomp_ordering() ==
                                        Session::SECCOMP_BEFORE_PTRACE_SYSCALL;
@@ -985,11 +985,11 @@ bool Task::enter_syscall(bool allow_exit) {
     static_cast<RecordTask*>(this)->stash_sig();
   }
   apply_syscall_entry_regs();
-  canonicalize_regs(arch());
+  canonicalize_regs(syscall_arch);
   return true;
 }
 
-bool Task::exit_syscall() {
+bool Task::exit_syscall(SupportedArch syscall_arch) {
   // If PTRACE_SYSCALL_BEFORE_SECCOMP, we are inconsistent about
   // whether we process the syscall on the syscall entry trap or
   // on the seccomp trap. Detect if we are on the former and
@@ -1011,7 +1011,7 @@ bool Task::exit_syscall() {
     }
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
-      canonicalize_regs(arch());
+      canonicalize_regs(syscall_arch);
       break;
     }
     if (ReplaySession::is_ignored_signal(stop_sig()) &&
@@ -1024,16 +1024,16 @@ bool Task::exit_syscall() {
   return true;
 }
 
-bool Task::exit_syscall_and_prepare_restart() {
+bool Task::exit_syscall_and_prepare_restart(SupportedArch syscall_arch) {
   Registers r = regs();
   int syscallno = r.original_syscallno();
   LOG(debug) << "exit_syscall_and_prepare_restart from syscall "
-             << rr::syscall_name(syscallno, r.arch());
-  r.set_original_syscallno(syscall_number_for_gettid(r.arch()));
+             << rr::syscall_name(syscallno, syscall_arch);
+  r.set_original_syscallno(syscall_number_for_gettid(syscall_arch));
   set_regs(r);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
-  if (!exit_syscall()) {
+  if (!exit_syscall(syscall_arch)) {
     // The tracee unexpectedly exited. To get this to replay correctly, we need to
     // make it look like we really entered the syscall. Then
     // handle_ptrace_exit_event will record something appropriate.
@@ -4401,7 +4401,7 @@ void Task::os_exec(SupportedArch exec_arch, std::string filename)
   set_regs(regs);
 
   LOG(debug) << "Beginning execve" << this->regs();
-  enter_syscall();
+  enter_syscall(exec_arch);
   ASSERT(this, !stop_sig()) << "exec failed on entry";
   /* Complete the syscall. The tid of the task will be the thread-group-leader
    * tid, no matter what tid it was before.

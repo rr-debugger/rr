@@ -1361,6 +1361,7 @@ set(BASIC_TESTS
   send_block
   sendfile
   set_ptracer
+  x86/set_thread_area
   set_tid_address
   setgid
   setgroups

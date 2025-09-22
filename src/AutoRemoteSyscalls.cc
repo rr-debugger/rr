@@ -301,7 +301,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     regs.set_syscallno(rr::ARM64Arch::getpid);
     regs.set_arg1(regs.orig_arg1());
     t->set_regs(regs);
-    if (t->enter_syscall(true)) {
+    if (t->enter_syscall(aarch64, true)) {
       if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
         // Tracee died unexpectedly, there is nothing more we can do.
         // Do not restore the status, we want callers to see that the task died.
@@ -383,7 +383,8 @@ static bool ignore_signal(Task* t) {
 }
 
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
-  LOG(debug) << "syscall " << syscall_name(syscallno, t->arch()) << " " << callregs;
+  SupportedArch arch = t->arch();
+  LOG(debug) << "syscall " << syscall_name(syscallno, arch) << " " << callregs;
 
   if (t->is_exiting()) {
     LOG(debug) << "Task is dying, don't try anything.";
@@ -392,9 +393,9 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   }
 
   if ((int)callregs.arg1() == SIGTRAP && use_singlestep_path &&
-      (is_sigaction_syscall(syscallno, t->arch()) ||
-       is_rt_sigaction_syscall(syscallno, t->arch()) ||
-       is_signal_syscall(syscallno, t->arch()))) {
+      (is_sigaction_syscall(syscallno, arch) ||
+       is_rt_sigaction_syscall(syscallno, arch) ||
+       is_signal_syscall(syscallno, arch))) {
     // Don't use the fast path if we're about to set up a signal handler
     // for SIGTRAP!
     LOG(debug) << "Disabling singlestep path due to SIGTRAP sigaction";
@@ -436,7 +437,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     if (from_seccomp) {
       LOG(debug) << "Skipping enter_syscall - already at seccomp stop";
     } else {
-      if (!t->enter_syscall(true)) {
+      if (!t->enter_syscall(arch, true)) {
         // Tracee was killed, there is nothing more we can do.
         // Ensure callers see the task death status.
         ASSERT(t, t->stopped_or_unexpected_exit()) << "couldn't enter syscall";
@@ -460,8 +461,8 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       // done.
       break;
     }
-    if (is_clone_syscall(syscallno, t->arch()) &&
-        t->clone_syscall_is_complete(&new_tid_, t->arch())) {
+    if (is_clone_syscall(syscallno, arch) &&
+        t->clone_syscall_is_complete(&new_tid_, arch)) {
       if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
         // Tracee was killed, there is nothing more we can do.
         ASSERT(t, t->stopped_or_unexpected_exit()) << "Couldn't resume clone";
@@ -472,7 +473,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     }
     if (ignore_signal(t)) {
       if (t->regs().syscall_may_restart()) {
-        if (!t->enter_syscall(true)) {
+        if (!t->enter_syscall(arch, true)) {
           // Tracee was killed, there is nothing more we can do.
           ASSERT(t, t->stopped_or_unexpected_exit()) << "Couldn't restart";
           return -ESRCH;

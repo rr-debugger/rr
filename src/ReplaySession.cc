@@ -1653,7 +1653,7 @@ Completion ReplaySession::patch_next_syscall(
     }
 
     t->canonicalize_regs(t->arch());
-    t->exit_syscall_and_prepare_restart();
+    t->exit_syscall_and_prepare_restart(t->arch());
   }
   apply_patch_data(t);
   return COMPLETE;

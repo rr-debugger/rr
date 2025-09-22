@@ -3340,11 +3340,10 @@ static void prepare_exit(RecordTask* t) {
 
   Registers r = t->regs();
   Registers exit_regs = r;
+  SupportedArch arch = t->ev().Syscall().arch();
   ASSERT(t,
-         is_exit_syscall(exit_regs.original_syscallno(),
-                         t->ev().Syscall().arch()) ||
-             is_exit_group_syscall(exit_regs.original_syscallno(),
-                                   t->ev().Syscall().arch()))
+         is_exit_syscall(exit_regs.original_syscallno(), arch) ||
+             is_exit_group_syscall(exit_regs.original_syscallno(), arch))
       << "Tracee should have been at exit/exit_group, but instead at "
       << t->ev().Syscall().syscall_name();
 
@@ -3359,7 +3358,7 @@ static void prepare_exit(RecordTask* t) {
   // anymore.
   //
   // So hijack this SYS_exit call and rewrite it into a SYS_rt_sigprocmask.
-  r.set_original_syscallno(syscall_number_for_rt_sigprocmask(t->arch()));
+  r.set_original_syscallno(syscall_number_for_rt_sigprocmask(arch));
   r.set_arg1(SIG_BLOCK);
   r.set_arg2(AddressSpace::rr_page_record_ff_bytes());
   r.set_arg3(0);
@@ -3367,7 +3366,7 @@ static void prepare_exit(RecordTask* t) {
   t->set_regs(r);
   // This exits the SYS_rt_sigprocmask.  Now the tracee is ready to do our
   // bidding.
-  t->exit_syscall();
+  t->exit_syscall(arch);
   check_signals_while_exiting(t);
 
   // Do the actual buffer and fd cleanup.
@@ -3380,12 +3379,12 @@ static void prepare_exit(RecordTask* t) {
   // cleanup, we'll restart the call.
   exit_regs.set_syscallno(exit_regs.original_syscallno());
   exit_regs.set_original_syscallno(-1);
-  exit_regs.set_ip(exit_regs.ip() - syscall_instruction_length(t->arch()));
+  exit_regs.set_ip(exit_regs.ip() - syscall_instruction_length(arch));
   ASSERT(t, is_at_syscall_instruction(t, exit_regs.ip()))
       << "Tracee should have entered through int $0x80.";
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);
-  t->enter_syscall();
+  t->enter_syscall(arch);
   check_signals_while_exiting(t);
 
   if (t->emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
@@ -3521,7 +3520,7 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
   int ptrace_event;
   int termination_signal = SIGCHLD;
 
-  if (is_clone_syscall(original_syscall, r.arch())) {
+  if (is_clone_syscall(original_syscall, Arch::arch())) {
     params = extract_clone_parameters(t);
     flags = r.arg1();
     r.set_arg1(flags & ~uintptr_t(CLONE_UNTRACED));
@@ -3534,7 +3533,7 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
     } else {
       ptrace_event = PTRACE_EVENT_CLONE;
     }
-  } else if (is_vfork_syscall(original_syscall, r.arch())) {
+  } else if (is_vfork_syscall(original_syscall, Arch::arch())) {
     ptrace_event = PTRACE_EVENT_VFORK;
     flags = CLONE_VM | CLONE_VFORK | SIGCHLD;
   } else {
@@ -3564,23 +3563,23 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
       // Restore register we might have changed
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       r.set_syscallno(Arch::gettid);
-      r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+      r.set_ip(r.ip().decrement_by_syscall_insn_length(Arch::arch()));
       t->set_regs(r);
-      t->enter_syscall();
+      t->enter_syscall(Arch::arch());
       r.set_ip(t->regs().ip());
       r.set_syscallno(original_syscall);
       r.set_original_syscallno(original_syscall);
       t->set_regs(r);
-      t->canonicalize_regs(t->arch());
+      t->canonicalize_regs(Arch::arch());
       return ALLOW_SWITCH;
     }
     // Reenter the syscall. If we try to return an ERESTART* error using the
     // code path above, our set_syscallno(SYS_gettid) fails to take effect and
     // we actually do the clone, and things get horribly confused.
     r.set_syscallno(r.original_syscallno());
-    r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+    r.set_ip(r.ip().decrement_by_syscall_insn_length(Arch::arch()));
     t->set_regs(r);
-    t->enter_syscall();
+    t->enter_syscall(Arch::arch());
   }
 
   ASSERT(t, t->ptrace_event() == ptrace_event);
@@ -5393,7 +5392,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         return PREVENT_SWITCH;
       }
 
-      t->exit_syscall();
+      t->exit_syscall(Arch::arch());
       pid_t new_tid = do_detach_teleport(t);
 
       // Leave the proxy where it is --- just exited the detach_teleport
