@@ -2,6 +2,8 @@
 
 #include "util.h"
 
+#include <linux/tiocl.h>
+
 int main(void) {
   int fd = open("/dev/ptmx", O_RDWR);
   pid_t child;
@@ -67,6 +69,13 @@ int main(void) {
   VERIFY_GUARD(arg);
   atomic_printf("pty TIOCGETD = %d\n", *arg);
   test_assert(0 == ioctl(fd, TIOCSETD, arg));
+
+  char* carg;
+  ALLOCATE_GUARD(carg, 'f');
+  *carg = TIOCL_GETSHIFTSTATE;
+  ret = ioctl(fd, TIOCLINUX, carg);
+  VERIFY_GUARD(carg);
+  test_assert(ret == 0 || errno == EIO || errno == ENOTTY);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

@@ -1800,6 +1800,10 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::termio>(3);
       return PREVENT_SWITCH;
 
+    case TIOCLINUX:
+      syscall_state.reg_parameter<char>(3);
+      return PREVENT_SWITCH;
+
     case BLKSSZGET:
     case BLKALIGNOFF:
     case KDGKBMODE:
