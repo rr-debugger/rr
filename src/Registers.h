@@ -125,7 +125,7 @@ public:
                       size_t size);
 
 #define ARCH_SWITCH_CASE(rettype, x86case, x64case, arm64case)                 \
-(([=](void) -> rettype {                                                       \
+(([&](void) -> rettype {                                                       \
   switch (arch()) {                                                            \
     default:                                                                   \
       DEBUG_ASSERT(0 && "unknown architecture");                               \

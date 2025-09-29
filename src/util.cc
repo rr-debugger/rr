@@ -13,13 +13,13 @@
 #include <limits.h>
 #include <linux/capability.h>
 #include <linux/magic.h>
-#include <linux/prctl.h>
 #include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/time.h>

@@ -1162,7 +1162,7 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, remote_code_ptr ip, 
   intptr_t syscallno = t->regs().original_syscallno();
   if (hook_ptr) {
     // Get out of executing the current syscall before we patch it.
-    if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
+    if (entering_syscall && !t->exit_syscall_and_prepare_restart(arch)) {
       return false;
     }
 
@@ -1172,7 +1172,7 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, remote_code_ptr ip, 
     success = patch_syscall_with_hook(*this, t, *hook_ptr, ip - instruction_length, instruction_length, 0);
     if (!success && entering_syscall) {
       // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
-      t->enter_syscall();
+      t->enter_syscall(arch);
     }
   }
 
@@ -1222,7 +1222,7 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, remote_code_ptr ip,
   }
 
   // Get out of executing the current syscall before we patch it.
-  if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
+  if (entering_syscall && !t->exit_syscall_and_prepare_restart(aarch64)) {
     return false;
   }
 
@@ -1232,7 +1232,7 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, remote_code_ptr ip,
   auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], ip - 4, 4, 0);
   if (!success && entering_syscall) {
     // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
-    if (!t->enter_syscall()) {
+    if (!t->enter_syscall(aarch64)) {
       return false;
     }
   }

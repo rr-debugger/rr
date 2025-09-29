@@ -2510,23 +2510,24 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
   typedef uint32_t legacy_uid_t;
   typedef uint32_t legacy_gid_t;
 
+  // See kernel include/uapi/asm-generic/stat.h
   struct stat_t {
-    dev_t st_dev;
-    ino_t st_ino;
-    mode_t st_mode;
-    nlink_t st_nlink;
-    uid_t st_uid;
-    gid_t st_gid;
-    dev_t st_rdev;
-    unsigned long __pad1;
-    off_t st_size;
-    blksize_t st_blksize;
-    int __pad2;
-    blkcnt_t st_blocks;
-    struct timespec st_atim;
-    struct timespec st_mtim;
-    struct timespec st_ctim;
-    int __rr_unused[2];
+    typename BaseArch<arch_, wordsize>::unsigned_long st_dev;
+    typename BaseArch<arch_, wordsize>::unsigned_long st_ino;
+    typename BaseArch<arch_, wordsize>::unsigned_int st_mode;
+    typename BaseArch<arch_, wordsize>::unsigned_int st_nlink;
+    typename BaseArch<arch_, wordsize>::unsigned_int st_uid;
+    typename BaseArch<arch_, wordsize>::unsigned_int st_gid;
+    typename BaseArch<arch_, wordsize>::unsigned_long st_rdev;
+    typename BaseArch<arch_, wordsize>::unsigned_long __pad1;
+    typename BaseArch<arch_, wordsize>::signed_long st_size;
+    typename BaseArch<arch_, wordsize>::signed_int st_blksize;
+    typename BaseArch<arch_, wordsize>::signed_int __pad2;
+    typename BaseArch<arch_, wordsize>::signed_long st_blocks;
+    typename BaseArch<arch_, wordsize>::timespec st_atim;
+    typename BaseArch<arch_, wordsize>::timespec st_mtim;
+    typename BaseArch<arch_, wordsize>::timespec st_ctim;
+    typename BaseArch<arch_, wordsize>::unsigned_int __rr_unused[2];
   };
 
   struct semid64_ds {
@@ -2628,6 +2629,7 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     struct ucontext uc;
   };
 
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::stat, struct stat_t);
   RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::semid64_ds, struct semid64_ds);
 
   struct ethtool_rx_flow_spec {

@@ -116,6 +116,8 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelMeteorLake;
     case 0xb06d0:
       return IntelLunarLake;
+    case 0xb06e0:
+      return IntelGracemont;
     case 0xc0660:
       return IntelArrowLake;
     case 0xf20:  // Piledriver

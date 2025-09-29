@@ -23,7 +23,7 @@ namespace rr {
 static volatile int sigio_count;
 
 static void sigio_handler(int, siginfo_t*, void*) {
-  ++sigio_count;
+  sigio_count += 1;
 }
 
 static bool can_use_switch_records() {

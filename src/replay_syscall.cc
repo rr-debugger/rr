@@ -233,7 +233,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   }
 
   // Get out of the syscall
-  t->exit_syscall();
+  t->exit_syscall(Arch::arch());
 
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
@@ -1150,7 +1150,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
   }
 
   /* Manual implementations of irregular syscalls that need to do more during
-   * replay than just modify register and memory state.
+   * replay than just modify registenter_syscaller and memory state.
    * Don't let a negative incoming syscall number be treated as a real
    * system call that we assigned a negative number because it doesn't
    * exist in this architecture.
@@ -1240,8 +1240,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       if (modified_sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
-      t->enter_syscall();
-      t->exit_syscall();
+      t->enter_syscall(Arch::arch());
+      t->exit_syscall(Arch::arch());
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       if (modified_sys == Arch::mprotect) {
         Registers r2 = t->regs();

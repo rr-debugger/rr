@@ -3,6 +3,8 @@
 #ifndef RR_EVENT_H_
 #define RR_EVENT_H_
 
+#include <sys/types.h>
+
 #include <memory>
 #include <ostream>
 #include <stack>

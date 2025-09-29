@@ -201,7 +201,7 @@ public:
    * Updates tick count from the current performance counter values if
    * necessary.
    */
-  Ticks tick_count() { return ticks; }
+  Ticks tick_count() const { return ticks; }
 
   /**
    * Return the path of this fd as /proc/<pid>/fd/<fd>
@@ -425,7 +425,7 @@ public:
    * state to reenter the syscall just as it was called the first time.
    * Returns false if we see the process exit instead.
    */
-  bool exit_syscall_and_prepare_restart();
+  bool exit_syscall_and_prepare_restart(SupportedArch syscall_arch);
 
   /**
    * We're currently in user-space with registers set up to perform a system
@@ -434,7 +434,7 @@ public:
    * Return `true` if the syscall entry succeeded.
    * Return `false` if the tracee exited unexpectedly.
    */
-  bool enter_syscall(bool allow_exit=false);
+  bool enter_syscall(SupportedArch syscall_arch, bool allow_exit = false);
 
   /**
    * We have observed entry to a syscall (either by PTRACE_EVENT_SECCOMP or
@@ -443,7 +443,7 @@ public:
    * PTRACE_SYSCALL syscall-exit trap. Returns false if we see the process exit
    * before that; we may or may not be stopped in that case.
    */
-  bool exit_syscall();
+  bool exit_syscall(SupportedArch syscall_arch);
 
   /**
    * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
