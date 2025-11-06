@@ -49,8 +49,11 @@ RecordCommand RecordCommand::singleton(
     "                             <AAA>: Bitmask of bits to clear from EAX\n"
     "  -h, --chaos                randomize scheduling decisions to try to \n"
     "                             reproduce bugs\n"
-    "  -n, --no-syscall-buffer    disable the syscall buffer preload \n"
-    "                             library even if it would otherwise be used\n"
+    "  -n, --no-syscall-buffer    disable syscall buffering even if it would\n"
+    "                             otherwise be used\n"
+    "  --no-preload               disable the preload library; useful when\n"
+    "                             tracee uses a non-standard C ABI but may\n"
+    "                             cause replay issues. Implies -n.\n"
     "  --no-file-cloning          disable file cloning for mmapped files\n"
     "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
     "                             reads\n"
@@ -193,6 +196,9 @@ struct RecordFlags {
   /* True if we should check files being mapped outside of the recording. */
   bool check_outside_mmaps;
 
+  /* True if we should not add the preload library to LD_PRELOAD. */
+  bool no_preload = false;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -282,6 +288,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 18, "tsan", NO_PARAMETER },
     { 19, "intel-pt", NO_PARAMETER },
     { 20, "check-outside-mmaps", NO_PARAMETER },
+    { 21, "no-preload", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -507,6 +514,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 20:
       flags.check_outside_mmaps = true;
       break;
+    case 21:
+      flags.no_preload = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -696,11 +706,10 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
 
   auto session = RecordSession::create(
       args, flags.extra_env, flags.disable_cpuid_features,
-      flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
-      flags.bind_cpu, flags.output_trace_dir,
-      flags.trace_id.get(),
-      flags.stap_sdt, flags.unmap_vdso, flags.asan, flags.tsan,
-      flags.intel_pt, flags.check_outside_mmaps);
+      flags.use_syscall_buffer, flags.syscallbuf_desched_sig, flags.bind_cpu,
+      flags.output_trace_dir, flags.trace_id.get(), flags.stap_sdt,
+      flags.unmap_vdso, flags.asan, flags.tsan, flags.intel_pt,
+      flags.check_outside_mmaps, flags.no_preload);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();
