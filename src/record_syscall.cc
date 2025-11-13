@@ -111,7 +111,7 @@ typedef __musl_loff_t loff_t;
 
 using namespace std;
 
-#ifndef HAVE_TERMIOS2
+#if defined (TCGETS2) && ! defined (HAVE_TERMIOS2)
 // The kernel header that defines this conflicts badly with glibc headers
 // (but not bionic, which does define this) so we define it ourselves.
 // NB: We need this struct defined so that the preprocessor macro for
@@ -1983,7 +1983,9 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(TUNSETIFINDEX):
       case IOCTL_MASK_SIZE(TUNSETVNETLE):
       case IOCTL_MASK_SIZE(TUNSETVNETBE):
+      #ifdef TCSETS2
       case IOCTL_MASK_SIZE(TCSETS2):
+      #endif
         return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
         // Reads and writes its parameter despite not having the _IOC_READ bit.
@@ -2119,7 +2121,10 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(OTPGETREGIONINFO):
     case IOCTL_MASK_SIZE(ECCGETLAYOUT):
     case IOCTL_MASK_SIZE(ECCGETSTATS):
+    #ifndef TCGETS2
     case IOCTL_MASK_SIZE(TCGETS2):
+    #endif
+
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
