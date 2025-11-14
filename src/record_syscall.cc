@@ -1984,6 +1984,8 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(TUNSETVNETLE):
       case IOCTL_MASK_SIZE(TUNSETVNETBE):
       case IOCTL_MASK_SIZE(TCSETS2):
+      case IOCTL_MASK_SIZE(TCSETSW2):
+      case IOCTL_MASK_SIZE(TCSETSF2):
         return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
         // Reads and writes its parameter despite not having the _IOC_READ bit.

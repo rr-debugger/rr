@@ -132,6 +132,8 @@ int main(void) {
                 tc2->c_iflag, tc2->c_oflag, tc2->c_cflag, tc2->c_lflag,
                 tc2->c_ispeed, tc2->c_ospeed);
   test_assert(0 == ioctl(fd, TCSETS2, tc2));
+  test_assert(0 == ioctl(fd, TCSETSW2, tc2));
+  test_assert(0 == ioctl(fd, TCSETSF2, tc2));
 
   // NB: leaving the TCSETS2 as the last word seems to mess up the terminal,
   // so fix it.
