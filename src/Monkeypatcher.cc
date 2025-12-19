@@ -2,6 +2,7 @@
 
 #include "Monkeypatcher.h"
 
+#include <elf.h>
 #include <limits.h>
 #include <linux/auxvec.h>
 
@@ -1423,9 +1424,8 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
 
   for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
-    patcher.patch_after_mmap(t, km.start(), km.size(),
-                             km.file_offset_bytes(), -1,
-                             Monkeypatcher::MMAP_EXEC);
+    patcher.patch_after_mmap(t, km.start(), km.size(), km.file_offset_bytes(),
+                             km.prot(), -1, Monkeypatcher::MMAP_EXEC);
   }
 
   if (!t->vm()->has_vdso()) {
@@ -1443,9 +1443,8 @@ void patch_after_exec_arch<ARM64Arch>(RecordTask* t, Monkeypatcher& patcher) {
 
   for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
-    patcher.patch_after_mmap(t, km.start(), km.size(),
-                             km.file_offset_bytes(), -1,
-                             Monkeypatcher::MMAP_EXEC);
+    patcher.patch_after_mmap(t, km.start(), km.size(), km.file_offset_bytes(),
+                             km.prot(), -1, Monkeypatcher::MMAP_EXEC);
   }
 
   if (!t->vm()->has_vdso()) {
@@ -1498,27 +1497,46 @@ void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
 
 static remote_ptr<void> resolve_address(ElfReader& reader, uintptr_t elf_addr,
                                         remote_ptr<void> map_start,
-                                        size_t map_size,
-                                        uintptr_t map_offset) {
-  uintptr_t file_offset;
-  if (!reader.addr_to_offset(elf_addr, file_offset)) {
+                                        size_t map_size, uintptr_t map_offset,
+                                        uint64_t prot) {
+  PhdrInfo phdr;
+  if (!reader.addr_to_phdr(elf_addr, phdr)) {
     LOG(warn) << "ELF address " << HEX(elf_addr) << " not in file";
   }
-  if (file_offset < map_offset || file_offset + 32 > map_offset + map_size) {
-    // The value(s) to be set are outside the mapped range. This happens
-    // because code and data can be mapped in separate, partial mmaps in which
-    // case some symbols will be outside the mapped range.
+  if (phdr.offset < map_offset ||
+      phdr.offset + phdr.filesz > map_offset + map_size ||
+      bool(phdr.flags & PF_R) != bool(prot & PROT_READ) ||
+      bool(phdr.flags & PF_W) != bool(prot & PROT_WRITE) ||
+      bool(phdr.flags & PF_X) != bool(prot & PROT_EXEC)) {
+    // The value(s) to be set are outside the mapped range or belong to another
+    // mapping as indicated by the flags. This happens because code and data can
+    // be mapped in separate, partial mmaps in which case some symbols will be
+    // outside the mapped range.
     return nullptr;
   }
-  return map_start + uintptr_t(file_offset - map_offset);
+
+  // This is the distance from the file offset of the mapping to p_offset, which
+  // is the same as the distance from map_start to p_vaddr + load bias.
+  auto page_start_offset = phdr.offset - map_offset;
+
+  // Adjust map_start so that it points to p_vaddr + load bias.
+  map_start += page_start_offset;
+
+  // Now subtract p_vaddr to make it point to virtual address 0 (the load bias).
+  map_start -= phdr.vaddr;
+
+  // Finally, add the address from the symbol table to adjust it by the load
+  // bias.
+  return map_start + elf_addr;
 }
 
 static void set_and_record_bytes(RecordTask* t, ElfReader& reader,
                                  uintptr_t elf_addr, const void* bytes,
                                  size_t size, remote_ptr<void> map_start,
-                                 size_t map_size, size_t map_offset) {
+                                 size_t map_size, size_t map_offset,
+                                 uint64_t prot) {
   remote_ptr<void> addr =
-    resolve_address(reader, elf_addr, map_start, map_size, map_offset);
+      resolve_address(reader, elf_addr, map_start, map_size, map_offset, prot);
   if (!addr) {
     return;
   }
@@ -1539,13 +1557,13 @@ static void set_and_record_bytes(RecordTask* t, ElfReader& reader,
 void Monkeypatcher::patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
                                              uintptr_t elf_addr,
                                              remote_ptr<void> map_start,
-                                             size_t map_size,
-                                             size_t map_offset) {
+                                             size_t map_size, size_t map_offset,
+                                             uint64_t prot) {
   if (t->arch() != x86_64) {
     return;
   }
   remote_ptr<void> addr =
-    resolve_address(reader, elf_addr, map_start, map_size, map_offset);
+    resolve_address(reader, elf_addr, map_start, map_size, map_offset, prot);
   if (!addr) {
     return;
   }
@@ -1641,14 +1659,13 @@ static bool is_aarch64_ldrb(uint32_t instruction, uint32_t* offset) {
  * Patch the __aarch64_have_lse_atomics variable to ensure that LSE atomics are
  * always used even if init_lse_atomics
  */
-void Monkeypatcher::patch_aarch64_have_lse_atomics(RecordTask* t, ElfReader& reader,
-                                                   uintptr_t ldadd4_addr,
-                                                   remote_ptr<void> map_start,
-                                                   size_t map_size,
-                                                   size_t map_offset) {
+void Monkeypatcher::patch_aarch64_have_lse_atomics(
+    RecordTask* t, ElfReader& reader, uintptr_t ldadd4_addr,
+    remote_ptr<void> map_start, size_t map_size, size_t map_offset,
+    uint64_t prot) {
   ASSERT(t, t->arch() == aarch64);
   remote_ptr<void> addr =
-    resolve_address(reader, ldadd4_addr, map_start, map_size, map_offset);
+    resolve_address(reader, ldadd4_addr, map_start, map_size, map_offset, prot);
   if (!addr) {
     return;
   }
@@ -1694,7 +1711,7 @@ static bool file_may_need_instrumentation(const AddressSpace::Mapping& map) {
 }
 
 void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
-                                     size_t size, size_t offset_bytes,
+                                     size_t size, size_t offset_bytes, uint64_t prot,
                                      int child_fd, MmapMode mode) {
   const auto& map = t->vm()->mapping_of(start);
   if (!file_may_need_instrumentation(map)) {
@@ -1747,7 +1764,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
           // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
           // in glibc's elide.h.
           set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
-                               start, size, offset_bytes);
+                               start, size, offset_bytes, prot);
         }
         if (syms.is_name(i, "elision_init")) {
           // Make elision_init return without doing anything. This means
@@ -1756,7 +1773,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
           // elision-conf.c.
           static const uint8_t ret = 0xC3;
           set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
-                               size, offset_bytes);
+                               size, offset_bytes, prot);
         }
         // The following operations can only be applied once because after the
         // patch is applied the code no longer matches the expected template.
@@ -1768,7 +1785,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
              syms.is_name(i, "_dl_runtime_resolve_xsave") ||
              syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
           patch_dl_runtime_resolve(t, reader, syms.addr(i), start, size,
-                                   offset_bytes);
+                                   offset_bytes, prot);
         }
       }
       break;
@@ -1776,7 +1793,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
       for (size_t i = 0; i < syms.size(); ++i) {
         if (syms.is_name(i, "__aarch64_ldadd4_relax")) {
           patch_aarch64_have_lse_atomics(t, reader, syms.addr(i), start, size,
-                                         offset_bytes);
+                                         offset_bytes, prot);
         }
       }
       break;

@@ -6394,7 +6394,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   // at an assertion, in the worst case, we'd end up modifying the underlying
   // file.
   if (!(flags & MAP_SHARED)) {
-    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset, fd,
+    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset, prot, fd,
                                               Monkeypatcher::MMAP_SYSCALL);
   }
 
