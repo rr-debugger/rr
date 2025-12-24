@@ -2798,12 +2798,12 @@ static int non_negative_command(int command) { return command < 0 ? INT32_MAX : 
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
-  pid_t pid = (pid_t)t->regs().arg2_signed();
+  pid_t tid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
   int command = (int)t->regs().arg1_signed();
   switch (non_negative_command(command)) {
     case PTRACE_ATTACH: {
-      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
+      RecordTask* tracee = prepare_ptrace_attach(t, tid, syscall_state);
       if (!tracee) {
         break;
       }
@@ -2833,7 +2833,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_SEIZE: {
-      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
+      RecordTask* tracee = prepare_ptrace_attach(t, tid, syscall_state);
       if (!tracee) {
         break;
       }
@@ -2856,7 +2856,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case Arch::PTRACE_OLDSETOPTIONS:
       RR_FALLTHROUGH;
     case PTRACE_SETOPTIONS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         if (!verify_ptrace_options(t, syscall_state)) {
           break;
@@ -2867,7 +2867,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_GETEVENTMSG: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         auto datap =
             syscall_state.reg_parameter<typename Arch::unsigned_long>(4);
@@ -2879,7 +2879,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_GETSIGINFO: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         auto datap = syscall_state.reg_parameter<typename Arch::siginfo_t>(4);
         typename Arch::siginfo_t dest;
@@ -2894,7 +2894,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_GETREGSET: {
       switch ((int)t->regs().arg3()) {
         case NT_PRSTATUS: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             auto regs = tracee->regs().get_ptrace_for_arch(tracee->arch());
             ptrace_get_reg_set<Arch>(t, syscall_state, regs);
@@ -2902,7 +2902,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           break;
         }
         case NT_PRFPREG: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             if (auto extra_regs = tracee->extra_regs_fallible()) {
               auto regs =
@@ -2920,7 +2920,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             int syscallno = tracee->regs().original_syscallno();
             uint8_t *data = (uint8_t*)&syscallno;
@@ -2936,7 +2936,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ARM64Arch::user_hwdebug_state bps;
             bool ok = tracee->get_aarch64_debug_regs((int)t->regs().arg3(), &bps);
@@ -2953,7 +2953,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             if (auto extra_regs = tracee->extra_regs_fallible()) {
               switch (extra_regs->format()) {
@@ -2982,7 +2982,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       // Task::on_syscall_exit_arch
       switch ((int)t->regs().arg3()) {
         case NT_PRSTATUS: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, user_regs_struct_size(tracee->arch()), syscall_state);
@@ -2990,7 +2990,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           break;
         }
         case NT_PRFPREG: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, user_fpregs_struct_size(tracee->arch()), syscall_state);
@@ -3003,7 +3003,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, sizeof(int), syscall_state);
@@ -3017,7 +3017,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, offsetof(ARM64Arch::user_hwdebug_state, dbg_regs[0]),
@@ -3031,7 +3031,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             if (auto extra_regs = tracee->extra_regs_fallible()) {
               switch (extra_regs->format()) {
@@ -3061,7 +3061,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case Arch::PTRACE_SYSEMU:
     case Arch::PTRACE_SYSEMU_SINGLESTEP:
     case PTRACE_CONT: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       // If the tracer wants to observe syscall entries, we can't use the
       // syscallbuf, because the tracer may want to change syscall numbers
       // which the syscallbuf code is not prepared to handle. Additionally,
@@ -3082,7 +3082,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_DETACH: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         tracee->set_syscallbuf_locked(0);
         tracee->emulated_ptrace_options = 0;
@@ -3095,7 +3095,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_KILL: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         tracee->kill_if_alive();
         syscall_state.emulate_result(0);
@@ -3103,7 +3103,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_INTERRUPT: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid, false);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid, false);
       if (tracee) {
         uint64_t result = 0;
         if (!tracee->is_stopped()) {
@@ -3131,7 +3131,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_GET_SYSCALL_INFO: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         remote_ptr<uint8_t> remote_addr(t->regs().arg4());
         bool ok = true;
@@ -3173,7 +3173,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case Arch::PTRACE_GET_THREAD_AREA:
     case Arch::PTRACE_SET_THREAD_AREA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         if (tracee->arch() != SupportedArch::x86) {
           // This syscall should fail if the tracee is not x86
@@ -3210,7 +3210,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case Arch::PTRACE_ARCH_PRCTL: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         if (tracee->arch() != SupportedArch::x86_64) {
           // This syscall should fail if the tracee is not
@@ -3249,7 +3249,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case PTRACE_PEEKTEXT:
     case PTRACE_PEEKDATA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         // The actual syscall returns the data via the 'data' out-parameter.
         // The behavior of returning the data as the system call result is
@@ -3270,7 +3270,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case PTRACE_POKETEXT:
     case PTRACE_POKEDATA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
         typename Arch::unsigned_word data = t->regs().arg4();
