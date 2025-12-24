@@ -1312,6 +1312,7 @@ set(BASIC_TESTS
   ptrace_trace_clone
   ptrace_trace_exit
   ptrace_traceme
+  ptrace_traceme_thread
   ptrace_waiter_thread
   ptracer_death
   ptracer_death_multithread

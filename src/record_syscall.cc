@@ -2561,60 +2561,63 @@ static bool verify_ptrace_options(RecordTask* t,
   return true;
 }
 
-static bool check_ptracer_compatible(RecordTask* tracer, RecordTask* tracee) {
+static void check_ptracer_compatible(RecordTask* tracer, RecordTask* tracee) {
   // Don't allow a 32-bit process to trace a 64-bit process. That doesn't
   // make much sense (manipulating registers gets crazy), and would be hard to
   // support.
-  if (tracee->emulated_ptracer || tracee->tgid() == tracer->tgid() ||
-      (tracer->arch() == x86 && tracee->arch() == x86_64)) {
-    return false;
-  }
-  return true;
+  ASSERT(tracer, !(tracer->arch() == x86 && tracee->arch() == x86_64));
 }
 
-static RecordTask* get_ptrace_partner(RecordTask* t, pid_t pid) {
+static RecordTask* prepare_ptrace_attach(RecordTask* tracer, pid_t attach_to_tid,
+                                         TaskSyscallState& syscall_state) {
   // To simplify things, require that a ptracer be in the same pid
   // namespace as rr itself. I.e., tracee tasks sandboxed in a pid
   // namespace can't use ptrace. This is normally a requirement of
   // sandboxes anyway.
   // This could be supported, but would require some work to translate
   // rr's pids to/from the ptracer's pid namespace.
-  ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
-  RecordTask* partner = t->session().find_task(pid);
-  if (!partner) {
-    // XXX This prevents a tracee from attaching to a process which isn't
+  ASSERT(tracer, is_same_namespace("pid", tracer->tid, getpid()));
+  RecordTask* tracee = tracer->session().find_task(attach_to_tid);
+  if (!tracee) {
+    // XXX This prevents a tracer from attaching to a process which isn't
     // under rr's control. We could support this but it would complicate
     // things.
-    return nullptr;
-  }
-  return partner;
-}
-
-static RecordTask* prepare_ptrace_attach(RecordTask* t, pid_t pid,
-                                         TaskSyscallState& syscall_state) {
-  RecordTask* tracee = get_ptrace_partner(t, pid);
-  if (!tracee) {
     syscall_state.emulate_result(-ESRCH);
     return nullptr;
   }
-  if (!check_ptracer_compatible(t, tracee)) {
+  if (tracee->emulated_ptracer || tracee->tgid() == tracer->tgid()) {
     syscall_state.emulate_result(-EPERM);
     return nullptr;
   }
+  check_ptracer_compatible(tracer, tracee);
   return tracee;
 }
 
-static RecordTask* prepare_ptrace_traceme(RecordTask* t,
+static RecordTask* prepare_ptrace_traceme(RecordTask* tracee,
                                           TaskSyscallState& syscall_state) {
-  RecordTask* tracer = get_ptrace_partner(t, t->get_parent_pid());
-  if (!tracer) {
-    syscall_state.emulate_result(-ESRCH);
-    return nullptr;
+  RecordTask* tracer = nullptr;
+  pid_t parent_pid = tracee->get_parent_pid();
+  if (tracee->creator_tid != 0) {
+    RecordTask* creator = tracee->session().find_task(tracee->creator_tid);
+    if (creator && creator->thread_group()->tgid == parent_pid) {
+      tracer = creator;
+    }
   }
-  if (!check_ptracer_compatible(tracer, t)) {
+  if (!tracer) {
+    ThreadGroup* tg = tracee->session().find_thread_group(parent_pid);
+    if (tg) {
+      tracer = static_cast<RecordTask*>(tg->first_running_task());
+    }
+    if (!tracer) {
+      syscall_state.emulate_result(0);
+      return nullptr;
+    }
+  }
+  if (tracee->emulated_ptracer || tracee->tgid() == tracer->tgid()) {
     syscall_state.emulate_result(-EPERM);
     return nullptr;
   }
+  check_ptracer_compatible(tracer, tracee);
   return tracer;
 }
 
