@@ -720,6 +720,7 @@ public:
   WaitType in_wait_type;
   int in_wait_options;
   pid_t in_wait_pid;
+  pid_t creator_tid;
 
   // Signal handler state
 
