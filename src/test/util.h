@@ -440,7 +440,7 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #define RR_KCMP_FILES 2
 
 /* Old systems don't have linux/openat2.h */
-struct open_how {
+struct rr_open_how {
 	__u64 flags;
 	__u64 mode;
 	__u64 resolve;
