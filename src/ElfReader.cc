@@ -91,7 +91,7 @@ ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
 
   programheader =
       r.read<typename Arch::ElfPhdr>(elfheader->e_phoff, elfheader->e_phnum);
-  if (!programheader || !elfheader->e_phnum) {
+  if (!programheader) {
     LOG(debug) << "Invalid ELF file: no program headers";
     return;
   }
