@@ -1273,6 +1273,7 @@ set(BASIC_TESTS
   prctl_auxv
   prctl_caps
   prctl_deathsig
+  prctl_mdwe
   prctl_name
   prctl_short_name
   prctl_speculation_ctrl
