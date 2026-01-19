@@ -6539,7 +6539,7 @@ static string extra_expected_errno_info(RecordTask* t,
           ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
         case Arch::prctl: {
-          int request = (int)t->regs().arg1_signed();
+          int request = (int)t->regs().orig_arg1_signed();
           if (request == PR_SET_MM) {
             ss << "; unknown prctl(PR_SET_MM, " << HEX((int)t->regs().arg2_signed()) << ")";
           } else {
@@ -6548,18 +6548,18 @@ static string extra_expected_errno_info(RecordTask* t,
           break;
         }
         case Arch::arch_prctl:
-          ss << "; unknown arch_prctl(" << HEX((int)t->regs().arg1_signed())
+          ss << "; unknown arch_prctl(" << HEX((int)t->regs().orig_arg1_signed())
              << ")";
           break;
         case Arch::keyctl:
-          ss << "; unknown keyctl(" << HEX((int)t->regs().arg1_signed()) << ")";
+          ss << "; unknown keyctl(" << HEX((int)t->regs().orig_arg1_signed()) << ")";
           break;
         case Arch::socketcall:
-          ss << "; unknown socketcall(" << HEX((int)t->regs().arg1_signed())
+          ss << "; unknown socketcall(" << HEX((int)t->regs().orig_arg1_signed())
              << ")";
           break;
         case Arch::ipc:
-          ss << "; unknown ipc(" << HEX((int)t->regs().arg1_signed()) << ")";
+          ss << "; unknown ipc(" << HEX((int)t->regs().orig_arg1_signed()) << ")";
           break;
         case Arch::futex_time64:
         case Arch::futex:
@@ -6567,25 +6567,25 @@ static string extra_expected_errno_info(RecordTask* t,
              << HEX((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) << ")";
           break;
         case Arch::waitid:
-          ss << "; unknown waitid(" << HEX((idtype_t)t->regs().arg1()) << ")";
+          ss << "; unknown waitid(" << HEX((idtype_t)t->regs().orig_arg1()) << ")";
           break;
         case Arch::seccomp:
-          ss << "; unknown seccomp(" << HEX((unsigned int)t->regs().arg1())
+          ss << "; unknown seccomp(" << HEX((unsigned int)t->regs().orig_arg1())
              << ")";
           break;
         case Arch::madvise:
           ss << "; unknown madvise(" << (int)t->regs().arg3() << ")";
           break;
         case Arch::bpf:
-          ss << "; unknown bpf(cmd=" << (int)t->regs().arg1() << ")";
+          ss << "; unknown bpf(cmd=" << (int)t->regs().orig_arg1_signed() << ")";
           break;
       }
       break;
     case EIO:
       switch (t->regs().original_syscallno()) {
         case Arch::ptrace:
-          ss << "; unsupported ptrace(" << HEX((int)t->regs().arg1()) << " ["
-             << ptrace_req_name<Arch>((int)t->regs().arg1_signed()) << "])";
+          ss << "; unsupported ptrace(" << HEX((int)t->regs().orig_arg1_signed()) << " ["
+             << ptrace_req_name<Arch>((int)t->regs().orig_arg1_signed()) << "])";
           break;
       }
       break;
