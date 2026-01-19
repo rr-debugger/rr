@@ -570,6 +570,11 @@ enum {
 #define MEMREAD _IOWR('M', 26, typename Arch::mtd_read_req)
 #endif
 
+// New in the 6.3 kernel
+#ifndef PR_GET_MDWE
+#define PR_GET_MDWE 66
+#endif
+
 // New in the 6.4 kernel
 #ifndef PR_GET_AUXV
 #define PR_GET_AUXV 0x41555856
