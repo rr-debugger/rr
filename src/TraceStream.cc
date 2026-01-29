@@ -937,6 +937,17 @@ bool TraceWriter::copy_file(const std::string& real_file_name,
     LOG(debug) << "Can't open " << access_file_name;
     return false;
   }
+
+  struct stat src_stat;
+  constexpr off_t ONE_GB=1024*1024*1024;
+  if (0 != fstat(src.get(), &src_stat)) {
+    LOG(debug) << "fstat failed for " << access_file_name;
+    return false;
+  } else if(src_stat.st_size >= ONE_GB){
+    LOG(debug) << "file size too large: " << access_file_name << " size:" << src_stat.st_size/(ONE_GB*1.0) << " GB";
+    return false;
+  }
+
   string dest_path = dir() + "/" + path;
   ScopedFd dest(dest_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0700);
   if (!dest.is_open()) {
