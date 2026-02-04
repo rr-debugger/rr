@@ -101,6 +101,10 @@ struct RegisterDescriptor {
   }
 
   bool describes_register(GdbServerRegister gdb_register) const {
+    const auto& layout = xsave_native_layout();
+    if (!(layout.supported_feature_bits & (1ULL << feature))) {
+      return false;
+    }
     // compare end first because we search table linerarly.
     return gdb_register <= end_inclusive && gdb_register >= base;
   }
