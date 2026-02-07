@@ -937,17 +937,6 @@ bool TraceWriter::copy_file(const std::string& real_file_name,
     LOG(debug) << "Can't open " << access_file_name;
     return false;
   }
-
-  struct stat src_stat;
-  constexpr off_t ONE_GB=1024*1024*1024;
-  if (0 != fstat(src.get(), &src_stat)) {
-    LOG(debug) << "fstat failed for " << access_file_name;
-    return false;
-  } else if(src_stat.st_size >= ONE_GB){
-    LOG(debug) << "file size too large: " << access_file_name << " size:" << src_stat.st_size/(ONE_GB*1.0) << " GB";
-    return false;
-  }
-
   string dest_path = dir() + "/" + path;
   ScopedFd dest(dest_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0700);
   if (!dest.is_open()) {
@@ -1006,14 +995,23 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     // debuggers can't find the file, but the Linux loader doesn't create
     // shared mappings so situations where a shared-mapped executable contains
     // usable debug info should be very rare at best...
-    string backing_file_name;
-    if ((km.prot() & PROT_EXEC) &&
-        copy_file(km.fsname(), file_name, &backing_file_name) &&
-        !(km.flags() & MAP_SHARED)) {
-      src.initFile().setBackingFileName(str_to_data(backing_file_name));
-    } else {
-      src.setTrace();
+    if ((km.prot() & PROT_EXEC) && (!(km.flags() & MAP_SHARED))) {
+      // copy files when the mapping is PROT_EXEC, unless the file is too big
+      // the size of km is not equal to the file size obtained through the fstat
+      struct stat src_stat;
+      ScopedFd src_fd(file_name.c_str(), O_RDONLY);
+      if (src_fd.is_open() && (fstat(src_fd.get(), &src_stat) == 0)) {
+        string backing_file_name;
+        constexpr off_t ONE_GB = 1024 * 1024 * 1024;
+        if ((src_stat.st_size <= ONE_GB) && copy_file(km.fsname(), file_name, &backing_file_name)) {
+          src.initFile().setBackingFileName(str_to_data(backing_file_name));
+          return;
+        }
+      } else {
+        LOG(debug) << "fstat failed for " << km.fsname();
+      }
     }
+    src.setTrace();
   };
 
   if (origin == REMAP_MAPPING || origin == PATCH_MAPPING ||
