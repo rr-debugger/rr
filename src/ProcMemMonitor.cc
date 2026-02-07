@@ -8,6 +8,7 @@
 #include "RecordSession.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
+#include "TaskishUid.h"
 #include "log.h"
 
 using namespace std;
@@ -25,6 +26,8 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
     }
   }
 }
+
+ProcMemMonitor::ProcMemMonitor(AddressSpaceUid auid) noexcept : auid(auid) {}
 
 void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                LazyOffset& lazy_offset) {
@@ -66,6 +69,14 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
 
 bool ProcMemMonitor::target_is_vm(AddressSpace *vm) {
   return auid == vm->uid();
+}
+
+void ProcMemMonitor::serialize_type(
+    pcp::FileMonitor::Builder& builder) const noexcept {
+  auto pm = builder.initProcMem();
+  pm.setExecCount(auid.exec_count());
+  pm.setTid(auid.tid());
+  pm.setSerial(auid.serial());
 }
 
 } // namespace rr
