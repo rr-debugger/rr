@@ -995,14 +995,23 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     // debuggers can't find the file, but the Linux loader doesn't create
     // shared mappings so situations where a shared-mapped executable contains
     // usable debug info should be very rare at best...
-    string backing_file_name;
-    if ((km.prot() & PROT_EXEC) &&
-        copy_file(km.fsname(), file_name, &backing_file_name) &&
-        !(km.flags() & MAP_SHARED)) {
-      src.initFile().setBackingFileName(str_to_data(backing_file_name));
-    } else {
-      src.setTrace();
+    if ((km.prot() & PROT_EXEC) && (!(km.flags() & MAP_SHARED))) {
+      // copy files when the mapping is PROT_EXEC, unless the file is too big
+      // the size of km is not equal to the file size obtained through the fstat
+      struct stat src_stat;
+      ScopedFd src_fd(file_name.c_str(), O_RDONLY);
+      if (src_fd.is_open() && (fstat(src_fd.get(), &src_stat) == 0)) {
+        string backing_file_name;
+        constexpr off_t ONE_GB = 1024 * 1024 * 1024;
+        if ((src_stat.st_size <= ONE_GB) && copy_file(km.fsname(), file_name, &backing_file_name)) {
+          src.initFile().setBackingFileName(str_to_data(backing_file_name));
+          return;
+        }
+      } else {
+        LOG(debug) << "fstat failed for " << km.fsname();
+      }
     }
+    src.setTrace();
   };
 
   if (origin == REMAP_MAPPING || origin == PATCH_MAPPING ||
