@@ -1003,7 +1003,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
         (stat.st_size <= 1024 * 1024 * 1024/*1GB*/) &&
         copy_file(km.fsname(), file_name, &backing_file_name))) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
-    }else{
+    } else {
       src.setTrace();
     }
   };
