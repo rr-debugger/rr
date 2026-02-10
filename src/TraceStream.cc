@@ -998,17 +998,11 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     if ((km.prot() & PROT_EXEC) && (!(km.flags() & MAP_SHARED))) {
       // copy files when the mapping is PROT_EXEC, unless the file is too big
       // the size of km is not equal to the file size obtained through the fstat
-      struct stat src_stat;
-      ScopedFd src_fd(file_name.c_str(), O_RDONLY);
-      if (src_fd.is_open() && (fstat(src_fd.get(), &src_stat) == 0)) {
-        string backing_file_name;
-        constexpr off_t ONE_GB = 1024 * 1024 * 1024;
-        if ((src_stat.st_size <= ONE_GB) && copy_file(km.fsname(), file_name, &backing_file_name)) {
-          src.initFile().setBackingFileName(str_to_data(backing_file_name));
-          return;
-        }
-      } else {
-        LOG(debug) << "fstat failed for " << km.fsname();
+      string backing_file_name;
+      constexpr off_t ONE_GB = 1024 * 1024 * 1024;
+      if ((stat.st_size <= ONE_GB) && copy_file(km.fsname(), file_name, &backing_file_name)) {
+        src.initFile().setBackingFileName(str_to_data(backing_file_name));
+        return;
       }
     }
     src.setTrace();
