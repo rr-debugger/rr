@@ -527,7 +527,7 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd& cpu_lock_fd_out);
 /* Updates an IEEE 802.3 CRC-32 least significant bit first from each byte in
  * |buf|.  Pre- and post-conditioning is not performed in this function and so
  * should be performed by the caller, as required. */
-uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len);
+uint32_t rr_crc32(uint32_t crc, unsigned char* buf, size_t len);
 
 /* Like write(2) but any error or "device full" is treated as fatal. We also
  * ensure that all bytes are written by looping on short writes. */

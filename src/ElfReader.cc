@@ -630,7 +630,7 @@ ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {
     } else if (ret == 0) {
       break;
     } else {
-      crc = crc32(crc, buf, ret);
+      crc = rr_crc32(crc, buf, ret);
     }
   }
 
