@@ -1,0 +1,82 @@
+name: Alpine build
+
+#on: [push, pull_request]
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: alpine:latest
+
+    steps:
+      - name: Install prerequisites
+        run: apk add --no-cache bash git curl tar xz
+
+      - name: Cache apk packages
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apk
+          key: ${{ runner.os }}-apk-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apk-
+
+      - name: Install build dependencies
+        run: |
+          apk update
+          apk add --update-cache
+          apk add \
+              build-base \
+              cmake \
+              ninja \
+              ccache \
+              gdb \
+              lldb \
+              pkgconf \
+              python3 \
+              py3-pip \
+              py3-pexpect \
+              coreutils \
+              procps \
+              man-pages \
+              git \
+              capnproto \
+              capnproto-dev \
+              zlib-dev \
+              zstd-dev \
+              elfutils-dev \
+              eudev-dev \
+              libseccomp-dev
+
+      - name: Checkout rr
+        uses: actions/checkout@v4
+
+      - name: Mark repo as safe
+        run: git config --global --add safe.directory /__w/rr/rr
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: build
+          key: ${{ runner.os }}-rr-build-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-rr-build-
+
+      - name: Build rr
+        run: |
+          mkdir -p build && cd build
+          cmake -G Ninja -Ddisable32bit=ON ..
+          ninja -k 0 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rr-build-log
+          path: build/build.log
+
+      - name: Run basic tests
+        run: |
+          cd build
+          ctest --o
