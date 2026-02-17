@@ -17,7 +17,7 @@ class RRPageMonitor : public FileMonitor {
 public:
   RRPageMonitor() : FileMonitor() {};
 
-  virtual Type type() override { return RRPage; }
+  virtual Type type() const override { return RRPage; }
 };
 
 static_assert(TraceReader::SpecialLibRRpage != 0,
