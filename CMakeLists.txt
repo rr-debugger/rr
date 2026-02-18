@@ -705,6 +705,11 @@ if (asan)
   set(RR_FLAGS "${ASAN_FLAGS} ${RR_FLAGS}")
 endif()
 
+file(REMOVE "${CMAKE_BINARY_DIR}/src/test/util_env.sh")
+if (asan)
+  file(WRITE "${CMAKE_BINARY_DIR}/src/test/util_env.sh" "export RR_ASAN=true\n")
+endif()
+
 set_source_files_properties(${RR_SOURCES}
                             PROPERTIES COMPILE_FLAGS ${RR_FLAGS})
 
@@ -1850,6 +1855,18 @@ set(TESTS_WITHOUT_PROGRAM
   when
 )
 
+if (asan)
+  if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+    list(REMOVE_ITEM TESTS_WITH_PROGRAM "ignore_nested")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "nested_detach")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "nested_detach_kill") # depends on nested_detach_wait
+    list(REMOVE_ITEM TESTS_WITH_PROGRAM "nested_detach_kill_stuck") # depends on nested_detach_wait
+    list(REMOVE_ITEM TESTS_WITH_PROGRAM "nested_detach_wait")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "nested_release")
+    list(REMOVE_ITEM TESTS_WITHOUT_PROGRAM "record_replay")
+  endif()
+endif()
+
 if(BUILD_TESTS)
   # Part of the installable testsuite (test files).
   if(INSTALL_TESTSUITE)
@@ -1988,6 +2005,8 @@ if(BUILD_TESTS)
   string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
   if(NOT "${CPU_MODEL_PHI}" STREQUAL "")
     set(TEST_MONITOR_DEFAULT_TIMEOUT 480)
+  elseif(asan)
+    set(TEST_MONITOR_DEFAULT_TIMEOUT 240)
   else()
     set(TEST_MONITOR_DEFAULT_TIMEOUT 120)
   endif()

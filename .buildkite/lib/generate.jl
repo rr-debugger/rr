@@ -3,6 +3,7 @@ import YAML
 include(joinpath(@__DIR__, "common.jl"))
 
 function generate(platform::Platform)
+    force32bit = occursin("force32bit", platform.variant)
     commands = """
     echo "--- Print kernel information"
     uname -a
@@ -18,12 +19,19 @@ function generate(platform::Platform)
       tar -C / -xf DebianGlibc.v2.33.0.aarch64-linux-gnu.tar.gz
     fi
 
+    if [[ "$(force32bit)" == "true" ]]; then
+      echo "--- Installing i386 packages"
+      dpkg --add-architecture i386
+      apt update
+      apt install -y capnproto libcapnp-dev:i386 zlib1g-dev:i386 file
+    fi
+
     echo "--- Generate build environment"
     cmake --version
     rm -rf obj
     mkdir obj
     cd obj
-    cmake ..
+    cmake $(platform.cmake_extra_arg) ..
 
     echo "--- Build"
     make --output-sync -j\$\${JULIA_CPU_THREADS:?}
@@ -41,12 +49,16 @@ function generate(platform::Platform)
     """
     job_label = "Test $(platform.arch)"
     job_key = "test-$(platform.arch)"
+    if platform.variant != ""
+        job_label = "Test $(platform.arch) $(platform.variant)"
+        job_key = "test-$(platform.arch)-$(platform.variant)"
+    end
     yaml = Dict(
         "steps" => [
             Dict(
                 "label" => job_label,
                 "key" => job_key,
-                "timeout_in_minutes" => 45,
+                "timeout_in_minutes" => platform.timeout,
                 "agents" => Dict(
                     "sandbox_capable" => "true",
                     "queue" => "juliaecosystem",
