@@ -1188,6 +1188,7 @@ set(BASIC_TESTS
   memfd_create_efault
   memfd_create_shared
   memfd_create_shared_huge
+  memfd_create_dotnet_huge_mapping
   mincore
   mknod
   mlock
