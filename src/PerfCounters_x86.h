@@ -118,6 +118,7 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelLunarLake;
     case 0xb06e0:
       return IntelGracemont;
+    case 0xb0650:
     case 0xc0650:
     case 0xc0660:
       return IntelArrowLake;
