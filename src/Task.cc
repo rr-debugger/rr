@@ -371,6 +371,12 @@ std::string Task::proc_exe_path() {
   return path;
 }
 
+std::string Task::proc_mem_path() const {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/mem", tid);
+  return path;
+}
+
 std::string Task::exe_path() {
   char proc_exe[PATH_MAX];
   snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", tid);
