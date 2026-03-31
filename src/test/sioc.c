@@ -341,6 +341,7 @@ static void ethtool(int sockfd, struct ifreq* req) {
         struct ethtool_gstrings* et_gstrings = (struct ethtool_gstrings*)buf;
         et_gstrings->cmd = ETHTOOL_GSTRINGS;
         et_gstrings->string_set = i;
+        et_gstrings->len = len;
         req->ifr_data = buf;
         ret = ioctl(sockfd, SIOCETHTOOL, req);
         VERIFY_GUARD(req);
@@ -353,8 +354,8 @@ static void ethtool(int sockfd, struct ifreq* req) {
         } else {
           uint32_t j;
           for (j = 0; j < len; ++j) {
-            atomic_printf("Group %d string %d: %s\n",
-                          i, j, buf + sizeof(struct ethtool_gstrings) + j*ETH_GSTRING_LEN);
+            atomic_printf("Group %d string %d: %.*s\n",
+                          i, j, ETH_GSTRING_LEN, buf + sizeof(struct ethtool_gstrings) + j*ETH_GSTRING_LEN);
           }
         }
       }
