@@ -21,6 +21,7 @@ struct syscallbuf_hdr;
 namespace rr {
 
 class ReplayTask;
+class CheckpointInfo;
 
 /**
  * ReplayFlushBufferedSyscallState is saved in Session and cloned with its
@@ -184,6 +185,8 @@ public:
    * initializing when necessary.
    */
   shr_ptr clone();
+
+  bool partially_initialized() const { return clone_completion != nullptr; }
 
   /**
    * Return true if we're in a state where it's OK to clone. For example,
@@ -376,6 +379,27 @@ public:
   bool mark_stdio() const override;
   bool echo_stdio() const;
 
+  /**
+   * Serializes this session to disk and associates it with the
+   * checkpoint represented in |cp_info|, which represents the time in key,
+   * ticks, etc found in the `Mark` data type. Responsibility is on the caller
+   * that these actually belong together.
+   */
+  void serialize_checkpoint(pcp::CloneCompletionInfo::Builder& writer,
+                            CheckpointInfo& cp_info);
+
+  /**
+   * Deserializes into `this` session the session data found described by
+   * CheckpointInfo `cp`, restoring the process from disk.
+   */
+  void load_checkpoint(const CheckpointInfo& cp);
+
+  /**
+   * Returns persistent checkpoints stored in this trace. Returned
+   * CheckpointInfo list is sorted, ordered by event.
+   */
+  std::vector<CheckpointInfo> get_persistent_checkpoints();
+
 private:
   ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);
@@ -421,6 +445,9 @@ private:
                                       BreakStatus& break_status);
 
   void clear_syscall_bp();
+
+  // load `ReplaySession` session state from serialized checkpoint
+  void restore_session_info(const CheckpointInfo&);
 
   std::shared_ptr<EmuFs> emu_fs;
   std::shared_ptr<ScopedFd> tracee_output_fd_;
