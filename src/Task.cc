@@ -1931,6 +1931,9 @@ template <> bool set_debug_regs_arch<X64Arch>(Task* t,
 static void query_max_bp_wp(Task* t, ssize_t* max_bp, ssize_t* max_wp) {
   ARM64Arch::user_hwdebug_state bps;
   ARM64Arch::user_hwdebug_state wps;
+  memset(&bps, 0, sizeof(bps));
+  memset(&wps, 0, sizeof(wps));
+
   bool ok = t->get_aarch64_debug_regs(NT_ARM_HW_BREAK, &bps) &&
             t->get_aarch64_debug_regs(NT_ARM_HW_WATCH, &wps);
   ASSERT(t, ok);
