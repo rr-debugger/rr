@@ -547,6 +547,11 @@ enum {
 #define MREMAP_DONTUNMAP 4
 #endif
 
+// New in the 5.11 kernel
+#ifndef PR_SET_SYSCALL_USER_DISPATCH
+#define PR_SET_SYSCALL_USER_DISPATCH 59
+#endif
+
 // New in the 5.13 kernel
 #ifndef OTPERASE
 #define OTPERASE _IOW('M', 25, struct otp_info)

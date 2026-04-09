@@ -4936,6 +4936,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
         }
 
+        case PR_SET_SYSCALL_USER_DISPATCH: {
+          // Prevent any PR_SET_SYSCALL_USER_DISPATCH call and pretend it's not
+          // supported.
+          Registers r = regs;
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          syscall_state.emulate_result(-EINVAL);
+          break;
+        }
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;
