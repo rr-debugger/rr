@@ -25,7 +25,8 @@ static bool is_implicit_offset_syscall_arch(int syscallno) {
 template <typename Arch>
 static bool is_write_syscall_arch(int syscallno) {
   return syscallno == Arch::writev || syscallno == Arch::write ||
-         syscallno == Arch::pwrite64 || syscallno == Arch::pwritev;
+         syscallno == Arch::pwrite64 || syscallno == Arch::pwritev ||
+         syscallno == Arch::pwritev2;
 }
 
 static bool is_implicit_offset_syscall(SupportedArch arch, int syscallno) {
@@ -38,8 +39,10 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
   switch (syscallno) {
     case Arch::pwrite64:
     case Arch::pwritev:
+    case Arch::pwritev2:
     case Arch::pread64:
-    case Arch::preadv: {
+    case Arch::preadv:
+    case Arch::preadv2: {
       if (sizeof(typename Arch::unsigned_word) == 4) {
         return regs.arg4() | (uint64_t(regs.arg5_signed()) << 32);
       }

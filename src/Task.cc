@@ -761,6 +761,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     }
 
     case Arch::pwritev:
+    case Arch::pwritev2:
     case Arch::writev: {
       int fd = (int)regs.orig_arg1_signed();
       vector<FileMonitor::Range> ranges;
