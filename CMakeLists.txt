@@ -1450,6 +1450,7 @@ set(BASIC_TESTS
   sysinfo
   syslog
   arm/tagged_addr_ctrl
+  arm/sve_vl
   tgkill
   thread_yield
   timer

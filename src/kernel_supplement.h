@@ -520,6 +520,17 @@ enum {
 #define BLKGETNRZONES _IOR(0x12, 133, __u32)
 #endif
 
+// New in the 4.15 kernel
+#ifndef PR_SVE_SET_VL
+#define PR_SVE_SET_VL 50
+#endif
+#ifndef PR_SVE_GET_VL
+#define PR_SVE_GET_VL 51
+#endif
+#ifndef PR_SVE_VL_LEN_MASK
+#define PR_SVE_VL_LEN_MASK 0xffff
+#endif
+
 // New in the 5.4 kernel
 #ifndef PR_SET_TAGGED_ADDR_CTRL
 #define PR_SET_TAGGED_ADDR_CTRL 55

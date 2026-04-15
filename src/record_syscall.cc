@@ -4792,6 +4792,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_GET_SECUREBITS:
         case PR_GET_TAGGED_ADDR_CTRL:
         case PR_GET_MDWE:
+        case PR_SVE_GET_VL:
+        case PR_SVE_SET_VL:
           break;
 
         case PR_SET_TAGGED_ADDR_CTRL:
