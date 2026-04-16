@@ -3797,7 +3797,8 @@ static Switchable did_emulate_read(int syscallno, RecordTask* t,
 {
   syscall_state.emulate_result(result);
   record_ranges(t, ranges, result);
-  if (syscallno == Arch::pread64 || syscallno == Arch::preadv || result <= 0) {
+  if (syscallno == Arch::pread64 || syscallno == Arch::preadv ||
+      syscallno == Arch::preadv2 || result <= 0) {
     // Don't perform this syscall.
     Registers r = t->regs();
     r.set_arg1(-1);
@@ -4556,7 +4557,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::readv:
     /* ssize_t preadv(int fd, const struct iovec *iov, int iovcnt,
                       off_t offset); */
-    case Arch::preadv: {
+    case Arch::preadv:
+    /* ssize_t preadv2(int fd, const struct iovec *iov, int iovcnt,
+                       off_t offset, int flags); */
+    case Arch::preadv2: {
       int fd = (int)regs.arg1_signed();
       int iovcnt = (int)regs.arg3_signed();
       remote_ptr<void> iovecsp_void = syscall_state.reg_parameter(
@@ -7284,6 +7288,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::pkey_mprotect:
     case Arch::pread64:
     case Arch::preadv:
+    case Arch::preadv2:
     case Arch::ptrace:
     case Arch::read:
     case Arch::readv:
