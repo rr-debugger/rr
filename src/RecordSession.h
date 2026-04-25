@@ -73,7 +73,8 @@ public:
       bool force_asan_active = false,
       bool force_tsan_active = false,
       bool intel_pt = false,
-      bool check_outside_mmaps = false);
+      bool check_outside_mmaps = false,
+      bool no_preload = false);
 
   ~RecordSession() override;
 

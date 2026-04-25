@@ -1984,6 +1984,8 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(TUNSETVNETLE):
       case IOCTL_MASK_SIZE(TUNSETVNETBE):
       case IOCTL_MASK_SIZE(TCSETS2):
+      case IOCTL_MASK_SIZE(TCSETSW2):
+      case IOCTL_MASK_SIZE(TCSETSF2):
         return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
         // Reads and writes its parameter despite not having the _IOC_READ bit.
@@ -2559,60 +2561,63 @@ static bool verify_ptrace_options(RecordTask* t,
   return true;
 }
 
-static bool check_ptracer_compatible(RecordTask* tracer, RecordTask* tracee) {
+static void check_ptracer_compatible(RecordTask* tracer, RecordTask* tracee) {
   // Don't allow a 32-bit process to trace a 64-bit process. That doesn't
   // make much sense (manipulating registers gets crazy), and would be hard to
   // support.
-  if (tracee->emulated_ptracer || tracee->tgid() == tracer->tgid() ||
-      (tracer->arch() == x86 && tracee->arch() == x86_64)) {
-    return false;
-  }
-  return true;
+  ASSERT(tracer, !(tracer->arch() == x86 && tracee->arch() == x86_64));
 }
 
-static RecordTask* get_ptrace_partner(RecordTask* t, pid_t pid) {
+static RecordTask* prepare_ptrace_attach(RecordTask* tracer, pid_t attach_to_tid,
+                                         TaskSyscallState& syscall_state) {
   // To simplify things, require that a ptracer be in the same pid
   // namespace as rr itself. I.e., tracee tasks sandboxed in a pid
   // namespace can't use ptrace. This is normally a requirement of
   // sandboxes anyway.
   // This could be supported, but would require some work to translate
   // rr's pids to/from the ptracer's pid namespace.
-  ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
-  RecordTask* partner = t->session().find_task(pid);
-  if (!partner) {
-    // XXX This prevents a tracee from attaching to a process which isn't
+  ASSERT(tracer, is_same_namespace("pid", tracer->tid, getpid()));
+  RecordTask* tracee = tracer->session().find_task(attach_to_tid);
+  if (!tracee) {
+    // XXX This prevents a tracer from attaching to a process which isn't
     // under rr's control. We could support this but it would complicate
     // things.
-    return nullptr;
-  }
-  return partner;
-}
-
-static RecordTask* prepare_ptrace_attach(RecordTask* t, pid_t pid,
-                                         TaskSyscallState& syscall_state) {
-  RecordTask* tracee = get_ptrace_partner(t, pid);
-  if (!tracee) {
     syscall_state.emulate_result(-ESRCH);
     return nullptr;
   }
-  if (!check_ptracer_compatible(t, tracee)) {
+  if (tracee->emulated_ptracer || tracee->tgid() == tracer->tgid()) {
     syscall_state.emulate_result(-EPERM);
     return nullptr;
   }
+  check_ptracer_compatible(tracer, tracee);
   return tracee;
 }
 
-static RecordTask* prepare_ptrace_traceme(RecordTask* t,
+static RecordTask* prepare_ptrace_traceme(RecordTask* tracee,
                                           TaskSyscallState& syscall_state) {
-  RecordTask* tracer = get_ptrace_partner(t, t->get_parent_pid());
-  if (!tracer) {
-    syscall_state.emulate_result(-ESRCH);
-    return nullptr;
+  RecordTask* tracer = nullptr;
+  pid_t parent_pid = tracee->get_parent_pid();
+  if (tracee->creator_tid != 0) {
+    RecordTask* creator = tracee->session().find_task(tracee->creator_tid);
+    if (creator && creator->thread_group()->tgid == parent_pid) {
+      tracer = creator;
+    }
   }
-  if (!check_ptracer_compatible(tracer, t)) {
+  if (!tracer) {
+    ThreadGroup* tg = tracee->session().find_thread_group(parent_pid);
+    if (tg) {
+      tracer = static_cast<RecordTask*>(tg->first_running_task());
+    }
+    if (!tracer) {
+      syscall_state.emulate_result(0);
+      return nullptr;
+    }
+  }
+  if (tracee->emulated_ptracer || tracee->tgid() == tracer->tgid()) {
     syscall_state.emulate_result(-EPERM);
     return nullptr;
   }
+  check_ptracer_compatible(tracer, tracee);
   return tracer;
 }
 
@@ -2796,12 +2801,12 @@ static int non_negative_command(int command) { return command < 0 ? INT32_MAX : 
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
-  pid_t pid = (pid_t)t->regs().arg2_signed();
+  pid_t tid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
   int command = (int)t->regs().arg1_signed();
   switch (non_negative_command(command)) {
     case PTRACE_ATTACH: {
-      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
+      RecordTask* tracee = prepare_ptrace_attach(t, tid, syscall_state);
       if (!tracee) {
         break;
       }
@@ -2831,7 +2836,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_SEIZE: {
-      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
+      RecordTask* tracee = prepare_ptrace_attach(t, tid, syscall_state);
       if (!tracee) {
         break;
       }
@@ -2854,7 +2859,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case Arch::PTRACE_OLDSETOPTIONS:
       RR_FALLTHROUGH;
     case PTRACE_SETOPTIONS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         if (!verify_ptrace_options(t, syscall_state)) {
           break;
@@ -2865,7 +2870,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_GETEVENTMSG: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         auto datap =
             syscall_state.reg_parameter<typename Arch::unsigned_long>(4);
@@ -2877,7 +2882,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_GETSIGINFO: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         auto datap = syscall_state.reg_parameter<typename Arch::siginfo_t>(4);
         typename Arch::siginfo_t dest;
@@ -2892,7 +2897,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_GETREGSET: {
       switch ((int)t->regs().arg3()) {
         case NT_PRSTATUS: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             auto regs = tracee->regs().get_ptrace_for_arch(tracee->arch());
             ptrace_get_reg_set<Arch>(t, syscall_state, regs);
@@ -2900,7 +2905,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           break;
         }
         case NT_PRFPREG: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             if (auto extra_regs = tracee->extra_regs_fallible()) {
               auto regs =
@@ -2918,7 +2923,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             int syscallno = tracee->regs().original_syscallno();
             uint8_t *data = (uint8_t*)&syscallno;
@@ -2934,7 +2939,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ARM64Arch::user_hwdebug_state bps;
             bool ok = tracee->get_aarch64_debug_regs((int)t->regs().arg3(), &bps);
@@ -2951,7 +2956,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             if (auto extra_regs = tracee->extra_regs_fallible()) {
               switch (extra_regs->format()) {
@@ -2980,7 +2985,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       // Task::on_syscall_exit_arch
       switch ((int)t->regs().arg3()) {
         case NT_PRSTATUS: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, user_regs_struct_size(tracee->arch()), syscall_state);
@@ -2988,7 +2993,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           break;
         }
         case NT_PRFPREG: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, user_fpregs_struct_size(tracee->arch()), syscall_state);
@@ -3001,7 +3006,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, sizeof(int), syscall_state);
@@ -3015,7 +3020,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, offsetof(ARM64Arch::user_hwdebug_state, dbg_regs[0]),
@@ -3029,7 +3034,7 @@ static Switchable prepare_ptrace(RecordTask* t,
             emulate = false;
             break;
           }
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
           if (tracee) {
             if (auto extra_regs = tracee->extra_regs_fallible()) {
               switch (extra_regs->format()) {
@@ -3059,7 +3064,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case Arch::PTRACE_SYSEMU:
     case Arch::PTRACE_SYSEMU_SINGLESTEP:
     case PTRACE_CONT: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       // If the tracer wants to observe syscall entries, we can't use the
       // syscallbuf, because the tracer may want to change syscall numbers
       // which the syscallbuf code is not prepared to handle. Additionally,
@@ -3080,7 +3085,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_DETACH: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         tracee->set_syscallbuf_locked(0);
         tracee->emulated_ptrace_options = 0;
@@ -3093,7 +3098,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_KILL: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         tracee->kill_if_alive();
         syscall_state.emulate_result(0);
@@ -3101,7 +3106,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_INTERRUPT: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid, false);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid, false);
       if (tracee) {
         uint64_t result = 0;
         if (!tracee->is_stopped()) {
@@ -3129,7 +3134,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_GET_SYSCALL_INFO: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         remote_ptr<uint8_t> remote_addr(t->regs().arg4());
         bool ok = true;
@@ -3171,7 +3176,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case Arch::PTRACE_GET_THREAD_AREA:
     case Arch::PTRACE_SET_THREAD_AREA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         if (tracee->arch() != SupportedArch::x86) {
           // This syscall should fail if the tracee is not x86
@@ -3208,7 +3213,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case Arch::PTRACE_ARCH_PRCTL: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         if (tracee->arch() != SupportedArch::x86_64) {
           // This syscall should fail if the tracee is not
@@ -3247,7 +3252,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case PTRACE_PEEKTEXT:
     case PTRACE_PEEKDATA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         // The actual syscall returns the data via the 'data' out-parameter.
         // The behavior of returning the data as the system call result is
@@ -3268,7 +3273,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case PTRACE_POKETEXT:
     case PTRACE_POKEDATA: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
       if (tracee) {
         remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
         typename Arch::unsigned_word data = t->regs().arg4();
@@ -3792,7 +3797,8 @@ static Switchable did_emulate_read(int syscallno, RecordTask* t,
 {
   syscall_state.emulate_result(result);
   record_ranges(t, ranges, result);
-  if (syscallno == Arch::pread64 || syscallno == Arch::preadv || result <= 0) {
+  if (syscallno == Arch::pread64 || syscallno == Arch::preadv ||
+      syscallno == Arch::preadv2 || result <= 0) {
     // Don't perform this syscall.
     Registers r = t->regs();
     r.set_arg1(-1);
@@ -3816,6 +3822,42 @@ static ParamSize select_param_size(intptr_t nfds, SupportedArch arch) {
     size = ((nfds + long_size*8 - 1)/(long_size*8))*long_size;
   }
   return ParamSize(size);
+}
+
+// RWF_* flags we know rr records correctly. Reject unknown flags so
+// that a future kernel addition whose semantics break rr (e.g. affecting
+// the offset or bytes we record) cannot silently go wrong; the tracee
+// simply sees EINVAL as if running on an older kernel.
+// RWF_APPEND is excluded from the write mask: when set, the kernel
+// ignores the user's offset and uses/updates the current file position,
+// but FileMonitor::retrieve_offset would compute the explicit offset
+// argument and get it wrong.
+enum {
+  RR_RWF_HIPRI     = 0x00000001,
+  RR_RWF_DSYNC     = 0x00000002,
+  RR_RWF_SYNC      = 0x00000004,
+  RR_RWF_NOWAIT    = 0x00000008,
+  RR_RWF_APPEND    = 0x00000010,
+  RR_RWF_NOAPPEND  = 0x00000020,
+  RR_RWF_ATOMIC    = 0x00000040,
+  RR_RWF_DONTCACHE = 0x00000080,
+};
+static const uint32_t RR_KNOWN_PREADV2_FLAGS =
+    RR_RWF_HIPRI | RR_RWF_DSYNC | RR_RWF_SYNC | RR_RWF_NOWAIT |
+    RR_RWF_APPEND | RR_RWF_NOAPPEND | RR_RWF_ATOMIC | RR_RWF_DONTCACHE;
+static const uint32_t RR_KNOWN_PWRITEV2_FLAGS =
+    RR_KNOWN_PREADV2_FLAGS & ~RR_RWF_APPEND;
+
+template <typename Arch>
+static Switchable reject_preadv2_pwritev2(RecordTask* t,
+                                          TaskSyscallState& syscall_state) {
+  syscall_state.emulate_result(-EINVAL);
+  // Point fd at -1 so the kernel short-circuits the syscall with -EBADF;
+  // emulate_result overrides the tracee-visible result to -EINVAL.
+  Registers r = t->regs();
+  r.set_arg1(-1);
+  t->set_regs(r);
+  return PREVENT_SWITCH;
 }
 
 template <typename Arch>
@@ -4551,7 +4593,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::readv:
     /* ssize_t preadv(int fd, const struct iovec *iov, int iovcnt,
                       off_t offset); */
-    case Arch::preadv: {
+    case Arch::preadv:
+    /* ssize_t preadv2(int fd, const struct iovec *iov, int iovcnt,
+                       off_t offset, int flags); */
+    case Arch::preadv2: {
+      if (syscallno == Arch::preadv2 &&
+          ((uint32_t)regs.arg6() & ~RR_KNOWN_PREADV2_FLAGS)) {
+        return reject_preadv2_pwritev2<Arch>(t, syscall_state);
+      }
       int fd = (int)regs.arg1_signed();
       int iovcnt = (int)regs.arg3_signed();
       remote_ptr<void> iovecsp_void = syscall_state.reg_parameter(
@@ -4574,6 +4623,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       for (int i = 0; i < iovcnt; ++i) {
         syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(iovecsp + i, iov_base),
                                         io_size.limit_size(iovecs[i].iov_len));
+      }
+      return ALLOW_SWITCH;
+    }
+
+    /* ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt,
+                        off_t offset, int flags); */
+    case Arch::pwritev2: {
+      if ((uint32_t)regs.arg6() & ~RR_KNOWN_PWRITEV2_FLAGS) {
+        return reject_preadv2_pwritev2<Arch>(t, syscall_state);
       }
       return ALLOW_SWITCH;
     }
@@ -4786,6 +4844,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_SET_SECUREBITS:
         case PR_GET_SECUREBITS:
         case PR_GET_TAGGED_ADDR_CTRL:
+        case PR_GET_MDWE:
+        case PR_SVE_GET_VL:
+        case PR_SVE_SET_VL:
           break;
 
         case PR_SET_TAGGED_ADDR_CTRL:
@@ -4927,6 +4988,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           syscall_state.reg_parameter(
               2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                   (size_t)regs.arg3()));
+          break;
+        }
+
+        case PR_SET_SYSCALL_USER_DISPATCH: {
+          // Prevent any PR_SET_SYSCALL_USER_DISPATCH call and pretend it's not
+          // supported.
+          Registers r = regs;
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          syscall_state.emulate_result(-EINVAL);
           break;
         }
 
@@ -6392,7 +6463,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   // at an assertion, in the worst case, we'd end up modifying the underlying
   // file.
   if (!(flags & MAP_SHARED)) {
-    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset, fd,
+    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset, prot, fd,
                                               Monkeypatcher::MMAP_SYSCALL);
   }
 
@@ -6534,7 +6605,7 @@ static string extra_expected_errno_info(RecordTask* t,
           ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
         case Arch::prctl: {
-          int request = (int)t->regs().arg1_signed();
+          int request = (int)t->regs().orig_arg1_signed();
           if (request == PR_SET_MM) {
             ss << "; unknown prctl(PR_SET_MM, " << HEX((int)t->regs().arg2_signed()) << ")";
           } else {
@@ -6543,18 +6614,18 @@ static string extra_expected_errno_info(RecordTask* t,
           break;
         }
         case Arch::arch_prctl:
-          ss << "; unknown arch_prctl(" << HEX((int)t->regs().arg1_signed())
+          ss << "; unknown arch_prctl(" << HEX((int)t->regs().orig_arg1_signed())
              << ")";
           break;
         case Arch::keyctl:
-          ss << "; unknown keyctl(" << HEX((int)t->regs().arg1_signed()) << ")";
+          ss << "; unknown keyctl(" << HEX((int)t->regs().orig_arg1_signed()) << ")";
           break;
         case Arch::socketcall:
-          ss << "; unknown socketcall(" << HEX((int)t->regs().arg1_signed())
+          ss << "; unknown socketcall(" << HEX((int)t->regs().orig_arg1_signed())
              << ")";
           break;
         case Arch::ipc:
-          ss << "; unknown ipc(" << HEX((int)t->regs().arg1_signed()) << ")";
+          ss << "; unknown ipc(" << HEX((int)t->regs().orig_arg1_signed()) << ")";
           break;
         case Arch::futex_time64:
         case Arch::futex:
@@ -6562,25 +6633,25 @@ static string extra_expected_errno_info(RecordTask* t,
              << HEX((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) << ")";
           break;
         case Arch::waitid:
-          ss << "; unknown waitid(" << HEX((idtype_t)t->regs().arg1()) << ")";
+          ss << "; unknown waitid(" << HEX((idtype_t)t->regs().orig_arg1()) << ")";
           break;
         case Arch::seccomp:
-          ss << "; unknown seccomp(" << HEX((unsigned int)t->regs().arg1())
+          ss << "; unknown seccomp(" << HEX((unsigned int)t->regs().orig_arg1())
              << ")";
           break;
         case Arch::madvise:
           ss << "; unknown madvise(" << (int)t->regs().arg3() << ")";
           break;
         case Arch::bpf:
-          ss << "; unknown bpf(cmd=" << (int)t->regs().arg1() << ")";
+          ss << "; unknown bpf(cmd=" << (int)t->regs().orig_arg1_signed() << ")";
           break;
       }
       break;
     case EIO:
       switch (t->regs().original_syscallno()) {
         case Arch::ptrace:
-          ss << "; unsupported ptrace(" << HEX((int)t->regs().arg1()) << " ["
-             << ptrace_req_name<Arch>((int)t->regs().arg1_signed()) << "])";
+          ss << "; unsupported ptrace(" << HEX((int)t->regs().orig_arg1_signed()) << " ["
+             << ptrace_req_name<Arch>((int)t->regs().orig_arg1_signed()) << "])";
           break;
       }
       break;
@@ -7266,6 +7337,8 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::pkey_mprotect:
     case Arch::pread64:
     case Arch::preadv:
+    case Arch::preadv2:
+    case Arch::pwritev2:
     case Arch::ptrace:
     case Arch::read:
     case Arch::readv:

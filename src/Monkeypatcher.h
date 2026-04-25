@@ -118,7 +118,8 @@ public:
    * patch libpthread.so.
    */
   void patch_after_mmap(RecordTask* t, remote_ptr<void> start, size_t size,
-                        size_t offset_bytes, int child_fd, MmapMode mode);
+                        size_t offset_bytes, uint64_t prot, int child_fd,
+                        MmapMode mode);
 
   /**
    * The list of pages we've allocated to hold our extended jumps.
@@ -153,15 +154,14 @@ public:
 
 private:
   void patch_dl_runtime_resolve(RecordTask* t, ElfReader& reader,
-                                uintptr_t elf_addr,
-                                remote_ptr<void> map_start,
-                                size_t map_size,
-                                size_t map_offset);
+                                uintptr_t elf_addr, remote_ptr<void> map_start,
+                                size_t map_size, size_t map_offset,
+                                uint64_t prot);
   void patch_aarch64_have_lse_atomics(RecordTask* t, ElfReader& reader,
                                       uintptr_t elf_addr,
                                       remote_ptr<void> map_start,
-                                      size_t map_size,
-                                      size_t map_offset);
+                                      size_t map_size, size_t map_offset,
+                                      uint64_t prot);
 
   /**
    * `ip` is the address of the instruction that triggered the syscall or trap

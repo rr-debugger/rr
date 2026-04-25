@@ -74,6 +74,13 @@ struct SectionOffsets {
   bool compressed;
 };
 
+struct PhdrInfo {
+  uint64_t vaddr;
+  uint64_t offset;
+  uint64_t filesz;
+  uint64_t flags;
+};
+
 class ElfReader {
 public:
   ElfReader(SupportedArch arch);
@@ -102,11 +109,11 @@ public:
   Debugaltlink read_debugaltlink();
   std::string read_buildid();
   std::string read_interp();
-  // Returns true and sets file |offset| if ELF address |addr| is mapped from
-  // a section in the ELF file.  Returns false if no section maps to
-  // |addr|.  |addr| is an address indicated by the ELF file, not its
-  // relocated address in memory.
-  bool addr_to_offset(uintptr_t addr, uintptr_t& offset);
+  // Returns true if ELF address |addr| is mapped from a program header in the
+  // ELF file, and sets the fields of |phdr| to the program header fields.
+  // Returns false if no program header maps to |addr|. |addr| is an address
+  // indicated by the ELF file, not its relocated address in memory.
+  bool addr_to_phdr(uintptr_t addr, PhdrInfo& phdr);
   SectionOffsets find_section_file_offsets(const char* name);
   DwarfSpan dwarf_section(const char* name, bool known_to_be_compressed = false);
   SupportedArch arch() const { return arch_; }

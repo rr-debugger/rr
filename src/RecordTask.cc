@@ -178,6 +178,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       emulated_ptrace_seized(false),
       in_wait_type(WAIT_TYPE_NONE),
       in_wait_pid(0),
+      creator_tid(0),
       emulated_stop_type(NOT_STOPPED),
       blocked_sigs_dirty(true),
       syscallbuf_blocked_sigs_generation(0),
@@ -332,6 +333,9 @@ Task* RecordTask::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       rt->tid_futex = cleartid_addr;
     } else {
       LOG(debug) << "(clone child not enabling CLEARTID)";
+    }
+    if (reason == TRACEE_CLONE) {
+      rt->creator_tid = tid;
     }
   }
   return t;

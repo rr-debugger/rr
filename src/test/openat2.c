@@ -15,7 +15,7 @@ int main(void) {
   test_assert(filefd > 0);
   test_assert(close(filefd) == 0);
 
-  struct open_how how = {0};
+  struct rr_open_how how = {0};
   how.flags = O_CREAT | O_RDONLY;
   how.mode = 0600;
 

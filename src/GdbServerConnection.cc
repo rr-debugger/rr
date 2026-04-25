@@ -743,7 +743,7 @@ bool GdbServerConnection::query(char* payload) {
 
     stringstream supported;
     // Encourage gdb to use very large packets since we support any packet size
-    supported << "PacketSize=1048576"
+    supported << "PacketSize=100000" // hex
                  ";QStartNoAckMode+"
                  ";qXfer:features:read+"
                  ";qXfer:auxv:read+"

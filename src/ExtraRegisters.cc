@@ -911,6 +911,7 @@ static void compare_regs(const ExtraRegisters& reg1,
 
 void ExtraRegisters::compare_internal(const ExtraRegisters& reg2,
   Registers::Comparison& result) const {
+  const GdbServerRegister NOT_PRESENT = GdbServerRegister(0);
   if (arch() != reg2.arch()) {
     FATAL() << "Can't compare register files with different archs";
   }
@@ -922,19 +923,23 @@ void ExtraRegisters::compare_internal(const ExtraRegisters& reg2,
   if (format() != reg2.format()) {
     FATAL() << "Can't compare register files with different formats";
   }
+  bool avx_present = false;
+  if (format() == XSAVE) {
+    avx_present = !!(xsave_native_layout().supported_feature_bits & (1 << AVX_FEATURE_BIT));
+  }
 
   switch (arch()) {
     case x86:
-      compare_regs(*this, reg2, DREG_ST0, GdbServerRegister(0), 8, "st", result);
-      compare_regs(*this, reg2, DREG_XMM0, DREG_YMM0H, 8, "ymm", result);
+      compare_regs(*this, reg2, DREG_ST0, NOT_PRESENT, 8, "st", result);
+      compare_regs(*this, reg2, DREG_XMM0, avx_present ? DREG_YMM0H : NOT_PRESENT, 8, "ymm", result);
       break;
     case x86_64:
-      compare_regs(*this, reg2, DREG_64_ST0, GdbServerRegister(0), 8, "st", result);
-      compare_regs(*this, reg2, DREG_64_XMM0, DREG_64_YMM0H, 8, "ymm", result);
+      compare_regs(*this, reg2, DREG_64_ST0, NOT_PRESENT, 8, "st", result);
+      compare_regs(*this, reg2, DREG_64_XMM0, avx_present ? DREG_64_YMM0H : NOT_PRESENT, 8, "ymm", result);
       break;
     case aarch64:
       DEBUG_ASSERT(format_ == NT_FPR);
-      compare_regs(*this, reg2, DREG_V0, GdbServerRegister(0), 32, "v", result);
+      compare_regs(*this, reg2, DREG_V0, NOT_PRESENT, 32, "v", result);
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");

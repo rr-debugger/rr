@@ -76,17 +76,17 @@ add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSI
 
 execute_process(
   COMMAND git rev-parse HEAD
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   OUTPUT_VARIABLE GIT_REVISION
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 configure_file(
-  ${CMAKE_SOURCE_DIR}/src/git_revision.h.in
-  ${CMAKE_BINARY_DIR}/git_revision.h
+  "${PROJECT_SOURCE_DIR}/src/git_revision.h.in"
+  "${PROJECT_BINARY_DIR}/git_revision.h"
 )
 configure_file(
-  ${CMAKE_SOURCE_DIR}/src/extra_version_string.h.in
-  ${CMAKE_BINARY_DIR}/extra_version_string.h
+  "${PROJECT_SOURCE_DIR}/src/extra_version_string.h.in"
+  "${PROJECT_BINARY_DIR}/extra_version_string.h"
 )
 
 set(FLAGS_COMMON "-D_FILE_OFFSET_BITS=64 -pthread")
@@ -115,7 +115,7 @@ configure_file(src/preload/rr_page.ld.in src/preload/rr_page.ld @ONLY)
 include(CheckCCompilerFlag)
 CHECK_C_COMPILER_FLAG("-fmacro-prefix-map=foo=bar" SUPPORTS_MACRO_PREFIX_MAP)
 if (SUPPORTS_MACRO_PREFIX_MAP)
-  set(FLAGS_COMMON "${FLAGS_COMMON} -fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
+  set(FLAGS_COMMON "${FLAGS_COMMON} -fmacro-prefix-map='${PROJECT_SOURCE_DIR}/'=")
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
@@ -484,8 +484,8 @@ set(RR_PAGE_SOURCE_FILES
 )
 add_library(rrpage)
 foreach(file ${RR_PAGE_FILES})
-  target_sources(rrpage PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
-  set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
+  target_sources(rrpage PUBLIC "${PROJECT_SOURCE_DIR}/src/preload/${file}")
+  set_source_files_properties("${PROJECT_SOURCE_DIR}/src/preload/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
 
@@ -493,13 +493,13 @@ endforeach(file)
 # we want it to have the same SONAME as the real vDSO to trick things
 # like AddressSanitizer into recognising it as the vDSO.
 set_target_properties(rrpage PROPERTIES NO_SONAME ON)
-set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostdlib ${PRELOAD_LINK_FLAGS} -Wl,-z,max-page-size=${PRELOAD_LIBRARY_PAGE_SIZE} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
-set_target_properties(rrpage PROPERTIES LINK_DEPENDS ${CMAKE_BINARY_DIR}/src/preload/rr_page.ld)
+set_target_properties(rrpage PROPERTIES LINK_FLAGS "-Wl,-T -Wl,'${PROJECT_BINARY_DIR}/src/preload/rr_page.ld' -Wl,--hash-style=both -nostdlib ${PRELOAD_LINK_FLAGS} -Wl,-z,max-page-size=${PRELOAD_LIBRARY_PAGE_SIZE} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
+set_target_properties(rrpage PROPERTIES LINK_DEPENDS "${PROJECT_BINARY_DIR}/src/preload/rr_page.ld")
 # CMake seems to have trouble generating the link line without this
 set_target_properties(rrpage PROPERTIES LINKER_LANGUAGE C)
 
 add_custom_command(TARGET rrpage POST_BUILD
-                   COMMAND ${CMAKE_SOURCE_DIR}/src/preload/tweak_librrpage.py $<TARGET_FILE:rrpage> ${PRELOAD_LIBRARY_PAGE_SIZE})
+                   COMMAND "${PROJECT_SOURCE_DIR}/src/preload/tweak_librrpage.py" $<TARGET_FILE:rrpage> ${PRELOAD_LIBRARY_PAGE_SIZE})
 
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # raw_syscall.S must be before overrides.c, which must be last.
@@ -523,8 +523,8 @@ set(PRELOAD_SOURCE_FILES
 )
 add_library(rrpreload)
 foreach(file ${PRELOAD_FILES})
-  target_sources(rrpreload PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
-  set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
+  target_sources(rrpreload PUBLIC "${PROJECT_SOURCE_DIR}/src/preload/${file}")
+  set_source_files_properties("${PROJECT_SOURCE_DIR}/src/preload/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "${PRELOAD_LINK_FLAGS} ${LINKER_FLAGS}")
@@ -545,8 +545,8 @@ if(RTLD_AUDIT)
   )
   add_library(rraudit)
   foreach(file ${AUDIT_FILES})
-    target_sources(rraudit PUBLIC "${CMAKE_SOURCE_DIR}/src/audit/${file}")
-    set_source_files_properties("${CMAKE_SOURCE_DIR}/src/audit/${file}"
+    target_sources(rraudit PUBLIC "${PROJECT_SOURCE_DIR}/src/audit/${file}")
+    set_source_files_properties("${PROJECT_SOURCE_DIR}/src/audit/${file}"
                                 PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
   endforeach(file)
   set_target_properties(rraudit PROPERTIES LINK_FLAGS "${PRELOAD_LINK_FLAGS} -ldl ${LINKER_FLAGS}")
@@ -918,12 +918,12 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   set_target_properties(rrpage_32 PROPERTIES NO_SONAME ON)
-  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,${CMAKE_BINARY_DIR}/src/preload/rr_page.ld -Wl,--hash-style=both -nostdlib ${PRELOAD_LINK_FLAGS} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
-  set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS ${CMAKE_BINARY_DIR}/src/preload/rr_page.ld)
+  set_target_properties(rrpage_32 PROPERTIES LINK_FLAGS "-m32 -Wl,-T -Wl,'${PROJECT_BINARY_DIR}/src/preload/rr_page.ld' -Wl,--hash-style=both -nostdlib ${PRELOAD_LINK_FLAGS} -Wl,-soname,linux-vdso.so.1 ${LINKER_FLAGS}")
+  set_target_properties(rrpage_32 PROPERTIES LINK_DEPENDS "${PROJECT_BINARY_DIR}/src/preload/rr_page.ld")
   set_target_properties(rrpage_32 PROPERTIES LINKER_LANGUAGE C)
 
   add_custom_command(TARGET rrpage_32 POST_BUILD
-                    COMMAND ${CMAKE_SOURCE_DIR}/src/preload/tweak_librrpage.py $<TARGET_FILE:rrpage_32> ${PRELOAD_LIBRARY_PAGE_SIZE})
+                    COMMAND "${PROJECT_SOURCE_DIR}/src/preload/tweak_librrpage.py" $<TARGET_FILE:rrpage_32> ${PRELOAD_LIBRARY_PAGE_SIZE})
 
 
   add_library(rrpreload_32)
@@ -1188,6 +1188,7 @@ set(BASIC_TESTS
   memfd_create_efault
   memfd_create_shared
   memfd_create_shared_huge
+  memfd_create_dotnet_huge_mapping
   mincore
   mknod
   mlock
@@ -1273,9 +1274,11 @@ set(BASIC_TESTS
   prctl_auxv
   prctl_caps
   prctl_deathsig
+  prctl_mdwe
   prctl_name
   prctl_short_name
   prctl_speculation_ctrl
+  prctl_syscall_user_dispatch
   privileged_net_ioctl
   proc_fds
   proc_mem
@@ -1312,6 +1315,7 @@ set(BASIC_TESTS
   ptrace_trace_clone
   ptrace_trace_exit
   ptrace_traceme
+  ptrace_traceme_thread
   ptrace_waiter_thread
   ptracer_death
   ptracer_death_multithread
@@ -1446,6 +1450,7 @@ set(BASIC_TESTS
   sysinfo
   syslog
   arm/tagged_addr_ctrl
+  arm/sve_vl
   tgkill
   thread_yield
   timer

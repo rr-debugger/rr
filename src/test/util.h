@@ -440,7 +440,7 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #define RR_KCMP_FILES 2
 
 /* Old systems don't have linux/openat2.h */
-struct open_how {
+struct rr_open_how {
 	__u64 flags;
 	__u64 mode;
 	__u64 resolve;
@@ -557,8 +557,26 @@ struct open_how {
 #ifndef PR_SET_VMA_ANON_NAME
 #define PR_SET_VMA_ANON_NAME 0
 #endif
+#ifndef PR_GET_MDWE
+#define PR_GET_MDWE 66
+#endif
 #ifndef PR_GET_AUXV
 #define PR_GET_AUXV 0x41555856
+#endif
+#ifndef PR_SET_SYSCALL_USER_DISPATCH
+#define PR_SET_SYSCALL_USER_DISPATCH 59
+#endif
+#ifndef PR_SYS_DISPATCH_ON
+#define PR_SYS_DISPATCH_ON 1
+#endif
+#ifndef SYSCALL_DISPATCH_FILTER_ALLOW
+#define SYSCALL_DISPATCH_FILTER_ALLOW 0
+#endif
+#ifndef SYSCALL_DISPATCH_FILTER_BLOCK
+#define SYSCALL_DISPATCH_FILTER_BLOCK 1
+#endif
+#ifndef SYS_USER_DISPATCH
+#define SYS_USER_DISPATCH 2
 #endif
 
 #ifndef BLKGETDISKSEQ

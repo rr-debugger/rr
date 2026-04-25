@@ -118,6 +118,8 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelLunarLake;
     case 0xb06e0:
       return IntelGracemont;
+    case 0xb0650:
+    case 0xc0650:
     case 0xc0660:
       return IntelArrowLake;
     case 0xf20:  // Piledriver
@@ -168,6 +170,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x70f50: // Hawk Point (Zen 4)
       return AMDZen4;
     case 0x20f40: // Strix Point (Zen 5)
+    case 0x70f00: // Strix Halo (Zen 5)
       return AMDZen5;
     default:
       break;

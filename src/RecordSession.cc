@@ -2402,7 +2402,8 @@ static string lookup_by_path(const string& name) {
     bool force_asan_active,
     bool force_tsan_active,
     bool intel_pt,
-    bool check_outside_mmaps) {
+    bool check_outside_mmaps,
+    bool no_preload) {
   TraceeAttentionSet::initialize();
 
   // The syscallbuf library interposes some critical
@@ -2450,7 +2451,7 @@ static string lookup_by_path(const string& name) {
 
   // LD_PRELOAD the syscall interception lib
   string syscall_buffer_lib_path = find_helper_library(SYSCALLBUF_LIB_FILENAME);
-  if (!syscall_buffer_lib_path.empty()) {
+  if (!no_preload && !syscall_buffer_lib_path.empty()) {
     string ld_preload = "";
     if (!exe_info.sanitizer_path.empty()) {
       LOG(debug) << "Prepending " << exe_info.sanitizer_path << " to LD_PRELOAD";

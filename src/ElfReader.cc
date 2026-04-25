@@ -28,7 +28,7 @@ public:
   virtual Debugaltlink read_debugaltlink() = 0;
   virtual string read_buildid() = 0;
   virtual string read_interp() = 0;
-  virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
+  virtual bool addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
   virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) = 0;
   bool ok() { return ok_; }
@@ -49,7 +49,7 @@ public:
   virtual Debugaltlink read_debugaltlink() override;
   virtual string read_buildid() override;
   virtual string read_interp() override;
-  virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
+  virtual bool addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
   virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) override;
 
@@ -91,7 +91,7 @@ ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
 
   programheader =
       r.read<typename Arch::ElfPhdr>(elfheader->e_phoff, elfheader->e_phnum);
-  if (!programheader || !elfheader->e_phnum) {
+  if (!programheader) {
     LOG(debug) << "Invalid ELF file: no program headers";
     return;
   }
@@ -518,20 +518,19 @@ string ElfReaderImpl<Arch>::read_interp() {
 }
 
 template <typename Arch>
-bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
-  for (size_t i = 0; i < sections_size; ++i) {
-    const auto& section = sections[i];
-    // Skip the section if it either "occupies no space in the file" or
-    // doesn't have a valid address because it does not "occupy memory
-    // during process execution".
-    if (section.sh_type == SHT_NOBITS || !(section.sh_flags & SHF_ALLOC)) {
-      continue;
-    }
-    if (addr >= section.sh_addr && addr - section.sh_addr < section.sh_size) {
-      offset = addr - section.sh_addr + section.sh_offset;
+bool ElfReaderImpl<Arch>::addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) {
+  for (size_t i = 0; i < programheader_size; ++i) {
+    auto& p = programheader[i];
+    if (p.p_type == PT_LOAD && addr >= p.p_vaddr &&
+        addr - p.p_vaddr < p.p_memsz) {
+      phdr.vaddr = p.p_vaddr;
+      phdr.offset = p.p_offset;
+      phdr.filesz = p.p_filesz;
+      phdr.flags = p.p_flags;
       return true;
     }
   }
+
   return false;
 }
 
@@ -573,8 +572,8 @@ DwarfSpan ElfReader::dwarf_section(const char* name, bool known_to_be_compressed
 string ElfReader::read_buildid() { return impl().read_buildid(); }
 string ElfReader::read_interp() { return impl().read_interp(); }
 
-bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
-  return impl().addr_to_offset(addr, offset);
+bool ElfReader::addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) {
+  return impl().addr_to_phdr(addr, phdr);
 }
 
 bool ElfReader::ok() { return impl().ok(); }
@@ -631,7 +630,7 @@ ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {
     } else if (ret == 0) {
       break;
     } else {
-      crc = crc32(crc, buf, ret);
+      crc = update_crc32(crc, buf, ret);
     }
   }
 
