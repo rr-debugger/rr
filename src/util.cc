@@ -1635,6 +1635,10 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records) {
   layout.supported_feature_bits =
       cpuid_data.out.eax | (uint64_t(cpuid_data.out.edx) << 32);
 
+  // Add at least the first two entries in case there are no feature_bits set above 2
+  while (layout.feature_layouts.size() < 2) {
+    layout.feature_layouts.push_back({ 0, 0 });
+  }
   for (size_t i = 2; i < 64; ++i) {
     if (layout.supported_feature_bits & (uint64_t(1) << i)) {
       do {
