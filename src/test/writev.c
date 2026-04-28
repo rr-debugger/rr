@@ -23,9 +23,9 @@ static void test(int mode) {
   iovs[1].iov_len = sizeof(data) - iovs[0].iov_len;
   if (mode == 1) {
     /* Work around busted pwritev prototype in older libcs */
-    nwritten = syscall(SYS_pwritev, fd, iovs, 2, (off_t)0, 0);
+    nwritten = syscall(SYS_pwritev, fd, iovs, 2, 0, 0);
   } else if (mode == 2) {
-    nwritten = syscall(SYS_pwritev2, fd, iovs, 2, (off_t)0, 0, 0);
+    nwritten = syscall(SYS_pwritev2, fd, iovs, 2, 0, 0, 0);
   } else {
     nwritten = writev(fd, iovs, 2);
   }
@@ -58,9 +58,9 @@ int main(void) {
     test_assert(0 == unlink("temp2"));
     iov.iov_base = &buf;
     iov.iov_len = 1;
-    ret = syscall(SYS_pwritev2, fd, &iov, 1, (off_t)0, 0, 0x10 /*RWF_APPEND*/);
+    ret = syscall(SYS_pwritev2, fd, &iov, 1, 0, 0, 0x10 /*RWF_APPEND*/);
     test_assert(ret == -1 && errno == EINVAL);
-    ret = syscall(SYS_pwritev2, fd, &iov, 1, (off_t)0, 0, 0x40000000);
+    ret = syscall(SYS_pwritev2, fd, &iov, 1, 0, 0, 0x40000000);
     test_assert(ret == -1 && errno == EINVAL);
     close(fd);
   }

@@ -29,9 +29,9 @@ static void test(int mode) {
   iovs[1].iov_len = sizeof(*part2);
   if (mode == 1) {
     /* Work around busted preadv prototype in older libcs */
-    nread = syscall(SYS_preadv, fd, iovs, 2, (off_t)0, 0);
+    nread = syscall(SYS_preadv, fd, iovs, 2, 0, 0);
   } else if (mode == 2) {
-    nread = syscall(SYS_preadv2, fd, iovs, 2, (off_t)0, 0, 0);
+    nread = syscall(SYS_preadv2, fd, iovs, 2, 0, 0, 0);
   } else {
     test_assert(0 == lseek(fd, 0, SEEK_SET));
     nread = readv(fd, iovs, 2);
@@ -65,7 +65,7 @@ int main(void) {
     test_assert(0 == unlink("temp2"));
     iov.iov_base = &buf;
     iov.iov_len = 1;
-    ret = syscall(SYS_preadv2, fd, &iov, 1, (off_t)0, 0, 0x40000000);
+    ret = syscall(SYS_preadv2, fd, &iov, 1, 0, 0, 0x40000000);
     test_assert(ret == -1 && errno == EINVAL);
     close(fd);
   }
