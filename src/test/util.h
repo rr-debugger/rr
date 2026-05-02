@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <linux/aio_abi.h>
 #include <linux/audit.h>
 #include <linux/capability.h>
