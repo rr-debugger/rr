@@ -148,6 +148,10 @@ enum _ptrace_get_syscall_info_op {
 #define NT_ARM_PACG_KEYS 0x408
 #endif
 
+#ifndef HWCAP_PACA
+#define HWCAP_PACA (1 << 30)
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.

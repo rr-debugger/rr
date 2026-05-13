@@ -275,6 +275,21 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
     } else if (regno == DREG_FPCR) {
       reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpcr),
                          sizeof(uint32_t));
+#ifdef __aarch64__
+    } else if (regno == DREG_PAUTH_DMASK || regno == DREG_PAUTH_CMASK) {
+      uint64_t ptr = 1ULL << 55;
+      // The XPAC instruction will copy bit 55 of the argument into the PAC mask
+      // bits, so ptr will be set to the mask plus bit 55.
+      if (regno == DREG_PAUTH_DMASK) {
+        __asm__ __volatile__("xpacd %0" : "+r"(ptr));
+      } else {
+        __asm__ __volatile__("xpaci %0" : "+r"(ptr));
+      }
+      uint64_t mask = ptr & ~(1ULL << 55);
+      *defined = true;
+      memcpy(buf, &mask, sizeof(mask));
+      return sizeof(mask);
+#endif
     } else {
       *defined = false;
       return 0;

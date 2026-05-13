@@ -18,6 +18,7 @@
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/auxv.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -32,6 +33,7 @@
 #include "ScopedFd.h"
 #include "TargetDescription.h"
 #include "core.h"
+#include "kernel_supplement.h"
 #include "log.h"
 
 using namespace std;
@@ -106,6 +108,11 @@ static uint32_t get_cpu_features(SupportedArch arch) {
     }
     case aarch64:
       cpu_features = GdbServerConnection::CPU_AARCH64;
+#ifdef __aarch64__
+      if (getauxval(AT_HWCAP) & HWCAP_PACA) {
+        cpu_features |= GdbServerConnection::CPU_PAUTH;
+      }
+#endif
       break;
     default:
       FATAL() << "Unknown architecture";

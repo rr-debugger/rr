@@ -20,6 +20,7 @@ enum class TargetFeature : uint32_t {
   AVX512,
   PKeys,
   FPU,
+  PAuth,
 };
 
 class TargetDescription {
