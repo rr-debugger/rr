@@ -2332,6 +2332,7 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
   bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
   bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
   bool have_AVX512 = dbg->cpu_features() & GdbServerConnection::CPU_AVX512;
+  bool have_PAUTH = dbg->cpu_features() & GdbServerConnection::CPU_PAUTH;
   switch (arch) {
     case x86: {
       add_range(GdbServerRegister(0), GdbServerRegister(DREG_ORIG_EAX));
@@ -2368,7 +2369,11 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
     }
     case aarch64:
       add_range(GdbServerRegister::DREG_X0,
-                GdbServerRegister::DREG_NUM_LINUX_AARCH64);
+                GdbServerRegister::DREG_FPCR);
+      if (have_PAUTH) {
+        register_description.push_back(DREG_PAUTH_DMASK);
+        register_description.push_back(DREG_PAUTH_CMASK);
+      }
       break;
     default:
       FATAL() << "Unknown architecture";
