@@ -1456,6 +1456,7 @@ set(BASIC_TESTS
   timer
   timerfd
   times
+  x86/tpause
   truncate_temp
   tty_tostop
   tun

@@ -85,6 +85,8 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
     case SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0:
     case SpecialInstOpcode::X86_RDTSC:
     case SpecialInstOpcode::X86_RDTSCP:
+    case SpecialInstOpcode::X86_TPAUSE:
+    case SpecialInstOpcode::X86_TPAUSE_REX:
       if (t->tsc_mode == PR_TSC_SIGSEGV) {
         return false;
       }
@@ -136,6 +138,34 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
     r.set_cpuid_output(cpuid_data.eax, cpuid_data.ebx, cpuid_data.ecx,
                        cpuid_data.edx);
     LOG(debug) << " trapped for cpuid: " << HEX(eax) << ":" << HEX(ecx);
+  } else if (special_instruction.opcode == SpecialInstOpcode::X86_TPAUSE ||
+             special_instruction.opcode == SpecialInstOpcode::X86_TPAUSE_REX) {
+    // The Intel SDM states:
+    //
+    // > Prior to executing the TPAUSE instruction, an operating system may
+    // > specify the maximum delay it allows the processor to suspend its
+    // > operation. It can do so by writing TSC-quanta value to the following
+    // > 32-bit MSR (IA32_UMWAIT_CONTROL at MSR index E1H):
+    // >
+    // > - IA32_UMWAIT_CONTROL[31:2] — Determines the maximum time in TSC-quanta
+    // >   that the processor can reside in either C0.1 or C0.2. A zero value
+    // >   indicates no maximum time. The maximum time value is a 32-bit value
+    // >   where the upper 30 bits come from this field and the lower two bits are zero.
+    // > - IA32_UMWAIT_CONTROL[1] — Reserved.
+    // > - IA32_UMWAIT_CONTROL[0] — C0.2 is not allowed by the OS. Value of “1”
+    // >   means all C0.2 requests revert to C0.1.
+    // >
+    // > If the processor that executed a TPAUSE instruction wakes due to the
+    // > expiration of the operating system time-limit, the instructions sets
+    // > RFLAGS.CF; otherwise, that flag is cleared.
+    //
+    // As the "operating system", we choose a time-limit of zero. The point of
+    // TPAUSE is to make spin-wait loops more efficient without yielding to the
+    // operating system scheduler and triggering a full context switch. But
+    // because we serialize all execution to a single physical core, no progress
+    // will ever be made without yielding, and of course we've already paid the
+    // cost of a context switch and then some.
+    r.set_flags((r.flags() & ~X86_ALL_ARITH_FLAGS) | X86_CF_FLAG);
   }
 
   r.set_ip(r.ip() + len);

@@ -493,6 +493,8 @@ enum class SpecialInstOpcode {
   X86_INT3,
   X86_PUSHF,
   X86_PUSHF16,
+  X86_TPAUSE,
+  X86_TPAUSE_REX,
 };
 
 struct SpecialInst {

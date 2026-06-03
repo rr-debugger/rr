@@ -1925,6 +1925,8 @@ vector<string> current_env() {
 const uint8_t rdtsc_insn[2] = { 0x0f, 0x31 };
 
 static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
+static const uint8_t tpause_insn[] = { 0x66, 0x0f, 0xae, 0xf0 };
+static const uint8_t tpause_rex_insn[] = { 0x66, 0x41, 0x0f, 0xae, 0xf0 };
 static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
 static const uint8_t int3_insn[] = { 0xcc };
 static const uint8_t pushf_insn[] = { 0x9c };
@@ -1933,7 +1935,7 @@ static const uint8_t pushf16_insn[] = { 0x66, 0x9c };
 // XXX this probably needs to be extended to decode ignored prefixes
 SpecialInst special_instruction_at(Task* t, remote_code_ptr ip) {
   if (is_x86ish(t->arch())) {
-    uint8_t insn[sizeof(rdtscp_insn)];
+    uint8_t insn[sizeof(tpause_rex_insn)];
     ssize_t ret =
         t->read_bytes_fallible(ip.to_data_ptr<uint8_t>(), sizeof(insn), insn);
     if (ret < 0) {
@@ -1963,6 +1965,21 @@ SpecialInst special_instruction_at(Task* t, remote_code_ptr ip) {
     if (len >= sizeof(pushf16_insn) &&
         !memcmp(insn, pushf16_insn, sizeof(pushf16_insn))) {
       return {SpecialInstOpcode::X86_PUSHF16};
+    }
+    // NB: These need to be last because they're destructive!
+    if (len >= sizeof(tpause_rex_insn)) {
+      // Mask off the register selector.
+      insn[4] &= ~0x07;
+      if (!memcmp(insn, tpause_rex_insn, sizeof(tpause_rex_insn))) {
+        return {SpecialInstOpcode::X86_TPAUSE_REX};
+      }
+    }
+    if (len >= sizeof(tpause_insn)) {
+      // Mask off the register selector.
+      insn[3] &= ~0x07;
+      if (!memcmp(insn, tpause_insn, sizeof(tpause_insn))) {
+        return {SpecialInstOpcode::X86_TPAUSE};
+      }
     }
   } else if (t->arch() == aarch64) {
     uint8_t insn[4];
@@ -1999,6 +2016,10 @@ size_t special_instruction_len(SpecialInstOpcode insn) {
     return sizeof(pushf_insn);
   } else if (insn == SpecialInstOpcode::X86_PUSHF16) {
     return sizeof(pushf16_insn);
+  } else if (insn == SpecialInstOpcode::X86_TPAUSE) {
+    return sizeof(tpause_insn);
+  } else if (insn == SpecialInstOpcode::X86_TPAUSE_REX) {
+    return sizeof(tpause_rex_insn);
   } else if (insn == SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0 ||
              insn == SpecialInstOpcode::ARM_MRS_CNTVCT_EL0 ||
              insn == SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0) {

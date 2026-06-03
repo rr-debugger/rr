@@ -22,6 +22,7 @@ namespace rr {
 
 class ReplayTask;
 
+const uintptr_t X86_CF_FLAG = 1 << 0;
 const uintptr_t X86_RESERVED_FLAG = 1 << 1;
 const uintptr_t X86_ZF_FLAG = 1 << 6;
 const uintptr_t X86_TF_FLAG = 1 << 8;
@@ -29,6 +30,8 @@ const uintptr_t X86_IF_FLAG = 1 << 9;
 const uintptr_t X86_DF_FLAG = 1 << 10;
 const uintptr_t X86_RF_FLAG = 1 << 16;
 const uintptr_t X86_ID_FLAG = 1 << 21;
+
+const uintptr_t X86_ALL_ARITH_FLAGS = 0x8D5;
 
 const uintptr_t AARCH64_DBG_SPSR_SS = 1 << 21;
 const uintptr_t AARCH64_DBG_SPSR_11 = 1 << 11;
