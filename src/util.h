@@ -495,6 +495,8 @@ enum class SpecialInstOpcode {
   X86_PUSHF16,
   X86_TPAUSE,
   X86_TPAUSE_REX,
+  X86_UMWAIT,
+  X86_UMWAIT_REX,
 };
 
 struct SpecialInst {

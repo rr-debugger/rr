@@ -87,6 +87,8 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
     case SpecialInstOpcode::X86_RDTSCP:
     case SpecialInstOpcode::X86_TPAUSE:
     case SpecialInstOpcode::X86_TPAUSE_REX:
+    case SpecialInstOpcode::X86_UMWAIT:
+    case SpecialInstOpcode::X86_UMWAIT_REX:
       if (t->tsc_mode == PR_TSC_SIGSEGV) {
         return false;
       }
@@ -139,7 +141,9 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
                        cpuid_data.edx);
     LOG(debug) << " trapped for cpuid: " << HEX(eax) << ":" << HEX(ecx);
   } else if (special_instruction.opcode == SpecialInstOpcode::X86_TPAUSE ||
-             special_instruction.opcode == SpecialInstOpcode::X86_TPAUSE_REX) {
+             special_instruction.opcode == SpecialInstOpcode::X86_TPAUSE_REX ||
+             special_instruction.opcode == SpecialInstOpcode::X86_UMWAIT ||
+             special_instruction.opcode == SpecialInstOpcode::X86_UMWAIT_REX) {
     // The Intel SDM states:
     //
     // > Prior to executing the TPAUSE instruction, an operating system may
@@ -155,16 +159,16 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
     // > - IA32_UMWAIT_CONTROL[0] — C0.2 is not allowed by the OS. Value of “1”
     // >   means all C0.2 requests revert to C0.1.
     // >
-    // > If the processor that executed a TPAUSE instruction wakes due to the
-    // > expiration of the operating system time-limit, the instructions sets
+    // > If the processor that executed a TPAUSE/UMWAIT instruction wakes due to
+    // > the expiration of the operating system time-limit, the instructions sets
     // > RFLAGS.CF; otherwise, that flag is cleared.
     //
     // As the "operating system", we choose a time-limit of zero. The point of
-    // TPAUSE is to make spin-wait loops more efficient without yielding to the
-    // operating system scheduler and triggering a full context switch. But
-    // because we serialize all execution to a single physical core, no progress
-    // will ever be made without yielding, and of course we've already paid the
-    // cost of a context switch and then some.
+    // TPAUSE/UMWAIT is to make spin-wait loops more efficient without yielding
+    // to the operating system scheduler and triggering a full context switch.
+    // But because we serialize all execution to a single physical core, no
+    // progress will ever be made without yielding, and of course we've already
+    // paid the cost of a context switch and then some.
     r.set_flags((r.flags() & ~X86_ALL_ARITH_FLAGS) | X86_CF_FLAG);
   }
 

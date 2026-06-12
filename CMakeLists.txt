@@ -1462,6 +1462,7 @@ set(BASIC_TESTS
   tun
   two_signals_with_mask
   ulimit_low
+  x86/umwait
   uname
   unexpected_exit
   unexpected_exit_execve

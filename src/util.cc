@@ -1927,6 +1927,8 @@ const uint8_t rdtsc_insn[2] = { 0x0f, 0x31 };
 static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
 static const uint8_t tpause_insn[] = { 0x66, 0x0f, 0xae, 0xf0 };
 static const uint8_t tpause_rex_insn[] = { 0x66, 0x41, 0x0f, 0xae, 0xf0 };
+static const uint8_t umwait_insn[] = { 0xf2, 0x0f, 0xae, 0xf0 };
+static const uint8_t umwait_rex_insn[] = { 0xf2, 0x41, 0x0f, 0xae, 0xf0 };
 static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
 static const uint8_t int3_insn[] = { 0xcc };
 static const uint8_t pushf_insn[] = { 0x9c };
@@ -1973,12 +1975,18 @@ SpecialInst special_instruction_at(Task* t, remote_code_ptr ip) {
       if (!memcmp(insn, tpause_rex_insn, sizeof(tpause_rex_insn))) {
         return {SpecialInstOpcode::X86_TPAUSE_REX};
       }
+      if (!memcmp(insn, umwait_rex_insn, sizeof(umwait_rex_insn))) {
+        return {SpecialInstOpcode::X86_UMWAIT_REX};
+      }
     }
     if (len >= sizeof(tpause_insn)) {
       // Mask off the register selector.
       insn[3] &= ~0x07;
       if (!memcmp(insn, tpause_insn, sizeof(tpause_insn))) {
         return {SpecialInstOpcode::X86_TPAUSE};
+      }
+      if (!memcmp(insn, umwait_insn, sizeof(umwait_insn))) {
+        return {SpecialInstOpcode::X86_UMWAIT};
       }
     }
   } else if (t->arch() == aarch64) {
@@ -2020,6 +2028,10 @@ size_t special_instruction_len(SpecialInstOpcode insn) {
     return sizeof(tpause_insn);
   } else if (insn == SpecialInstOpcode::X86_TPAUSE_REX) {
     return sizeof(tpause_rex_insn);
+  } else if (insn == SpecialInstOpcode::X86_UMWAIT) {
+    return sizeof(umwait_insn);
+  } else if (insn == SpecialInstOpcode::X86_UMWAIT_REX) {
+    return sizeof(umwait_rex_insn);
   } else if (insn == SpecialInstOpcode::ARM_MRS_CNTFRQ_EL0 ||
              insn == SpecialInstOpcode::ARM_MRS_CNTVCT_EL0 ||
              insn == SpecialInstOpcode::ARM_MRS_CNTVCTSS_EL0) {
