@@ -6210,9 +6210,10 @@ static bool os_has_broken_zfs() {
   closedir(zfs_dir);
   char version[50];
   memset(version, 0, sizeof(version));
-  read(version_file_fd, version, sizeof(version) - 1);
+  int read_res = read(version_file_fd, version, sizeof(version) - 1);
   int zfs_major = 0, zfs_minor = 0, zfs_patch = 0;
-  if (3 != sscanf(version, "%d.%d.%d", &zfs_major, &zfs_minor, &zfs_patch)) {
+  if (read_res == -1 ||
+      3 != sscanf(version, "%d.%d.%d", &zfs_major, &zfs_minor, &zfs_patch)) {
     LOG(warn)
         << "Failed to parse /sys/module/zfs/version; assuming ZFS is broken";
     return true;
