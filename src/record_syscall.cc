@@ -6326,6 +6326,7 @@ static void check_outside_mappings(const KernelMapping& tracee_km, const RecordS
           printf("rr: Warning: Mapping of file %s could cause diversion when replaying, "
                  "because pid=%d has mapped it outside of the recording.\n",
                  km.fsname().c_str(), pid);
+          closedir(proc);
           return;
         }
       }
