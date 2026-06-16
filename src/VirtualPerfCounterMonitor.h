@@ -23,7 +23,7 @@ public:
                             const struct perf_event_attr& attr);
   virtual ~VirtualPerfCounterMonitor();
 
-  virtual Type type() override { return VirtualPerfCounter; }
+  virtual Type type() const override { return VirtualPerfCounter; }
 
   virtual bool emulate_ioctl(RecordTask* t, uint64_t* result) override;
   virtual bool emulate_fcntl(RecordTask* t, uint64_t* result) override;
@@ -44,6 +44,8 @@ public:
   static VirtualPerfCounterMonitor* interrupting_virtual_pmc_for_task(Task* t);
 
 private:
+  virtual void serialize_type(
+      pcp::FileMonitor::Builder&) const noexcept override;
   void maybe_enable_interrupt(Task* t, uint64_t after);
   void disable_interrupt() const;
 

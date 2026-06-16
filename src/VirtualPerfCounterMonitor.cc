@@ -168,4 +168,9 @@ VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(Task* t) {
   return found->second;
 }
 
+void VirtualPerfCounterMonitor::serialize_type(
+    pcp::FileMonitor::Builder&) const noexcept {
+  FATAL() << "VirtualPerCounter not implemented or supported";
+}
+
 } // namespace rr

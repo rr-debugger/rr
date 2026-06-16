@@ -14,7 +14,7 @@ class MagicSaveDataMonitor : public FileMonitor {
 public:
   MagicSaveDataMonitor() {}
 
-  virtual Type type() override { return MagicSaveData; }
+  virtual Type type() const override { return MagicSaveData; }
 
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          LazyOffset& offset) override;
