@@ -275,14 +275,35 @@ void GdbServerConnection::write_binary_packet(const char* pfx, const uint8_t* da
   return write_packet_bytes(buf.data(), buf_num_bytes);
 }
 
-static string string_to_hex(const string& s) {
-  stringstream sstr;
-  for (char ch : s) {
-    char buf[16];
-    sprintf(buf, "%02x", ch);
-    sstr << buf;
+static void parser_assert(bool cond) {
+  if (!cond) {
+    fputs("Failed to parse debugger request\n", stderr);
+    DEBUG_ASSERT(false);
+    exit(2);
   }
-  return sstr.str();
+}
+
+/**
+ * For the first |input_len| bytes in |input|, append two characters to |buf| as if
+ * snprintf("%02x") would, then write a zero terminator.
+ */
+static void write_hex_string(const uint8_t* input, size_t input_len,
+                             char* buf, size_t buf_len) {
+  static constexpr char hex_string_table[] = "0123456789abcdef";
+  parser_assert(buf_len >= 2 * input_len + 1);
+  for (size_t i = 0; i < input_len; ++i) {
+    buf[2 * i + 0] = hex_string_table[input[i] >> 4];
+    buf[2 * i + 1] = hex_string_table[input[i] & 0xf];
+  }
+  buf[2 * input_len] = '\0';
+}
+
+static string string_to_hex(const string& s) {
+  string output;
+  output.resize(2 * s.size() + 1);
+  write_hex_string(reinterpret_cast<const uint8_t*>(s.data()), s.size(), output.data(), output.size() + 1);
+  output.resize(2 * s.size());
+  return output;
 }
 
 void GdbServerConnection::write_hex_bytes_packet(const char* prefix,
@@ -296,23 +317,12 @@ void GdbServerConnection::write_hex_bytes_packet(const char* prefix,
   vector<char> buf;
   buf.resize(pfx_num_chars + 2 * len + 1);
   memcpy(buf.data(), prefix, pfx_num_chars);
-  for (size_t i = 0; i < len; ++i) {
-    unsigned long b = bytes[i];
-    snprintf(&buf.data()[pfx_num_chars + 2 * i], 3, "%02lx", b);
-  }
+  write_hex_string(bytes, len, buf.data() + pfx_num_chars, buf.size() - pfx_num_chars);
   write_packet(buf.data());
 }
 
 void GdbServerConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
   write_hex_bytes_packet("", bytes, len);
-}
-
-static void parser_assert(bool cond) {
-  if (!cond) {
-    fputs("Failed to parse debugger request\n", stderr);
-    DEBUG_ASSERT(false);
-    exit(2);
-  }
 }
 
 static string decode_ascii_encoded_hex_str(const char* encoded) {
@@ -615,7 +625,7 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
 
 /**
  * Format |value| into |buf| in the manner gdb expects.  |buf| must
- * point at a buffer with at least |1 + 2*DBG_MAX_REG_SIZE| bytes
+ * point at a buffer with at least |1 + 2*GdbServerRegisterValue::MAX_SIZE| bytes
  * available.  Fewer bytes than that may be written, but |buf| is
  * guaranteed to be null-terminated.
  */
@@ -625,9 +635,7 @@ static size_t print_reg_value(const GdbServerRegisterValue& reg, char* buf) {
     /* gdb wants the register value in native endianness.
      * reg.value read in native endianness is exactly that.
      */
-    for (size_t i = 0; i < reg.size; ++i) {
-      snprintf(&buf[2 * i], 3, "%02lx", (unsigned long)reg.value[i]);
-    }
+    write_hex_string(reg.value, reg.size, buf, 1 + 2*GdbServerRegisterValue::MAX_SIZE);
   } else {
     for (size_t i = 0; i < reg.size; ++i) {
       strcpy(&buf[2 * i], "xx");
@@ -1322,17 +1330,15 @@ bool GdbServerConnection::process_vpacket(char* payload) {
 }
 
 static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
-  stringstream ss;
-  for (size_t i = 0; i < bytes.size(); ++i) {
-    if (i >= max_len) {
-      ss << "...";
-      break;
-    }
-    char buf[3];
-    sprintf(buf, "%02x", bytes[i]);
-    ss << buf;
+  string output;
+  size_t num_bytes = std::min(max_len, bytes.size());
+  output.resize(2 * num_bytes + 1);
+  write_hex_string(bytes.data(), num_bytes, output.data(), output.size() + 1);
+  output.resize(2 * num_bytes);
+  if (bytes.size() > max_len) {
+    output += "...";
   }
-  return ss.str();
+  return output;
 }
 
 bool GdbServerConnection::process_packet() {
