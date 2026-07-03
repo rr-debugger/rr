@@ -89,7 +89,7 @@ static SimpleDebuggerExtensionCommand when_end(
           break;
         }
       }
-      return string("Event at end of Recording: ") + to_string(time);
+      return string("Event at end of recording: ") + to_string(time);
     });
 
 static SimpleDebuggerExtensionCommand info_recording(
@@ -104,8 +104,7 @@ static SimpleDebuggerExtensionCommand info_recording(
       auto task = static_cast<ReplayTask*>(t);
       auto trace_dir = task->session().as_replay()->trace_reader().dir();
 
-      return string("Path of Recording: \"") + json_escape(trace_dir) +
-             string("\"");
+      return string("Path of recording: \"") + json_escape(trace_dir) + string("\"");
     });
 
 static std::vector<ReplayTimeline::Mark> back_stack;

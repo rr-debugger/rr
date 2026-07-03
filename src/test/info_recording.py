@@ -4,7 +4,7 @@ import re
 import json
 
 send_gdb('info recording')
-expect_gdb(re.compile(r'(?<=Path of Recording: ).*'))
+expect_gdb(re.compile(r'(?<=Path of recording: ).*'))
 path_jsonstr = last_match().group(0)
 path_pystr   = json.loads(path_jsonstr)
 

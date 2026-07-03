@@ -2,7 +2,7 @@ from util import *
 import re
 
 send_custom_command('when-end')
-expect_debugger(re.compile(r'Event at end of Recording: (\d+)'))
+expect_debugger(re.compile(r'Event at end of recording: (\d+)'))
 first_when_end_result = int(last_match().group(1))
 # Check this value after running the program for a bit.
 
@@ -49,7 +49,7 @@ if tid2 != tid:
     failed('ERROR ... tid changed')
 
 send_custom_command('when-end')
-expect_debugger(re.compile(r'Event at end of Recording: (\d+)'))
+expect_debugger(re.compile(r'Event at end of recording: (\d+)'))
 second_when_end_result = int(last_match().group(1))
 
 # Ensure 'when' terminates a diversion
@@ -76,7 +76,7 @@ if tid3 != tid2:
 
 send_custom_command("c")
 send_custom_command('when-end')
-expect_debugger(re.compile(r'Event at end of Recording: (\d+)'))
+expect_debugger(re.compile(r'Event at end of recording: (\d+)'))
 final_when_end_result = int(last_match().group(1))
 
 if first_when_end_result != second_when_end_result:
