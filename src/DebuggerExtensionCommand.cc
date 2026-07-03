@@ -3,7 +3,9 @@
 #include "DebuggerExtensionCommand.h"
 
 #include "ReplayTask.h"
+#include "TraceFrame.h"
 #include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -23,6 +25,21 @@ static SimpleDebuggerExtensionCommand elapsed_time(
                             replay_t->session().get_trace_start_time();
 
       return string("Elapsed Time (s): ") + to_string(elapsed_time);
+    });
+
+static SimpleDebuggerExtensionCommand absolute_time(
+    "absolute-time",
+    "Print absolute time (in seconds) from the monotonic clock in the"
+    " 'record' timeline.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      if (!t->session().is_replaying()) {
+        return DebuggerExtensionCommandHandler::cmd_end_diversion();
+      }
+
+      ReplayTask* replay_t = static_cast<ReplayTask*>(t);
+      double elapsed_time = replay_t->session().get_trace_start_time();
+
+      return string("Absolute Time (s): ") + to_string(elapsed_time);
     });
 
 static SimpleDebuggerExtensionCommand when(
@@ -54,6 +71,41 @@ static SimpleDebuggerExtensionCommand when_tid(
         return DebuggerExtensionCommandHandler::cmd_end_diversion();
       }
       return string("Current tid: ") + to_string(t->tid);
+    });
+
+static SimpleDebuggerExtensionCommand when_end(
+    "when-end", "Print the number of the last rr event in the recording.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      if (!t->session().is_replaying()) {
+        return DebuggerExtensionCommandHandler::cmd_end_diversion();
+      }
+
+      ReplayTask* task = static_cast<ReplayTask*>(t);
+      TraceReader seek_reader(task->session().as_replay()->trace_reader());
+      FrameTime time;
+      for (;;) {
+        auto result = seek_reader.read_task_event(&time);
+        if (result.type() == TraceTaskEvent::Type::NONE) {
+          break;
+        }
+      }
+      return string("Event at end of Recording: ") + to_string(time);
+    });
+
+static SimpleDebuggerExtensionCommand info_recording(
+    "info recording",
+    "Print the path of the recording RR is"
+    " currently replaying.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      if (!t->session().is_replaying()) {
+        return DebuggerExtensionCommandHandler::cmd_end_diversion();
+      }
+
+      ReplayTask* task = static_cast<ReplayTask*>(t);
+      auto trace_dir = task->session().as_replay()->trace_reader().dir();
+
+      return string("Path of Recording: \"") + json_escape(trace_dir) +
+             string("\"");
     });
 
 static std::vector<ReplayTimeline::Mark> back_stack;
