@@ -36,8 +36,8 @@ static SimpleDebuggerExtensionCommand absolute_time(
         return DebuggerExtensionCommandHandler::cmd_end_diversion();
       }
 
-      ReplayTask* replay_t = static_cast<ReplayTask*>(t);
-      double elapsed_time = replay_t->session().get_trace_start_time();
+      auto replay_t = static_cast<ReplayTask*>(t);
+      auto elapsed_time = replay_t->current_trace_frame().monotonic_time();
 
       return string("Absolute Time (s): ") + to_string(elapsed_time);
     });
@@ -80,8 +80,8 @@ static SimpleDebuggerExtensionCommand when_end(
         return DebuggerExtensionCommandHandler::cmd_end_diversion();
       }
 
-      ReplayTask* task = static_cast<ReplayTask*>(t);
-      TraceReader seek_reader(task->session().as_replay()->trace_reader());
+      auto task = static_cast<ReplayTask*>(t);
+      auto seek_reader(task->session().as_replay()->trace_reader());
       FrameTime time;
       for (;;) {
         auto result = seek_reader.read_task_event(&time);
@@ -101,7 +101,7 @@ static SimpleDebuggerExtensionCommand info_recording(
         return DebuggerExtensionCommandHandler::cmd_end_diversion();
       }
 
-      ReplayTask* task = static_cast<ReplayTask*>(t);
+      auto task = static_cast<ReplayTask*>(t);
       auto trace_dir = task->session().as_replay()->trace_reader().dir();
 
       return string("Path of Recording: \"") + json_escape(trace_dir) +
