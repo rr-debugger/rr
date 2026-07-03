@@ -1,6 +1,11 @@
 from util import *
 import re
 
+send_custom_command('when-end')
+expect_debugger(re.compile(r'Event at end of Recording: (\d+)'))
+first_when_end_result = int(last_match().group(1))
+# Check this value after running the program for a bit.
+
 send_custom_command('when')
 expect_debugger(re.compile(r'Completed event: (\d+)'))
 t = int(last_match().group(1))
@@ -43,6 +48,10 @@ tid2 = int(last_match().group(1))
 if tid2 != tid:
     failed('ERROR ... tid changed')
 
+send_custom_command('when-end')
+expect_debugger(re.compile(r'Event at end of Recording: (\d+)'))
+second_when_end_result = int(last_match().group(1))
+
 # Ensure 'when' terminates a diversion
 expect_expression('(int)strlen("abcd")', 4)
 send_custom_command('when')
@@ -64,5 +73,22 @@ expect_debugger(re.compile(r'Current tid: (\d+)'))
 tid3 = int(last_match().group(1))
 if tid3 != tid2:
     failed('ERROR ... diversion changed tid')
+
+send_custom_command("c")
+send_custom_command('when-end')
+expect_debugger(re.compile(r'Event at end of Recording: (\d+)'))
+final_when_end_result = int(last_match().group(1))
+
+if first_when_end_result != second_when_end_result:
+    failed("ERROR ... first when-end result differs from second when-end result")
+if second_when_end_result != final_when_end_result:
+    failed("ERROR ... second when-end result differs from final when-end result")
+
+if t >= first_when_end_result:
+    failed("ERROR ... First when result was after when-end")
+if t3 >= first_when_end_result:
+    failed("ERROR ... Second when result was after when-end")
+if t3 >= first_when_end_result:
+    failed("ERROR ... Third when result was after when-end")
 
 ok()
