@@ -17,7 +17,7 @@ class SysCpuMonitor : public FileMonitor {
 public:
   SysCpuMonitor(Task* t, const std::string& pathname);
 
-  virtual Type type() override { return SysCpu; }
+  virtual Type type() const override { return SysCpu; }
 
   bool emulate_read(RecordTask* t, const std::vector<Range>& ranges,
                     LazyOffset&, uint64_t* result) override;

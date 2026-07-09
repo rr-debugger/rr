@@ -61,4 +61,9 @@ bool ProcStatMonitor::emulate_read(
   return true;
 }
 
+void ProcStatMonitor::serialize_type(
+    pcp::FileMonitor::Builder& builder) const noexcept {
+  builder.setProcStat(str_to_data(data));
+}
+
 } // namespace rr

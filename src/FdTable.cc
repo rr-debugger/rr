@@ -7,6 +7,19 @@
 #include <unordered_set>
 #include <utility>
 
+#include "BpfMapMonitor.h"
+#include "FileMonitor.h"
+#include "MagicSaveDataMonitor.h"
+#include "MmappedFileMonitor.h"
+#include "NonvirtualPerfCounterMonitor.h"
+#include "ODirectFileMonitor.h"
+#include "PreserveFileMonitor.h"
+#include "ProcFdDirMonitor.h"
+#include "ProcMemMonitor.h"
+#include "ProcStatMonitor.h"
+#include "RRPageMonitor.h"
+#include "StdioMonitor.h"
+#include "SysCpuMonitor.h"
 #include "rr/rr.h"
 
 #include "AddressSpace.h"
@@ -281,6 +294,88 @@ vector<int> FdTable::fds_to_close_after_exec(RecordTask* t) {
     did_close(fd);
   }
   return fds_to_close;
+}
+
+void FdTable::deserialize(Task* leader,
+                          const pcp::ProcessSpace::Reader& leader_reader) {
+  auto monitors = leader_reader.getMonitors();
+  for (auto m : monitors) {
+    FileMonitor::Type t = (FileMonitor::Type)m.getType();
+    auto fd = m.getFd();
+    if (!is_monitoring(m.getFd())) {
+      switch (t) {
+        case FileMonitor::Base:
+          FATAL() << "Can't add abstract type";
+          break;
+        case FileMonitor::MagicSaveData:
+          add_monitor(leader, fd, new MagicSaveDataMonitor());
+          break;
+        case FileMonitor::Mmapped: {
+          const auto mmap = m.getMmap();
+          add_monitor(leader, fd,
+                      new MmappedFileMonitor(mmap.getDead(), mmap.getDevice(),
+                                             mmap.getInode()));
+        } break;
+        case FileMonitor::Preserve:
+          add_monitor(leader, fd, new PreserveFileMonitor());
+          break;
+        case FileMonitor::ProcFd: {
+          const auto p_fd = m.getProcFd();
+          const auto tuid = TaskUid(p_fd.getTid(), p_fd.getSerial());
+          add_monitor(leader, fd, new ProcFdDirMonitor(tuid));
+          break;
+        }
+        case FileMonitor::ProcMem: {
+          const auto pmem = m.getProcMem();
+          add_monitor(leader, fd,
+                      new ProcMemMonitor(AddressSpaceUid(pmem.getTid(),
+                                                         pmem.getSerial(),
+                                                         pmem.getExecCount())));
+        } break;
+        case FileMonitor::Stdio:
+          add_monitor(leader, fd, new StdioMonitor(m.getStdio()));
+          break;
+        case FileMonitor::VirtualPerfCounter:
+          FATAL() << "VirtualPerCounter Monitor deserializing unimplemented!\n";
+          break;
+        case FileMonitor::NonvirtualPerfCounter:
+          add_monitor(leader, fd, new NonvirtualPerfCounterMonitor());
+          break;
+        case FileMonitor::SysCpu:
+          add_monitor(leader, fd, new SysCpuMonitor(leader, ""));
+          break;
+        case FileMonitor::ProcStat:
+          add_monitor(
+              leader, fd,
+              new ProcStatMonitor(leader, data_to_str(m.getProcStat())));
+          break;
+        case FileMonitor::RRPage:
+          add_monitor(leader, fd, new RRPageMonitor());
+          break;
+        case FileMonitor::ODirect:
+          add_monitor(leader, fd, new ODirectFileMonitor());
+          break;
+        case FileMonitor::BpfMap:
+          add_monitor(leader, fd,
+                      new BpfMapMonitor(m.getBpf().getKeySize(),
+                                        m.getBpf().getValueSize()));
+          break;
+        default:
+          FATAL() << "unhandled FileMonitor: " << file_monitor_type_name(t);
+      }
+    }
+  }
+}
+
+void FdTable::serialize(pcp::ProcessSpace::Builder& leader_builder) const {
+  auto serialized_fd_mons = leader_builder.initMonitors(fds.size());
+  auto mon_index = 0;
+  for (const auto& mon : fds) {
+    const auto fd = mon.first;
+    const auto& monitor = mon.second;
+    auto builder = serialized_fd_mons[mon_index++];
+    monitor->serialize(fd, builder);
+  }
 }
 
 } // namespace rr

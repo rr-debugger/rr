@@ -1,9 +1,11 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "DebuggerExtensionCommand.h"
+#include "CheckpointInfo.h"
 
 #include "ReplayTask.h"
 #include "log.h"
+#include <dirent.h>
 
 using namespace std;
 
@@ -76,6 +78,7 @@ static SimpleDebuggerExtensionCommand rr_history_push(
       forward_stack.clear();
       return string();
     });
+
 static SimpleDebuggerExtensionCommand back(
     "back", "Go back one entry in the rr history.",
     [](GdbServer& gdb_server, Task* t, const vector<string>&) {
@@ -124,22 +127,20 @@ string invoke_checkpoint(GdbServer& gdb_server, Task*,
   if (gdb_server.in_debuggee_end_state) {
     return string("The program is not being run.");
   }
+  auto& timeline = *gdb_server.timeline();
   int checkpoint_id = ++gNextCheckpointId;
-  GdbServer::Checkpoint::Explicit e;
-  if (gdb_server.timeline()->can_add_checkpoint()) {
-    e = GdbServer::Checkpoint::EXPLICIT;
-  } else {
-    e = GdbServer::Checkpoint::NOT_EXPLICIT;
-  }
-  gdb_server.checkpoints[checkpoint_id] = GdbServer::Checkpoint(
-      *gdb_server.timeline(), gdb_server.last_continue_task, e, where);
+  const Checkpoint::Explicit e = timeline.can_add_checkpoint()
+                                     ? Checkpoint::EXPLICIT
+                                     : Checkpoint::NOT_EXPLICIT;
+  gdb_server.checkpoints[checkpoint_id] =
+      Checkpoint(timeline, gdb_server.last_continue_task, e, where);
   return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
 }
 static SimpleDebuggerExtensionCommand checkpoint(
-  "checkpoint",
-  "create a checkpoint representing a point in the execution\n"
-  "use the 'restart' command to return to the checkpoint",
-  invoke_checkpoint);
+    "checkpoint",
+    "create a checkpoint representing a point in the execution\n"
+    "use the 'restart' command to return to the checkpoint",
+    invoke_checkpoint);
 
 string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
                                 const vector<string>& args) {
@@ -156,7 +157,7 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
   }
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
-    if (it->second.is_explicit == GdbServer::Checkpoint::EXPLICIT) {
+    if (it->second.is_explicit == Checkpoint::EXPLICIT) {
       gdb_server.timeline()->remove_explicit_checkpoint(it->second.mark);
     }
     gdb_server.checkpoints.erase(it);
@@ -166,9 +167,9 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
   }
 }
 static SimpleDebuggerExtensionCommand delete_checkpoint(
-  "delete checkpoint",
-  "remove a checkpoint created with the 'checkpoint' command",
-  invoke_delete_checkpoint);
+    "delete checkpoint",
+    "remove a checkpoint created with the 'checkpoint' command",
+    invoke_delete_checkpoint);
 
 string invoke_info_checkpoints(GdbServer& gdb_server, Task*,
                                const vector<string>&) {
@@ -183,9 +184,100 @@ string invoke_info_checkpoints(GdbServer& gdb_server, Task*,
   return out;
 }
 static SimpleDebuggerExtensionCommand info_checkpoints(
-  "info checkpoints",
-  "list all checkpoints created with the 'checkpoint' command",
-  invoke_info_checkpoints);
+    "info checkpoints",
+    "list all checkpoints created with the 'checkpoint' command",
+    invoke_info_checkpoints);
+
+string invoke_load_checkpoint(GdbServer& server, Task*, const vector<string>&) {
+  auto existing_checkpoints =
+      server.current_session().as_replay()->get_persistent_checkpoints();
+  auto cp_deserialized = 0;
+  for (const auto& cp : existing_checkpoints) {
+    if (server.persistent_checkpoint_is_loaded(cp.unique_id)) {
+      LOG(debug) << "checkpoint at time " << cp.event_time()
+                 << " already loaded";
+      continue;
+    }
+    auto session = ReplaySession::create(
+        server.current_session().as_replay()->trace_reader().dir(),
+        server.timeline()->current_session().flags());
+    int checkpoint_id = ++gNextCheckpointId;
+    session->load_checkpoint(cp);
+
+    server.checkpoints[checkpoint_id] =
+        Checkpoint(*server.timeline(), cp, session);
+    cp_deserialized++;
+  }
+  return "loaded " + std::to_string(cp_deserialized) + " checkpoints from disk";
+}
+
+// we only allow for 1 checkpoint at any particular event. This function
+// returns true if it succeeded in creating a new directory, thus also
+// signalling that there previously was no checkpoint with that name
+static bool create_persistent_checkpoint_dir(const std::string& dir) {
+  if (mkdir(dir.c_str(), 0755) == 0) {
+    return true;
+  }
+  return false;
+}
+
+static SimpleDebuggerExtensionCommand load_checkpoint(
+    "load-checkpoints", "loads persistent checkpoints", invoke_load_checkpoint);
+
+string invoke_write_checkpoints(GdbServer& server, Task* t,
+                                const vector<string>&) {
+  auto checkpointsWritten = 0;
+  const auto& trace_dir = t->session().as_replay()->trace_reader().dir();
+  std::vector<CheckpointInfo> existing_checkpoints;
+
+  for (auto& kvp : server.checkpoints) {
+    auto& cp = kvp.second;
+    if (cp.mark.has_rr_checkpoint()) {
+      const auto checkpoint_dir =
+          trace_dir + "/checkpoint-" + std::to_string(cp.mark.time());
+
+      if (!cp.persistent() &&
+          create_persistent_checkpoint_dir(checkpoint_dir)) {
+        // if it's already made persistent don't serialize. if failure to create
+        // directory, don't serialize
+        CheckpointInfo info{ cp };
+        if (info.serialize(*cp.mark.get_checkpoint())) {
+          checkpointsWritten++;
+          // update checkpoint to have the newly persisted cp's id.
+          cp.unique_id = info.unique_id;
+        }
+      }
+    } else {
+      auto mark_with_clone =
+          server.timeline()->find_closest_mark_with_clone(cp.mark);
+      const auto checkpoint_dir =
+          trace_dir + "/checkpoint-" + std::to_string(mark_with_clone->time());
+      if (!mark_with_clone) {
+        std::cout
+            << "Could not find a session clone to serialize for checkpoint "
+            << kvp.first << '\n';
+      } else if (!cp.persistent() &&
+                 create_persistent_checkpoint_dir(checkpoint_dir)) {
+        // if it's already made persistent don't serialize. if failure to create
+        // directory, don't serialize
+        CheckpointInfo info{ cp, *mark_with_clone };
+        if (info.serialize(*mark_with_clone->get_checkpoint())) {
+          checkpointsWritten++;
+          // update checkpoint to have the newly persisted cp's id.
+          cp.unique_id = info.unique_id;
+        }
+      }
+    }
+  }
+
+  return std::to_string(checkpointsWritten) +
+         " new checkpoints serialized. (total: " +
+         std::to_string(existing_checkpoints.size()) + ")";
+}
+
+static SimpleDebuggerExtensionCommand write_checkpoints(
+    "write-checkpoints", "make checkpoints persist on disk.",
+    invoke_write_checkpoints);
 
 void DebuggerExtensionCommand::init_auto_args() {
   static __attribute__((unused)) int dummy = []() {
