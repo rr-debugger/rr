@@ -4,7 +4,7 @@
 
 static int8_t control = SYSCALL_DISPATCH_FILTER_BLOCK;
 
-static void handler(int sig, siginfo_t* si, void*) {
+static void handler(int sig, siginfo_t* si, __attribute__((unused)) void* p) {
   control = SYSCALL_DISPATCH_FILTER_ALLOW;
   test_assert(sig == SIGSYS);
   test_assert(si->si_code == SYS_USER_DISPATCH);
