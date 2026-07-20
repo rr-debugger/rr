@@ -1662,14 +1662,17 @@ static bool inject_handled_signal(RecordTask* t) {
     setup_sigframe_siginfo(t, t->ev().Signal().siginfo);
   }
 
-  // The kernel clears the FPU state on entering the signal handler, but prior
-  // to 4.7 or thereabouts ptrace can still return stale values. Fix that here.
-  // This also sets bit 0 of the XINUSE register to 1 to avoid issues where it
-  // get set to 1 nondeterministically.
-  if (auto e_ptr = t->extra_regs_fallible()) {
-    ExtraRegisters e = *e_ptr;
-    e.reset();
-    t->set_extra_regs(e);
+  if (is_x86ish(t->arch())) {
+    // The kernel clears the FPU state on entering the signal handler, but prior
+    // to 4.7 or thereabouts ptrace can still return stale values. Fix that here.
+    // This also sets bit 0 of the XINUSE register to 1 to avoid issues where it
+    // get set to 1 nondeterministically.]
+    // We don't want to do this hack on Aarch64 because it breaks TPIDR.
+    if (auto e_ptr = t->extra_regs_fallible()) {
+      ExtraRegisters e = *e_ptr;
+      e.reset();
+      t->set_extra_regs(e);
+    }
   }
 
   return true;

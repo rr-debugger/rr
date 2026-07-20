@@ -55,7 +55,11 @@ template <>
 FeatureStream& operator<<(FeatureStream& stream, TargetFeature feature) {
   DEBUG_ASSERT(stream.arch_prefix != nullptr &&
                "No architecture has been provided to description");
-  stream << R"(  <xi:include href=")" << stream.arch_prefix;
+  // We can only emit `include` here. It may be tempting to emit
+  // some `<feature>`s here directly, and that works in GDB, but doesn't
+  // work in LLDB because LLDB processes all `<feature>`s before all
+  // includes.
+  stream << R"(<xi:include href=")" << stream.arch_prefix;
   switch (feature) {
     case TargetFeature::Core:
       stream << "core.xml";
@@ -84,6 +88,11 @@ FeatureStream& operator<<(FeatureStream& stream, TargetFeature feature) {
     case TargetFeature::PAuth:
       stream << "pauth.xml";
       break;
+    case TargetFeature::Tls:
+      stream << "tls.xml";
+      break;
+    default:
+      CLEAN_FATAL() << "Unsupported feature";
   }
   stream << R"("/>)" << '\n';
   return stream;
@@ -123,10 +132,17 @@ static void get_x86_cpu_features(const TraceReader* trace,
 static void get_arm_cpu_features(const TraceReader* trace,
     vector<TargetFeature>& target_features) {
   bool pauth;
+  bool tpidr;
   if (trace != nullptr) {
     pauth = trace->aarch64_pauth();
+    tpidr = trace->aarch64_tpidr();
   } else {
     pauth = aarch64_pauth_enabled();
+    tpidr = true;
+  }
+
+  if (tpidr) {
+    target_features.push_back(TargetFeature::Tls);
   }
   if (pauth) {
     target_features.push_back(TargetFeature::PAuth);
@@ -163,7 +179,42 @@ static const char header[] = R"(<?xml version="1.0"?>
 <target>
 )";
 
-string TargetDescription::to_xml() const {
+static string read_target_desc(const char* file_name) {
+#ifdef __BIONIC__
+  const char* share_path = "usr/share/rr/";
+#else
+  const char* share_path = "share/rr/";
+#endif
+  string path = resource_path() + share_path + string(file_name);
+  stringstream ss;
+  FILE* f = fopen(path.c_str(), "r");
+  if (f == NULL) {
+      FATAL() << "Failed to load target description file: " << file_name;
+  }
+  while (true) {
+    int ch = getc(f);
+    if (ch == EOF) {
+      break;
+    }
+    ss << (char)ch;
+  }
+  fclose(f);
+  return ss.str();
+}
+
+static const char* aarch64_tls_xml = R"(<feature name="org.gnu.gdb.aarch64.tls">
+  <reg name="tpidr" bitsize="64" type="data_ptr"/>
+</feature>
+)";
+
+string TargetDescription::to_xml(const char* annex) const {
+  if (!strcmp(annex, "aarch64-tls.xml")) {
+    return aarch64_tls_xml;
+  }
+  if (strcmp(annex, "") && strcmp(annex, "target.xml")) {
+    return read_target_desc(annex);
+  }
+
   FeatureStream fs;
   fs << header << arch << "<osabi>GNU/Linux</osabi>\n";
   for (const auto feature : target_features) {

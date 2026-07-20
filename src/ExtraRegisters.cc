@@ -54,6 +54,9 @@ struct RegData {
 
   RegData(int offset = -1, int size = 0)
       : offset(offset), size(size), xsave_feature_bit(-1) {}
+  size_t end() const {
+    return offset + size;
+  }
 };
 
 static bool reg_in_range(GdbServerRegister regno, GdbServerRegister low, GdbServerRegister high,
@@ -259,7 +262,7 @@ static uint64_t* xsave_features(vector<uint8_t>& data) {
 
 size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
                                      bool* defined) const {
-  if (format_ == NT_FPR) {
+  if (format_ == AARCH64_FPR) {
     if (arch() != aarch64) {
       *defined = false;
       return 0;
@@ -290,12 +293,19 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
       memcpy(buf, &mask, sizeof(mask));
       return sizeof(mask);
 #endif
+    } else if (regno == DREG_TPIDR) {
+      reg_data = RegData(sizeof(ARM64Arch::user_fpsimd_state),
+                         sizeof(uint64_t));
+      if (reg_data.end() > data_.size()) {
+        *defined = false;
+        return 0;
+      }
     } else {
       *defined = false;
       return 0;
     }
 
-    DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
+    DEBUG_ASSERT(reg_data.end() <= data_.size());
     *defined = true;
     memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
     return reg_data.size;
@@ -332,7 +342,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
 
 bool ExtraRegisters::write_register(GdbServerRegister regno, const void* value,
                                     size_t value_size) {
-  if (format_ == NT_FPR) {
+  if (format_ == AARCH64_FPR) {
     if (arch() != aarch64) {
       return false;
     }
@@ -347,7 +357,9 @@ bool ExtraRegisters::write_register(GdbServerRegister regno, const void* value,
     } else if (regno == DREG_FPCR) {
       reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpcr),
                          sizeof(uint32_t));
-    } else {
+    } else if (regno == DREG_TPIDR) {
+      reg_data = RegData(sizeof(ARM64Arch::user_fpsimd_state),
+                         sizeof(uint64_t));
       return false;
     }
 
@@ -538,7 +550,7 @@ void ExtraRegisters::print_register_file_compact(FILE* f) const {
       print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
       break;
     case aarch64:
-      DEBUG_ASSERT(format_ == NT_FPR);
+      DEBUG_ASSERT(format_ == AARCH64_FPR);
       print_regs(*this, DREG_V0, GdbServerRegister(0), 32, "v", f);
       fputc(' ', f);
       print_reg(*this, DREG_FPSR, GdbServerRegister(0), "fpsr", f);
@@ -603,24 +615,6 @@ static uint32_t features_used(const uint8_t* data) {
   return features;
 }
 
-template <typename Arch>
-bool memcpy_fpr_regs_arch(std::vector<uint8_t>& dest, const uint8_t* src,
-                          size_t data_size) {
-  if (data_size != sizeof(typename Arch::user_fpregs_struct)) {
-    LOG(error) << "Invalid FPR data length: " << data_size << " for architecture " <<
-      arch_name(Arch::arch()) << ", expected " << sizeof(typename Arch::user_fpregs_struct);
-    return false;
-  }
-  dest.resize(sizeof(typename Arch::user_fpregs_struct));
-  memcpy(dest.data(), src, sizeof(typename Arch::user_fpregs_struct));
-  return true;
-}
-
-bool memcpy_fpr_regs_arch(SupportedArch arch, std::vector<uint8_t>& dest,
-                          const uint8_t* src, size_t data_size) {
-  RR_ARCH_FUNCTION(memcpy_fpr_regs_arch, arch, dest, src, data_size)
-}
-
 bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
                                      const uint8_t* data, size_t data_size,
                                      const XSaveLayout& layout) {
@@ -629,11 +623,16 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   if (format == NONE) {
     return true;
-  } else if (format == NT_FPR) {
-    if (!memcpy_fpr_regs_arch(a, data_, data, data_size)) {
+  }
+  if (format == AARCH64_FPR) {
+    if (data_size != sizeof(ARM64Arch::user_fpregs_struct) &&
+        data_size != sizeof(ARM64Arch::user_fpregs_struct) + 8) {
+      LOG(error) << "Invalid ARM64 ExtraRegisters data length: " << data_size;
       return false;
     }
-    format_ = NT_FPR;
+    data_.resize(data_size);
+    memcpy(data_.data(), data, data_size);
+    format_ = AARCH64_FPR;
     return true;
   }
 
@@ -788,8 +787,8 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
       return to_vector(
           *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data_.data()));
     case aarch64:
-      DEBUG_ASSERT(format_ == NT_FPR);
-      DEBUG_ASSERT(data_.size() == sizeof(ARM64Arch::user_fpregs_struct));
+      DEBUG_ASSERT(format_ == AARCH64_FPR);
+      DEBUG_ASSERT(data_.size() >= sizeof(ARM64Arch::user_fpregs_struct));
       return to_vector(
           *reinterpret_cast<const ARM64Arch::user_fpregs_struct*>(data_.data()));
     default:
@@ -816,7 +815,7 @@ void ExtraRegisters::set_user_fpregs_struct(Task* t, SupportedArch arch,
       memcpy(data_.data(), data, sizeof(X64Arch::user_fpregs_struct));
       return;
     case aarch64:
-      DEBUG_ASSERT(format_ == NT_FPR);
+      DEBUG_ASSERT(format_ == AARCH64_FPR);
       ASSERT(t, size >= sizeof(ARM64Arch::user_fpregs_struct));
       ASSERT(t, data_.size() >= sizeof(ARM64Arch::user_fpregs_struct));
       memcpy(data_.data(), data, sizeof(ARM64Arch::user_fpregs_struct));
@@ -890,7 +889,7 @@ void ExtraRegisters::reset() {
       memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
     }
   } else {
-    DEBUG_ASSERT(format_ == NT_FPR);
+    DEBUG_ASSERT(format_ == AARCH64_FPR);
     DEBUG_ASSERT(arch() == aarch64 &&
       "Ensure that nothing is required here for your architecture.");
   }
@@ -953,7 +952,7 @@ void ExtraRegisters::compare_internal(const ExtraRegisters& reg2,
       compare_regs(*this, reg2, DREG_64_XMM0, avx_present ? DREG_64_YMM0H : NOT_PRESENT, 8, "ymm", result);
       break;
     case aarch64:
-      DEBUG_ASSERT(format_ == NT_FPR);
+      DEBUG_ASSERT(format_ == AARCH64_FPR);
       compare_regs(*this, reg2, DREG_V0, NOT_PRESENT, 32, "v", result);
       break;
     default:

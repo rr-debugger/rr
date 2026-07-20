@@ -58,11 +58,12 @@ public:
    */
   XSAVE,
   /**
-   * Stores the content of the NT_FPREGS regset. The format depends on the
-   * architecture. It is given by Arch::user_fpregs_struct for the appropriate
-   * architecture.
+   * Stores the content of the NT_FPREGS regset for Aarch64.
+   * The first sizeof(ARM64Arch::user_fpregs_struct) bytes (or less) are
+   * a ARM64Arch::user_fpregs_struct.
+   * The next 8 bytes after that (if present) are TPIDR.
    */
-  NT_FPR };
+  AARCH64_FPR };
 
   // Set values from raw data, with the given XSAVE layout. Returns false
   // if this could not be done.

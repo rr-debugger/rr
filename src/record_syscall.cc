@@ -2971,6 +2971,30 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
+        case NT_ARM_TLS: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
+          if (tracee) {
+            if (auto extra_regs = tracee->extra_regs_fallible()) {
+              bool ok = true;
+              vector<uint8_t> buf(sizeof(uint64_t));
+              size_t n = extra_regs->read_register(buf.data(), GdbServerRegister::DREG_TPIDR, &ok);
+              if (n == buf.size() && ok) {
+                ptrace_get_reg_set<Arch>(t, syscall_state, buf);
+              } else {
+                syscall_state.expect_errno = EINVAL;
+                emulate = false;
+              }
+            } else {
+              syscall_state.emulate_result(-ESRCH);
+            }
+          }
+          break;
+        }
         case NT_X86_XSTATE: {
           if (!Arch::is_x86ish()) {
             syscall_state.expect_errno = EINVAL;
@@ -3065,6 +3089,19 @@ static Switchable prepare_ptrace(RecordTask* t,
               ptrace_verify_set_reg_set<Arch>(
                 t, sizeof(ARM64Arch::user_pac_generic_keys), syscall_state);
             }
+          }
+          break;
+        }
+        case NT_ARM_TLS: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(t, sizeof(uint64_t),
+                syscall_state);
           }
           break;
         }

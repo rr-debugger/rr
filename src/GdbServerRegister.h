@@ -320,6 +320,9 @@ enum GdbServerRegister {
   DREG_FPSR,
   DREG_FPCR,
 
+  // aarch64 TLS
+  DREG_TPIDR,
+
   // aarch64-pauth.xml
   DREG_PAUTH_DMASK,
   DREG_PAUTH_CMASK,

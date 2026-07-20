@@ -464,29 +464,6 @@ void GdbServerConnection::write_xfer_response(const void* data, size_t size,
                       size - offset);
 }
 
-static string read_target_desc(const char* file_name) {
-#ifdef __BIONIC__
-  const char* share_path = "usr/share/rr/";
-#else
-  const char* share_path = "share/rr/";
-#endif
-  string path = resource_path() + share_path + string(file_name);
-  stringstream ss;
-  FILE* f = fopen(path.c_str(), "r");
-  if (f == NULL) {
-      FATAL() << "Failed to load target description file: " << file_name;
-  }
-  while (true) {
-    int ch = getc(f);
-    if (ch == EOF) {
-      break;
-    }
-    ss << (char)ch;
-  }
-  fclose(f);
-  return ss.str();
-}
-
 bool GdbServerConnection::xfer(const char* name, char* args) {
   const char* mode = args;
   args = strchr(args, ':');
@@ -570,8 +547,7 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
       return false;
     }
 
-    const auto desc = strcmp(annex, "") && strcmp(annex, "target.xml") ? read_target_desc(annex) :
-        target_description_.to_xml();
+    const auto desc = target_description_.to_xml(annex);
     write_xfer_response(desc.c_str(), desc.size(), offset, len);
     return false;
   }

@@ -109,6 +109,8 @@ struct Header {
   aarch64 :group {
     # True if the tracee had HWCAP_PACA
     hasPAuth @30 :Bool;
+    # True if the tracee recorded TPIDR
+    hasTPIDR @31 :Bool;
   }
   # These flags guard rr behavior differences that ensure old rr traces can
   # be successfully replayed on newer replayers

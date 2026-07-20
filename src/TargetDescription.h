@@ -20,6 +20,7 @@ enum class TargetFeature : uint8_t {
   PKeys,
   FPU,
   PAuth,
+  Tls,
 };
 
 class TargetDescription {
@@ -32,7 +33,7 @@ public:
     }
     return result;
   }
-  std::string to_xml() const;
+  std::string to_xml(const char* annex) const;
 
 private:
   SupportedArch arch;
