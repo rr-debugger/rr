@@ -1668,66 +1668,67 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
       return;
     }
   }
+
   ElfFileReader reader(open_fd, t->arch());
-  // Check for symbols first in the library itself, regardless of whether
-  // there is a debuglink.  For example, on Fedora 26, the .symtab and
-  // .strtab sections are stripped from the debuginfo file for
-  // libpthread.so.
-  SymbolTable syms = reader.read_symbols(".symtab", ".strtab");
-  if (syms.size() == 0) {
-    ScopedFd debug_fd = reader.open_debug_file(map.map.fsname());
-    if (debug_fd.is_open()) {
-      ElfFileReader debug_reader(debug_fd, t->arch());
-      syms = debug_reader.read_symbols(".symtab", ".strtab");
+  auto patch_with_symbols = [&](ElfFileReader& sym_reader) -> void {
+    SymbolTable syms = sym_reader.read_symbols(".symtab", ".strtab");
+    switch (t->arch()) {
+      case x86:
+      case x86_64:
+        for (size_t i = 0; i < syms.size(); ++i) {
+          if (syms.is_name(i, "__elision_aconf")) {
+            static const int zero = 0;
+            // Setting __elision_aconf.retry_try_xbegin to zero means that
+            // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
+            // in glibc's elide.h.
+            set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
+                                 start, size, offset_bytes, prot);
+          }
+          if (syms.is_name(i, "elision_init")) {
+            // Make elision_init return without doing anything. This means
+            // the __elision_available and __pthread_force_elision flags will
+            // remain zero, disabling elision for mutexes. See glibc's
+            // elision-conf.c.
+            static const uint8_t ret = 0xC3;
+            set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
+                                 size, offset_bytes, prot);
+          }
+          // The following operations can only be applied once because after the
+          // patch is applied the code no longer matches the expected template.
+          // For replaying a replay to work, we need to only apply these changes
+          // during a real exec, not during the mmap operations performed when rr
+          // replays an exec.
+          if (mode == MMAP_EXEC &&
+              (syms.is_name(i, "_dl_runtime_resolve_fxsave") ||
+               syms.is_name(i, "_dl_runtime_resolve_xsave") ||
+               syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
+            patch_dl_runtime_resolve(t, reader, syms.addr(i), start, size,
+                                     offset_bytes, prot);
+          }
+        }
+        break;
+      case aarch64:
+        for (size_t i = 0; i < syms.size(); ++i) {
+          if (syms.is_name(i, "__aarch64_have_lse_atomics")) {
+            // Patch the __aarch64_have_lse_atomics variable to ensure that LSE
+            // atomics are always used even if init_lse_atomics hasn't been called
+            // yet (or at all).
+            static const char one = 1;
+            set_and_record_bytes(t, reader, syms.addr(i), &one, sizeof(one),
+                                 start, size, offset_bytes, prot);
+          }
+        }
+        break;
     }
-  }
-  switch (t->arch()) {
-    case x86:
-    case x86_64:
-      for (size_t i = 0; i < syms.size(); ++i) {
-        if (syms.is_name(i, "__elision_aconf")) {
-          static const int zero = 0;
-          // Setting __elision_aconf.retry_try_xbegin to zero means that
-          // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
-          // in glibc's elide.h.
-          set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
-                               start, size, offset_bytes, prot);
-        }
-        if (syms.is_name(i, "elision_init")) {
-          // Make elision_init return without doing anything. This means
-          // the __elision_available and __pthread_force_elision flags will
-          // remain zero, disabling elision for mutexes. See glibc's
-          // elision-conf.c.
-          static const uint8_t ret = 0xC3;
-          set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
-                               size, offset_bytes, prot);
-        }
-        // The following operations can only be applied once because after the
-        // patch is applied the code no longer matches the expected template.
-        // For replaying a replay to work, we need to only apply these changes
-        // during a real exec, not during the mmap operations performed when rr
-        // replays an exec.
-        if (mode == MMAP_EXEC &&
-            (syms.is_name(i, "_dl_runtime_resolve_fxsave") ||
-             syms.is_name(i, "_dl_runtime_resolve_xsave") ||
-             syms.is_name(i, "_dl_runtime_resolve_xsavec"))) {
-          patch_dl_runtime_resolve(t, reader, syms.addr(i), start, size,
-                                   offset_bytes, prot);
-        }
-      }
-      break;
-    case aarch64:
-      for (size_t i = 0; i < syms.size(); ++i) {
-        if (syms.is_name(i, "__aarch64_have_lse_atomics")) {
-          // Patch the __aarch64_have_lse_atomics variable to ensure that LSE
-          // atomics are always used even if init_lse_atomics hasn't been called
-          // yet (or at all).
-          static const char one = 1;
-          set_and_record_bytes(t, reader, syms.addr(i), &one, sizeof(one),
-                               start, size, offset_bytes, prot);
-        }
-      }
-      break;
+  };
+  // Check for symbols in the library itself as well as in debuginfo.
+  // For example, on Fedora 26, the .symtab and .strtab sections are stripped
+  // from the debuginfo file for libpthread.so.
+  patch_with_symbols(reader);
+  ScopedFd debug_fd = reader.open_debug_file(map.map.fsname());
+  if (debug_fd.is_open()) {
+    ElfFileReader debug_reader(debug_fd, t->arch());
+    patch_with_symbols(debug_reader);
   }
 }
 
