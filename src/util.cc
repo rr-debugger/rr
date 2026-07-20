@@ -18,6 +18,7 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <sys/resource.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -1160,6 +1161,14 @@ bool cpu_has_fdp_exception_only_quirk() {
   return !fenv_buf[5];
 #else
   FATAL_X86_ONLY();
+  return false;
+#endif
+}
+
+bool aarch64_pauth_enabled() {
+#ifdef __aarch64__
+  return (getauxval(AT_HWCAP) & HWCAP_PACA) != 0;
+#else
   return false;
 #endif
 }

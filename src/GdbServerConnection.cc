@@ -62,9 +62,9 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 #endif
 
 GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
-  DebuggerType debugger_type, const Features& features)
+  DebuggerType debugger_type, const Features& features,
+  TargetDescription target_description)
     : tguid(tguid),
-      cpu_features_(0),
       debugger_type(debugger_type),
       no_ack(false),
       features_(features),
@@ -73,63 +73,19 @@ GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
       hwbreak_supported_(false),
       swbreak_supported_(false),
       list_threads_in_stop_reply_(false),
-      target_description(nullptr) {
+      target_description_(std::move(target_description)) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
 }
 
-static uint32_t get_cpu_features(SupportedArch arch) {
-  uint32_t cpu_features;
-  switch (arch) {
-    case x86:
-    case x86_64: {
-      cpu_features = arch == x86_64 ? GdbServerConnection::CPU_X86_64 : 0;
-      unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
-      auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
-      if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
-        // PKU (Skylake) implies AVX (Sandy Bridge).
-        cpu_features |= GdbServerConnection::CPU_PKU;
-      }
-
-      if ((cpuid_data.ebx & AVX_512_FOUNDATION_FLAG) == AVX_512_FOUNDATION_FLAG) {
-        cpu_features |= GdbServerConnection::CPU_AVX512 | GdbServerConnection::CPU_AVX;
-        break;
-      }
-
-      cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-      // We're assuming here that AVX support on the system making the recording
-      // is the same as the AVX support during replay. But if that's not true,
-      // rr is totally broken anyway.
-      if ((cpuid_data.ecx & AVX_cpuid_flags) == AVX_cpuid_flags) {
-        cpu_features |= GdbServerConnection::CPU_AVX;
-      }
-      break;
-    }
-    case aarch64:
-      cpu_features = GdbServerConnection::CPU_AARCH64;
-#ifdef __aarch64__
-      if (getauxval(AT_HWCAP) & HWCAP_PACA) {
-        cpu_features |= GdbServerConnection::CPU_PAUTH;
-      }
-#endif
-      break;
-    default:
-      FATAL() << "Unknown architecture";
-      return 0;
-  }
-
-  LOG(debug) << "cpu features " << std::hex << cpu_features;
-
-  return cpu_features;
-}
-
 unique_ptr<GdbServerConnection> GdbServerConnection::await_connection(
     Task* t, ScopedFd& listen_fd,  DebuggerType debugger_type,
-    const GdbServerConnection::Features& features) {
-  auto dbg = unique_ptr<GdbServerConnection>(
-    new GdbServerConnection(t->thread_group()->tguid(), debugger_type, features));
-  dbg->set_cpu_features(t->arch());
+    const GdbServerConnection::Features& features,
+    const TraceReader* trace_reader) {
+  auto dbg = make_unique<GdbServerConnection>(
+      t->thread_group()->tguid(), debugger_type, features,
+      TargetDescription(t->arch(), trace_reader));
   dbg->await_debugger(listen_fd);
   return dbg;
 }
@@ -614,7 +570,8 @@ bool GdbServerConnection::xfer(const char* name, char* args) {
       return false;
     }
 
-    const auto desc = strcmp(annex, "") && strcmp(annex, "target.xml") ? read_target_desc(annex) : target_description->to_xml();
+    const auto desc = strcmp(annex, "") && strcmp(annex, "target.xml") ? read_target_desc(annex) :
+        target_description_.to_xml();
     write_xfer_response(desc.c_str(), desc.size(), offset, len);
     return false;
   }
@@ -2357,12 +2314,5 @@ void GdbServerConnection::reply_restore_register_state(bool ok) {
 bool GdbServerConnection::is_connection_alive() { return connection_alive_; }
 
 bool GdbServerConnection::is_pass_signal(int sig) { return pass_signals.find(to_gdb_signum(sig)) != pass_signals.end(); }
-
-void GdbServerConnection::set_cpu_features(SupportedArch arch) {
-  cpu_features_ = get_cpu_features(arch);
-  DEBUG_ASSERT(target_description == nullptr &&
-               "Target description already created");
-  target_description = std::make_unique<TargetDescription>(arch, cpu_features_);
-}
 
 } // namespace rr

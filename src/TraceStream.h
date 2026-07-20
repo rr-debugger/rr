@@ -511,6 +511,7 @@ public:
     *known = cpu_improperly_configured_known_;
     return cpu_improperly_configured_;
   }
+  bool aarch64_pauth() const { return aarch64_pauth_; }
 
   enum TraceQuirks {
     // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
@@ -554,6 +555,7 @@ private:
   uint8_t max_virtual_address_size_;
   bool cpu_improperly_configured_known_;
   bool cpu_improperly_configured_;
+  bool aarch64_pauth_;
   uint32_t syscallbuf_fds_disabled_size_;
   uint32_t syscallbuf_hdr_size_;
   int required_forward_compatibility_version_;

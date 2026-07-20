@@ -105,6 +105,11 @@ struct Header {
     # rr sets FIP/FDP to zero at each recorded event.
     clearFipFdp @14 :Bool = false;
   }
+  # Architecture specific data, determined by nativeArch
+  aarch64 :group {
+    # True if the tracee had HWCAP_PACA
+    hasPAuth @30 :Bool;
+  }
   # These flags guard rr behavior differences that ensure old rr traces can
   # be successfully replayed on newer replayers
   quirks :group {

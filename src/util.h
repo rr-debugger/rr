@@ -682,6 +682,8 @@ inline unsigned long long dczid_el0_block_size(void) {
 #endif
 }
 
+bool aarch64_pauth_enabled();
+
 /**
  * If `src` overlaps `dst`, replace the bytes in `dst_data` from the range `dst`
  * with the corresponding bytes in `src_data` from the range `src`.

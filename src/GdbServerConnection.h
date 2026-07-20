@@ -19,6 +19,7 @@
 #include "ScopedFd.h"
 #include "TargetDescription.h"
 #include "TaskishUid.h"
+#include "TraceStream.h"
 #include "core.h"
 #include "launch_debugger.h"
 
@@ -489,7 +490,7 @@ public:
    */
   static std::unique_ptr<GdbServerConnection> await_connection(
     Task* t, ScopedFd& listen_fd, DebuggerType debugger_type,
-    const Features& features = Features());
+    const Features& features, const TraceReader* trace_reader = nullptr);
 
   /**
    * Call this when the target of |req| is needed to fulfill the
@@ -747,20 +748,10 @@ public:
 
   const Features& features() { return features_; }
 
-  enum {
-    CPU_X86_64 = 1 << 0,
-    CPU_AVX = 1 << 1,
-    CPU_AARCH64 = 1 << 2,
-    CPU_PKU = 1 << 3,
-    CPU_AVX512 = 1 << 4,
-    CPU_PAUTH = 1 << 5
-  };
-
-  void set_cpu_features(SupportedArch arch);
-  uint32_t cpu_features() const { return cpu_features_; }
+  const TargetDescription& target_description() const { return target_description_; }
 
   GdbServerConnection(ThreadGroupUid tguid, DebuggerType debugger_type,
-    const Features& features);
+    const Features& features, TargetDescription target_description);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
@@ -867,7 +858,6 @@ private:
   // multi-exe-image debugging scenarios, so we pretend only
   // this thread group exists when interfacing with gdb
   ThreadGroupUid tguid;
-  uint32_t cpu_features_;
   DebuggerType debugger_type;
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
@@ -886,7 +876,7 @@ private:
   bool hwbreak_supported_; // client supports hwbreak extension
   bool swbreak_supported_; // client supports swbreak extension
   bool list_threads_in_stop_reply_; // client requested threads: and thread-pcs: in stop replies
-  std::unique_ptr<TargetDescription> target_description;
+  TargetDescription target_description_;
 };
 
 } // namespace rr

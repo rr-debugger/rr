@@ -6,12 +6,11 @@
 #include <cstdint>
 
 #include "kernel_abi.h"
-
-using namespace std;
+#include "TraceStream.h"
 
 namespace rr {
 
-enum class TargetFeature : uint32_t {
+enum class TargetFeature : uint8_t {
   Core = 0,
   SSE,
   Linux,
@@ -25,12 +24,19 @@ enum class TargetFeature : uint32_t {
 
 class TargetDescription {
 public:
-  explicit TargetDescription(rr::SupportedArch arch, uint32_t cpu_features);
-  string to_xml() const;
+  explicit TargetDescription(rr::SupportedArch arch, const TraceReader* trace);
+  uint32_t cpu_features() const {
+    uint32_t result = 0;
+    for (TargetFeature f : target_features) {
+      result |= 1 << static_cast<uint32_t>(f);
+    }
+    return result;
+  }
+  std::string to_xml() const;
 
 private:
   SupportedArch arch;
-  vector<TargetFeature> target_features;
+  std::vector<TargetFeature> target_features;
 };
 } // namespace rr
 

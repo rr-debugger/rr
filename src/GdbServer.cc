@@ -27,6 +27,7 @@
 #include "ReplayTask.h"
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
+#include "TargetDescription.h"
 #include "Task.h"
 #include "ThreadGroup.h"
 #include "TraceField.h"
@@ -1856,7 +1857,8 @@ void GdbServer::serve_replay(std::shared_ptr<ReplaySession> session,
   do {
     LOG(debug) << "initializing debugger connection";
     auto connection = GdbServerConnection::await_connection(t, listen_socket.fd,
-      debugger_type);
+      debugger_type, GdbServerConnection::Features(),
+      &timeline.current_session().trace_reader());
 
     GdbServer server(connection, timeline.current_session().current_task(),
                      &timeline, target);
@@ -2329,10 +2331,15 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
     }
   };
 
-  bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
-  bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
-  bool have_AVX512 = dbg->cpu_features() & GdbServerConnection::CPU_AVX512;
-  bool have_PAUTH = dbg->cpu_features() & GdbServerConnection::CPU_PAUTH;
+  uint32_t cpu_features = dbg->target_description().cpu_features();
+  bool have_PKU =
+      cpu_features & (1 << static_cast<uint8_t>(TargetFeature::PKeys));
+  bool have_AVX =
+      cpu_features & (1 << static_cast<uint8_t>(TargetFeature::AVX));
+  bool have_AVX512 =
+      cpu_features & (1 << static_cast<uint8_t>(TargetFeature::AVX512));
+  bool have_PAUTH =
+      cpu_features & (1 << static_cast<uint8_t>(TargetFeature::PAuth));
   switch (arch) {
     case x86: {
       add_range(GdbServerRegister(0), GdbServerRegister(DREG_ORIG_EAX));

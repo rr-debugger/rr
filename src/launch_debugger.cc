@@ -19,6 +19,7 @@
 #include "kernel_supplement.h"
 #include "log.h"
 #include "StringVectorToCharArray.h"
+#include "TargetDescription.h"
 #include "util.h"
 
 using namespace std;
@@ -389,8 +390,9 @@ void emergency_debug(Task* t) {
         false, "gdb", DebuggerType::GDB);
     fprintf(stderr, "Launch debugger with\n  %s\n", to_shell_string(cmd).c_str());
   }
-  unique_ptr<GdbServerConnection> dbg =
-      GdbServerConnection::await_connection(t, listen_socket.fd, DebuggerType::GDB, features);
+  unique_ptr<GdbServerConnection> dbg = GdbServerConnection::await_connection(
+      t, listen_socket.fd, DebuggerType::GDB,
+      features, nullptr);
   GdbServer::serve_emergency_debugger(std::move(dbg), t);
 }
 

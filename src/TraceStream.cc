@@ -1472,6 +1472,9 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     x86data.setXsaveFipFdpQuirk(to_tristate(xsave_fip_fdp_quirk_));
     x86data.setFdpExceptionOnlyQuirk(to_tristate(fdp_exception_only_quirk_));
     x86data.setClearFipFdp(clear_fip_fdp_);
+  } else {
+    auto aarch64_data = header.initAarch64();
+    aarch64_data.setHasPAuth(aarch64_pauth_enabled());
   }
 
   {
@@ -1705,6 +1708,9 @@ TraceReader::TraceReader(const string& dir)
           len * sizeof(CPUIDRecord));
     xcr0_ = x86data.getXcr0();
     clear_fip_fdp_ = x86data.getClearFipFdp();
+  } else {
+    auto aarch64_data = header.getAarch64();
+    aarch64_pauth_ = aarch64_data.getHasPAuth();
   }
 
   switch (header.getChaosMode()) {
@@ -1775,6 +1781,9 @@ TraceReader::TraceReader(const TraceReader& other)
   arch_ = other.arch_;
   chaos_mode_ = other.chaos_mode_;
   chaos_mode_known_ = other.chaos_mode_known_;
+  cpu_improperly_configured_known_ = other.cpu_improperly_configured_known_;
+  cpu_improperly_configured_ = other.cpu_improperly_configured_;
+  aarch64_pauth_ = other.aarch64_pauth_;
   exclusion_range_ = other.exclusion_range_;
   uname_ = other.uname_;
   quirks_ = other.quirks_;
