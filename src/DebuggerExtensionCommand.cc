@@ -3,6 +3,7 @@
 #include "DebuggerExtensionCommand.h"
 
 #include "ReplayTask.h"
+#include "TraceFrame.h"
 #include "log.h"
 
 using namespace std;
@@ -23,6 +24,17 @@ static SimpleDebuggerExtensionCommand elapsed_time(
                             replay_t->session().get_trace_start_time();
 
       return string("Elapsed Time (s): ") + to_string(elapsed_time);
+    });
+
+static SimpleDebuggerExtensionCommand absolute_time(
+    "absolute-time",
+    "Print absolute time (in seconds) from the monotonic clock in the"
+    " 'record' timeline.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      auto replay_t = static_cast<ReplayTask*>(t);
+      auto elapsed_time = replay_t->current_trace_frame().monotonic_time();
+
+      return string("Absolute Time (s): ") + to_string(elapsed_time);
     });
 
 static SimpleDebuggerExtensionCommand when(
