@@ -80,6 +80,21 @@ static SimpleDebuggerExtensionCommand info_recording(
       return string("Path of recording: \"") + json_escape(trace_dir) + string("\"");
     });
 
+static SimpleDebuggerExtensionCommand when_end(
+    "when-end", "Print the number of the last rr event in the recording.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      auto task = static_cast<ReplayTask*>(t);
+      auto seek_reader(task->session().as_replay()->trace_reader());
+      FrameTime time;
+      for (;;) {
+        auto result = seek_reader.read_task_event(&time);
+        if (result.type() == TraceTaskEvent::Type::NONE) {
+          break;
+        }
+      }
+      return string("Event at end of recording: ") + to_string(time);
+    });
+
 static std::vector<ReplayTimeline::Mark> back_stack;
 static ReplayTimeline::Mark current_history_cp;
 static std::vector<ReplayTimeline::Mark> forward_stack;
