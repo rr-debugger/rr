@@ -2340,6 +2340,8 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
       cpu_features & (1 << static_cast<uint8_t>(TargetFeature::AVX512));
   bool have_PAUTH =
       cpu_features & (1 << static_cast<uint8_t>(TargetFeature::PAuth));
+  bool have_TPIDR =
+      cpu_features & (1 << static_cast<uint8_t>(TargetFeature::Tls));
   switch (arch) {
     case x86: {
       add_range(GdbServerRegister(0), GdbServerRegister(DREG_ORIG_EAX));
@@ -2377,6 +2379,9 @@ const vector<GdbServerRegister>& GdbServer::target_registers(
     case aarch64:
       add_range(GdbServerRegister::DREG_X0,
                 GdbServerRegister::DREG_FPCR);
+      if (have_TPIDR) {
+        register_description.push_back(DREG_TPIDR);
+      }
       if (have_PAUTH) {
         register_description.push_back(DREG_PAUTH_DMASK);
         register_description.push_back(DREG_PAUTH_CMASK);

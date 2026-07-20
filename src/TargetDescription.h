@@ -20,6 +20,7 @@ enum class TargetFeature : uint8_t {
   PKeys,
   FPU,
   PAuth,
+  Tls,
 };
 
 class TargetDescription {

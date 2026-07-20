@@ -1236,14 +1236,21 @@ const ExtraRegisters* Task::extra_regs_fallible() {
 #elif defined(__aarch64__)
     LOG(debug) << "  (refreshing extra-register cache using FPR)";
 
-    extra_registers.format_ = ExtraRegisters::NT_FPR;
-    extra_registers.data_.resize(sizeof(ARM64Arch::user_fpregs_struct));
+    extra_registers.format_ = ExtraRegisters::AARCH64_FPR;
+    extra_registers.data_.resize(sizeof(ARM64Arch::user_fpregs_struct)
+        + sizeof(uint64_t));
     struct iovec vec = { extra_registers.data_.data(),
-                          extra_registers.data_.size() };
+                         sizeof(ARM64Arch::user_fpregs_struct) };
     if (fallible_ptrace(PTRACE_GETREGSET, NT_PRFPREG, &vec)) {
       return nullptr;
     }
-    extra_registers.data_.resize(vec.iov_len);
+    memset(extra_registers.data_.data() + vec.iov_len, 0,
+        extra_registers.data_.size() - vec.iov_len);
+    vec = { extra_registers.data_.data() + sizeof(ARM64Arch::user_fpregs_struct),
+            sizeof(uint64_t) };
+    if (fallible_ptrace(PTRACE_GETREGSET, NT_ARM_TLS, &vec)) {
+      return nullptr;
+    }
 #else
 #error need to define new extra_regs support
 #endif
@@ -1807,13 +1814,23 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
       }
       break;
     }
-    case ExtraRegisters::NT_FPR: {
+    case ExtraRegisters::AARCH64_FPR: {
       struct iovec vec = { extra_registers.data_.data(),
-                            extra_registers.data_.size() };
+                           sizeof(ARM64Arch::user_fpsimd_state) };
       if (ptrace_if_stopped(PTRACE_SETREGSET, NT_PRFPREG, &vec)) {
         /* If that failed, the task was killed and it should not matter what
            we tried to set. But we will remember that our registers are dirty. */
         extra_registers_known = true;
+      }
+      if (extra_registers.data_.size() >=
+          sizeof(ARM64Arch::user_fpsimd_state) + 8) {
+        vec = { extra_registers.data_.data() + sizeof(ARM64Arch::user_fpsimd_state),
+                8 };
+        if (ptrace_if_stopped(PTRACE_SETREGSET, NT_ARM_TLS, &vec)) {
+          /* If that failed, the task was killed and it should not matter what
+             we tried to set. But we will remember that our registers are dirty. */
+          extra_registers_known = true;
+        }
       }
       break;
     }

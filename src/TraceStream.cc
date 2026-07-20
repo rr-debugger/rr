@@ -612,7 +612,7 @@ TraceFrame TraceReader::read_frame(FrameTime skip_before) {
         fmt = ExtraRegisters::XSAVE;
         break;
       case aarch64:
-        fmt = ExtraRegisters::NT_FPR;
+        fmt = ExtraRegisters::AARCH64_FPR;
         break;
     }
     bool ok = ret.recorded_extra_regs.set_to_raw_data(
@@ -1475,6 +1475,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   } else {
     auto aarch64_data = header.initAarch64();
     aarch64_data.setHasPAuth(aarch64_pauth_enabled());
+    aarch64_data.setHasTPIDR(true);
   }
 
   {
@@ -1711,6 +1712,7 @@ TraceReader::TraceReader(const string& dir)
   } else {
     auto aarch64_data = header.getAarch64();
     aarch64_pauth_ = aarch64_data.getHasPAuth();
+    aarch64_tpidr_ = aarch64_data.getHasTPIDR();
   }
 
   switch (header.getChaosMode()) {
@@ -1784,6 +1786,7 @@ TraceReader::TraceReader(const TraceReader& other)
   cpu_improperly_configured_known_ = other.cpu_improperly_configured_known_;
   cpu_improperly_configured_ = other.cpu_improperly_configured_;
   aarch64_pauth_ = other.aarch64_pauth_;
+  aarch64_tpidr_ = other.aarch64_tpidr_;
   exclusion_range_ = other.exclusion_range_;
   uname_ = other.uname_;
   quirks_ = other.quirks_;
