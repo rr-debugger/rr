@@ -599,6 +599,16 @@ ElfFileReader::~ElfFileReader() {
 }
 
 ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {
+  string build_id = read_buildid();
+  if (build_id.size() > 2) {
+    string debug_path = "/usr/lib/debug/.build-id/" + build_id.substr(0, 2) +
+        "/" + build_id.substr(2) + ".debug";
+    ScopedFd debug_fd(debug_path.c_str(), O_RDONLY);
+    if (debug_fd.is_open()) {
+      return debug_fd;
+    }
+  }
+
   if (elf_file_name.empty() || elf_file_name[0] != '/') {
     return ScopedFd();
   }
