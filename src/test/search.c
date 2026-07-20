@@ -28,13 +28,17 @@ int main(int argc, __attribute__((unused)) char* argv[]) {
   test_assert(p != MAP_FAILED);
   p_end = p + page_size * 4;
 
-  /* Don't copy the whole buf. If we do, we may trigger memcpy routines
-   * that copy state to registers which are later spilled to the stack,
-   * causing false positives. These short memcpys are performed using volatile
-   * registers.
+  /* Don't use memcpy ... we don't want big register values being copied/spilled
+     to memory that could cause false positive search matches.
    */
-  memcpy(p + page_size, buf, 12);
-  memcpy(p + page_size * 2, buf, 12);
+  volatile char* p_dest = p + page_size;
+  volatile char* p_dest2 = p + page_size*2;
+  volatile char* b = buf;
+  for (size_t i = 0; i < sizeof(buf); ++i) {
+    *p_dest++ = *b;
+    *p_dest2++ = *b;
+    ++b;
+  }
 
   test_assert(0 == munmap(p, page_size));
   test_assert(0 == munmap(p + page_size * 3, page_size));
