@@ -2950,6 +2950,27 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
+        case NT_ARM_PACA_KEYS:
+        case NT_ARM_PACG_KEYS: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
+          if (tracee) {
+            bool ok = true;
+            vector<uint8_t> keys = tracee->pac_keys(&ok);
+            ASSERT(tracee, ok);
+            if ((int)t->regs().arg3() == NT_ARM_PACA_KEYS) {
+              keys.erase(keys.begin() + sizeof(ARM64Arch::user_pac_address_keys), keys.end());
+            } else {
+              keys.erase(keys.begin(), keys.begin() + sizeof(ARM64Arch::user_pac_address_keys));
+            }
+            ptrace_get_reg_set<Arch>(t, syscall_state, keys);
+          }
+          break;
+        }
         case NT_X86_XSTATE: {
           if (!Arch::is_x86ish()) {
             syscall_state.expect_errno = EINVAL;
@@ -3025,6 +3046,25 @@ static Switchable prepare_ptrace(RecordTask* t,
             ptrace_verify_set_reg_set<Arch>(
                 t, offsetof(ARM64Arch::user_hwdebug_state, dbg_regs[0]),
                 syscall_state);
+          }
+          break;
+        }
+        case NT_ARM_PACA_KEYS:
+        case NT_ARM_PACG_KEYS: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, tid);
+          if (tracee) {
+            if ((int)t->regs().arg3() == NT_ARM_PACA_KEYS) {
+              ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(ARM64Arch::user_pac_address_keys), syscall_state);
+            } else {
+              ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(ARM64Arch::user_pac_generic_keys), syscall_state);
+            }
           }
           break;
         }

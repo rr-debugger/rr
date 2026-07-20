@@ -827,6 +827,20 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
                   2*sizeof(ARM64Arch::hw_bp));
               break;
             }
+            case NT_ARM_PACA_KEYS: {
+              auto set = ptrace_get_regs_set<Arch>(
+                  this, regs, sizeof(ARM64Arch::user_pac_address_keys));
+              struct iovec vec = { (void*)set.data(), sizeof(ARM64Arch::user_pac_address_keys) };
+              fallible_ptrace(PTRACE_SETREGSET, NT_ARM_PACA_KEYS, &vec);
+              break;
+            }
+            case NT_ARM_PACG_KEYS: {
+              auto set = ptrace_get_regs_set<Arch>(
+                  this, regs, sizeof(ARM64Arch::user_pac_generic_keys));
+              struct iovec vec = { (void*)set.data(), sizeof(ARM64Arch::user_pac_generic_keys) };
+              fallible_ptrace(PTRACE_SETREGSET, NT_ARM_PACG_KEYS, &vec);
+              break;
+            }
             case NT_X86_XSTATE: {
               if (auto extra_regs = tracee->extra_regs_fallible()) {
                 switch (extra_regs->format()) {
