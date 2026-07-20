@@ -182,9 +182,9 @@ try:
             'staticlibs=%s'%('TRUE' if distro_config.get('staticlibs', True) else 'FALSE'),
             'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
             # Firefox doesn't have release tarballs for Aarch64
-            'test_firefox=%d'%(1 if args.architecture == 'x86_64' else 0),
+            'test_firefox=%d'%(1 if args.architecture == 'x86_64' and not distro_config.get('disable_app_tests') else 0),
             # libreoffice uses STREX
-            'test_libreoffice=%d'%(1 if args.architecture == 'x86_64' else 0),
+            'test_libreoffice=%d'%(1 if args.architecture == 'x86_64' and not distro_config.get('disable_app_tests') else 0),
             'ctest_options="%s"'%' '.join(c for c in ctest_options),
             'cpack_generators="%s"'%args.cpack_generators
         ]).encode('utf-8') + b'\n' + rr_testing_script
