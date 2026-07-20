@@ -4,6 +4,7 @@
 
 #include "ReplayTask.h"
 #include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -54,6 +55,17 @@ static SimpleDebuggerExtensionCommand when_tid(
         return DebuggerExtensionCommandHandler::cmd_end_diversion();
       }
       return string("Current tid: ") + to_string(t->tid);
+    });
+
+static SimpleDebuggerExtensionCommand info_recording(
+    "info recording",
+    "Print the path of the recording RR is"
+    " currently replaying.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      auto task = static_cast<ReplayTask*>(t);
+      auto trace_dir = task->session().as_replay()->trace_reader().dir();
+
+      return string("Path of recording: \"") + json_escape(trace_dir) + string("\"");
     });
 
 static std::vector<ReplayTimeline::Mark> back_stack;
