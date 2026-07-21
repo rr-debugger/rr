@@ -17,7 +17,6 @@ ctest -j$halfproc --verbose
 STATUS=$?
 if [[ $STATUS != 0 ]]; then
   mkdir $GITHUB_WORKSPACE/failed-tests
-  #cp -a Testing/Temporary/CTestCostData.txt $GITHUB_WORKSPACE/failed-tests/rr-test-ctestcostdata.txt
   cd /tmp
   rm rr-test-cpu-lock || true
   for dir in rr-test-*; do
@@ -27,5 +26,12 @@ if [[ $STATUS != 0 ]]; then
     rm -rf $dir
   done
 fi
+
+# Uncomment to retrieve CTestCostData for git inclusion, filters out all times less than 10 seconds.
+#mkdir -p $GITHUB_WORKSPACE/failed-tests
+#cat Testing/Temporary/CTestCostData.txt | grep -v -E ".* [0-9]\.[0-9]*|---" \
+#  | awk '{print $1 " " 1 " " gensub(/(.*)\.(.).*/, "\\1.0", "g", $3) }' \
+#  | sort > $GITHUB_WORKSPACE/failed-tests/rr-test-ctestcostdata.txt
+#STATUS=1  # to trigger artifacts creation, if all tests succeeded
 
 exit $STATUS
