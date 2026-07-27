@@ -450,6 +450,10 @@ bool Registers::write_register_arch(GdbServerRegister regno, const void* value,
     }
     return false;
   } else {
+    if (value_size != rv.nbytes) {
+      FATAL() << "Register size mismatch for register " << regno
+        << " got " << value_size << " expected " << rv.nbytes;
+    }
     DEBUG_ASSERT(value_size == rv.nbytes);
     memcpy(rv.pointer_into(&u), value, value_size);
     return true;
