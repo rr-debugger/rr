@@ -85,6 +85,7 @@ enum CpuMicroarch {
   ARMCortexA77,
   ARMCortexA78,
   ARMCortexX1,
+  QualcommOryonX1,
   AppleM1Icestorm,
   AppleM1Firestorm,
   AppleM2Blizzard,
@@ -201,6 +202,8 @@ static const PmuConfig pmu_configs[] = {
   { ARMNeoverseE1, "ARM Neoverse E1", 0, 0, 0, 0, 0 },
   { ARMCortexA55, "ARM Cortex A55", 0, 0, 0, 0, 0 },
   { ARMCortexA75, "ARM Cortex A75", 0, 0, 0, 0, 0 },
+  { QualcommOryonX1, "Qualcomm Oryon X1", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3", 0x11, -1, -1 },
   { AppleM1Icestorm, "Apple M1 Icestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
     "apple_icestorm_pmu", 0x8c, -1, -1 },
   { AppleM1Firestorm, "Apple M1 Firestorm", 0x90, 0, 0, 1000, PMU_TICKS_TAKEN_BRANCHES,
@@ -463,6 +466,8 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
       return ARMCortexA76;
     case 0x805:
       return ARMCortexA55;
+    case 0x001:
+      return QualcommOryonX1;
     }
     break;
   case 0x61: // Apple

@@ -77,6 +77,8 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
       return ARMCortexA76;
     case 0x805:
       return ARMCortexA55;
+    case 0x001:
+      return QualcommOryonX1;
     }
     break;
   case 0x61: // Apple
