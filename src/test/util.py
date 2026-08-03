@@ -257,11 +257,15 @@ def set_up():
     log_file = 'gdb_rr.log'
     if args[0] == '--lldb':
         debugger_type = 'LLDB'
-        args = args[1:] + ['-d', 'lldb', '-o', '--no-use-colors']
+        args = args[1:] + ['-d', 'lldb']
         log_file = 'lldb_rr.log'
     try:
+        env = dict(os.environ)
+        env['TERM'] = 'dumb'
+        env.pop('DEBUGINFOD_URLS', None)
         child = pexpect.spawn(args[0], args[1:], codec_errors='ignore',
-            timeout=TIMEOUT_SEC, encoding='utf-8', logfile=open(log_file, 'w'))
+            timeout=TIMEOUT_SEC, encoding='utf-8', env=env,
+            logfile=open(log_file, 'w'))
         child.delaybeforesend = 0
         expect_debugger(r'\(rr\)')
         if debugger_type == 'LLDB':

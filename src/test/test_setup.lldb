@@ -1,5 +1,2 @@
 process handle -p true -s true SIGSEGV
 process handle -p false -s false SIGKILL
-settings set use-color false
-settings set show-statusline false
-settings set show-progress false
