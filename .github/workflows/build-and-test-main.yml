@@ -15,7 +15,7 @@ jobs:
           echo "RUNNER_LABEL=$RUNNER_LABEL" >> "$GITHUB_OUTPUT"
       - name: Start runners
         run: |2-
-          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"create\", \"architectures\":[\"x86_64\", \"arm64\"], \"label\": \"${{ steps.generate.outputs.RUNNER_LABEL }}\"}" https://bqugdqmvcql6yvz4i362qohyea0namsk.lambda-url.us-east-2.on.aws
+          curl --fail-with-body -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"create\", \"architectures\":[\"x86_64\", \"arm64\"], \"label\": \"${{ steps.generate.outputs.RUNNER_LABEL }}\"}" https://bqugdqmvcql6yvz4i362qohyea0namsk.lambda-url.us-east-2.on.aws
     outputs:
       RUNNER_LABEL: ${{ steps.generate.outputs.RUNNER_LABEL }}
 
@@ -46,4 +46,4 @@ jobs:
     steps:
       - name: "Stop runners"
         run: |2-
-          curl --fail -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"destroy\", \"label\": \"${{ needs.setup.outputs.RUNNER_LABEL }}\"}" https://bqugdqmvcql6yvz4i362qohyea0namsk.lambda-url.us-east-2.on.aws
+          curl --fail-with-body -s -X POST -H "Content-Type: application/json" --data "{\"operation\": \"destroy\", \"label\": \"${{ needs.setup.outputs.RUNNER_LABEL }}\"}" https://bqugdqmvcql6yvz4i362qohyea0namsk.lambda-url.us-east-2.on.aws
