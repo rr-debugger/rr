@@ -97,7 +97,7 @@ class Ec2Vm:
            If the command fails, throws an exception with the exit status.
            Returns nothing."""
         full_cmd = self.ssh_command() + cmd
-        print('Running %s'%full_cmd, file=sys.stderr)
+        print('Running %s:\n%s\n'%(full_cmd, input), file=sys.stderr)
         process = subprocess.Popen(full_cmd, stdin=subprocess.PIPE)
         process.communicate(input=input, timeout=args.timeout)
         if process.returncode != 0:
