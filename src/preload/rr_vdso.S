@@ -22,14 +22,20 @@ PAGE_ALIGN
 .quad  0x70000000 - PRELOAD_LIBRARY_PAGE_SIZE + 8
 
 STARTPROC_GLOBAL(__rr_dl_runtime_resolve_prelude)
-fstenv -32(%rsp)
-movq $0,-12(%rsp)
-fldenv -32(%rsp)
 xchg (%rsp),%rbx
 # r11 is destroyed anyway by _dl_runtime_resolve, so we can use it here.
 mov %rbx,%r11
 mov %rsp,%rbx
+# HACK! The previous instruction ends in byte 0xE3 which looks
+# like a short jump to our Monkeypatcher code, which can interfere
+# with patching of syscalls following this code. The following
+# instruction is a noop whose first byte is 4, so the offset of that
+# false short jump doesn't reach outside this function.
+add $0,%al
 and $0xffffffffffffffc0,%rsp
+fxsave64 -512(%rsp)
+movq $0,(-512+16)(%rsp)
+fxrstor64 -512(%rsp)
 push %r11
 ret
 CFI_ENDPROC
