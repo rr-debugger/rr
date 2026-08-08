@@ -13,6 +13,7 @@
 #include <linux/elf.h>
 #include <linux/ethtool.h>
 #include <linux/fb.h>
+#include <linux/fuse.h>
 #include <linux/fiemap.h>
 #include <linux/fs.h>
 #include <linux/futex.h>
@@ -2066,6 +2067,10 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(MEMGETREGIONINFO):
     case IOCTL_MASK_SIZE(MEMWRITEOOB64):
     case IOCTL_MASK_SIZE(MEMREADOOB64):
+    case IOCTL_MASK_SIZE(FUSE_DEV_IOC_CLONE):
+    case IOCTL_MASK_SIZE(FUSE_DEV_IOC_BACKING_OPEN):
+    case IOCTL_MASK_SIZE(FUSE_DEV_IOC_BACKING_CLOSE):
+    case IOCTL_MASK_SIZE(FUSE_DEV_IOC_SYNC_INIT):
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
