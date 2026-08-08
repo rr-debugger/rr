@@ -644,6 +644,32 @@ struct dma_buf_export_sync_file {
 #define ZFS_SUPER_MAGIC 0x2fc12fc1
 #endif
 
+#ifndef FUSE_DEV_IOC_MAGIC
+#define FUSE_DEV_IOC_MAGIC		229
+#endif
+
+#ifndef FUSE_DEV_IOC_CLONE
+#define FUSE_DEV_IOC_CLONE		_IOR(FUSE_DEV_IOC_MAGIC, 0, uint32_t)
+#endif
+
+#ifndef FUSE_DEV_IOC_BACKING_OPEN
+struct fuse_backing_map {
+        int32_t		fd;
+        uint32_t	flags;
+        uint64_t	padding;
+};
+#define FUSE_DEV_IOC_BACKING_OPEN	_IOW(FUSE_DEV_IOC_MAGIC, 1, \
+                                             struct fuse_backing_map)
+#endif
+
+#ifndef FUSE_DEV_IOC_BACKING_CLOSE
+#define FUSE_DEV_IOC_BACKING_CLOSE	_IOW(FUSE_DEV_IOC_MAGIC, 2, uint32_t)
+#endif
+
+#ifndef FUSE_DEV_IOC_SYNC_INIT
+#define FUSE_DEV_IOC_SYNC_INIT		_IO(FUSE_DEV_IOC_MAGIC, 3)
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.
