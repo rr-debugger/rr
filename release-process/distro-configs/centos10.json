@@ -12,6 +12,6 @@
     "sudo dnf install -y epel-release",
     "sudo dnf update -y"
   ],
-  "install_build_deps": "sudo dnf install -y rpm ccache cmake gcc gcc-c++ gdb lldb glibc-devel libstdc++-devel zlib-devel git python3 python3-pexpect rpm-build ninja-build capnproto capnproto-libs capnproto-devel libzstd libzstd-devel jq",
+  "install_build_deps": "sudo dnf install -y rpm ccache cmake gcc gcc-c++ gdb lldb glibc-devel libstdc++-devel zlib-devel git python3 python3-pexpect rpm-build ninja-build capnproto capnproto-libs capnproto-devel libzstd libzstd-devel jq which",
   "disable_app_tests": true
 }
