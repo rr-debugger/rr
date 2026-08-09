@@ -182,6 +182,7 @@ try:
             config_script_function('install_app_test_deps'),
             'git_revision="%s"'%args.git_revision,
             'staticlibs=%s'%('TRUE' if distro_config.get('staticlibs', True) else 'FALSE'),
+            'disable32bit=%s'%('TRUE' if distro_config.get('disable32bit', False) else 'FALSE'),
             'build_dist=%d'%(1 if args.dist_files_dir is not None else 0),
             # Firefox doesn't have release tarballs for Aarch64
             'test_firefox=%d'%(1 if args.architecture == 'x86_64' and not distro_config.get('disable_app_tests') else 0),
