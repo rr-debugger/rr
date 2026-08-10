@@ -1628,7 +1628,10 @@ TraceReader::TraceReader(const string& dir)
   char* end_ptr;
   long int version = strtol(version_str.c_str(), &end_ptr, 10);
   if (*end_ptr != 0) {
-    FATAL() << "Invalid version: " << version_str;
+    fprintf(stderr, "\n"
+                    "rr: error: Recorded trace `%s' has an invalid version %s\n",
+            path.c_str(), version_str.c_str());
+    exit(EX_DATAERR);
   }
   if (TRACE_VERSION != version) {
     fprintf(stderr, "\n"

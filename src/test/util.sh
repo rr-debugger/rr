@@ -284,6 +284,11 @@ function skip_if_syscall_buf {
 function just_record { exe="$1"; exeargs=$2;
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err \
         $RR_EXE $GLOBAL_OPTIONS record --bind-to-cpu=any $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
+    exit_code=$?
+    if [[ $exit_code == 124 ]]; then
+        failed "Timeout in record"
+    fi
+    return $exit_code
 }
 
 function save_exe { exe=$1;
@@ -325,16 +330,31 @@ function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
         $RR_EXE $GLOBAL_OPTIONS replay --retry-transient-errors -a \
         $replayflags 1> replay.out 2> replay.err
+    exit_code=$?
+    if [[ $exit_code == 124 ]]; then
+        failed "Timeout in replay"
+    fi
+    return $exit_code
 }
 
 function rerun { rerunflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT rerun.err \
         $RR_EXE $GLOBAL_OPTIONS rerun $rerunflags 1> rerun.out 2> rerun.err
+    exit_code=$?
+    if [[ $exit_code == 124 ]]; then
+        failed "Timeout in rerun"
+    fi
+    return $exit_code
 }
 
 function pack {
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT pack.err \
         $RR_EXE $GLOBAL_OPTIONS pack $@ 1> pack.out 2> pack.err
+    exit_code=$?
+    if [[ $exit_code == 124 ]]; then
+        failed "Timeout in pack"
+    fi
+    return $exit_code
 }
 
 function do_ps { psflags=$1

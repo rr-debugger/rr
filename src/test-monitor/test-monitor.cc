@@ -28,6 +28,7 @@ static void print_usage(FILE* out) {
         "then exits with error code 124. Otherwise exits with the child's\n"
         "exit code. Runs the child with\n"
         "RUNNING_UNDER_TEST_MONITOR=<pid-of-test-monitor>.\n"
+        "For rr children, this means fatal rr errors send the SIGURG.\n"
         "\n"
         "If the environment variable RR_TEST_DIAGNOSE_TIMEOUT is set to a number\n"
         "the value will be used as the timeout for each diagnostic commands\n"
@@ -406,7 +407,7 @@ int main(int argc, char* argv[]) {
     }
 
     dump_state_and_kill(child, argv[2]);
-    abort();
+    return 124;
   }
   if (WIFEXITED(status)) {
     return WEXITSTATUS(status);
