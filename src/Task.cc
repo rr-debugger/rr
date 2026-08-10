@@ -3216,8 +3216,6 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
 
 void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
                              bool* ok) {
-  // pread64 etc can't handle addresses that appear to be negative ...
-  // like [vsyscall].
   ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
   if (nread != buf_size) {
     if (ok) {
@@ -3333,10 +3331,18 @@ ssize_t Task::write_bytes_helper_no_notifications(remote_ptr<void> addr, ssize_t
 
   errno = 0;
   ssize_t nwritten = safe_pwrite64(this, buf, buf_size, addr.as_int());
-  // See comment in read_bytes_helper().
-  if (0 == nwritten && 0 == errno) {
-    open_mem_fd();
-    return write_bytes_helper_no_notifications(addr, buf_size, buf, ok, flags);
+  if (errno == EIO || (0 == nwritten && 0 == errno)) {
+    // Reopen and try again.
+    // For example when proc_mem_force_override=ptrace is in force and the
+    // task we opened the mem-fd with exits, we're no longer ptracing it
+    // so the mem-fd stops working, but reopening it with an alive task
+    // does work.
+    if (open_mem_fd()) {
+      errno = 0;
+      nwritten = safe_pwrite64(this, buf, buf_size, addr.as_int());
+    } else {
+      return write_bytes_helper_no_notifications(addr, buf_size, buf, ok, flags);
+    }
   }
   if (errno == EPERM) {
     FATAL() << "Can't write to /proc/" << tid << "/mem\n"
