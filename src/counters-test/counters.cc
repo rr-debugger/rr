@@ -85,6 +85,8 @@ enum CpuMicroarch {
   ARMCortexA77,
   ARMCortexA78,
   ARMCortexX1,
+  ARMCortexA520,
+  ARMCortexA720,
   QualcommOryonX1,
   AppleM1Icestorm,
   AppleM1Firestorm,
@@ -189,6 +191,9 @@ static const PmuConfig pmu_configs[] = {
     "armv8_pmuv3", 0x11, -1, -1 },
   { ARMCortexX1, "ARM Cortex X1", 0x21, 0, 0x6F, 10000, PMU_TICKS_TAKEN_BRANCHES,
     "armv8_pmuv3", 0x11, -1, -1 },
+  { ARMCortexA520, "ARM Cortex A520", 0, 0, 0, 0, 0 },
+  { ARMCortexA720, "ARM Cortex A720", 0x21, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES,
+    "armv8_pmuv3_0", 0x11, -1, -1 },
   // cortex-a55, cortex-a75 and neoverse-e1 counts uarch ISB
   // as retired branches so the BR_RETIRED counter is not reliable.
   // There are some counters that are somewhat more reliable than
@@ -454,6 +459,10 @@ static CpuMicroarch compute_cpu_microarch(const CPUID &cpuid) {
       return ARMNeoverseN2;
     case 0xd4a:
       return ARMNeoverseE1;
+    case 0xd80:
+      return ARMCortexA520;
+    case 0xd81:
+      return ARMCortexA720;
     }
     break;
   case 0x51: // Qualcomm
