@@ -590,7 +590,9 @@ static std::vector<PmuConfig> get_pmu_microarchs() {
           found_working_pmu |= true;
         }
         pmu_uarchs.push_back(pmu_config);
-        pmu_uarchs.back().event_type = info.raw_perf_event_type;
+        if (pmu_uarchs.back().event_type == PERF_TYPE_RAW) {
+          pmu_uarchs.back().event_type = info.raw_perf_event_type;
+        }
         break;
       }
     }
