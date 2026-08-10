@@ -1115,6 +1115,34 @@ Ticks PerfCounters::ticks_for_direct_call(Task*) {
   return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
 
+static void check_strex(Task* t, ScopedFd& fd_strex_counter) {
+  if (!fd_strex_counter.is_open()) {
+    return;
+  }
+  uint64_t strex_count = read_counter(fd_strex_counter);
+  if (strex_count == 0) {
+    return;
+  }
+  LOG(debug) << strex_count << " strex detected";
+  if (Flags::get().force_things) {
+    return;
+  }
+  if (strex_count <= 2 && t->preload_globals.is_null()) {
+    // Two events before our preload library has loaded is almost
+    // certainly just noise from the dynamic loader before
+    // __aarch64_have_lse_atomics is set properly.
+    infallible_perf_event_reset_if_open(fd_strex_counter);
+    return;
+  }
+  ASSERT(t, false)
+      << strex_count
+      << " (speculatively) executed strex instructions detected. \n"
+         "On aarch64, rr only supports applications making use of LSE\n"
+         "atomics rather than legacy LL/SC-based atomics.\n"
+         "Aborting. Retry with -F to override, but replaying such\n"
+         "a recording will probably fail.";
+}
+
 Ticks PerfCounters::read_ticks(Task* t, Error* error) {
   if (error) {
     *error = Error::None;
@@ -1139,22 +1167,7 @@ Ticks PerfCounters::read_ticks(Task* t, Error* error) {
       }
     }
   }
-
-  if (fd_strex_counter.is_open()) {
-    uint64_t strex_count = read_counter(fd_strex_counter);
-    if (strex_count > 0) {
-      LOG(debug) << strex_count << " strex detected";
-      if (!Flags::get().force_things) {
-        ASSERT(t, false)
-            << strex_count
-            << " (speculatively) executed strex instructions detected. \n"
-               "On aarch64, rr only supports applications making use of LSE\n"
-               "atomics rather than legacy LL/SC-based atomics.\n"
-               "Aborting. Retry with -F to override, but replaying such\n"
-               "a recording will probably fail.";
-      }
-    }
-  }
+  check_strex(t, fd_strex_counter);
 
   uint64_t adjusted_counting_period =
       counting_period +
