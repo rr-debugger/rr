@@ -2079,7 +2079,20 @@ string get_cpu_lock_file() {
   return lock_file ? lock_file : trace_save_dir() + "/cpu_lock";
 }
 
-// Restrict `cpus` to those that are P-cores, if any are P-cores
+// Restrict `cpus` to supported CPUs, if there are any.
+static void filter_for_supported_cpus(vector<int>& cpus) {
+  vector<int> result;
+  for (int cpu : cpus) {
+    if (PerfCounters::support_cpu(cpu)) {
+      result.push_back(cpu);
+    }
+  }
+  if (!result.empty()) {
+    cpus = result;
+  }
+}
+
+// Restrict `cpus` to P-cores, if there are any.
 static void filter_for_perf_cores(vector<int>& cpus) {
   const vector<CPUGroup>& groups = CPUs::get().cpu_groups();
   unordered_set<int> p_cores;
@@ -2169,6 +2182,8 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
   if (cpus.empty()) {
     FATAL() << "Can't find a valid CPU to run on";
   }
+
+  filter_for_supported_cpus(cpus);
 
   if (bind_cpu.mode == BindCPU::PREFER_PERF_CORE) {
     filter_for_perf_cores(cpus);
