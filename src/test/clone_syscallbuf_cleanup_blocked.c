@@ -29,17 +29,6 @@ static int exec_proc(__attribute__((unused)) void* arg) {
   // Close the reading end of the pipe in this process
   close(pipefds[0]);
 
-  // Wait for the parent to be blocked in a read(2) syscall waiting on the pipe
-  char wchan_path[PATH_MAX];
-  snprintf(wchan_path, PATH_MAX, "/proc/%d/wchan", getppid());
-  char wchan[1024] = {0};
-  do {
-    FILE *f = fopen(wchan_path, "r");
-    size_t s = fread(wchan, 1, sizeof(wchan) - 1, f);
-    fclose(f);
-    wchan[s] = 0;
-  } while (strstr(wchan, "pipe_read") == 0);
-
   sleep(1);
 
   assert_syscallbuf_count(2);
