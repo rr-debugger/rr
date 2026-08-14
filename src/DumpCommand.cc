@@ -10,6 +10,7 @@
 #include <limits>
 #include <unordered_map>
 
+#include "Event.h"
 #include "preload/preload_interface.h"
 
 #include "AddressSpace.h"
@@ -24,6 +25,27 @@
 using namespace std;
 
 namespace rr {
+
+struct JsonArrayAtKeyWriter {
+  public:
+  bool key_written = false;
+  bool write_comma = false;
+
+  void ensure_key(FILE *out, const char *key) {
+    if (!key_written) {
+      key_written = true;
+      fprintf(out, ", \"%s\": [", key);
+    }
+  };
+
+  void maybe_comma(FILE *out) {
+    if (!write_comma) {
+      write_comma = true;
+    } else {
+      fprintf(out, ", ");
+    }
+  };
+};
 
 class DumpCommand : public Command {
 public:
@@ -45,9 +67,12 @@ DumpCommand DumpCommand::singleton(
     "  -e, --task-events          dump task events\n"
     "  -m, --recorded-metadata    dump recorded data metadata\n"
     "  -p, --mmaps                dump mmap data\n"
+    "  -R, --no-regs              skip dumping register values\n"
     "  -r, --raw                  dump trace frames in a more easily\n"
     "                             machine-parseable format instead of the\n"
     "                             default human-readable format\n"
+    "  -j, --json                 dump trace frames in jsonl, i.e. one\n"
+    "                             json object per line\n"
     "  -s, --statistics           dump statistics about the trace\n"
     "  -t, --tid=<pid>            dump events only for the specified tid\n");
 
@@ -62,7 +87,9 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
     { 'e', "task-events", NO_PARAMETER },
     { 'm', "recorded-metadata", NO_PARAMETER },
     { 'p', "mmaps", NO_PARAMETER },
+    { 'R', "no-regs", NO_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
+    { 'j', "json", NO_PARAMETER },
     { 's', "statistics", NO_PARAMETER },
     { 't', "tid", HAS_PARAMETER },
   };
@@ -84,8 +111,14 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
     case 'p':
       flags.dump_mmaps = true;
       break;
+    case 'R':
+      flags.dump_no_regs = true;
+      break;
     case 'r':
       flags.raw_dump = true;
+      break;
+    case 'j':
+      flags.json_dump = true;
       break;
     case 's':
       flags.dump_statistics = true;
@@ -122,47 +155,84 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
     CLEAN_FATAL() << "Malformed trace file (bad recorded-bytes count)";
   }
   if (flags.raw_dump) {
-    fprintf(out, "  ");
-    for (unsigned long i = 0; i < sizeof(syscallbuf_hdr); ++i) {
-      fprintf(out, "%2.2x", *(buf.data.data() + (uintptr_t)i));
+    char hdr_out[sizeof(syscallbuf_hdr) * 2 + 1];
+    write_hex_string(buf.data.data(), sizeof(syscallbuf_hdr), hdr_out, sizeof(hdr_out));
+    if (flags.json_dump) {
+      fprintf(out, ", \"syscallbuf_flush_raw\": \"%s\"", hdr_out);
+    } else {
+      fprintf(out, "  %s\n", hdr_out);
     }
-    fprintf(out, "\n");
   }
   bytes_remaining = flush_hdr->num_rec_bytes;
+
+  JsonArrayAtKeyWriter key_writer = {};
 
   auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr) + trace.syscallbuf_hdr_size();
   auto end_ptr = record_ptr + bytes_remaining;
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
     // Buffered syscalls always use the task arch
-    fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx%s%s }\n",
-            syscall_name(record->syscallno, frame.regs().arch()).c_str(),
-            (long)record->ret, (long)record->size,
-            record->desched ? ", desched:1" : "",
-            record->replay_assist ? ", replay_assist:1" : "");
+    if (flags.json_dump) {
+      key_writer.ensure_key(out, "syscalls");
+      key_writer.maybe_comma(out);
+      fprintf(out, "{ \"syscall\":\"%s\", \"ret\":%ld, \"size\":%ld%s%s ",
+              syscall_name(record->syscallno, frame.regs().arch()).c_str(),
+              (long)record->ret, (long)record->size,
+              record->desched ? ", \"desched\":1" : "",
+              record->replay_assist ? ", \"replay_assist\":1" : "");
+    } else {
+      fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx%s%s }\n",
+              syscall_name(record->syscallno, frame.regs().arch()).c_str(),
+              (long)record->ret, (long)record->size,
+              record->desched ? ", desched:1" : "",
+              record->replay_assist ? ", replay_assist:1" : "");
+    }
     if (flags.raw_dump) {
-      fprintf(out, "  ");
-      for (unsigned long i = 0; i < record->size; ++i) {
-        fprintf(out, "%2.2x", *(record_ptr + (uintptr_t)i));
+      auto record_out = std::vector<char>();
+      record_out.resize(record->size * 2 + 1);
+      write_hex_string(record_ptr, record->size, record_out.data(), record_out.size());
+      if (flags.json_dump) {
+        fprintf(out, ", \"raw\": \"%s\"", record_out.data());
+      } else {
+        fprintf(out, "  %s\n", record_out.data());
       }
-      fprintf(out, "\n");
+    }
+    if (flags.json_dump) {
+      fprintf(out, "}");
     }
     if (record->size < sizeof(*record)) {
       CLEAN_FATAL() << "Malformed trace file (bad record size)";
     }
     record_ptr += stored_record_size(record->size);
   }
+  if (key_writer.key_written) {
+    fprintf(out, "]");
+  }
   if (flags.dump_mmaps) {
+    JsonArrayAtKeyWriter mmaps_key = {};
     for (auto& record : frame.event().SyscallbufFlush().mprotect_records) {
-      fprintf(out, "  { start:%p, size:%" PRIx64 ", prot:'%s' }\n",
-              (void*)record.start, record.size, prot_flags_string(record.prot).c_str());
-      if (flags.raw_dump) {
-        fprintf(out, "  ");
-        for (unsigned long i = 0; i < sizeof(record); ++i) {
-          fprintf(out, "%2.2x", *(reinterpret_cast<const uint8_t*>(&record) + (uintptr_t)i));
-        }
-        fprintf(out, "\n");
+      if (flags.json_dump) {
+        mmaps_key.ensure_key(out, "mmaps");
+        mmaps_key.maybe_comma(out);
+        fprintf(out, "{ \"start\":%ld, \"size\":%" PRIx64 ", \"prot\":\"%s\"",
+                record.start, record.size, prot_flags_string(record.prot).c_str());
+      } else {
+        fprintf(out, "  { start:%p, size:%" PRIx64 ", prot:'%s' }\n",
+                (void*)record.start, record.size, prot_flags_string(record.prot).c_str());
       }
+      if (flags.raw_dump) {
+        char rec_out[sizeof(record) * 2 + 1];
+        write_hex_string(reinterpret_cast<const uint8_t*>(&record), sizeof(record), rec_out, sizeof(rec_out));
+        if (flags.json_dump) {
+          fprintf(out, ", \"raw\": \"%s\"", rec_out);
+        } else {
+          fprintf(out, "  %s\n", rec_out);
+        }
+      }
+      fprintf(out, "}");
+    }
+    if (mmaps_key.key_written) {
+      fprintf(out, "]");
     }
   }
 }
@@ -210,6 +280,21 @@ static void dump_socket_addrs(FILE* out, const TraceFrame& frame) {
   }
 }
 
+static void dump_frame_json(FILE *out, const TraceFrame &frame, const DumpFlags &flags) {
+  fprintf(out, "{ \"real_time\":%f, \"global_time\":%lld, \"tid\":%d, \"event\":\"%s\", \"ticks\": %ld",
+          frame.monotonic_time(), (long long)frame.time(),
+          frame.tid(), frame.event().str().c_str(),
+          frame.ticks());
+  if (frame.event().is_syscall_event()) {
+    fprintf(out, ", \"state\": \"%s\"",
+            state_name(frame.event().Syscall().state));
+  }
+  if (!flags.dump_no_regs && frame.event().record_regs()) {
+    fprintf(out, ", ");
+    frame.regs().print_register_file_json(out);
+  }
+}
+
 static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
   switch (event.type()) {
     case TraceTaskEvent::CLONE:
@@ -233,6 +318,29 @@ static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
   }
 }
 
+static void dump_task_event_json(FILE* out, const TraceTaskEvent& event) {
+  switch (event.type()) {
+    case TraceTaskEvent::CLONE:
+      fprintf(out, "{ \"event\":\"CLONE\", \"tid\":%d, \"parent\":%d, \"clone_flags\":%d }",
+          event.tid(), event.parent_tid(), event.clone_flags());
+      break;
+    case TraceTaskEvent::EXEC:
+      fprintf(out, "{ \"event\":\"EXEC\", \"tid\":%d, \"file\":\"%s\" }",
+          event.tid(), json_escape(event.file_name()).c_str());
+      break;
+    case TraceTaskEvent::EXIT:
+      fprintf(out, "{ \"event\":\"EXIT\", \"tid\":%d, \"status\":%d }",
+          event.tid(), event.exit_status().get());
+      break;
+    case TraceTaskEvent::DETACH:
+      fprintf(out, "{ \"event\":\"DETACH\", \"tid\":%d }",
+          event.tid());
+      break;
+    default:
+      FATAL() << "Unknown TraceTaskEvent";
+      break;
+  }
+}
 /**
  * Dump all events from the current to trace that match |spec| to
  * |out|.  |spec| has the following syntax: /\d+(-\d+)?/, expressing
@@ -273,21 +381,42 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
     if (only_end ? trace.at_end() :
          (start <= frame.time() && frame.time() <= end &&
            (!flags.only_tid || flags.only_tid == frame.tid()))) {
-      if (flags.raw_dump) {
-        frame.dump_raw(out);
+      if (flags.json_dump) {
+        JsonArrayAtKeyWriter task_event_key_writer = {};
+        dump_frame_json(out, frame, flags);
+
+        if (flags.dump_syscallbuf) {
+          dump_syscallbuf_data(trace, out, frame, flags);
+        }
+        if (flags.dump_task_events) {
+          auto range = task_events.equal_range(frame.time());
+          for (auto it = range.first; it != range.second; ++it) {
+            task_event_key_writer.ensure_key(out, "task_events");
+            task_event_key_writer.maybe_comma(out);
+            dump_task_event_json(out, it->second);
+          }
+          if (task_event_key_writer.key_written) {
+            fprintf(out, "]");
+          }
+        }
       } else {
-        frame.dump(out);
-      }
-      if (flags.dump_syscallbuf) {
-        dump_syscallbuf_data(trace, out, frame, flags);
-      }
-      if (flags.dump_task_events) {
-        auto range = task_events.equal_range(frame.time());
-        for (auto it = range.first; it != range.second; ++it) {
-          dump_task_event(out, it->second);
+        if (flags.raw_dump) {
+          frame.dump_raw(out, !flags.dump_no_regs);
+        } else {
+          frame.dump(out, !flags.dump_no_regs);
+        }
+        if (flags.dump_syscallbuf) {
+          dump_syscallbuf_data(trace, out, frame, flags);
+        }
+        if (flags.dump_task_events) {
+          auto range = task_events.equal_range(frame.time());
+          for (auto it = range.first; it != range.second; ++it) {
+            dump_task_event(out, it->second);
+          }
         }
       }
 
+      JsonArrayAtKeyWriter key_writer = {};
       while (true) {
         TraceReader::MappedData data;
         bool found;
@@ -310,48 +439,87 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           if (km.flags() & MAP_SHARED) {
             prot_flags[3] = 's';
           }
-          const char* fsname = km.fsname().c_str();
+          std::string fsname;
           if (data.source == TraceReader::SOURCE_ZERO) {
-            static const char source_zero[] = "<ZERO>";
-            fsname = source_zero;
+            fsname = "<ZERO>";
           }
-          fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, "
-                       "prot_flags:\"%s\", file_offset:0x%llx, "
-                       "device:%lld, inode:%lld, "
-                       "data_file:\"%s\", data_offset:0x%llx, "
-                       "file_size:0x%llx }\n",
-                  fsname, (void*)km.start().as_int(), (void*)km.size(),
-                  prot_flags, (long long)km.file_offset_bytes(),
-                  (long long)km.device(), (long long)km.inode(),
-                  data.file_name.c_str(), (long long)data.data_offset_bytes,
-                  (long long)data.file_size_bytes);
+          else {
+            fsname = km.fsname();
+          }
+
+          if (flags.json_dump) {
+            key_writer.ensure_key(out, "maps");
+            key_writer.maybe_comma(out);
+            fprintf(out, "{ \"map_file\":\"%s\", \"addr\": %lu, "
+                         "\"length\": %lu, \"prot_flags\": \"%s\", "
+                         "\"file_offset\": %lld, \"device\": %lld, "
+                         "\"inode\": %lld, \"data_file\": \"%s\", "
+                         "\"data_offset\": %lld, \"file_size\": %lld }",
+                    json_escape(fsname).c_str(), km.start().as_int(), km.size(),
+                    prot_flags, (long long)km.file_offset_bytes(),
+                    (long long)km.device(), (long long)km.inode(),
+                    json_escape(data.file_name).c_str(),
+                    (long long)data.data_offset_bytes,
+                    (long long)data.file_size_bytes);
+          } else {
+            fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, "
+                         "prot_flags:\"%s\", file_offset:0x%llx, "
+                         "device:%lld, inode:%lld, "
+                         "data_file:\"%s\", data_offset:0x%llx, "
+                         "file_size:0x%llx }\n",
+                    fsname.c_str(), (void*)km.start().as_int(), (void*)km.size(),
+                    prot_flags, (long long)km.file_offset_bytes(),
+                    (long long)km.device(), (long long)km.inode(),
+                    data.file_name.c_str(), (long long)data.data_offset_bytes,
+                    (long long)data.file_size_bytes);
+          }
         }
+      }
+      if (flags.json_dump && key_writer.key_written) {
+        fprintf(out, " ]");
       }
 
       TraceReader::RawDataMetadata data;
       while (process_raw_data && trace.read_raw_data_metadata_for_frame(data)) {
         if (flags.dump_recorded_data_metadata) {
-          fprintf(out, "  { tid:%d, addr:%p, length:%p", data.rec_tid,
-                  (void*)data.addr.as_int(), (void*)data.size);
+          if (flags.json_dump) {
+            fprintf(out, ", \"metadata\": { \"tid\":%d, \"addr\":%ld, \"length\":%ld",
+                    data.rec_tid, data.addr.as_int(), data.size);
+          } else {
+            fprintf(out, " { tid:%d, addr:%p, length:%p", data.rec_tid,
+                    (void*)data.addr.as_int(), (void*)data.size);
+          }
           if (!data.holes.empty()) {
-            fputs(", holes:[", out);
+            if (flags.json_dump) {
+              fputs(", \"holes\":[", out);
+            } else {
+              fputs(", holes:[", out);
+            }
             bool first = true;
             for (auto& h : data.holes) {
               if (!first) {
                 fputs(", ", out);
               }
               first = false;
-              fprintf(out, "%p-%p", (void*)h.offset, (void*)(h.offset + h.size));
+              if (flags.json_dump) {
+                fprintf(out, "\"%p-%p\"", (void*)h.offset, (void*)(h.offset + h.size));
+              } else {
+                fprintf(out, "%p-%p", (void*)h.offset, (void*)(h.offset + h.size));
+              }
             }
             fputs("]", out);
           }
-          fputs(" }\n", out);
+          if (flags.json_dump) {
+            fputs(" }", out);
+          } else {
+            fputs(" }\n", out);
+          }
         }
       }
       if (flags.dump_socket_addrs) {
         dump_socket_addrs(out, frame);
       }
-      if (!flags.raw_dump) {
+      if (!flags.raw_dump || flags.json_dump) {
         fprintf(out, "}\n");
       }
     } else {
@@ -382,7 +550,7 @@ void dump(const string& trace_dir, const DumpFlags& flags,
           const vector<string>& specs, FILE* out) {
   TraceReader trace(trace_dir);
 
-  if (flags.raw_dump) {
+  if (flags.raw_dump && !flags.json_dump) {
     fprintf(out, "global_time tid reason ticks "
                  "hw_interrupts page_faults instructions "
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");

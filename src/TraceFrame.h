@@ -49,13 +49,13 @@ public:
    * A human-friendly format is used. Does not emit a trailing '}'
    * (so the caller can add more fields to the record).
    */
-  void dump(FILE* out = nullptr) const;
+  void dump(FILE* out = nullptr, bool dump_registers = true) const;
   /**
    * Log a human-readable representation of this to |out|
    * (defaulting to stdout), including a newline character.  An
    * easily machine-parseable format is dumped.
    */
-  void dump_raw(FILE* out = nullptr) const;
+  void dump_raw(FILE* out = nullptr, bool dump_registers = true) const;
 
 private:
   friend class TraceReader;
