@@ -152,7 +152,7 @@ def get_config_lines_arch(config_key):
 def config_script_function(config_key):
     lines = get_config_lines_arch(config_key)
     if not lines:
-        lines = "true"
+        lines = ["true"]
     return ('function %s {\n%s\n}' % (config_key, '\n'.join(lines)))
 
 machine_type = args.machine_type
