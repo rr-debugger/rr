@@ -15,7 +15,7 @@ parser.add_argument('architecture')
 parser.add_argument('keypair_pem_file')
 parser.add_argument('--cpack-generators', default='TGZ')
 parser.add_argument('--git-revision', default='master')
-parser.add_argument('--timeout', default=1200) # 20 minutes
+parser.add_argument('--timeout', default=3600) # 1 hour
 parser.add_argument('--machine-type')
 parser.add_argument('--keep-vm', action='store_true')
 parser.add_argument('--keep-vm-on-error', action='store_true')
