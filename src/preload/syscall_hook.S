@@ -665,9 +665,16 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_e5)
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_89_e5)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_45_10)
-        mov    0x10(%rbp),%rax
+        mov 0x10(%rbp),%rax
         callq __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_45_10)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_44_24_10)
+        # Get original RSP into RAX temporarily
+        mov 0x8(%rsp),%rax
+        mov 0x10(%rax),%rax
+        callq __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_44_24_10)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_89_fb)
         mov %rdi,%rbx

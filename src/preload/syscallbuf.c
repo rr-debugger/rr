@@ -834,6 +834,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_e5(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_89_fb(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_45_10(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_44_24_10(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8d_b3_f0_08_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_nops(void);
 
@@ -1070,6 +1071,11 @@ static void __attribute__((constructor)) init_process(void) {
       4,
       { 0x48, 0x8b, 0x45, 0x10 },
       (uintptr_t)_syscall_hook_trampoline_48_8b_45_10 },
+    /* 2.41-12+deb13u3 has 'mov 0x10(%rsp),%rax' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      5,
+      { 0x48, 0x8b, 0x44, 0x24, 0x10},
+      (uintptr_t)_syscall_hook_trampoline_48_8b_44_24_10 },
     /* Support explicit 5 byte nop (`nopl 0(%ax, %ax, 1)`) before 'rdtsc' or syscall (may ignore interfering branches) */
     { PATCH_SYSCALL_INSTRUCTION_IS_LAST |
       PATCH_IS_NOP_INSTRUCTIONS,
