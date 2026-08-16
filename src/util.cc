@@ -2451,6 +2451,17 @@ size_t word_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(word_size_arch, arch);
 }
 
+void write_hex_string(const uint8_t* input, size_t input_len,
+                             char* buf, size_t buf_len) {
+  static constexpr char hex_string_table[] = "0123456789abcdef";
+  DEBUG_ASSERT(buf_len >= 2 * input_len + 1);
+  for (size_t i = 0; i < input_len; ++i) {
+    buf[2 * i + 0] = hex_string_table[input[i] >> 4];
+    buf[2 * i + 1] = hex_string_table[input[i] & 0xf];
+  }
+  buf[2 * input_len] = '\0';
+}
+
 string json_escape(const string& str, size_t pos) {
   string out;
   for (size_t i = pos; i < str.size(); ++i) {
