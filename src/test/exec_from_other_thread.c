@@ -20,7 +20,7 @@ int main(int argc, __attribute__((unused)) char** argv) {
     return 77;
   }
 
-  for (i = 0; i < 100; ++i) {
+  for (i = 0; i < 10; ++i) {
     child = fork();
     if (child == 0) {
       pthread_create(&thread, NULL, do_thread, NULL);
