@@ -96,7 +96,7 @@ fi
 
 if [[ $test_libreoffice == 1 ]]; then
   rm -rf ~/.config/libreoffice || true
-  xvnc-runner "libreoffice $HOME/rr/release-process/test-data/rr-test-doc.odt" "rr-test-doc.odt"
+  xvnc-runner "libreoffice $HOME/rr/release-process/test-data/rr-test-doc.odt" "libreoffice-writer"
 fi
 
 if [[ $build_dist != 0 ]]; then
