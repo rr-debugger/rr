@@ -5,7 +5,7 @@
 #include <bpf/bpf_helpers.h>
 #include <stdint.h>
 
-const uint32_t REGISTER_COUNT = sizeof(struct pt_regs)/sizeof(uint64_t);
+#define REGISTER_COUNT sizeof(struct pt_regs)/sizeof(uint64_t)
 
 struct {
   __uint(type, BPF_MAP_TYPE_ARRAY);
