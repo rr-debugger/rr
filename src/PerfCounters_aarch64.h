@@ -413,9 +413,16 @@ static void post_init_pmu_uarchs(std::vector<PmuConfig> &pmu_uarchs)
 
 template <>
 void PerfCounters::reset_arch_extras<ARM64Arch>(int pmu_index) {
-  // LL/SC can't be recorded reliably. Start a counter to detect
-  // any usage, such that we can give an intelligent error message.
-  struct perf_event_attr attr = perf_attrs[pmu_index].llsc_fail;
-  attr.sample_period = 0;
-  fd_strex_counter = start_counter(tid, fd_ticks_interrupt, &attr);
+  // Currently all the Aarch64 PMU counters that count exclusive
+  // loads or stores count speculative execution whether or not
+  // those instructions retired. This is inherently inaccurate;
+  // there is often a conditional branch of the form "should we use
+  // LDXR/STXR?" guarding these instructions, and if that branch is
+  // mispredicted, we can get false positives here :-(. So we can't
+  // really do this.
+  if (0) {
+    struct perf_event_attr attr = perf_attrs[pmu_index].llsc_fail;
+    attr.sample_period = 0;
+    fd_strex_counter = start_counter(tid, fd_ticks_interrupt, &attr);
+  }
 }
