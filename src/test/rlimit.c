@@ -2,6 +2,19 @@
 
 #include "util.h"
 
+int kernel_is_32bit_x86(void)
+{
+#if defined(__i386__)
+  struct utsname buf;
+  if (uname(&buf) != 0)
+    return 0;
+
+  if (strcmp(buf.machine, "i686") == 0) // running at a 32bit kernel
+    return 1;
+#endif
+  return 0;
+}
+
 int main(void) {
   struct rlimit* r;
   struct rlimit* r2;
@@ -13,6 +26,11 @@ int main(void) {
   test_assert(r->rlim_cur > 0);
   test_assert(r->rlim_max > 0);
   VERIFY_GUARD(r);
+
+  /* When running a 32-bit kernel and using the 64-bit rlimit struct,
+   * a value above 0xfffffffe fails. */
+  if (kernel_is_32bit_x86())
+    r->rlim_cur &= 0xffffffff;
 
   r->rlim_cur /= 2;
   test_assert(0 == setrlimit(RLIMIT_FSIZE, r));
