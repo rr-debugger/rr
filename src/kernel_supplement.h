@@ -670,6 +670,10 @@ struct fuse_backing_map {
 #define FUSE_DEV_IOC_SYNC_INIT		_IO(FUSE_DEV_IOC_MAGIC, 3)
 #endif
 
+#ifndef PERF_EVENT_IOC_MODIFY_ATTRIBUTES
+#define PERF_EVENT_IOC_MODIFY_ATTRIBUTES    _IOW('$', 11, struct perf_event_attr *)
+#endif
+
 } // namespace rr
 
 // We can't include libc's ptrace.h, so declare this here.

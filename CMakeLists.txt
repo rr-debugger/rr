@@ -1015,6 +1015,7 @@ set(BASIC_TESTS
   x86/arch_prctl_x86
   x86/arch_prctl_xstate
   async_segv_ignored
+  async_signal_jit
   at_threadexit
   bad_ip
   bad_syscall

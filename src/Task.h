@@ -109,7 +109,9 @@ struct TrapReasons {
   bool singlestep;
   /* Hardware watchpoint fired. This includes cases where the actual values
    * did not change (i.e. AddressSpace::has_any_watchpoint_changes may return
-   * false even though this is set). */
+   * false even though this is set).
+   * This includes hardware breakpoints.
+   */
   bool watchpoint;
   /* Breakpoint instruction was executed. */
   bool breakpoint;

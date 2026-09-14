@@ -19,8 +19,8 @@
 
 #ifdef BPF
 #include <bpf/libbpf.h>
-#include <linux/hw_breakpoint.h>
 #endif
+#include <linux/hw_breakpoint.h>
 
 #include <algorithm>
 #include <fstream>
@@ -1074,7 +1074,7 @@ void PerfCounters::close() {
   fd_minus_ticks_measure.close();
   fd_useless_counter.close();
   fd_ticks_in_transaction.close();
-  fd_async_signal_accelerator.close();
+  fd_hardware_breakpoint.close();
 }
 
 Ticks PerfCounters::stop(Task* t, Error* error) {
@@ -1101,7 +1101,7 @@ Ticks PerfCounters::stop(Task* t, Error* error) {
     if (pt_state) {
       infallible_perf_event_disable_if_open(pt_state->pt_perf_event_fd);
     }
-    infallible_perf_event_disable_if_open(fd_async_signal_accelerator);
+    infallible_perf_event_disable_if_open(fd_hardware_breakpoint);
   }
   return ticks;
 }
@@ -1228,6 +1228,24 @@ Ticks PerfCounters::read_ticks(Task* t, Error* error) {
   return ret;
 }
 
+static struct perf_event_attr init_hw_breakpoint_attr() {
+  struct perf_event_attr attr;
+  memset(&attr, 0, sizeof(attr));
+  attr.type = PERF_TYPE_BREAKPOINT;
+  attr.size = sizeof(attr);
+  attr.bp_type = HW_BREAKPOINT_X;
+  attr.bp_len = sizeof(long);
+  attr.sample_period = 1;
+  attr.sample_type = PERF_SAMPLE_IP;
+  attr.pinned = 1;
+  attr.exclude_kernel = 1;
+  attr.exclude_hv = 1;
+  attr.wakeup_events = 1;
+  attr.precise_ip = 3;
+  attr.disabled = 1;
+  return attr;
+}
+
 #ifdef BPF
 class BpfAccelerator {
 public:
@@ -1274,7 +1292,7 @@ std::shared_ptr<BpfAccelerator> BpfAccelerator::singleton;
     initialized = -1;
 
     libbpf_set_strict_mode(LIBBPF_STRICT_DIRECT_ERRS);
-    string path = resource_path() + "share/rr/async_event_filter.o";
+    string path = resource_path() + "share/rr/asyncfd_async_signal_accelerator_event_filter.o";
     struct bpf_object* obj = bpf_object__open(path.c_str());
     if ((intptr_t)obj <= 0) {
       LOG(error) << "Failed to find bpf at " << path;
@@ -1325,19 +1343,7 @@ std::shared_ptr<BpfAccelerator> BpfAccelerator::singleton;
 
     BpfAccelerator::singleton =
       std::make_shared<BpfAccelerator>(obj, bpf_prog_fd, bpf_regs, bpf_skips);
-    memset(&singleton->attr, 0, sizeof(singleton->attr));
-    singleton->attr.type = PERF_TYPE_BREAKPOINT;
-    singleton->attr.size = sizeof(attr);
-    singleton->attr.bp_type = HW_BREAKPOINT_X;
-    singleton->attr.bp_len = sizeof(long);
-    singleton->attr.sample_period = 1;
-    singleton->attr.sample_type = PERF_SAMPLE_IP;
-    singleton->attr.pinned = 1;
-    singleton->attr.exclude_kernel = 1;
-    singleton->attr.exclude_hv = 1;
-    singleton->attr.wakeup_events = 1;
-    singleton->attr.precise_ip = 3;
-    singleton->attr.disabled = 1;
+    singleton->attr = init_hw_breakpoint_attr();
     initialized = 1;
   }
 
@@ -1376,35 +1382,69 @@ void BpfAccelerator::match_regs_and_open_counter(const Registers& regs, ScopedFd
 
   infallible_perf_event_enable_if_open(fd);
 }
+#endif
 
-bool PerfCounters::accelerate_async_signal(const Registers& regs) {
-  if (!fd_async_signal_accelerator.is_open()) {
-    if (!bpf) {
-      bpf = BpfAccelerator::get_or_create();
+static ScopedFd create_hw_breakpoint_counter(pid_t tid) {
+  struct perf_event_attr attr = init_hw_breakpoint_attr();
+  attr.bp_addr = 0;
+  ScopedFd fd = start_counter(tid, -1, &attr);
+
+  struct f_owner_ex own;
+  own.type = F_OWNER_TID;
+  own.pid = tid;
+  if (fcntl(fd, F_SETOWN_EX, &own)) {
+    FATAL() << "Failed to SETOWN_EX bpf-accelerated breakpoint fd";
+  }
+
+  make_counter_async(fd, SIGTRAP);
+  return fd;
+}
+
+static void configure_hw_breakpoint_counter(remote_code_ptr ip, ScopedFd& fd) {
+  struct perf_event_attr attr = init_hw_breakpoint_attr();
+  attr.bp_addr = ip.register_value();
+  if (ioctl(fd, PERF_EVENT_IOC_MODIFY_ATTRIBUTES, &attr)) {
+    FATAL() << "Failed PERF_EVENT_IOC_MODIFY_ATTRIBUTES";
+  }
+  infallible_perf_event_enable_if_open(fd);
+}
+
+bool PerfCounters::try_set_hardware_breakpoint(const Registers& regs) {
+#ifdef BPF
+  if (!bpf) {
+    bpf = BpfAccelerator::get_or_create();
+  }
+  if (bpf) {
+    if (!fd_hardware_breakpoint.is_open()) {
+      fd_hardware_breakpoint = bpf->create_counter(tid);
+      if (!fd_hardware_breakpoint.is_open()) {
+        return false;
+      }
     }
-
-    if (!bpf) {
+    bpf->match_regs_and_open_counter(regs, fd_hardware_breakpoint);
+    return true;
+  }
+#endif
+  if (!fd_hardware_breakpoint.is_open()) {
+    fd_hardware_breakpoint = create_hw_breakpoint_counter(tid);
+    if (!fd_hardware_breakpoint.is_open()) {
       return false;
     }
-
-    fd_async_signal_accelerator = bpf->create_counter(tid);
   }
-
-  if (!fd_async_signal_accelerator.is_open()) {
-    return false;
-  }
-
-  bpf->match_regs_and_open_counter(regs, fd_async_signal_accelerator);
+  configure_hw_breakpoint_counter(regs.ip(), fd_hardware_breakpoint);
   return true;
 }
 
 uint64_t PerfCounters::bpf_skips() const {
+#ifdef BPF
   if (!bpf) {
     return 0;
   }
 
   return bpf->skips();
-}
+#else
+  return 0;
 #endif
+}
 
 } // namespace rr

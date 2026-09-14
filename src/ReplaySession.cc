@@ -1164,7 +1164,16 @@ Completion ReplaySession::emulate_async_signal(
        * no slower than single-stepping our way to
        * the target execution point. */
       LOG(debug) << "    breaking on target $ip";
-      if (is_x86_string_instruction_at(t, ip) || !t->hpc.accelerate_async_signal(regs)) {
+      bool try_hardware_breakpoint =
+        !t->vm()->is_breakpoint_in_private_read_only_memory(ip);
+#ifdef BPF
+      // BPF can make this much much faster in some cases.
+      try_hardware_breakpoint = true;
+#endif
+      if (is_x86_string_instruction_at(t, ip)) {
+        try_hardware_breakpoint = false;
+      }
+      if (!try_hardware_breakpoint || !t->hpc.try_set_hardware_breakpoint(regs)) {
         t->vm()->add_breakpoint(ip, BKPT_INTERNAL);
 
         if (in_syscallbuf_syscall_hook) {
@@ -1282,6 +1291,10 @@ void ReplaySession::check_ticks_consistency(ReplayTask* t, const Event& ev) {
 
 static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
   if (ev.siginfo.si_signo == SIGBUS) {
+    // SIGBUS signals are delivered on accesses to mapped files which are in
+    // the mapping but past EOF. We don't necessarily emulate these file
+    // lengths accurately so don't rely on SIGBUS being delivered
+    // deterministically.
     return false;
   }
   if (ev.siginfo.si_signo == SIGSEGV && ev.siginfo.si_code == SEGV_PKUERR) {

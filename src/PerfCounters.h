@@ -186,19 +186,12 @@ public:
   static bool improperly_configured();
 
   /**
-   * Try to use BPF to accelerate async signal processing
+   * Try to set a hardware breakpoint at the given address, possibly with
+   * BPF acceleration if that's enabled.
+   * This will be automatically disabled at the next stop().
    */
-#ifdef BPF
-  bool accelerate_async_signal(const Registers& regs);
+  bool try_set_hardware_breakpoint(const Registers& regs);
   uint64_t bpf_skips() const;
-#else
-  bool accelerate_async_signal(const Registers&) {
-    return false;
-  }
-  uint64_t bpf_skips() const {
-    return 0;
-  }
-#endif
 
 private:
   template <typename Arch> void reset_arch_extras(int pmu_index);
@@ -238,10 +231,12 @@ private:
   // aarch64 specific counter to detect use of ll/sc instructions
   ScopedFd fd_strex_counter;
 
-  // BPF-enabled hardware breakpoint for fast async signal emulation.
-  ScopedFd fd_async_signal_accelerator;
+  // potentially BPF-enabled hardware breakpoint for fast async signal emulation.
+  ScopedFd fd_hardware_breakpoint;
 
+#ifdef BPF
   std::shared_ptr<BpfAccelerator> bpf;
+#endif
 
   std::unique_ptr<PTState> pt_state;
 
