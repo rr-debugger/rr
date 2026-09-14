@@ -6375,7 +6375,7 @@ static void check_outside_mappings(const KernelMapping& tracee_km, const RecordS
 #if defined(__i386__)
   struct utsname buf;
   if (uname(&buf) != 0) {
-    FATAL() << "Failed to read /proc";
+    FATAL() << "Failed to call uname";
   }
   if (sizeof(void*) == 4 && strcmp(buf.machine, "x86_64") == 0) {
       /* Running 32-bit rr at a 64-bit kernel is not going to work because
