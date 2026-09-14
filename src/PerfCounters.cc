@@ -21,6 +21,7 @@
 #include <bpf/libbpf.h>
 #endif
 #include <linux/hw_breakpoint.h>
+#include <sys/utsname.h>
 
 #include <algorithm>
 #include <fstream>
@@ -1243,6 +1244,19 @@ static struct perf_event_attr init_hw_breakpoint_attr() {
   attr.wakeup_events = 1;
   attr.precise_ip = 3;
   attr.disabled = 1;
+
+#if defined(__i386__)
+  struct utsname buf;
+  if (uname(&buf) != 0) {
+    FATAL() << "Failed to call uname";
+  }
+  if (strcmp(buf.machine, "x86_64") == 0) {
+    /* A 32-bit rr running at a 64-bit kernel
+     * needs to set bp_len as needed by the kernel. */
+    attr.bp_len = HW_BREAKPOINT_LEN_8;
+  }
+#endif
+
   return attr;
 }
 
