@@ -15,7 +15,7 @@ expect_gdb('Breakpoint 2, ready')
 bps = set(('A', 'B', 'C'))
 for bp in bps:
     send_gdb('b '+ bp +'')
-    expect_gdb('Breakpoint \d')
+    expect_gdb(r'Breakpoint \d')
 
 expect_gdb(r'\(rr\)')
 
@@ -58,7 +58,7 @@ stopped_locations = {
     # on i386, we sometimes stop in the middle of nowhere
     'i386': ['(0x[0-9a-f]+ in )?__kernel_vsyscall',
              '(0x[0-9a-f]+ in )?_traced_raw_syscall',
-              '0x[0-9a-f]+ in \?\?',
+              r'0x[0-9a-f]+ in \?\?',
              '(0x[0-9a-f]+ in )?rr_page_start',
              '(0x[0-9a-f]+ in )?syscall_traced',
              '(0x[0-9a-f]+ in )?__lll_lock_wait',
@@ -67,7 +67,7 @@ stopped_locations = {
     'i386:x86-64': ['(0x[0-9a-f]+ in )?__lll_lock_wait',
                     '(0x[0-9a-f]+ in )?pthread_barrier_wait',
                     '(0x[0-9a-f]+ in )?futex_wait',
-                    '0x0*70000002 in \?\?',
+                    r'0x0*70000002 in \?\?',
                     '(0x[0-9a-f]+ in )?syscall_traced',
                     '(0x[0-9a-f]+ in )?rr_page_start'
                     ],
