@@ -7,6 +7,6 @@ send_gdb('c')
 expect_gdb('Breakpoint 1')
 
 send_gdb('info proc mappings')
-expect_gdb('\[vdso\]')
+expect_gdb(r'\[vdso\]')
 
 ok()
