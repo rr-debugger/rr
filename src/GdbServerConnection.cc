@@ -35,6 +35,7 @@
 #include "core.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -237,21 +238,6 @@ static void parser_assert(bool cond) {
     DEBUG_ASSERT(false);
     exit(2);
   }
-}
-
-/**
- * For the first |input_len| bytes in |input|, append two characters to |buf| as if
- * snprintf("%02x") would, then write a zero terminator.
- */
-static void write_hex_string(const uint8_t* input, size_t input_len,
-                             char* buf, size_t buf_len) {
-  static constexpr char hex_string_table[] = "0123456789abcdef";
-  parser_assert(buf_len >= 2 * input_len + 1);
-  for (size_t i = 0; i < input_len; ++i) {
-    buf[2 * i + 0] = hex_string_table[input[i] >> 4];
-    buf[2 * i + 1] = hex_string_table[input[i] & 0xf];
-  }
-  buf[2 * input_len] = '\0';
 }
 
 static string string_to_hex(const string& s) {
