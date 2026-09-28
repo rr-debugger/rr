@@ -69,6 +69,12 @@ int main(int argc, char **argv) {
         }
         test_assert(0 == setrlimit(RLIMIT_STACK, &lim1));
 
+        // Check that fd flags survive
+        int cloexec_fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
+        test_assert(cloexec_fd >= 0);
+        int inherited_fd = open("/dev/null", O_RDONLY);
+        test_assert(inherited_fd >= 0);
+
         // Check that rdtsc gets unpatched
         do_rdtsc();
 
@@ -78,6 +84,9 @@ int main(int argc, char **argv) {
 
         test_assert(0 == getrlimit(RLIMIT_STACK, &lim2));
         test_assert(0 == memcmp(&lim1, &lim2, sizeof(struct rlimit)));
+
+        test_assert(FD_CLOEXEC == fcntl(cloexec_fd, F_GETFD));
+        test_assert(0 == fcntl(inherited_fd, F_GETFD));
 
         do_rdtsc();
 
