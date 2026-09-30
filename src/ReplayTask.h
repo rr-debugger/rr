@@ -93,6 +93,8 @@ private:
   template <typename Arch> void init_buffers_arch();
 
   bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
+  void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                             int) override;
 
   std::string name_;
 

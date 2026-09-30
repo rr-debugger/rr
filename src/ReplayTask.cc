@@ -223,6 +223,37 @@ const ExtraRegisters& ReplayTask::extra_regs() {
   return extra_registers;
 }
 
+void ReplayTask::will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                                       int) {
+  // If the registers are at the exit of a syscall that returned a -ERESTART*
+  // error (so no signal handler frame has been set up since), then during
+  // recording the kernel restarted the syscall when returning to userspace.
+  // But the kernel only does that when it goes through signal processing on
+  // the way there, i.e. when resuming from a signal stop or with a signal
+  // pending. During replay we may be resuming from a syscall stop instead,
+  // e.g. because the syscall instruction is in writable memory so we entered
+  // the syscall with PTRACE_SYSEMU instead of via a breakpoint, or because
+  // we've run a remote syscall in the task since. So restart the syscall
+  // ourselves, the way arch_do_signal_or_restart() does when there is no
+  // signal handler. After that, the kernel won't restart it again.
+  // On aarch64, the kernel changes pc and x0 for the restart before the
+  // signal stop, and we apply that when processing the syscall exit.
+  if (!is_x86ish(arch()) || regs().original_syscallno() < 0 ||
+      !regs().syscall_may_restart()) {
+    return;
+  }
+  Registers r = regs();
+  LOG(debug) << "Restarting interrupted syscall "
+             << syscall_name(r.original_syscallno(), arch());
+  if (r.syscall_result_signed() == -ERESTART_RESTARTBLOCK) {
+    r.set_syscallno(syscall_number_for_restart_syscall(arch()));
+  } else {
+    r.set_syscallno(r.original_syscallno());
+  }
+  r.set_ip(r.ip().decrement_by_syscall_insn_length(arch()));
+  set_regs(r);
+}
+
 bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   if (Task::post_vm_clone(reason, flags, origin) &&
       reason == TRACEE_CLONE &&
