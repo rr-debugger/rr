@@ -847,6 +847,14 @@ public:
    * area.
    */
   const TaskUid& thread_locals_tuid() { return thread_locals_tuid_; }
+  /**
+   * The task whose software-ticks countdown is in this address space's
+   * preload_thread_locals page (SoftwareTicks.h), or the null TaskUid.
+   */
+  const TaskUid& software_ticks_owner() const { return software_ticks_owner_; }
+  void set_software_ticks_owner(const TaskUid& tuid) {
+    software_ticks_owner_ = tuid;
+  }
   void set_thread_locals_tuid(const TaskUid& tuid) {
     thread_locals_tuid_ = tuid;
   }
@@ -1194,6 +1202,7 @@ private:
   Session* session_;
   // tid of the task whose thread-locals are in preload_thread_locals
   TaskUid thread_locals_tuid_;
+  TaskUid software_ticks_owner_;
   /* First mapped byte of the vdso. */
   remote_ptr<void> vdso_start_addr;
   // The monkeypatcher that's handling this address space.

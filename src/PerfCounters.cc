@@ -33,6 +33,7 @@
 #include "CPUs.h"
 #include "Flags.h"
 #include "Session.h"
+#include "SoftwareTicks.h"
 #include "Task.h"
 #include "core.h"
 #include "kernel_metadata.h"
@@ -683,6 +684,10 @@ bool PerfCounters::support_cpu(int cpu) {
   // We could probably make cpu=-1 mean whether all CPUs are supported
   // if there's a need for it...
   DEBUG_ASSERT(cpu >= 0);
+  // Software ticks work on any core.
+  if (software_ticks_mode()) {
+    return true;
+  }
   init_attributes();
 
   auto nattrs = (int)perf_attrs.size();
@@ -736,6 +741,10 @@ bool PerfCounters::is_rr_ticks_attr(const perf_event_attr& attr) {
 }
 
 bool PerfCounters::supports_ticks_semantics(TicksSemantics ticks_semantics) {
+  // Software ticks need no PMU.
+  if (ticks_semantics == TICKS_SOFTWARE) {
+    return true;
+  }
   init_attributes();
   switch (ticks_semantics) {
   case TICKS_RETIRED_CONDITIONAL_BRANCHES:
@@ -749,6 +758,10 @@ bool PerfCounters::supports_ticks_semantics(TicksSemantics ticks_semantics) {
 }
 
 TicksSemantics PerfCounters::default_ticks_semantics() {
+  // In software-ticks mode the PMU is not used at all.
+  if (software_ticks_mode()) {
+    return TICKS_SOFTWARE;
+  }
   init_attributes();
   if (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) {
     return TICKS_TAKEN_BRANCHES;
@@ -761,6 +774,12 @@ TicksSemantics PerfCounters::default_ticks_semantics() {
 }
 
 uint32_t PerfCounters::skid_size() {
+  // A software tick trap is exact, but a stop between a tick's decrement and
+  // its trap has already counted the tick: reaching such a point needs one
+  // tick of slack.
+  if (is_software()) {
+    return 1;
+  }
   DEBUG_ASSERT(attributes_initialized);
   DEBUG_ASSERT(perf_attrs[pmu_index].checked);
   // If we want to stop after one event, and our minimum period is Y,
@@ -775,7 +794,7 @@ PerfCounters::PerfCounters(pid_t tid, BindCPU cpu_binding,
                            IntelPTEnabled enable_pt)
     : tid(tid), pmu_index(0), ticks_semantics_(ticks_semantics),
       enabled(enabled), opened(false), counting(false) {
-  if (enabled == Enabled::DISABLE) {
+  if (enabled == Enabled::DISABLE || ticks_semantics == TICKS_SOFTWARE) {
     return;
   }
   pmu_index = get_pmu_index(cpu_binding);
@@ -976,6 +995,10 @@ void PerfCounters::start(Task* t, Ticks ticks_period) {
   if (enabled == DISABLE) {
     return;
   }
+  if (is_software()) {
+    software_start(t, ticks_period);
+    return;
+  }
 
   check_pmu(pmu_index);
 
@@ -1086,6 +1109,12 @@ Ticks PerfCounters::stop(Task* t, Error* error) {
     return 0;
   }
 
+  if (is_software()) {
+    if (error) {
+      *error = Error::None;
+    }
+    return software_stop(t);
+  }
   Ticks ticks = read_ticks(t, error);
   counting = false;
   if (pt_state) {
@@ -1108,17 +1137,29 @@ Ticks PerfCounters::stop(Task* t, Error* error) {
 }
 
 // Note that on aarch64 this is also used to get the count for `ret`
-Ticks PerfCounters::ticks_for_unconditional_indirect_branch(Task*) {
+Ticks PerfCounters::ticks_for_unconditional_indirect_branch(Task* t) {
+  // Software ticks count only instrumented code.
+  if (t->hpc.is_software()) {
+    return 0;
+  }
   DEBUG_ASSERT(attributes_initialized);
   return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
 
-Ticks PerfCounters::ticks_for_unconditional_direct_branch(Task*) {
+Ticks PerfCounters::ticks_for_unconditional_direct_branch(Task* t) {
+  // Software ticks count only instrumented code.
+  if (t->hpc.is_software()) {
+    return 0;
+  }
   DEBUG_ASSERT(attributes_initialized);
   return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
 
-Ticks PerfCounters::ticks_for_direct_call(Task*) {
+Ticks PerfCounters::ticks_for_direct_call(Task* t) {
+  // Software ticks count only instrumented code.
+  if (t->hpc.is_software()) {
+    return 0;
+  }
   DEBUG_ASSERT(attributes_initialized);
   return (pmu_semantics_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
@@ -1154,6 +1195,9 @@ static void check_strex(Task* t, ScopedFd& fd_strex_counter) {
 Ticks PerfCounters::read_ticks(Task* t, Error* error) {
   if (error) {
     *error = Error::None;
+  }
+  if (is_software()) {
+    return software_read(t);
   }
 
   ASSERT(t, opened);
@@ -1459,6 +1503,65 @@ uint64_t PerfCounters::bpf_skips() const {
 #else
   return 0;
 #endif
+}
+
+// Software ticks (SoftwareTicks.h). The countdown is per address space; rr
+// runs one task at a time, so start() takes it over for the task it resumes,
+// first counting the ticks of the task that had it (which is stopped, or
+// blocked in the kernel).
+
+static Ticks software_elapsed(uint32_t period, uint64_t slot) {
+  return uint32_t(period - uint32_t(slot));
+}
+
+void PerfCounters::software_start(Task* t, Ticks ticks_period) {
+  AddressSpace* as = t->vm().get();
+  TaskUid prev_uid = as->software_ticks_owner();
+  if (prev_uid != TaskUid() && prev_uid != t->tuid()) {
+    Task* prev = t->session().find_task(prev_uid);
+    uint64_t slot;
+    if (prev && prev->hpc.sw_owned && prev->vm().get() == as &&
+        read_software_ticks_slot(t, &slot)) {
+      prev->hpc.sw_harvested += software_elapsed(prev->hpc.sw_period, slot);
+    }
+    if (prev) {
+      prev->hpc.sw_owned = false;
+    }
+  }
+  uint32_t period = (ticks_period <= 0 || ticks_period > SOFTWARE_TICKS_MAX_PERIOD)
+                        ? SOFTWARE_TICKS_MAX_PERIOD
+                        : uint32_t(ticks_period);
+  sw_period = period;
+  sw_harvested = 0;
+  // Before the first exec there is no page; nothing ticks there either.
+  sw_owned = write_software_ticks_slot(t, period);
+  as->set_software_ticks_owner(sw_owned ? t->tuid() : TaskUid());
+  opened = true;
+  counting = true;
+  counting_period = ticks_period > 0 ? ticks_period : SOFTWARE_TICKS_MAX_PERIOD;
+}
+
+Ticks PerfCounters::software_read(Task* t) {
+  Ticks ret = sw_harvested;
+  uint64_t slot;
+  if (sw_owned && t->vm()->software_ticks_owner() == t->tuid() &&
+      read_software_ticks_slot(t, &slot)) {
+    ret += software_elapsed(sw_period, slot);
+  }
+  return ret;
+}
+
+Ticks PerfCounters::software_stop(Task* t) {
+  Ticks ticks = software_read(t);
+  if (sw_owned && t->vm()->software_ticks_owner() == t->tuid()) {
+    // Park the countdown so nothing traps until the next start().
+    write_software_ticks_slot(t, SOFTWARE_TICKS_PARKED);
+    t->vm()->set_software_ticks_owner(TaskUid());
+  }
+  sw_owned = false;
+  sw_harvested = 0;
+  counting = false;
+  return ticks;
 }
 
 } // namespace rr

@@ -69,9 +69,16 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
   switch (trace.ticks_semantics()) {
     case TICKS_RETIRED_CONDITIONAL_BRANCHES: semantics = "rcb"; break;
     case TICKS_TAKEN_BRANCHES: semantics = "branches"; break;
+    case TICKS_SOFTWARE: semantics = "software"; break;
     default: semantics = "?"; break;
   }
   fprintf(out, "  \"ticksSemantics\":\"%s\",\n", semantics);
+  if (trace.ticks_semantics() == TICKS_SOFTWARE) {
+    fprintf(out, "  \"softwareTicksAbiVersion\":%u,\n",
+            trace.software_ticks_abi_version());
+    fprintf(out, "  \"softwareTicksCountdownAddress\":%llu,\n",
+            (unsigned long long)trace.software_ticks_countdown_address().as_int());
+  }
 
   fputs("  \"cpuidRecords\":[", out);
   auto& records = trace.cpuid_records();

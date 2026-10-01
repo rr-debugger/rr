@@ -487,6 +487,11 @@ public:
   const TraceUuid& uuid() const { return *uuid_; }
 
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
+  // For TICKS_SOFTWARE: see Header.softwareTicks.
+  uint32_t software_ticks_abi_version() const { return software_ticks_abi_version_; }
+  remote_ptr<uint64_t> software_ticks_countdown_address() const {
+    return software_ticks_countdown_address_;
+  }
 
   double recording_time() const { return monotonic_time_; }
 
@@ -543,6 +548,8 @@ private:
   std::vector<CPUIDRecord> cpuid_records_;
   std::vector<RawDataMetadata> raw_recs;
   TicksSemantics ticks_semantics_;
+  uint32_t software_ticks_abi_version_;
+  remote_ptr<uint64_t> software_ticks_countdown_address_;
   double monotonic_time_;
   std::unique_ptr<TraceUuid> uuid_;
   MemoryRange exclusion_range_;

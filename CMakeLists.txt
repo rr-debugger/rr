@@ -672,6 +672,7 @@ set(RR_SOURCES
   src/Scheduler.cc
   src/SeccompFilterRewriter.cc
   src/Session.cc
+  src/SoftwareTicks.cc
   src/SourcesCommand.cc
   src/StdioMonitor.cc
   src/SysCpuMonitor.cc
@@ -1417,6 +1418,7 @@ set(BASIC_TESTS
   small_holes
   sock_name_null
   sock_names_opts
+  software_ticks
   spinlock_priorities
   splice
   stack_growth_after_syscallbuf
@@ -1673,6 +1675,8 @@ set(TESTS_WITH_PROGRAM
   sigprocmask_race
   sigprocmask_rr_sigs_nondefault
   simple
+  software_ticks_async_kill
+  software_ticks_replace_page
   x86/singlestep_pushf
   stack_growth
   step_into_lib

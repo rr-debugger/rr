@@ -30,6 +30,7 @@
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "seccomp-bpf.h"
+#include "SoftwareTicks.h"
 
 namespace rr {
 
@@ -1399,8 +1400,10 @@ void RecordSession::check_initial_task_syscalls(RecordTask* t,
     return;
   }
 
+  // Software ticks don't count rr's own pre-exec code, and need no
+  // performance counter.
   if (is_write_syscall(t->ev().Syscall().number, t->arch()) &&
-      t->regs().arg1_signed() == -1) {
+      t->regs().arg1_signed() == -1 && !t->hpc.is_software()) {
     Ticks ticks = t->tick_count();
     LOG(debug) << "ticks on entry to dummy write: " << ticks;
     if (ticks == 0) {
@@ -2295,6 +2298,9 @@ struct ExeInfo {
   vector<MemoryRange> sanitizer_exclude_memory_ranges;
   // If non-empty, use this as the global exclusion range.
   MemoryRange fixed_global_exclusion_range;
+  // The software-ticks ABI version of the executable's .note.rrsoftticks
+  // (SoftwareTicks.h), or 0.
+  uint32_t software_ticks_abi_version = 0;
 
   void setup_asan_memory_ranges() {
     if (!check_sanitizer_arch()) {
@@ -2348,6 +2354,8 @@ static ExeInfo read_exe_info(const string& exe_file) {
       }
     }
   }
+
+  ret.software_ticks_abi_version = read_software_ticks_note(reader);
 
   auto syms = reader.read_symbols(".dynsym", ".dynstr");
   for (size_t i = 0; i < syms.size(); ++i) {
@@ -2441,6 +2449,19 @@ static string lookup_by_path(const string& name) {
     CLEAN_FATAL() << "Provided tracee '" << argv[0] << "' is a directory, not an executable";
   }
   ExeInfo exe_info = read_exe_info(full_path);
+  // An executable built with a software-ticks compiler pass is recorded with
+  // software ticks (SoftwareTicks.h), without the PMU.
+  if (exe_info.software_ticks_abi_version) {
+    if (exe_info.software_ticks_abi_version != SOFTWARE_TICKS_ABI_VERSION) {
+      CLEAN_FATAL() << "'" << full_path
+                    << "' was built for software ticks of ABI version "
+                    << exe_info.software_ticks_abi_version
+                    << "; this rr supports version "
+                    << SOFTWARE_TICKS_ABI_VERSION << ".";
+    }
+    LOG(info) << "'" << full_path << "' counts software ticks; recording with them";
+    set_software_ticks_mode(true);
+  }
   if (exe_info.sanitizer_exclude_memory_ranges.empty()) {
     if (force_asan_active) {
       exe_info.setup_asan_memory_ranges();
