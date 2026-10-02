@@ -515,8 +515,31 @@ public:
    *
    * The target should peek at the debugger request in between execution
    * steps.  A new request may need to be serviced.
+   *
+   * An interrupt is only returned while a resume request is outstanding.
+   * One that arrives while the target is stopped is deferred instead, see
+   * interrupt_deferred().
    */
   GdbRequest get_request();
+
+  /**
+   * Return true if the debugger interrupted the target while it was
+   * stopped. Like gdbserver, we don't reply to such an interrupt; it takes
+   * effect when the target is next resumed, so the target should then
+   * stop again right away. A restart drops it: it was meant for the run
+   * that the restart replaces.
+   */
+  bool interrupt_deferred() const { return interrupt_deferred_; }
+
+  /**
+   * Return interrupt_deferred() and clear it. Call this when resuming the
+   * target, to apply the interrupt to this resume request only.
+   */
+  bool take_deferred_interrupt() {
+    bool ret = interrupt_deferred_;
+    interrupt_deferred_ = false;
+    return ret;
+  }
 
   /**
    * Notify the host that this process has exited with |code|.
@@ -872,6 +895,7 @@ private:
   std::vector<uint8_t> outbuf; /* buffered output for gdb */
   Features features_;
   bool connection_alive_;
+  bool interrupt_deferred_;     // see interrupt_deferred()
   bool multiprocess_supported_; // client supports multiprocess extension
   bool hwbreak_supported_; // client supports hwbreak extension
   bool swbreak_supported_; // client supports swbreak extension

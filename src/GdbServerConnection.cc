@@ -69,6 +69,7 @@ GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
       no_ack(false),
       features_(features),
       connection_alive_(true),
+      interrupt_deferred_(false),
       multiprocess_supported_(false),
       hwbreak_supported_(false),
       swbreak_supported_(false),
@@ -1546,6 +1547,9 @@ void GdbServerConnection::notify_restart() {
   // it out just in case.
   resume_thread = GdbThreadId::ANY;
   query_thread = GdbThreadId::ANY;
+  // An interrupt deferred before the restart was meant for the replaced
+  // run. (We stop at the first resume after a restart anyway.)
+  interrupt_deferred_ = false;
 
   req = GdbRequest();
 }
@@ -1587,7 +1591,20 @@ GdbRequest GdbServerConnection::get_request() {
       return req = GdbRequest(DREQ_DETACH);
     }
 
+    bool resuming = req.is_resume_request();
     if (process_packet()) {
+      if (req.type == DREQ_INTERRUPT && !resuming) {
+        /* The target is already stopped. Interrupts received while the
+         * program is stopped are queued, and the program is interrupted
+         * when it is next resumed (gdb manual, "Interrupts"). Don't reply
+         * now: the debugger has taken (or will take) our last stop reply
+         * as the reply to the interrupt, so it would take another one as
+         * the reply to its next request. */
+        LOG(debug) << "deferring interrupt to the next resume request";
+        interrupt_deferred_ = true;
+        consume_request();
+        continue;
+      }
       /* We couldn't process the packet internally,
        * so the target has to do something. */
       return req;

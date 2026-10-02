@@ -11,7 +11,8 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'set_breakpoint_commands', 'select_thread',
             'scheduler_locking_on', 'scheduler_locking_off',
             'expect_expression', 'expect_threads',
-            'send_custom_command', 'stepi', 'watchpoint_at_address_fail' ]
+            'send_custom_command', 'stepi', 'watchpoint_at_address_fail',
+            'send_lldb', 'send_debugger', 'debugger_type' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000

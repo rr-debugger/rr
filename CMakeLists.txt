@@ -1790,6 +1790,8 @@ set(TESTS_WITHOUT_PROGRAM
   get_thread_list
   hardlink_mmapped_files
   hbreak
+  interrupt_after_exit
+  interrupt_while_stopped
   large_file
   mprotect_step
   nested_detach
