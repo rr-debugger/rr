@@ -2400,8 +2400,10 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state) {
   return false;
 }
 
-static void maybe_pause_instead_of_waiting(RecordTask* t) {
-  if (t->in_wait_type != WAIT_TYPE_PID || (t->in_wait_options & WNOHANG)) {
+static void maybe_pause_instead_of_waiting(RecordTask* t,
+                                           TaskSyscallState& syscall_state,
+                                           int options_arg) {
+  if (t->in_wait_type != WAIT_TYPE_PID) {
     return;
   }
   RecordTask* child = t->session().find_task(t->in_wait_pid);
@@ -2411,15 +2413,30 @@ static void maybe_pause_instead_of_waiting(RecordTask* t) {
   if (!child || !t->is_waiting_for_ptrace(child) || t->is_waiting_for(child)) {
     return;
   }
+  if ((t->in_wait_options & __WNOTHREAD) && child->emulated_ptracer != t) {
+    // With __WNOTHREAD, only the ptracer thread itself can wait for child,
+    // and nothing else matches this wait. Let the kernel fail it with ECHILD.
+    t->in_wait_type = WAIT_TYPE_NONE;
+    return;
+  }
   // OK, t is waiting for a ptrace child by tid, but since t is not really
   // ptracing child, entering a real wait syscall will not actually wait for
   // the child, so the kernel may error out with ECHILD (non-ptracers can't
   // wait on specific threads of another process, or for non-child processes).
-  // To avoid this problem, we'll replace the wait syscall with a pause()
-  // syscall.
+  Registers r = t->regs();
+  if (t->in_wait_options & WNOHANG) {
+    // The child has no emulated stop pending (maybe_emulate_wait would have
+    // found it), so a ptracer's WNOHANG wait returns 0. Set options to an
+    // invalid value to force the syscall to fail, and emulate a 0 result.
+    r.set_arg(options_arg, 0xffffffff);
+    t->set_regs(r);
+    syscall_state.emulate_result(0);
+    return;
+  }
+  // Otherwise, to avoid this problem, we'll replace the wait syscall with a
+  // pause() syscall.
   // It would be nice if we didn't have to do this, but I can't see a better
   // way.
-  Registers r = t->regs();
   // pause() would be sufficient here, but we don't have that on all
   // architectures, so use ppoll(NULL, 0, NULL, NULL), which is what
   // glibc uses to implement pause() on architectures where the former
@@ -4738,6 +4755,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         t->in_wait_pid = pid;
       }
       t->in_wait_options = (int)regs.arg3();
+      if (t->in_wait_options & ~(WNOHANG | WUNTRACED | WCONTINUED |
+                                 __WNOTHREAD | __WCLONE | __WALL)) {
+        // The kernel fails this with EINVAL. Let it.
+        t->in_wait_type = WAIT_TYPE_NONE;
+      }
       if (maybe_emulate_wait(t, syscall_state)) {
         Registers r = regs;
         // Set options to an invalid value to force syscall to fail
@@ -4745,7 +4767,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         t->set_regs(r);
         should_switch = PREVENT_SWITCH;
       } else {
-        maybe_pause_instead_of_waiting(t);
+        maybe_pause_instead_of_waiting(t, syscall_state, 3);
       }
       // We may modify emulated parameters so to make things
       // simple, don't use scratch.
@@ -4787,6 +4809,13 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       Switchable should_switch = ALLOW_SWITCH;
       t->in_wait_pid = wait_pid;
       t->in_wait_options = (int)regs.arg4();
+      if ((t->in_wait_options &
+           ~(WNOHANG | WNOWAIT | WEXITED | WSTOPPED | WCONTINUED | __WNOTHREAD |
+             __WCLONE | __WALL)) ||
+          !(t->in_wait_options & (WEXITED | WSTOPPED | WCONTINUED))) {
+        // The kernel fails this with EINVAL. Let it.
+        t->in_wait_type = WAIT_TYPE_NONE;
+      }
       if (maybe_emulate_wait(t, syscall_state)) {
         Registers r = regs;
         // Set options to an invalid value to force syscall to fail
@@ -4794,7 +4823,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         t->set_regs(r);
         should_switch = PREVENT_SWITCH;
       } else {
-        maybe_pause_instead_of_waiting(t);
+        maybe_pause_instead_of_waiting(t, syscall_state, 4);
       }
       // We may modify emulated *infop so to make things
       // simple, don't use scratch.
@@ -5746,6 +5775,8 @@ bool rec_return_normally_from_wait(RecordTask* t) {
     return true;
   }
   if (maybe_emulate_wait(t, *syscall_state)) {
+    // Report the stop rather than an emulated WNOHANG result of 0.
+    syscall_state->should_emulate_result = false;
     return true;
   }
   return false;
@@ -7505,6 +7536,24 @@ static void rec_process_syscall_arch(RecordTask* t,
         if (tracee && tracee->already_exited()) {
           // Have another go at reaping the task
           tracee->did_reach_zombie();
+        }
+      } else if (syscall_state.should_emulate_result &&
+                 syscallno == Arch::waitid) {
+        // A WNOHANG wait for a ptracee without a status
+        // (maybe_pause_instead_of_waiting). The kernel clears the fields it
+        // would have set. (Since Linux 4.13, commit 67d7ddded322 ("waitid(2):
+        // leave copyout of siginfo to syscall itself"), it does that for the
+        // EINVAL we forced too, but older kernels left *infop alone.)
+        remote_ptr<typename Arch::siginfo_t> sip = t->regs().arg3();
+        if (!sip.is_null()) {
+          auto si = t->read_mem(sip);
+          si.si_signo = 0;
+          si.si_errno = 0;
+          si.si_code = 0;
+          si._sifields._sigchld.si_pid_ = 0;
+          si._sifields._sigchld.si_uid_ = 0;
+          si._sifields._sigchld.si_status_ = 0;
+          t->write_mem(sip, si);
         }
       }
       break;
