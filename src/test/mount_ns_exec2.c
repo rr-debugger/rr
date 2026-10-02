@@ -16,15 +16,17 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
-  if (-1 == try_setup_ns(CLONE_NEWNS)) {
-    atomic_puts("EXIT-SUCCESS");
-    return 0;
-  }
-
+  // Read /proc/self/exe before unsharing: afterwards the kernel renders it from
+  // the old namespace's root, which differs from ours if we were chrooted.
   char exe_buf[PATH_MAX+1];
   memset(exe_buf, 0, sizeof(exe_buf));
   ssize_t nread = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf)-1);
   test_assert(nread != -1);
+
+  if (-1 == try_setup_ns(CLONE_NEWNS)) {
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
 
   char *exe_name = strrchr(exe_buf, '/');
   *exe_name = '\0';
