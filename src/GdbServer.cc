@@ -1180,9 +1180,11 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
     DEBUG_ASSERT(req.is_resume_request());
 
-    if (req.cont().run_direction == RUN_BACKWARD) {
-      // We don't support reverse execution in a diversion. Just issue
-      // an immediate stop.
+    if (dbg->take_deferred_interrupt() ||
+        req.cont().run_direction == RUN_BACKWARD) {
+      // An interrupt that arrived while the diversion was stopped stops it
+      // right away, and we don't support reverse execution in a diversion.
+      // Just issue an immediate stop.
       notify_stop_internal(*diversion_session, last_continue_task, 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       last_query_task = last_continue_task;
@@ -1277,6 +1279,11 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
     }
 
     if (req.is_resume_request()) {
+      if (dbg->take_deferred_interrupt()) {
+        // The debugger interrupted us while we were stopped. Stop again
+        // right away.
+        interrupt_pending = true;
+      }
       Task* t = current_session().find_task(last_continue_task.tuid);
       if (t) {
         maybe_singlestep_for_event(t, &req);
@@ -1313,7 +1320,7 @@ void GdbServer::try_lazy_reverse_singlesteps(GdbRequest& req) {
   ReplayTimeline::Mark now;
   bool need_seek = false;
   ReplayTask* t = timeline_->current_session().current_task();
-  while (t && req.type == DREQ_CONT &&
+  while (t && req.type == DREQ_CONT && !dbg->interrupt_deferred() &&
          req.cont().run_direction == RUN_BACKWARD &&
          req.cont().actions.size() == 1 &&
          req.cont().actions[0].type == ACTION_STEP &&
@@ -1372,21 +1379,15 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state(
   if (timeline_) {
     final_event = timeline_->current_session().trace_reader().time();
   }
-  while (true) {
-    GdbRequest req = process_debugger_requests(REPORT_THREADS_DEAD);
-    ContinueOrStop s;
-    if (detach_or_restart(req, &s)) {
-      last_resume_request = GdbRequest();
-      return s;
-    }
-    if (req.type == DREQ_INTERRUPT) {
-      // Ignore this. Sometimes LLDB seems to send it automatically
-      // after the task has exited, before we detach I guess.
-      continue;
-    }
-    FATAL() << "Received continue/interrupt request after end-of-trace: "
-            << req.type;
+  GdbRequest req = process_debugger_requests(REPORT_THREADS_DEAD);
+  ContinueOrStop s;
+  if (detach_or_restart(req, &s)) {
+    last_resume_request = GdbRequest();
+    return s;
   }
+  FATAL() << "Received continue/interrupt request after end-of-trace: "
+          << req.type;
+  return STOP_DEBUGGING;
 }
 
 ReplayTask* GdbServer::require_timeline_current_task() {
@@ -1415,19 +1416,23 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     // Treat the state where the last thread is about to exit like
     // termination.
     req = process_debugger_requests();
-    // If it's a forward execution request, fake the exited state.
-    if (req.is_resume_request() && req.cont().run_direction == RUN_FORWARD) {
-      if (interrupt_pending) {
-        // Just process this. We're getting it after a restart.
-      } else {
-        return handle_exited_state(last_resume_request);
-      }
-    } else {
-      if (req.type != DREQ_DETACH) {
-        in_debuggee_end_state = false;
-      }
+    if (req.is_resume_request() && interrupt_pending) {
+      // Just process this: report a stop here without running. We're
+      // getting it after a restart, or after an interrupt that arrived
+      // while we were stopped here.
+    } else if (req.is_resume_request() &&
+               req.cont().run_direction == RUN_FORWARD) {
+      // If it's a forward execution request, fake the exited state.
+      return handle_exited_state(last_resume_request);
+    } else if (req.type == DREQ_INTERRUPT) {
+      // We didn't report the stop here (e.g. the debugger passes SIGKILL
+      // silently), so the debugger is still waiting for the process to
+      // exit. Report that.
+      return handle_exited_state(last_resume_request);
+    } else if (req.type != DREQ_DETACH) {
+      in_debuggee_end_state = false;
     }
-    // Otherwise (e.g. detach, restart, interrupt or reverse-exec) process
+    // Otherwise (e.g. detach, restart or reverse-exec) process
     // the request as normal.
   } else if (!interrupt_pending || last_resume_request.type == DREQ_NONE) {
     req = process_debugger_requests();
@@ -1452,7 +1457,14 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
 
   if (interrupt_pending) {
     Task* t = require_timeline_current_task();
-    if (t->thread_group()->tguid() == debuggee_tguid) {
+    if (t->thread_group()->tguid() != debuggee_tguid &&
+        req.cont().run_direction == RUN_BACKWARD) {
+      // Another process is current. Running backward until the debuggee
+      // is current would move the debuggee, so stop where the debugger
+      // last saw it.
+      t = timeline_->current_session().find_task(last_continue_task.tuid);
+    }
+    if (t && t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
       notify_stop_internal(timeline_->current_session(),
           extended_task_id(t), in_debuggee_end_state ? SIGKILL : 0);
