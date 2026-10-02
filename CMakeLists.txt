@@ -456,6 +456,11 @@ foreach(py_module ${REQUIRED_PYTHON_MODULES})
   endif()
 endforeach(py_module)
 
+find_program(JQ jq)
+if(${JQ} STREQUAL "JQ-NOTFOUND")
+  message(WARNING "Can't find 'jq' command, expect some tests to fail; install jq package? https://github.com/rr-debugger/rr/wiki/Building-And-Installing#tldr")
+endif()
+
 if(WILL_RUN_TESTS)
   # Check for gdb and lldb
   execute_process(COMMAND "gdb" "--version" RESULT_VARIABLE module_status OUTPUT_QUIET)
