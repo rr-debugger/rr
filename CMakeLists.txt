@@ -1318,6 +1318,8 @@ set(BASIC_TESTS
   ptrace_traceme
   ptrace_traceme_thread
   ptrace_waiter_thread
+  ptrace_wnohang
+  ptrace_wnohang_poll
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
