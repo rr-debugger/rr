@@ -1460,9 +1460,20 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     if (t->thread_group()->tguid() != debuggee_tguid &&
         req.cont().run_direction == RUN_BACKWARD) {
       // Another process is current. Running backward until the debuggee
-      // is current would move the debuggee, so stop where the debugger
-      // last saw it.
+      // is current would move the debuggee, so report the stop here, on
+      // the debugger's last thread if it exists here, otherwise on any
+      // thread of the debuggee.
       t = timeline_->current_session().find_task(last_continue_task.tuid);
+      if (!t || t->thread_group()->tguid() != debuggee_tguid) {
+        ThreadGroup* tg =
+            timeline_->current_session().find_thread_group(debuggee_tguid);
+        t = tg && !tg->task_set().empty() ? *tg->task_set().begin() : nullptr;
+      }
+      if (!t) {
+        // Let the stop that ends the backward run answer the interrupt,
+        // so that we don't report another one after it.
+        interrupt_pending = false;
+      }
     }
     if (t && t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
