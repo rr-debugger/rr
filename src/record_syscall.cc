@@ -2473,6 +2473,23 @@ static RecordTask* verify_ptrace_target(RecordTask* tracer,
 }
 
 static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
+  // We hold a tracee in the middle of its syscall, at a stop we've already
+  // processed, when we report a fork, vfork, clone, exec or exit event for
+  // that syscall to its tracer. Other stops in the middle of a syscall, e.g.
+  // after a PTRACE_INTERRUPT, are emulated: the tracee may still be running,
+  // or be at a stop we haven't processed yet. The scheduler will deal with
+  // those like with any other task.
+  bool held = tracee->held_at_emulated_ptrace_event;
+  if (sig && (held || tracee->emulated_stop_code.ptrace_event() ||
+              tracee->emulated_stop_code.group_stop())) {
+    // Linux ignores the signal when the tracer resumes the tracee from a
+    // ptrace event stop or a PTRACE_EVENT_STOP (see ptrace_event() and
+    // do_jobctl_trap()).
+    LOG(debug) << "Ignoring signal " << signal_name(sig)
+               << " passed to ptrace resume from "
+               << tracee->emulated_stop_code;
+    sig = 0;
+  }
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
     LOG(debug) << "Doing ptrace resume with signal " << signal_name(sig);
@@ -2489,8 +2506,9 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   tracee->emulated_stop_code = WaitStatus();
   tracee->emulated_ptrace_cont_command = command;
 
-  if (tracee->ev().is_syscall_event() &&
-      PROCESSING_SYSCALL == tracee->ev().Syscall().state) {
+  if (held) {
+    ASSERT(tracee, tracee->ev().is_syscall_event() &&
+                       PROCESSING_SYSCALL == tracee->ev().Syscall().state);
     // Continue the task since we didn't in enter_syscall
     tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
                              RESUME_NO_TICKS);

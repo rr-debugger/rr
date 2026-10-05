@@ -1310,7 +1310,9 @@ set(BASIC_TESTS
   ptrace_exec
   x86/ptrace_exec32
   ptrace_group_stop
+  ptrace_interrupt_syscall
   ptrace_kill_grandtracee
+  ptrace_resume_signal_ignored
   x86/ptrace_tls
   ptrace_seize
   ptrace_sigchld
