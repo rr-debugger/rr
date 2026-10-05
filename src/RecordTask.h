@@ -211,13 +211,36 @@ public:
    */
   bool is_signal_pending(int sig);
   /**
+   * Return true if a SIGCONT is pending that ends the job-control stop of this
+   * task: one in the shared queue or in this task's queue, or one sent to a
+   * traced thread of the process. Linux continues all untraced threads of a
+   * process whichever thread a SIGCONT is for. A traced thread doesn't notice
+   * a SIGCONT itself because SIGCONT doesn't end its ptrace stop.
+   */
+  bool is_SIGCONT_pending_for_job_control_stop();
+  /**
    * Return true if there are any signals pending that are not blocked.
    */
   bool has_any_actionable_signal();
   /**
-   * Get all threads out of an emulated GROUP_STOP
+   * True if the task is in an emulated group stop that SIGCONT ends, i.e.
+   * a group stop of a task that has no (emulated) ptracer. For a traced task,
+   * a group stop is a ptrace stop, and SIGCONT doesn't end ptrace stops (see
+   * prepare_signal() in kernel/signal.c).
+   */
+  bool in_job_control_stop() const {
+    return emulated_stop_type == GROUP_STOP && !emulated_ptracer;
+  }
+  /**
+   * Get all threads out of an emulated group stop, as SIGCONT does. Like a
+   * real SIGCONT, this doesn't end ptrace stops, including the group stops of
+   * traced threads.
    */
   void emulate_SIGCONT();
+  /**
+   * Get all threads out of any emulated stop, ptrace stops included.
+   */
+  void end_all_emulated_stops();
   /**
    * Return true if the disposition of |sig| in |table| isn't
    * SIG_IGN or SIG_DFL, that is, if a user sighandler will be

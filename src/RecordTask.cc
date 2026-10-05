@@ -1163,6 +1163,19 @@ bool RecordTask::is_signal_pending(int sig) {
   return !*end1 && !*end2 && ((mask1 | mask2) & signal_bit(sig));
 }
 
+bool RecordTask::is_SIGCONT_pending_for_job_control_stop() {
+  if (is_signal_pending(SIGCONT)) {
+    return true;
+  }
+  for (Task* t : thread_group()->task_set()) {
+    auto rt = static_cast<RecordTask*>(t);
+    if (rt != this && rt->emulated_ptracer && rt->is_signal_pending(SIGCONT)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool RecordTask::has_any_actionable_signal() {
   auto sig_strs = read_proc_status_fields(tid, "SigPnd", "ShdPnd", "SigBlk");
   if (sig_strs.size() < 3) {
@@ -1179,10 +1192,22 @@ bool RecordTask::has_any_actionable_signal() {
 }
 
 void RecordTask::emulate_SIGCONT() {
-  // All threads in the process are resumed.
+  // All threads in the process are resumed, but SIGCONT doesn't end ptrace
+  // stops (see prepare_signal() in kernel/signal.c).
   for (Task* t : thread_group()->task_set()) {
     auto rt = static_cast<RecordTask*>(t);
-    LOG(debug) << "setting " << rt->tid << " to NOT_STOPPED due to SIGCONT";
+    rt->clear_stashed_group_stop();
+    if (rt->in_job_control_stop()) {
+      LOG(debug) << "setting " << rt->tid << " to NOT_STOPPED due to SIGCONT";
+      rt->emulated_stop_pending = false;
+      rt->emulated_stop_type = NOT_STOPPED;
+    }
+  }
+}
+
+void RecordTask::end_all_emulated_stops() {
+  for (Task* t : thread_group()->task_set()) {
+    auto rt = static_cast<RecordTask*>(t);
     rt->clear_stashed_group_stop();
     rt->emulated_stop_pending = false;
     rt->emulated_stop_type = NOT_STOPPED;
