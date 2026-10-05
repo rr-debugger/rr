@@ -3239,15 +3239,25 @@ static Switchable prepare_ptrace(RecordTask* t,
         bool ok = true;
         typename Arch::ptrace_syscall_info info;
         memset(&info, 0, sizeof(info));
-        info.op =
-          tracee->emulated_stop_type == SYSCALL_ENTRY_STOP ? PTRACE_SYSCALL_INFO_ENTRY :
-          tracee->emulated_stop_type == SYSCALL_EXIT_STOP  ? PTRACE_SYSCALL_INFO_EXIT :
-          tracee->emulated_stop_type == SECCOMP_STOP       ? PTRACE_SYSCALL_INFO_SECCOMP :
-                                                             PTRACE_SYSCALL_INFO_NONE;
+        // Linux only reports syscall stops as such if the tracer used
+        // PTRACE_O_TRACESYSGOOD (see ptrace_get_syscall_info_op() in
+        // kernel/ptrace.c).
+        bool syscall_stop = tracee->emulated_stop_code.is_syscall();
+        if (syscall_stop && tracee->emulated_stop_type == SYSCALL_ENTRY_STOP) {
+          info.op = PTRACE_SYSCALL_INFO_ENTRY;
+        } else if (syscall_stop &&
+                   tracee->emulated_stop_type == SYSCALL_EXIT_STOP) {
+          info.op = PTRACE_SYSCALL_INFO_EXIT;
+        } else if (tracee->emulated_stop_type == SECCOMP_STOP) {
+          info.op = PTRACE_SYSCALL_INFO_SECCOMP;
+        } else {
+          info.op = PTRACE_SYSCALL_INFO_NONE;
+        }
         info.arch = to_audit_arch(tracee->arch());
         info.instruction_pointer = tracee->ip().register_value();
         info.stack_pointer = tracee->regs().sp().as_int();
-        size_t max_size = 0;
+        // Linux returns (and copies) the fields up to here for any stop.
+        size_t max_size = (char*)&info.entry - (char*)&info;
         if (info.op == PTRACE_SYSCALL_INFO_ENTRY) {
           info.entry.nr = tracee->regs().original_syscallno();
           for (int i = 0; i < 6; ++i) {
