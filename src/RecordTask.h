@@ -783,6 +783,11 @@ public:
   int emulated_ptrace_cont_command;
   // true when a ptracer/waiter wait() can return |emulated_stop_code|.
   bool emulated_stop_pending;
+  // true when we've left the task stopped in the middle of a syscall, at a
+  // stop we've already processed, to report a ptrace event of the syscall
+  // (e.g. PTRACE_EVENT_FORK) to the ptracer. prepare_ptrace_cont resumes the
+  // task when the ptracer does. Cleared whenever the task is resumed.
+  bool held_at_emulated_ptrace_event;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop
   bool emulated_ptrace_SIGCHLD_pending;

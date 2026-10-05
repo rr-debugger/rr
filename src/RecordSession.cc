@@ -804,6 +804,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
       }
 
       if (t->emulated_stop_pending) {
+        t->held_at_emulated_ptrace_event = true;
         last_task_switchable = ALLOW_SWITCH;
         step_state->continue_type = DONT_CONTINUE;
       } else {
@@ -1205,6 +1206,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       t->ev().Syscall().state = PROCESSING_SYSCALL;
 
       if (t->emulated_stop_pending) {
+        t->held_at_emulated_ptrace_event = true;
         step_state->continue_type = DONT_CONTINUE;
       } else {
         // Resume the syscall execution in the kernel context.
