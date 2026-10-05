@@ -58,6 +58,7 @@
 #include "record_signal.h"
 #include "seccomp-bpf.h"
 #include "util.h"
+#include "SoftwareTicks.h"
 
 using namespace std;
 
@@ -1506,6 +1507,9 @@ template <typename Arch> static void setup_preload_thread_locals_arch(Task* t) {
     auto locals = reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
     static_assert(sizeof(*locals) <= PRELOAD_THREAD_LOCALS_SIZE,
                   "bad PRELOAD_THREAD_LOCALS_SIZE");
+    static_assert(PRELOAD_THREAD_LOCALS_ADDR + PRELOAD_THREAD_LOCALS_SIZE <=
+                      SOFTWARE_TICKS_COUNTDOWN_ADDR,
+                  "preload_thread_locals overlaps the software ticks countdown");
     locals->syscallbuf_stub_alt_stack = t->syscallbuf_alt_stack();
   }
 }
@@ -2461,6 +2465,33 @@ bool Task::did_waitpid(WaitStatus status) {
         session().as_replay()->notify_detected_transient_error();
       }
     }
+  }
+
+  // Software ticks: a tick trap is the interrupt the PMU would have
+  // delivered. Make it the same TIME_SLICE_SIGNAL stop.
+  if (!status.reaped() && status.stop_sig() == SIGTRAP &&
+      !status.ptrace_event() && hpc.is_software() &&
+      is_software_tick_trap(this)) {
+    LOG(debug) << "  software tick trap at " << ip()
+               << "; treating as TIME_SLICE_SIGNAL";
+    if (arch() == aarch64) {
+      // The pc is at the brk; continue after it.
+      Registers r = regs();
+      r.set_ip(ip() + 4);
+      set_regs(r);
+    }
+    status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
+    memset(&pending_siginfo, 0, sizeof(pending_siginfo));
+    pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
+    pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
+    pending_siginfo.si_code = POLL_IN;
+    in_injectable_signal_stop = false;
+  } else if (!status.reaped() && status.stop_sig() &&
+             status.stop_sig() != SIGTRAP && !status.ptrace_event() &&
+             hpc.is_software() && session().is_recording()) {
+    // A signal stop between a tick's decrement and its trap is moved to the
+    // end of the tick sequence, where replay can find it again.
+    complete_software_tick_sequence(this);
   }
 
   wait_status = status;

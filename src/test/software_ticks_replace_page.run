@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+# With the syscall buffer, the preload library itself uses the page.
+skip_if_syscall_buf
+compare_test EXIT-SUCCESS
