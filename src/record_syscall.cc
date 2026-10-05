@@ -7025,6 +7025,27 @@ static void record_madvise(RecordTask* t) {
   }
 }
 
+/**
+ * The kernel continues a stopped process as soon as it generates a SIGCONT
+ * for it. rr emulates group stops, so it has to end the emulated stop itself.
+ * Usually the scheduler does that when it finds the SIGCONT pending (see
+ * Scheduler::is_task_runnable). But a stop signal sent before then makes the
+ * kernel discard the pending SIGCONT, and rr never sees it. So when a tracee
+ * has just sent a SIGCONT, end the emulated group stops of the processes that
+ * have it pending right away.
+ */
+static void emulate_SIGCONT_sent_by_tracee(RecordTask* t) {
+  for (auto& p : t->session().tasks()) {
+    RecordTask* rt = static_cast<RecordTask*>(p.second);
+    if (rt->in_job_control_stop() &&
+        rt->is_SIGCONT_pending_for_job_control_stop()) {
+      // This ends the emulated group stop of every untraced thread in rt's
+      // process.
+      rt->emulate_SIGCONT();
+    }
+  }
+}
+
 template <typename Arch>
 static void rec_process_syscall_arch(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
@@ -7486,6 +7507,24 @@ static void rec_process_syscall_arch(RecordTask* t,
       t->fd_table()->filter_getdents(fd, t);
       break;
     }
+
+    case Arch::kill:
+    case Arch::tkill:
+    case Arch::rt_sigqueueinfo:
+    case Arch::pidfd_send_signal:
+      if ((int)syscall_state.syscall_entry_registers.arg2() == SIGCONT &&
+          !t->regs().syscall_failed()) {
+        emulate_SIGCONT_sent_by_tracee(t);
+      }
+      break;
+
+    case Arch::tgkill:
+    case Arch::rt_tgsigqueueinfo:
+      if ((int)syscall_state.syscall_entry_registers.arg3() == SIGCONT &&
+          !t->regs().syscall_failed()) {
+        emulate_SIGCONT_sent_by_tracee(t);
+      }
+      break;
 
     case Arch::waitpid:
     case Arch::wait4:

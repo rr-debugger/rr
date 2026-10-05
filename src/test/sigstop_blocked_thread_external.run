@@ -1,0 +1,17 @@
+source `dirname $0`/util.sh
+
+# Run sigstop_blocked_thread, with this script sending the SIGCONTs from
+# outside the recording. rr then only notices them when it finds them pending.
+mkfifo request ack
+(exec 3<request 4>ack
+ while read -u 3 pid; do
+   kill -CONT $pid
+   echo -n x >&4
+ done) &
+sender=$!
+record sigstop_blocked_thread$bitness "$workdir/request $workdir/ack"
+# If the recording failed early, the sender may still be waiting.
+kill $sender 2>/dev/null
+wait $sender
+replay
+check 'EXIT-SUCCESS'
