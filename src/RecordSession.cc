@@ -2147,16 +2147,20 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
     // Don't ever patch a sigreturn syscall. These can't go through the syscallbuf.
     bool should_retry = false;
     if (!is_sigreturn(t->regs().original_syscallno(), t->arch())) {
-      if (t->vm()->monkeypatcher().try_patch_syscall(t, true, should_retry)) {
-        // Syscall was patched. Emit event and continue execution.
+      bool patched =
+          t->vm()->monkeypatcher().try_patch_syscall(t, true, should_retry);
+      if (patched) {
         t->record_event(Event::patch_syscall());
-        return true;
       }
       if (!t->is_stopped() || t->ptrace_event() == PTRACE_EVENT_EXIT) {
         // task exited while we were trying to patch it.
         // Make sure that this exit event gets processed
         step_state->continue_type = DONT_CONTINUE;
         return false;
+      }
+      if (patched) {
+        // Syscall was patched. Continue execution.
+        return true;
       }
     }
 

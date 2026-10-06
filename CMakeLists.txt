@@ -1669,6 +1669,7 @@ set(TESTS_WITH_PROGRAM
   patch_page_end
   x86/patch_40_80_f6_81
   x86/patch_pc_rel
+  patch_syscall_killed_task
   prctl_tsc
   priority
   ptrace_remote_unmap
@@ -1827,6 +1828,7 @@ set(TESTS_WITHOUT_PROGRAM
   pack_dir
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
+  patch_syscall_killed_task_far
   personality_chaos
   post_exec_fpu_regs
   proc_maps
