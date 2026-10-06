@@ -1365,6 +1365,7 @@ set(BASIC_TESTS
   redzone_integrity
   rename
   rlimit
+  robust_futex_clone
   rrcall_arm_kill
   rrcall_arm_kill_inherit
   rseq_cpu_id_reset
