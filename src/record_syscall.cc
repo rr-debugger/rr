@@ -2481,10 +2481,12 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   // those like with any other task.
   bool held = tracee->held_at_emulated_ptrace_event;
   if (sig && (held || tracee->emulated_stop_code.ptrace_event() ||
-              tracee->emulated_stop_code.group_stop())) {
+              tracee->emulated_stop_code.group_stop() ||
+              tracee->emulated_stop_type == SIGNAL_HANDLER_STOP)) {
     // Linux ignores the signal when the tracer resumes the tracee from a
-    // ptrace event stop or a PTRACE_EVENT_STOP (see ptrace_event() and
-    // do_jobctl_trap()).
+    // ptrace event stop, a PTRACE_EVENT_STOP or the stop at the entry of a
+    // signal handler that a single-step entered (see ptrace_event(),
+    // do_jobctl_trap() and signal_delivered()).
     LOG(debug) << "Ignoring signal " << signal_name(sig)
                << " passed to ptrace resume from "
                << tracee->emulated_stop_code;
