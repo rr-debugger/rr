@@ -1160,6 +1160,23 @@ static bool maybe_kill_task_at_syscall_patch(RecordTask* t, intptr_t syscallno,
   return true;
 }
 
+/**
+ * `t` was killed while we were patching the instruction of the syscall it had
+ * entered, after exit_syscall_and_prepare_restart() took it out of that
+ * syscall. Make it look like `t` is entering syscall `syscallno`, as
+ * exit_syscall_and_prepare_restart() does when the task dies, so that
+ * handle_ptrace_exit_event() records the syscall entry while `t` stays in its
+ * PTRACE_EVENT_EXIT stop.
+ */
+static void restore_syscall_entry_after_kill(RecordTask* t, intptr_t syscallno,
+                                             SupportedArch arch) {
+  Registers r = t->regs();
+  r.set_ip(r.ip().increment_by_syscall_insn_length(arch));
+  r.set_syscallno(syscallno);
+  r.emulate_syscall_entry();
+  t->set_regs(r);
+}
+
 // Syscalls can be patched either on entry or exit. For most syscall
 // instruction code patterns we can steal bytes after the syscall instruction
 // and thus we patch on entry, but some patterns require using bytes from
@@ -1179,7 +1196,8 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, remote_code_ptr ip, 
   // `syscallno` isn't necessarily correct here (in the extremely rare corner case that we
   // deferred a patch and the signal handler changed it), but we only use it for logging
   // and, at syscall entry (where it is correct), to match a kill armed with
-  // SYS_rrcall_arm_kill.
+  // SYS_rrcall_arm_kill and to restore the syscall entry of a task that was killed
+  // during patching.
   intptr_t syscallno = t->regs().original_syscallno();
   if (hook_ptr) {
     // Get out of executing the current syscall before we patch it.
@@ -1198,6 +1216,10 @@ bool Monkeypatcher::try_patch_syscall_x86ish(RecordTask* t, remote_code_ptr ip, 
 
     success = patch_syscall_with_hook(*this, t, *hook_ptr, ip - instruction_length, instruction_length, 0);
     if (!success && entering_syscall) {
+      if (t->is_exiting()) {
+        restore_syscall_entry_after_kill(t, syscallno, arch);
+        return false;
+      }
       // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
       t->enter_syscall(arch);
     }
@@ -1261,10 +1283,14 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, remote_code_ptr ip,
   }
 
   LOG(debug) << "Patching syscall at " << ip - 4 << " syscall "
-             << syscall_name(t->regs().original_syscallno(), aarch64) << " tid " << t->tid;
+             << syscall_name(syscallno, aarch64) << " tid " << t->tid;
 
   auto success = patch_syscall_with_hook(*this, t, syscall_hooks[0], ip - 4, 4, 0);
   if (!success && entering_syscall) {
+    if (t->is_exiting()) {
+      restore_syscall_entry_after_kill(t, syscallno, aarch64);
+      return false;
+    }
     // Need to reenter the syscall to undo exit_syscall_and_prepare_restart
     if (!t->enter_syscall(aarch64)) {
       return false;
@@ -1273,7 +1299,7 @@ bool Monkeypatcher::try_patch_syscall_aarch64(RecordTask* t, remote_code_ptr ip,
 
   if (!success) {
     LOG(debug) << "Failed to patch syscall at " << ip - 4 << " syscall "
-               << syscall_name(t->regs().original_syscallno(), aarch64) << " tid " << t->tid;
+               << syscall_name(syscallno, aarch64) << " tid " << t->tid;
     tried_to_patch_syscall_addresses.insert(ip);
     return false;
   }

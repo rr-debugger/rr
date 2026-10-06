@@ -1,0 +1,12 @@
+source `dirname $0`/util.sh
+# rr only patches syscall instructions when the syscallbuf is enabled.
+skip_if_no_syscall_buf
+# A 32-bit rr finds a page of stubs within reach of every instruction.
+skip_if_rr_32_bit
+record patch_syscall_killed_task$bitness far
+replay
+if ! grep -q "child was killed" record.out; then
+  failed ": the child wasn't killed"
+else
+  check EXIT-SUCCESS
+fi
