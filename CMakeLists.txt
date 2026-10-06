@@ -1312,6 +1312,7 @@ set(BASIC_TESTS
   ptrace_seize
   ptrace_sigchld
   ptrace_sigchld_blocked
+  ptrace_signal_during_clone
   ptrace_signals
   ptrace_singlestep
   ptrace_syscall

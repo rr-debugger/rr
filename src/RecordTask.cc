@@ -359,6 +359,13 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
     auto sh = rt->sighandlers->clone();
     sighandlers.swap(sh);
   }
+  if (rt->stashed_signals_blocking_more_signals) {
+    // While |rt| has stashed signals, we block all signals but our own
+    // whenever it runs (see will_resume_execution), so we inherited that
+    // mask. Take |rt|'s real mask, which did_wait restored at its last stop.
+    set_sigmask(rt->get_sigmask());
+    invalidate_sigmask();
+  }
 
   update_own_namespace_tid();
 }
