@@ -37,6 +37,8 @@ enum EmulatedStopType {
   NOT_STOPPED,
   GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
   SIGNAL_DELIVERY_STOP,// Stopped before delivering a signal. ptracees only.
+  SIGNAL_HANDLER_STOP, // Stopped at the entry of a signal handler that a
+                       // single-step entered. ptracees only
   SYSCALL_ENTRY_STOP,  // Stopped at syscall entry. ptracees only
   SYSCALL_EXIT_STOP,   // Stopped at syscall exit. ptracees only
   SECCOMP_STOP,        // Stopped at seccomp stop. ptracees only

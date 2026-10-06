@@ -1321,6 +1321,7 @@ set(BASIC_TESTS
   ptrace_signal_during_clone
   ptrace_signals
   ptrace_singlestep
+  ptrace_singlestep_signal_handler
   ptrace_stop_sigcont
   ptrace_syscall
   ptrace_syscall_clone_untraced
