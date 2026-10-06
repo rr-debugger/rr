@@ -193,7 +193,7 @@ RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
 // 32-bit format, 64-bit format for all of these.
 // format_index in RegisterPrinting depends on the ordering here.
 static const char* hex_format_leading_0x[] = { "0x%" PRIx32, "0x%" PRIx64 };
-// static const char* decimal_format[] = { "%" PRId32, "%" PRId64 };
+static const char* decimal_format[] = { "%" PRId32, "%" PRId64 };
 
 template <size_t nbytes> struct RegisterPrinting;
 
@@ -217,6 +217,18 @@ void print_single_register(FILE* f, const char* name, const void* register_ptr,
   } else {
     fprintf(f, " ");
   }
+  fprintf(f, formats[RegisterPrinting<nbytes>::format_index], val);
+}
+
+template <size_t nbytes>
+void print_single_register_json(FILE* f, const char* name, const void* register_ptr,
+                           const char* formats[]) {
+  typename RegisterPrinting<nbytes>::type val;
+  memcpy(&val, register_ptr, nbytes);
+  if (name == 0)
+    FATAL() << "Can't dump a register to json without a name";
+
+  fprintf(f, "\"%s\":", name);
   fprintf(f, formats[RegisterPrinting<nbytes>::format_index], val);
 }
 
@@ -247,6 +259,36 @@ void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
 
 void Registers::print_register_file(FILE* f) const {
   RR_ARCH_FUNCTION(print_register_file_arch, arch(), f, hex_format_leading_0x);
+}
+
+template <typename Arch>
+void Registers::print_register_file_json_arch(FILE* f) const {
+  const void* user_regs = &u;
+  bool write_comma = false;
+  fprintf(f, "\"regs\": { ");
+  for (auto& rv : RegisterInfo<Arch>::registers) {
+    if (rv.nbytes == 0) {
+      continue;
+    }
+    if (!write_comma) {
+      write_comma = true;
+    } else {
+      fprintf(f, ", ");
+    }
+    switch (rv.nbytes) {
+      case 8:
+        print_single_register_json<8>(f, rv.name, rv.pointer_into(user_regs),
+                                 decimal_format);
+        break;
+      case 4:
+        print_single_register_json<4>(f, rv.name, rv.pointer_into(user_regs),
+                                 decimal_format);
+        break;
+      default:
+        DEBUG_ASSERT(0 && "bad register size");
+    }
+  }
+  fprintf(f, " }");
 }
 
 template <typename Arch>
@@ -281,6 +323,10 @@ void Registers::print_register_file_for_trace_arch(
 void Registers::print_register_file_compact(FILE* f) const {
   RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(), f, Annotated,
                    hex_format_leading_0x);
+}
+
+void Registers::print_register_file_json(FILE* f) const {
+  RR_ARCH_FUNCTION(print_register_file_json_arch, arch(), f);
 }
 
 void Registers::print_register_file_for_trace_raw(FILE* f) const {

@@ -444,6 +444,7 @@ public:
 
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;
+  void print_register_file_json(FILE* f) const;
   void print_register_file_for_trace_raw(FILE* f) const;
 
   struct Mismatch {
@@ -536,6 +537,9 @@ public:
 private:
   template <typename Arch>
   void print_register_file_arch(FILE* f, const char* formats[]) const;
+
+  template <typename Arch>
+  void print_register_file_json_arch(FILE* f) const;
 
   enum TraceStyle {
     Annotated,

@@ -20,7 +20,9 @@ struct DumpFlags {
   bool dump_recorded_data_metadata;
   bool dump_mmaps;
   bool dump_task_events;
+  bool dump_no_regs;
   bool raw_dump;
+  bool json_dump;
   bool dump_statistics;
   bool dump_socket_addrs;
   int only_tid;
@@ -30,7 +32,9 @@ struct DumpFlags {
         dump_recorded_data_metadata(false),
         dump_mmaps(false),
         dump_task_events(false),
+        dump_no_regs(false),
         raw_dump(false),
+        json_dump(false),
         dump_statistics(false),
         dump_socket_addrs(false),
         only_tid(0) {}
