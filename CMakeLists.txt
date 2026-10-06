@@ -1554,6 +1554,7 @@ set(TESTS_WITH_PROGRAM
   check_lost_interrupts
   clone_file_range
   clone_interruption
+  clone_vm_checksum
   # Disabled because it fails
   # clone_share_vm
   clone_syscallbuf_cleanup_blocked

@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS --checksum=on-all-events"
+compare_test EXIT-SUCCESS
