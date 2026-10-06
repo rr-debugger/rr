@@ -1848,6 +1848,7 @@ set(TESTS_WITHOUT_PROGRAM
   vfork_done_clone
   vfork_exec
   vfork_break_parent
+  vfork_checksum
   vsyscall_singlestep
   watch_code
   watchpoint_cond
