@@ -441,7 +441,8 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_NO_TICKS)) {
         // Tracee died unexpectedly. We did not enter a syscall.
         // We shouldn't try to resume it now.
-        last_task_switchable = ALLOW_SWITCH;
+        last_task_switchable = scheduler().wait_for_killed_task(t) ?
+            PREVENT_SWITCH : ALLOW_SWITCH;
         step_state->continue_type = RecordSession::DONT_CONTINUE;
         return;
       }
@@ -454,6 +455,9 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = RecordSession::DONT_CONTINUE;
     if (!process_syscall_entry(t, step_state, result, t->arch())) {
+      // The task was killed.
+      last_task_switchable = scheduler().wait_for_killed_task(t) ?
+          PREVENT_SWITCH : ALLOW_SWITCH;
       return;
     }
     *did_enter_syscall = true;
@@ -483,7 +487,9 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       SupportedArch syscall_arch = t->detect_syscall_arch();
       t->canonicalize_regs(syscall_arch);
       if (!process_syscall_entry(t, step_state, result, syscall_arch)) {
-        last_task_switchable = ALLOW_SWITCH;
+        // The task was killed.
+        last_task_switchable = scheduler().wait_for_killed_task(t) ?
+            PREVENT_SWITCH : ALLOW_SWITCH;
         step_state->continue_type = RecordSession::DONT_CONTINUE;
         return;
       }
@@ -683,7 +689,8 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
       t->apply_syscall_entry_regs();
       if (seccomp_data < 0) {
         // Process just died. Urk. Just wait for the exit event and pretend this stop never happened!
-        last_task_switchable = ALLOW_SWITCH;
+        last_task_switchable = scheduler().wait_for_killed_task(t) ?
+            PREVENT_SWITCH : ALLOW_SWITCH;
         step_state->continue_type = DONT_CONTINUE;
         return true;
       }
@@ -722,7 +729,6 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
                        << syscall_name(syscallno, t->arch());
             t->tgkill(SIGKILL);
             // Rely on the SIGKILL to bump us out of the ptrace stop.
-            last_task_switchable = ALLOW_SWITCH;
             step_state->continue_type = RecordSession::DONT_CONTINUE;
             // Now wait for us to actually exit our ptrace-stop and proceed
             // to the PTRACE_EVENT_EXIT. This avoids the race where our
@@ -730,6 +736,8 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
             // we can process it.
             // If this fails because of *another* SIGKILL that's fine.
             t->wait();
+            last_task_switchable = scheduler().wait_for_killed_task(t) ?
+                PREVENT_SWITCH : ALLOW_SWITCH;
             break;
           default:
             ASSERT(t, false) << "Seccomp result not handled";
