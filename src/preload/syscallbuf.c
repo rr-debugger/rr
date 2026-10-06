@@ -3341,7 +3341,12 @@ static long sys_recvmsg(struct syscall_info* call) {
   if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     size_t bytes = ret;
     if (msg->msg_name) {
-      local_memcpy(msg->msg_name, msg2->msg_name, msg2->msg_namelen);
+      /* The kernel stores the address's full length in msg_namelen, but
+         copies only as much of it as fits. */
+      socklen_t namelen = msg2->msg_namelen < msg->msg_namelen
+                              ? msg2->msg_namelen
+                              : msg->msg_namelen;
+      local_memcpy(msg->msg_name, msg2->msg_name, namelen);
     }
     msg->msg_namelen = msg2->msg_namelen;
     if (msg->msg_control) {
