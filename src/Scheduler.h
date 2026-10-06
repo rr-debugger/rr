@@ -119,6 +119,21 @@ public:
   Rescheduled reschedule(Switchable switchable);
 
   /**
+   * Call this when a SIGKILL or equivalent has hit `t`, the task we're
+   * running, while we were handling one of its stops: it was taken out of
+   * the stop, or it's in its PTRACE_EVENT_EXIT stop now. Unless that's
+   * unsafe, wait until `t` is in its PTRACE_EVENT_EXIT stop. Then its exit
+   * must be handled before any other task's events, so the caller should
+   * prevent switching: `t` has run user code since its last event, which
+   * handle_ptrace_exit_event() records, and that must not end up in the
+   * trace after other tasks' exits. Those can change memory that the code
+   * read (e.g. the kernel clears a CLONE_CHILD_CLEARTID tid), and replay
+   * would run the code after the changes.
+   * Returns true if `t` is stopped (in its PTRACE_EVENT_EXIT stop).
+   */
+  bool wait_for_killed_task(RecordTask* t);
+
+  /**
    * Set the priority of |t| to |value| and update related
    * state.
    */

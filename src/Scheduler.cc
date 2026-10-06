@@ -721,6 +721,48 @@ void Scheduler::stopped_task(RecordTask* t) {
   ASSERT(t, ntasks_stopped <= static_cast<int>(session.tasks().size()) + 1);
 }
 
+/**
+ * Whether `t`'s exit can wait for other tasks we're tracing to get past their
+ * PTRACE_EVENT_EXIT stops.
+ */
+static bool exit_may_wait_for_other_tasks(RecordTask* t) {
+  // The last thread of a pid namespace's init to exit waits for all the other
+  // tasks in the namespace to exit and be reaped (zap_pid_ns_processes()).
+  if (t->is_container_init()) {
+    return true;
+  }
+  // Before Linux 5.16, a thread of a process that's dumping core waits in
+  // exit_mm(), after its PTRACE_EVENT_EXIT stop, for the core dump, which
+  // waits for all the other threads to get there. Since 5.16 that wait comes
+  // before the PTRACE_EVENT_EXIT stop, so waiting for that stop would only
+  // take as long as the dump, but we don't bother telling kernels apart. The
+  // CoreDumping field is new in Linux 4.15; before that we can't tell, and a
+  // second SIGKILL during a core dump can make us wait forever.
+  auto core_dumping = read_proc_status_fields(t->tid, "CoreDumping");
+  return !core_dumping.empty() && core_dumping[0] != "0";
+}
+
+bool Scheduler::wait_for_killed_task(RecordTask* t) {
+  if (t->was_reaped()) {
+    return false;
+  }
+  if (t->is_stopped() && t->seen_ptrace_exit_event()) {
+    return true;
+  }
+  // The kernel skips the PTRACE_EVENT_EXIT stop if another SIGKILL is
+  // pending. Then `t` becomes a zombie, and waiting for a stop of a ptraced
+  // zombie fails right away (ECHILD), unless `t`'s exit waits for tasks we're
+  // holding in their PTRACE_EVENT_EXIT stops. Waiting would deadlock then, so
+  // we don't wait in the cases where that can happen.
+  if (exit_may_wait_for_other_tasks(t)) {
+    LOGM(debug) << "  " << t->tid << " was killed; its exit may wait for "
+                << "other tasks, so not waiting for it";
+    return false;
+  }
+  LOGM(debug) << "  " << t->tid << " was killed; waiting for its exit";
+  return t->wait();
+}
+
 Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   Rescheduled result;
   result.interrupted_by_signal = false;
@@ -791,14 +833,14 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           timeout = elapsed > 0.05 ? 0.0 : 0.05 - elapsed;
           LOGM(debug) << "  But that's not our current task...";
         } else {
-          if (current_->wait(timeout)) {
+          if (current_->wait(timeout) || wait_for_killed_task(current_)) {
             result.by_waitpid = true;
             LOGM(debug) << "  new status is " << current_->status();
           } else {
-            // A SIGKILL or equivalent kicked the task out of the stop.
-            // We are now running towards PTRACE_EVENT_EXIT or zombie status.
-            // Even though we're PREVENT_SWITCH, we still have to switch.
-            // The task won't be stopped so this is handled below.
+            // The task died without stopping at PTRACE_EVENT_EXIT, or we
+            // can't safely wait for that stop. Even though we're
+            // PREVENT_SWITCH, we have to switch. The task won't be stopped so
+            // this is handled below.
           }
           break;
         }

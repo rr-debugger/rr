@@ -740,10 +740,13 @@ public:
    * interrupt the task after that many seconds have elapsed. If
    * interrupt_after_elapsed == 0.0, the interrupt will happen immediately.
    * Returns false if the wait failed because we reached a stop but we got
-   * SIGKILLed (or equivalent) out of it, in which case it is not safe to wait
-   * because that might block indefinitely waiting for us to acknowledge the
-   * PTRACE_EVENT_EXIT of other tasks. In this case in_unexpected_exit will
-   * be true and is_stopped will be false.
+   * SIGKILLed (or equivalent) out of it. In this case in_unexpected_exit will
+   * be true and is_stopped will be false. The task is then on its way to its
+   * PTRACE_EVENT_EXIT stop, or to being a zombie if the kernel skips that
+   * stop, and waiting again gets that stop or fails right away. But if the
+   * task's exit waits for other tasks that we're holding in their
+   * PTRACE_EVENT_EXIT stops, waiting again blocks indefinitely; see
+   * Scheduler::wait_for_killed_task().
    * This can't reap the task.
    */
   bool wait(double interrupt_after_elapsed = -1);
