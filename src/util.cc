@@ -482,6 +482,26 @@ static void normalize_syscallbuf(Task* t, vector<uint8_t>& mem) {
   mem.resize(hdr_size + hdr.num_rec_bytes + sizeof(struct syscallbuf_record));
 }
 
+/**
+ * The preload_thread_locals page holds the thread-locals of the task that rr
+ * last activated in its address space (Task::activate_preload_thread_locals:
+ * whenever rr resumes a task with ticks, and when it sets up a new task), and
+ * the other tasks' locals are saved in rr. Recording and replay don't always
+ * agree on that task at an event: e.g. when a task gets an async signal right
+ * after a syscall at the same tick count, recording resumed it with ticks
+ * before the signal stop, but replay doesn't have to run it at all, so the
+ * page still holds the locals of another task that shares the address space
+ * and ran meanwhile. So checksum |t|'s own thread-locals there.
+ */
+static void use_own_thread_locals(Task* t, const AddressSpace::Mapping& m,
+                                  vector<uint8_t>& mem) {
+  if ((m.flags & AddressSpace::Mapping::IS_THREAD_LOCALS) &&
+      mem.size() >= PRELOAD_THREAD_LOCALS_SIZE) {
+    memcpy(mem.data(), t->fetch_preload_thread_locals(),
+           PRELOAD_THREAD_LOCALS_SIZE);
+  }
+}
+
 void checksum_process_memory(RecordTask* t, FrameTime global_time) {
   string filename = format_dump_filename(t, global_time, "mem_checksums");
   FILE* checksums_file = fopen64(filename.c_str(), "w");
@@ -518,6 +538,7 @@ void checksum_process_memory(RecordTask* t, FrameTime global_time) {
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
       normalize_syscallbuf(t, mem);
     }
+    use_own_thread_locals(t, m, mem);
 
     uint32_t checksum = compute_checksum(mem.data(), mem.size());
     fprintf(checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
@@ -578,6 +599,7 @@ void validate_process_memory(ReplayTask* t, FrameTime global_time) {
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
       normalize_syscallbuf(t, mem);
     }
+    use_own_thread_locals(t, m, mem);
 
     uint32_t our_checksum = compute_checksum(mem.data(), mem.size());
 
