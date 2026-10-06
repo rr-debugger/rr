@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+
+save_exe simple$bitness
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS --checksum=on-all-events"
+record vfork$bitness simple$bitness-$nonce
+replay
+check vforker-EXIT-SUCCESS
