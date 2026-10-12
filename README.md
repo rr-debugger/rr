@@ -25,3 +25,9 @@ rr development is sponsored by [Pernosco](https://pernos.co) and was originated 
   * Some configurations of VMware and KVM are known to work.
   * Some configurations of AWS and GCP VMs are known to work.
   * No configurations of Xen are known to work.
+
+# AI usage policy
+
+When submitting issues or PRs, please clearly indicate how LLMs were used. Issues or PRs which appear LLM-generated but carry no such indications may be closed without comment.
+
+When submitting PRs for review, the submitter must be human and take full responsibility for understanding the changes, regardless of how LLMs were used.
