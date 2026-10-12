@@ -44,10 +44,10 @@ int main(void) {
   unsigned long f = 0;
   int i;
   /* Under rr's software ticks the tracer arms the countdown before resuming
-   * us: its high word (on i386 the disarmed word) is 0. Natively, or with
-   * the PMU, the countdown is parked and that word is not 0. */
+   * us, with fewer than 2^63 ticks to go: its high word is below 2^31. With
+   * the PMU, rr parks it at 2^64 - 1. */
   volatile uint32_t* countdown = (volatile uint32_t*)RR_SOFTTICKS_COUNTDOWN_ADDR;
-  test_assert(countdown[1] == 0);
+  test_assert(countdown[1] < 0x80000000);
 
   TICK();
   signal(SIGALRM, handler);

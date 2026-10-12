@@ -258,10 +258,11 @@ private:
   bool opened;
   bool counting;
 
-  // Software ticks: the countdown value software_start() wrote, the ticks
-  // counted for this task when another task of its address space took the
-  // countdown over, and whether the countdown is still this task's.
-  uint32_t sw_period = 0;
+  // Software ticks: the ticks to go software_start() armed the countdown
+  // with, the ticks counted for this task when another task of its address
+  // space took the countdown over, and whether the countdown is still this
+  // task's.
+  uint64_t sw_period = 0;
   Ticks sw_harvested = 0;
   bool sw_owned = false;
 };

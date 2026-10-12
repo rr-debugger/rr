@@ -28,9 +28,10 @@ int main(void) {
 #if defined(RR_SOFTTICKS_TICK_ASM) && (defined(__x86_64__) || defined(__i386__))
   /* Built for software ticks there is no branch counter to overflow, and the loop below
      has no ticks: replay could only find where the signal arrived by stopping at every
-     iteration. Test the software counterpart instead: first tick well past 2^32 (rr
-     arms at most 2^32-1 ticks at a time, so this takes several stops), deterministically
-     (the compiler ticks this loop), then let the signal arrive in a loop that ticks. */
+     iteration. Test the software counterpart instead: first tick well past 2^32 in one
+     stretch, deterministically (the compiler ticks this loop), which rr runs with one
+     countdown of more than 2^32 ticks (on i386 its low word passes 0 and borrows from
+     the high word), then let the signal arrive in a loop that ticks. */
   for (long long i = 0; i < (1LL << 32) + (1LL << 28); ++i) {
     asm volatile("" : : : "memory");
   }

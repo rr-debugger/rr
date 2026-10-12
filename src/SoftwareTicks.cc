@@ -111,8 +111,8 @@ static const uint8_t tick_x64[] = {
 static const uint8_t tick_x86[] = {
   0x83, 0x2d, 0x00, 0x18, 0x00, 0x70, 0x01, // subl $1, 0x70001800
   0x75, 0x0a,                               // jnz 1f
-  0x83, 0x3d, 0x04, 0x18, 0x00, 0x70, 0x00, // cmpl $0, 0x70001804
-  0x75, 0x01,                               // jnz 1f
+  0x83, 0x2d, 0x04, 0x18, 0x00, 0x70, 0x01, // subl $1, 0x70001804
+  0x73, 0x01,                               // jae 1f (no borrow)
   0xcc                                      // int3
 };
 static const uint8_t tick_arm64[] = {
@@ -123,6 +123,17 @@ static const uint8_t tick_arm64[] = {
   0x51, 0x00, 0x00, 0xb5, // cbnz x17, 1f
   0x80, 0x6a, 0x2a, 0xd4  // brk #0x5354
 };
+
+// Read code from t's memory as the program has it: without the int3s of rr's
+// breakpoints (a debugger's breakpoint may be inside a tick sequence).
+static bool read_code(Task* t, uintptr_t addr, size_t len, uint8_t* buf) {
+  if (t->read_bytes_fallible(remote_ptr<void>(addr), len, buf) != (ssize_t)len) {
+    return false;
+  }
+  t->vm()->replace_breakpoints_with_original_values(buf, len,
+                                                    remote_ptr<uint8_t>(addr));
+  return true;
+}
 
 bool is_software_tick_trap(Task* t) {
   const uint8_t* seq;
@@ -159,8 +170,7 @@ bool is_software_tick_trap(Task* t) {
     return false;
   }
   uint8_t buf[sizeof(tick_arm64)];
-  remote_ptr<void> start = remote_ptr<void>(trap + trap_len - len);
-  if (t->read_bytes_fallible(start, len, buf) != (ssize_t)len) {
+  if (!read_code(t, trap + trap_len - len, len, buf)) {
     return false;
   }
   return !memcmp(buf, seq, len);
@@ -168,7 +178,8 @@ bool is_software_tick_trap(Task* t) {
 
 bool complete_software_tick_sequence(Task* t) {
   // The offsets of the instructions after the commit (the decrement): jnz and
-  // int3 (x86-64); jnz, cmpl, jnz and int3 (i386); cbnz and brk (aarch64).
+  // int3 (x86-64); jnz, the borrow's subl, jae and int3 (i386); cbnz and brk
+  // (aarch64).
   static const size_t x64_after_commit[] = { 8, 10 };
   static const size_t x86_after_commit[] = { 7, 9, 16, 18 };
   static const size_t arm64_after_commit[] = { 16, 20 };
@@ -206,8 +217,7 @@ bool complete_software_tick_sequence(Task* t) {
   uint8_t buf[sizeof(tick_arm64)];
   for (size_t i = 0; i < noffsets; ++i) {
     uintptr_t start = pc - offsets[i];
-    if (t->read_bytes_fallible(remote_ptr<void>(start), len, buf) != (ssize_t)len ||
-        memcmp(buf, seq, len)) {
+    if (!read_code(t, start, len, buf) || memcmp(buf, seq, len)) {
       continue;
     }
     LOG(debug) << "  stopped inside a tick sequence at " << t->ip()
@@ -218,6 +228,65 @@ bool complete_software_tick_sequence(Task* t) {
     return true;
   }
   return false;
+}
+
+// Whether t, an i386 task, is stopped between a tick's two subl instructions:
+// after the low word reached 0 (ZF set) and before the borrow from the high
+// word, i.e. at the jnz or at the second subl. Or just after an int3 that rr
+// put there for a breakpoint: the pc is then 1 byte into the instruction
+// (which no jump targets), before rr moves it back.
+static bool x86_borrow_pending(Task* t) {
+  // A task whose stop we have not processed has no registers to look at. (A
+  // task blocked in the kernel is not inside a tick sequence.)
+  if (!t->stopped_or_unexpected_exit()) {
+    return false;
+  }
+  const Registers& r = t->regs();
+  if (!r.zf_flag()) {
+    return false;
+  }
+  uintptr_t pc = r.ip().register_value();
+  uint8_t buf[sizeof(tick_x86)];
+  for (size_t offset : { 7, 9, 8, 10 }) {
+    if (read_code(t, pc - offset, sizeof(buf), buf) &&
+        !memcmp(buf, tick_x86, sizeof(buf))) {
+      LOG(debug) << "  stopped at " << r.ip()
+                 << " before a tick's borrow from the high word";
+      return true;
+    }
+  }
+  return false;
+}
+
+static const uint64_t X86_LOW_WORD = uint64_t(1) << 32;
+
+uint64_t software_ticks_remaining(Task* t, uint64_t slot) {
+  if (t->arch() != x86) {
+    return slot;
+  }
+  uint64_t ret = slot;
+  if (uint32_t(slot) == 0) {
+    ret += X86_LOW_WORD;
+  }
+  if (x86_borrow_pending(t)) {
+    ret -= X86_LOW_WORD;
+  }
+  return ret;
+}
+
+uint64_t software_ticks_slot_for(Task* t, uint64_t remaining) {
+  if (t->arch() != x86) {
+    return remaining;
+  }
+  uint64_t ret = remaining;
+  if (uint32_t(remaining) == 0) {
+    ret -= X86_LOW_WORD;
+  }
+  if (x86_borrow_pending(t)) {
+    // The pending borrow takes it back off.
+    ret += X86_LOW_WORD;
+  }
+  return ret;
 }
 
 size_t software_ticks_thread_locals_size() {
