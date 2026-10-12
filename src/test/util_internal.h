@@ -23,4 +23,13 @@ void rr_freeze_tid(pid_t tid, int freeze) {
   test_assert(err == 0 && "Failed to freeze tid");
 }
 
+/* Asks rr to SIGKILL a task at `point`; see SYS_rrcall_arm_kill. Returns 1
+   if rr armed the kill, or 0 if we're not running under rr. */
+int rr_arm_kill(int point, long arg, int flags) {
+  int ret = syscall(SYS_rrcall_arm_kill, (long)point, arg, (long)flags,
+      (long)0, (long)0, (long)0);
+  test_assert(ret == 0 || errno == ENOSYS);
+  return ret == 0;
+}
+
 #endif /* RRUTIL_INTERNAL_H */

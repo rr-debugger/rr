@@ -2163,6 +2163,61 @@ bool Task::account_for_potential_ptrace_interrupt_stop(WaitStatus status) {
   return false;
 }
 
+/**
+ * This is purely for testing purposes. See RRCALL_KILL_AFTER_SIGNAL_STOP_WAIT
+ * and RRCALL_KILL_AFTER_DESCHED_STOP_WAIT. waitid() has just reported
+ * `status` for `t`. If we're to kill `t` now, do it before did_waitpid()
+ * looks at the stop, as if the SIGKILL had arrived just after waitid()
+ * returned.
+ */
+static void maybe_kill_task_after_wait(Task* t, WaitStatus status) {
+  if (!t->session().is_recording()) {
+    return;
+  }
+  RecordTask* rt = static_cast<RecordTask*>(t);
+  bool kill =
+      (status.stop_sig() &&
+       rt->take_armed_kill(RRCALL_KILL_AFTER_SIGNAL_STOP_WAIT,
+                           status.stop_sig())) ||
+      (rt->in_desched_handling && status.ptrace_event() != PTRACE_EVENT_EXIT &&
+       rt->take_armed_kill(RRCALL_KILL_AFTER_DESCHED_STOP_WAIT));
+  if (!kill) {
+    return;
+  }
+  // We're usually bound to the same CPU as the tracees. Keep the SIGKILL
+  // from making them preempt us, so that `t` is unlikely to get to its
+  // PTRACE_EVENT_EXIT stop before we've looked at this stop: we want to test
+  // the window between the two.
+  struct sched_param param;
+  memset(&param, 0, sizeof(param));
+  for (Task* tt : t->thread_group()->task_set()) {
+    sched_setscheduler(tt->tid, SCHED_IDLE, &param);
+  }
+  t->tgkill(SIGKILL);
+}
+
+/**
+ * This is purely for testing purposes. See RRCALL_KILL_BEFORE_GETSIGINFO.
+ * `t` has reported a signal-stop for `sig`.
+ */
+static void maybe_kill_task_in_signal_stop(Task* t, int sig) {
+  if (!t->session().is_recording() ||
+      !static_cast<RecordTask*>(t)->take_armed_kill(
+          RRCALL_KILL_BEFORE_GETSIGINFO, sig)) {
+    return;
+  }
+  t->tgkill(SIGKILL);
+  // Wait until it has reached its PTRACE_EVENT_EXIT stop (or exited), but
+  // leave that for later.
+  WaitOptions options(t->tid);
+  options.consume = false;
+  WaitResult result;
+  do {
+    result = WaitManager::wait_stop_or_exit(options);
+  } while (result.code == WAIT_NO_STATUS);
+  ASSERT(t, result.code == WAIT_OK) << "Task disappeared";
+}
+
 bool Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking wait for " << tid << " ...";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == -1);
@@ -2208,6 +2263,7 @@ bool Task::wait(double interrupt_after_elapsed) {
       LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << result.status;
     }
   }
+  maybe_kill_task_after_wait(this, result.status);
   return did_waitpid(result.status);
 }
 
@@ -2379,6 +2435,7 @@ bool Task::did_waitpid(WaitStatus status) {
       // Don't try to inject signals into ptrace-interrupt stops
       in_injectable_signal_stop = false;
     } else if (status.stop_sig()) {
+      maybe_kill_task_in_signal_stop(this, status.stop_sig());
       if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;
         // Let's pretend this stop never happened.

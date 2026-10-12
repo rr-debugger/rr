@@ -198,6 +198,15 @@ public:
    */
   RecordTask* revive_task_for_exec(pid_t rec_tid);
 
+  /**
+   * This is purely for testing purposes (see SYS_rrcall_arm_kill). If a task
+   * in an execve in the thread group with tgid `rec_tid` has a kill armed at
+   * `point` that fires now, SIGKILL `rec_tid`, wait if `point` says so and
+   * return true. `rec_tid` is the exec'ing task once the exec has replaced
+   * the thread group's other threads.
+   */
+  bool kill_exec_task_for_testing(pid_t rec_tid, int point);
+
   virtual TraceStream* trace_stream() override { return &trace_out; }
 
   /**
