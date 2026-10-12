@@ -135,11 +135,10 @@ static bool read_code(Task* t, uintptr_t addr, size_t len, uint8_t* buf) {
   return true;
 }
 
-bool is_software_tick_trap(Task* t) {
+bool is_software_tick_trap(Task* t, const siginfo_t& si) {
   const uint8_t* seq;
   size_t len;
   size_t trap_len;
-  const siginfo_t& si = t->get_siginfo();
   switch (t->arch()) {
     case x86_64:
       seq = tick_x64;

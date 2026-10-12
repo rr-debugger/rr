@@ -3,6 +3,7 @@
 #ifndef RR_SOFTWARE_TICKS_H_
 #define RR_SOFTWARE_TICKS_H_
 
+#include <signal.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -62,12 +63,12 @@ uint32_t read_software_ticks_note(ElfFileReader& reader);
 /* Called after rr creates a preload thread-locals page: park the countdown. */
 void init_software_ticks_slot(Task* t);
 
-/* Whether t's current SIGTRAP stop is a tick trap: the trap instruction of a
- * tick sequence (x86: the pc is after the int3; aarch64: at the brk), not one
- * of rr's breakpoints. It need not have found the countdown at 0: a tick whose
- * trap was pending at an earlier stop traps when the task resumes, and is
- * treated the same way. */
-bool is_software_tick_trap(Task* t);
+/* Whether t's current SIGTRAP stop, with siginfo |si|, is a tick trap: the
+ * trap instruction of a tick sequence (x86: the pc is after the int3;
+ * aarch64: at the brk), not one of rr's breakpoints. It need not have found
+ * the countdown at 0: a tick whose trap was pending at an earlier stop traps
+ * when the task resumes, and is treated the same way. */
+bool is_software_tick_trap(Task* t, const siginfo_t& si);
 
 /* When recording, move a task stopped between a tick's decrement and the end
  * of its sequence to the end of the sequence. What lies in between (the

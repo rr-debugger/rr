@@ -2525,10 +2525,12 @@ bool Task::did_waitpid(WaitStatus status) {
   }
 
   // Software ticks: a tick trap is the interrupt the PMU would have
-  // delivered. Make it the same TIME_SLICE_SIGNAL stop.
+  // delivered. Make it the same TIME_SLICE_SIGNAL stop. (wait_status is
+  // still the previous stop's here, so get_siginfo() doesn't apply yet; use
+  // the siginfo we read for this stop above.)
   if (!status.reaped() && status.stop_sig() == SIGTRAP &&
       !status.ptrace_event() && hpc.is_software() &&
-      is_software_tick_trap(this)) {
+      is_software_tick_trap(this, pending_siginfo)) {
     LOG(debug) << "  software tick trap at " << ip()
                << "; treating as TIME_SLICE_SIGNAL";
     if (arch() == aarch64) {
