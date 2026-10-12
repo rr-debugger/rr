@@ -13,6 +13,7 @@
 
 #include "Flags.h"
 #include "RecordSession.h"
+#include "RecordTask.h"
 #include "StringVectorToCharArray.h"
 #include "WaitManager.h"
 #include "WaitStatus.h"
@@ -199,6 +200,11 @@ struct RecordFlags {
   /* True if we should not add the preload library to LD_PRELOAD. */
   bool no_preload = false;
 
+  /* For testing: if nonzero, SIGKILL the initial task before its first
+     execve, the n'th time the recording loop takes it up. See
+     RRCALL_KILL_BEFORE_INITIAL_EXEC. */
+  int kill_before_initial_exec = 0;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -289,6 +295,8 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 19, "intel-pt", NO_PARAMETER },
     { 20, "check-outside-mmaps", NO_PARAMETER },
     { 21, "no-preload", NO_PARAMETER },
+    // For testing only, so not in the help text.
+    { 22, "kill-before-initial-exec", HAS_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -517,6 +525,12 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 21:
       flags.no_preload = true;
       break;
+    case 22:
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.kill_before_initial_exec = opt.int_value;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -634,6 +648,15 @@ static void setup_session_from_flags(RecordSession& session,
     for (int i = 0; i < 950; ++i) {
       open("/dev/null", O_RDONLY);
     }
+  }
+
+  if (flags.kill_before_initial_exec) {
+    // The session has just spawned the initial task, and nothing else.
+    DEBUG_ASSERT(session.tasks().size() == 1);
+    RecordTask* t =
+        static_cast<RecordTask*>(session.tasks().begin()->second);
+    t->arm_kill(RRCALL_KILL_BEFORE_INITIAL_EXEC,
+                flags.kill_before_initial_exec, false);
   }
 }
 

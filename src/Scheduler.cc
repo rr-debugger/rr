@@ -610,6 +610,12 @@ static RecordTask* find_waited_task(RecordSession& session, pid_t tid, WaitStatu
 {
   RecordTask* waited = session.find_task(tid);
   if (status.ptrace_event() == PTRACE_EVENT_EXEC) {
+    // This is purely for testing purposes. See RRCALL_KILL_BEFORE_EXEC_STOP.
+    // Drop the stop, as if the SIGKILL had arrived before the task got there.
+    if (session.kill_exec_task_for_testing(tid,
+                                           RRCALL_KILL_BEFORE_EXEC_STOP)) {
+      return nullptr;
+    }
     if (waited && waited->waiting_for_reap) {
       // We didn't reap this task yet but it's being replaced anyway. Get rid of it
       // so we can replace it.

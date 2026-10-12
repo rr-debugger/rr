@@ -3560,6 +3560,26 @@ enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
    here. */
 static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
 
+/**
+ * This is purely for testing purposes. See RRCALL_KILL_BEFORE_CLONE_SCRATCH,
+ * RRCALL_KILL_AFTER_CLONE_SCRATCH and RRCALL_KILL_BEFORE_EXEC_SCRATCH, which
+ * `point` is. If a kill armed for `t` at `point` fires now, SIGKILL `t`,
+ * wait until we know it's dying, as if that happened during a remote
+ * syscall, and return true. Normally `t` is then at its PTRACE_EVENT_EXIT
+ * stop. Before Linux 5.17 (commit b171f667f378), if it's in a
+ * signal-delivery-stop (e.g. the SIGTRAP of a single-step), it can exit
+ * without stopping there.
+ */
+static bool maybe_kill_task_at_scratch(RecordTask* t, int point) {
+  if (t->is_exiting() || !t->take_armed_kill(point)) {
+    return false;
+  }
+  t->tgkill(SIGKILL);
+  t->wait();
+  ASSERT(t, t->is_exiting());
+  return true;
+}
+
 static void init_scratch_memory(RecordTask* t,
                                 ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
   const int scratch_size = 512 * page_size();
@@ -3575,9 +3595,15 @@ static void init_scratch_memory(RecordTask* t,
     AutoRemoteSyscalls remote(t);
 
     if (addr_type == DYNAMIC_ADDRESS) {
+      maybe_kill_task_at_scratch(t, RRCALL_KILL_BEFORE_CLONE_SCRATCH);
       t->scratch_ptr = remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(), sz,
                                                                prot, flags, -1, 0);
+      if (maybe_kill_task_at_scratch(t, RRCALL_KILL_AFTER_CLONE_SCRATCH)) {
+        // Act as if we hadn't seen the mmap's result.
+        t->scratch_ptr = nullptr;
+      }
     } else {
+      maybe_kill_task_at_scratch(t, RRCALL_KILL_BEFORE_EXEC_SCRATCH);
       t->scratch_ptr =
           remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(FIXED_SCRATCH_PTR),
                                                   sz, prot, flags | MAP_FIXED, -1, 0);
@@ -3692,6 +3718,10 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
 
   ASSERT(t, t->ptrace_event() == ptrace_event);
 
+  // This is purely for testing purposes. See RRCALL_KILL_AT_CLONE_EVENT.
+  if (t->take_armed_kill(RRCALL_KILL_AT_CLONE_EVENT)) {
+    t->tgkill(SIGKILL);
+  }
   pid_t new_tid = t->get_ptrace_eventmsg_pid();
   RecordTask* new_task = static_cast<RecordTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
@@ -5641,6 +5671,27 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case SYS_rrcall_arm_kill: {
+      // This is purely for testing purposes. See rrcalls.h.
+      Registers r = t->regs();
+      bool arguments_are_zero = true;
+      for (int i = 4; i <= 6; ++i) {
+        arguments_are_zero &= r.arg(i) == 0;
+      }
+      uintptr_t point = r.arg(1);
+      uintptr_t flags = r.arg(3);
+      if (!arguments_are_zero || point >= RRCALL_KILL_NUM_POINTS ||
+          (flags & ~(uintptr_t)RRCALL_ARM_KILL_INHERIT)) {
+        syscall_state.emulate_result((uintptr_t)-EINVAL);
+        syscall_state.expect_errno = ENOSYS;
+        return PREVENT_SWITCH;
+      }
+      t->arm_kill(point, r.arg(2), flags & RRCALL_ARM_KILL_INHERIT);
+      syscall_state.emulate_result(0);
+      syscall_state.expect_errno = ENOSYS;
+      return PREVENT_SWITCH;
+    }
+
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:
@@ -6036,7 +6087,24 @@ static vector<MemoryRange> find_pages(RecordTask* t, MemoryRange range, PageStat
   return ret;
 }
 
+/**
+ * This is purely for testing purposes. `t`'s execve has returned. Kills armed
+ * at these points are for that execve only.
+ */
+static void disarm_exec_stop_kills(RecordTask* t) {
+  for (int point : { RRCALL_KILL_BEFORE_EXEC_STOP,
+                     RRCALL_KILL_BEFORE_EXEC_GETEVENTMSG,
+                     RRCALL_KILL_BEFORE_EXEC_GETEVENTMSG_AT_EXIT_STOP,
+                     RRCALL_KILL_AFTER_EXEC_STOP }) {
+    if (t->armed_kill_at(point)) {
+      t->disarm_kill();
+    }
+  }
+}
+
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
+  disarm_exec_stop_kills(t);
+
   Registers r = t->regs();
   if (r.syscall_failed()) {
     // Otherwise we would have done this during PTRACE_EVENT_EXEC
@@ -6062,6 +6130,10 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     interp_name = reader.read_interp();
   }
 
+  // This is purely for testing purposes. See RRCALL_KILL_BEFORE_POST_EXEC.
+  if (t->take_armed_kill(RRCALL_KILL_BEFORE_POST_EXEC)) {
+    t->tgkill(SIGKILL);
+  }
   t->post_exec_syscall(t->exe_path());
   t->ev().Syscall().exec_fds_to_close =
       t->fd_table()->fds_to_close_after_exec(t);
@@ -7053,6 +7125,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         << errno_name(-t->regs().syscall_result_signed()) << ")"
         << extra_expected_errno_info<Arch>(t, syscall_state);
     if (syscallno == Arch::execve || syscallno == Arch::execveat) {
+      disarm_exec_stop_kills(t);
       t->session().scheduler().did_exit_execve(t);
     }
     return;

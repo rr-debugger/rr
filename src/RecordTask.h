@@ -636,6 +636,44 @@ public:
   // given address. Returns false if nothing was done.
   bool try_grow_map(remote_ptr<void> addr);
 
+  /**
+   * For testing: a SIGKILL armed with SYS_rrcall_arm_kill. The code at
+   * `point` (an rrcall_kill_point) sends it.
+   */
+  struct ArmedKill {
+    uintptr_t arg;
+    int point;
+    bool inherit;
+  };
+  /**
+   * Arm a SIGKILL of this task at `point`, replacing whatever was armed
+   * for it before. With `inherit`, tasks that this task creates from now on
+   * get a copy of it.
+   */
+  void arm_kill(int point, uintptr_t arg, bool inherit);
+  /**
+   * If a kill is armed for this task at `point`, returns it (the caller may
+   * update its `arg`), otherwise null.
+   */
+  ArmedKill* armed_kill_at(int point);
+  /**
+   * If a kill is armed for this task at `point` (and, in the second form,
+   * with argument `arg`), disarms it and returns true. The caller then sends
+   * the SIGKILL and does what `point` says.
+   */
+  bool take_armed_kill(int point);
+  bool take_armed_kill(int point, uintptr_t arg);
+  /**
+   * For a kill point whose argument n counts calls: if a kill is armed for
+   * this task at `point`, counts n down, and at the n'th call disarms it and
+   * returns true.
+   */
+  bool count_down_armed_kill(int point);
+  /**
+   * Disarms the kill armed for this task.
+   */
+  void disarm_kill();
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
@@ -828,6 +866,14 @@ public:
   // Set to prevent the scheduler from scheduling this tid, even
   // if it is otherwise considered runnable. Used for testing.
   bool schedule_frozen;
+
+  // Set while handle_desched_event() runs this task on from a desched
+  // signal. Used for testing (RRCALL_KILL_AFTER_DESCHED_STOP_WAIT).
+  bool in_desched_handling;
+
+private:
+  // See arm_kill().
+  std::unique_ptr<ArmedKill> armed_kill;
 };
 
 } // namespace rr

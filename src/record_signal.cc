@@ -508,7 +508,12 @@ static void handle_desched_event(RecordTask* t) {
     // syscall may have re-armed the event.
     disarm_desched_event(t);
 
-    if (!t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT, RESUME_UNLIMITED_TICKS)) {
+    // See RRCALL_KILL_AFTER_DESCHED_STOP_WAIT.
+    t->in_desched_handling = true;
+    bool ok = t->resume_execution(RESUME_SYSCALL, RESUME_WAIT_NO_EXIT,
+                                  RESUME_UNLIMITED_TICKS);
+    t->in_desched_handling = false;
+    if (!ok) {
       LOG(debug) << "  (got exit, bailing out)";
       t->push_event(Event::noop());
       return;
