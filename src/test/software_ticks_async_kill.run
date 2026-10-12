@@ -4,7 +4,13 @@ source `dirname $0`/util.sh
 for delay in 0 0.01 0.02 0.03 0.05 0.07 0.1 0.13 0.16 0.2; do
   rm -f record.out
   record $TESTNAME &
+  record_pid=$!
   until grep -q ready record.out 2>/dev/null; do
+    if ! kill -0 "$record_pid" >/dev/null 2>&1; then
+      failed "recording ended before the program printed 'ready'"
+      cat record.err
+      exit
+    fi
     sleep 0.01
   done
   sleep $delay
