@@ -39,18 +39,14 @@ const uint32_t SOFTWARE_TICKS_ABI_VERSION = 1;
 #define RR_SOFTWARE_TICKS_NOTE_SECTION ".note.rrsoftticks"
 const uint32_t SOFTWARE_TICKS_NOTE_TYPE = 1;
 
-/* The slot's value while no task's countdown is armed: on i386 its high word
- * is the "disarmed" word, nonzero, so 32-bit code never traps; as a 64-bit
- * countdown it never reaches 0 either. rr writes it when it creates the
- * preload thread-locals page (the page's creator must disarm the countdown)
- * and when a task stops. */
-const uint64_t SOFTWARE_TICKS_PARKED = 0xFFFFFFFF00000000ULL;
+/* The slot's value while no task's countdown is armed (2^64 - 1 ticks to go,
+ * on every architecture). rr writes it when it creates the preload
+ * thread-locals page (the page's creator must disarm the countdown) and when
+ * a task stops. */
+const uint64_t SOFTWARE_TICKS_PARKED = 0xFFFFFFFFFFFFFFFFULL;
 
-/* The largest countdown rr arms. The i386 countdown has 32 bits, and keeping
- * the 64-bit one in the same range lets one 8-byte write arm either (low
- * word: the countdown, high word: 0, which on i386 means armed). A longer
- * request traps early, like a stray PMU interrupt. */
-const uint32_t SOFTWARE_TICKS_MAX_PERIOD = 0xFFFFFFFF;
+/* The countdown rr arms when it wants no interrupt (as for the PMU). */
+const uint64_t SOFTWARE_TICKS_UNLIMITED = uint64_t(1) << 60;
 
 remote_ptr<uint64_t> software_ticks_countdown_address();
 
@@ -75,11 +71,15 @@ bool is_software_tick_trap(Task* t);
 
 /* When recording, move a task stopped between a tick's decrement and the end
  * of its sequence to the end of the sequence. What lies in between (the
- * branch on the result, the trap) has no effect but the trap, and whether it
- * runs depends on the countdown's value, which replay programs differently: a
- * recorded event there could not be found again. Completing the sequence
- * only drops a pending tick trap, i.e. a time-slice interrupt that the stop
- * has made moot. Returns whether the pc moved. */
+ * branch on the result; on i386 the borrow from the high word and a second
+ * branch; the trap) only affects the countdown and whether the trap runs,
+ * which depend on the countdown's value, which replay programs differently: a
+ * recorded event there could not be found again. The task's counters have
+ * already been stopped, which counted the tick and parked the countdown, and
+ * they are re-armed before it runs again, so completing the sequence only
+ * drops a pending tick trap, i.e. a time-slice interrupt that the stop has
+ * made moot (and on i386 a borrow that no longer applies to anything).
+ * Returns whether the pc moved. */
 bool complete_software_tick_sequence(Task* t);
 
 /* Zero the countdown's slot in a copy of a preload thread-locals page (for
@@ -95,6 +95,21 @@ size_t software_ticks_thread_locals_size();
 /* Read and write the slot through t's memory. */
 bool read_software_ticks_slot(Task* t, uint64_t* value);
 bool write_software_ticks_slot(Task* t, uint64_t value);
+
+/* The number of ticks t executes before its tick traps (0: the trap is due),
+ * given the slot's value. On x86-64 and aarch64 that is the slot's value. On
+ * i386 the countdown is 64 bits but decremented one 32-bit word at a time:
+ * when a tick takes the low word to 0 it borrows from the high word in a
+ * second instruction, and traps if the high word was 0. With lo and hi the
+ * two words, it is hi * 2^32 + lo, where a low word of 0 counts as 2^32 (the
+ * borrow has been taken), less 2^32 while t is stopped between the two
+ * instructions (the borrow is still to come), modulo 2^64. So it depends on
+ * where t is stopped, and is unchanged by the borrow itself. */
+uint64_t software_ticks_remaining(Task* t, uint64_t slot);
+
+/* The slot value that makes software_ticks_remaining(t, slot) == remaining
+ * (1 <= remaining < 2^63). */
+uint64_t software_ticks_slot_for(Task* t, uint64_t remaining);
 
 } // namespace rr
 

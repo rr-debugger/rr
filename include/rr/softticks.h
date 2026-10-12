@@ -20,24 +20,33 @@
  *   - x86-64 and aarch64: the countdown is 64 bits. Write W before resuming the task; after
  *     it stops, it executed (W - C) mod 2^64 ticks, where C is the value read. W = N
  *     (N >= 1) traps right after the Nth tick; W = 0 never traps (it wraps to 2^64 - 1).
- *   - i386: the countdown is the 32-bit word at RR_SOFTTICKS_COUNTDOWN_ADDR, and the next
- *     word is the "disarmed" word: a tick traps when the countdown becomes 0 and the
- *     disarmed word is 0. Whoever creates the page sets the disarmed word to 1 (the
- *     initializer below when its mmap creates the page; the tracer when it creates rr's
- *     thread-locals page), so the program never traps unless a tracer arms it. To arm,
- *     the tracer writes the countdown N (1 <= N <= 2^32 - 1) and the disarmed word 0;
- *     ticks executed = (N - C) mod 2^32.
+ *   - i386: the countdown is 64 bits too, as two 32-bit words, lo at
+ *     RR_SOFTTICKS_COUNTDOWN_ADDR and hi in the next word, decremented one word at a time:
+ *     a tick decrements lo, and only when that makes lo 0 decrements hi in a second
+ *     instruction (the borrow), which traps if hi was 0 (hi wraps to 2^32 - 1). So lo = 0
+ *     stands for 2^32: there are hi * 2^32 + lo ticks to go if lo != 0 and
+ *     (hi + 1) * 2^32 if lo = 0, mod 2^64 (0 in the trap's stop, where hi = 2^32 - 1 and
+ *     lo = 0). While the task is stopped between a tick's two decrements (the borrow is
+ *     still to come) there are 2^32 fewer, i.e. hi * 2^32 + lo; a tracer that writes the
+ *     countdown then must add 1 to hi, which the borrow takes off again. To arm N ticks
+ *     (1 <= N < 2^63), write lo = N mod 2^32 and hi = N div 2^32, less 1 if lo = 0;
+ *     ticks executed = N - (ticks to go when the task stops), mod 2^64. The two words are
+ *     updated separately, not atomically: the tracer runs one thread of an address space
+ *     at a time, and a signal handler that ticks between a tick's two decrements only
+ *     subtracts from the same count. A page the initializer below creates holds 2^64 - 1
+ *     (both words all ones), which never traps in practice.
  *
  * Each tick commits in one instruction (the decrement), so the countdown is valid at any
- * stop. The trap comes after the commit: the stop of a tick trap is at a fixed place in the
- * sequence (x86: SIGTRAP from the int3, pc after it; aarch64: SIGTRAP from
- * `brk #RR_SOFTTICKS_BRK_IMM`, pc at the brk, which the tracer must step over). A SIGTRAP
- * at a sequence's trap instruction is a tick trap; if the countdown is not 0 then, it is a
- * stale one (the tick was counted before an earlier stop) and the tracer just resumes.
- * A stop between the commit and the trap is an ordinary position: a replayer reaches it by
- * running to one tick before and advancing from there (a skid of 1). Inside a sequence,
- * state that depends on the countdown's value (x86: the flags; aarch64: x17) differs
- * between recording and replay; a replayer must not compare it there.
+ * stop (on i386, taking into account where the task stopped; see above). The trap comes
+ * after the commit: the stop of a tick trap is at a fixed place in the sequence (x86:
+ * SIGTRAP from the int3, pc after it; aarch64: SIGTRAP from `brk #RR_SOFTTICKS_BRK_IMM`,
+ * pc at the brk, which the tracer must step over). A SIGTRAP at a sequence's trap
+ * instruction is a tick trap; if the countdown is not 0 then, it is a stale one (the tick
+ * was counted before an earlier stop) and the tracer just resumes. A stop between the
+ * commit and the trap is an ordinary position: a replayer reaches it by running to one
+ * tick before and advancing from there (a skid of 1). Inside a sequence, state that
+ * depends on the countdown's value (x86: the flags; aarch64: x17) differs between
+ * recording and replay; a replayer must not compare it there.
  *
  * Outside rr, each instrumented module's initializer (RR_SOFTTICKS_INIT_ASM, run from
  * .init_array at priority RR_SOFTTICKS_INIT_PRIORITY) maps the page if it is not mapped.
@@ -133,13 +142,14 @@
   "int3\n"                                                                     \
   "1:"
 
-/* i386: 19 bytes; a 32-bit countdown and a trap only when the disarmed word
- * (0x70001804) is 0. Clobbers the flags only. */
+/* i386: 19 bytes; a 64-bit countdown, decremented one 32-bit word at a time:
+ * the low word (0x70001800), and when that reaches 0, the high word
+ * (0x70001804), trapping when that borrows. Clobbers the flags only. */
 #define RR_SOFTTICKS_X86_TICK_ASM                                              \
   "subl $1, 0x70001800\n\t"                                                    \
   "jnz 1f\n\t"                                                                 \
-  "cmpl $0, 0x70001804\n\t"                                                    \
-  "jnz 1f\n\t"                                                                 \
+  "subl $1, 0x70001804\n\t"                                                    \
+  "jae 1f\n\t"                                                                 \
   "int3\n"                                                                     \
   "1:"
 
@@ -180,7 +190,8 @@
   "\tint $0x80\n"                                                              \
   "\tcmpl $0x70001000, %eax\n"                                                 \
   "\tjne 2f\n"                                                                 \
-  "\tmovl $1, 0x70001804\n"     /* created the page: disarmed */               \
+  "\tmovl $-1, 0x70001800\n"    /* created the page: 2^64 - 1 to go */         \
+  "\tmovl $-1, 0x70001804\n"                                                   \
   "\tjmp 1f\n"                                                                 \
   "2:\n"                                                                       \
   "\tcmpl $-4095, %eax\n"                                                      \

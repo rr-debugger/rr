@@ -1508,11 +1508,9 @@ uint64_t PerfCounters::bpf_skips() const {
 // Software ticks (SoftwareTicks.h). The countdown is per address space; rr
 // runs one task at a time, so start() takes it over for the task it resumes,
 // first counting the ticks of the task that had it (which is stopped, or
-// blocked in the kernel).
-
-static Ticks software_elapsed(uint32_t period, uint64_t slot) {
-  return uint32_t(period - uint32_t(slot));
-}
+// blocked in the kernel). A task's ticks are the countdown it was armed with
+// less what remains of it; what remains depends on where the task is stopped
+// (software_ticks_remaining), so it is computed from the task's own state.
 
 void PerfCounters::software_start(Task* t, Ticks ticks_period) {
   AddressSpace* as = t->vm().get();
@@ -1522,23 +1520,21 @@ void PerfCounters::software_start(Task* t, Ticks ticks_period) {
     uint64_t slot;
     if (prev && prev->hpc.sw_owned && prev->vm().get() == as &&
         read_software_ticks_slot(t, &slot)) {
-      prev->hpc.sw_harvested += software_elapsed(prev->hpc.sw_period, slot);
+      prev->hpc.sw_harvested +=
+          prev->hpc.sw_period - software_ticks_remaining(prev, slot);
     }
     if (prev) {
       prev->hpc.sw_owned = false;
     }
   }
-  uint32_t period = (ticks_period <= 0 || ticks_period > SOFTWARE_TICKS_MAX_PERIOD)
-                        ? SOFTWARE_TICKS_MAX_PERIOD
-                        : uint32_t(ticks_period);
-  sw_period = period;
+  sw_period = ticks_period > 0 ? uint64_t(ticks_period) : SOFTWARE_TICKS_UNLIMITED;
   sw_harvested = 0;
   // Before the first exec there is no page; nothing ticks there either.
-  sw_owned = write_software_ticks_slot(t, period);
+  sw_owned = write_software_ticks_slot(t, software_ticks_slot_for(t, sw_period));
   as->set_software_ticks_owner(sw_owned ? t->tuid() : TaskUid());
   opened = true;
   counting = true;
-  counting_period = ticks_period > 0 ? ticks_period : SOFTWARE_TICKS_MAX_PERIOD;
+  counting_period = sw_period;
 }
 
 Ticks PerfCounters::software_read(Task* t) {
@@ -1546,7 +1542,7 @@ Ticks PerfCounters::software_read(Task* t) {
   uint64_t slot;
   if (sw_owned && t->vm()->software_ticks_owner() == t->tuid() &&
       read_software_ticks_slot(t, &slot)) {
-    ret += software_elapsed(sw_period, slot);
+    ret += Ticks(sw_period - software_ticks_remaining(t, slot));
   }
   return ret;
 }

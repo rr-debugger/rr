@@ -171,12 +171,12 @@ struct Header {
   # Only meaningful when ticksSemantics is software.
   softwareTicks :group {
     # The version of the tracee ABI the instrumented code follows. Version 1: each
-    # tick decrements the countdown at countdownAddress (a slot in the preload
-    # thread-locals area; 64 bits, or 32 bits followed by a disarm word on i386)
-    # and traps (x86: int3, aarch64: brk) when it becomes zero. The recorder and
-    # the replayer program the countdown before resuming a task, the way they
-    # program the PMU's sample period; the ticks a task executed are how far its
-    # countdown dropped.
+    # tick decrements the 64-bit countdown at countdownAddress (a slot in the
+    # preload thread-locals area; on i386 two 32-bit words, the high one
+    # decremented when the low one reaches zero) and traps (x86: int3, aarch64:
+    # brk) when it runs out. The recorder and the replayer program the countdown
+    # before resuming a task, the way they program the PMU's sample period; the
+    # ticks a task executed are how far its countdown dropped.
     abiVersion @32 :UInt32 = 0;
     countdownAddress @33 :RemotePtr;
   }
