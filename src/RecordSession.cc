@@ -1679,6 +1679,35 @@ static bool inject_handled_signal(RecordTask* t) {
 }
 
 /**
+ * |t| has just entered a signal handler on aarch64. Returns the size of what
+ * the kernel wrote to set that up, from the handler's sp: the rt_sigframe,
+ * any extra context that doesn't fit in its __reserved area (e.g. large SVE
+ * or SME state), and, right above those, a frame record {x29, x30} of the
+ * interrupted code. The kernel points the handler's x29 at that frame record
+ * (setup_return() and get_sigframe() in arch/arm64/kernel/signal.c; before
+ * Linux 4.13 the frame record was the end of struct rt_sigframe). If x29
+ * doesn't look like that, fall back to the size of struct rt_sigframe.
+ * (The range may span more than one of our mappings, e.g. when it crosses
+ * into stack we grew; record_remote_writable() deals with that.)
+ */
+static size_t aarch64_sigframe_size(RecordTask* t) {
+  const Registers& regs = t->regs();
+  uintptr_t sp = regs.sp().as_int();
+  uintptr_t frame_record = regs.x(29);
+  size_t min_size = sizeof(ARM64Arch::rt_sigframe);
+  // Linux doesn't build bigger signal frames than 256 KiB (SIGFRAME_MAXSZ),
+  // but says that isn't ABI.
+  size_t max_size = 1024 * 1024;
+  if (frame_record % 16 != 0 || frame_record < sp ||
+      frame_record - sp < min_size || frame_record - sp > max_size) {
+    LOG(debug) << "Handler x29 " << HEX(frame_record)
+               << " doesn't point at the signal frame record";
+    return min_size;
+  }
+  return frame_record + 16 - sp;
+}
+
+/**
  * |t| is being delivered a signal, and its state changed.
  * Must call t->stashed_signal_processed() once we're ready to unmask signals.
  */
@@ -1738,7 +1767,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                           /* this returns 512 when XSAVE unsupported */
                           xsave_area_size();
         } else if (t->arch() == aarch64) {
-          sigframe_size = sizeof(ARM64Arch::rt_sigframe);
+          sigframe_size = aarch64_sigframe_size(t);
         } else {
           DEBUG_ASSERT(0 && "Add sigframe size for your architecture here");
         }

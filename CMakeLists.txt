@@ -1395,6 +1395,7 @@ set(BASIC_TESTS
   sigframe_grow_stack
   sighandler_bad_rsp_sigsegv
   sighandler_fork
+  arm/sighandler_frame_record
   sighandler_mask
   sigill
   signal_deferred
