@@ -1090,6 +1090,7 @@ set(BASIC_TESTS
   exec_self
   exec_from_main_thread
   exec_from_other_thread
+  exec_killed_before_exit_event
   exec_stopsig
   execveat
   exit_with_syscallbuf_signal

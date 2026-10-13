@@ -1259,7 +1259,7 @@ Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask) {
   // reason. So we saved those cleared values, and now we restore that
   // state so they're cleared during replay.
   if (ev.type() == EV_SIGNAL_HANDLER) {
-    t->set_extra_regs(trace_frame.extra_regs());
+    t->set_recorded_extra_regs(trace_frame.extra_regs());
   }
 
   /* Restore the signal-hander frame data, if there was one. */
