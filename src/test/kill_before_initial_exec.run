@@ -1,0 +1,35 @@
+source `dirname $0`/util.sh
+# Every kill point is before the program runs, where the syscall buffer plays
+# no part, so the -no-syscallbuf variants would just repeat this.
+skip_if_no_syscall_buf
+# Make rr SIGKILL the initial task before rr sees it exec the program (while
+# it's still in rr's own code or in that execve), at each point where rr's
+# recording loop takes it up in turn (see RRCALL_KILL_BEFORE_INITIAL_EXEC),
+# until the program runs. Every recording must replay.
+for n in $(seq 1 100); do
+  RECORD_ARGS="--kill-before-initial-exec=$n -o $workdir/trace-$n" \
+    record simple$bitness
+  if [[ -s record.err ]]; then
+    failed ": error during recording (killed at point $n)"
+    cat record.err
+    break
+  fi
+  replay $workdir/trace-$n
+  if [[ -s replay.err ]]; then
+    failed ": replay failed (killed at point $n)"
+    cat replay.err
+    break
+  fi
+  if [[ -s record.out ]]; then
+    # The task got to the program.
+    if (( n == 1 )); then
+      failed ": the kill point never fired"
+    else
+      passed_msg "killed at points 1 to $((n - 1))"
+    fi
+    break
+  fi
+done
+if [[ $n == 100 && ! -s record.out ]]; then
+  failed ": the program never ran"
+fi
