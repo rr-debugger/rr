@@ -684,11 +684,14 @@ bool GdbServerConnection::query(char* payload) {
   }
   if (!strcmp(name, "Supported")) {
     /* TODO process these */
-    LOG(debug) << "debugger supports " << args;
+    // The client feature list is optional.
+    const char* client_features = args ? args : "";
+    LOG(debug) << "debugger supports " << client_features;
 
-    multiprocess_supported_ = strstr(args, "multiprocess+") != nullptr;
-    hwbreak_supported_ = strstr(args, "hwbreak+") != nullptr;
-    swbreak_supported_ = strstr(args, "swbreak+") != nullptr;
+    multiprocess_supported_ =
+        strstr(client_features, "multiprocess+") != nullptr;
+    hwbreak_supported_ = strstr(client_features, "hwbreak+") != nullptr;
+    swbreak_supported_ = strstr(client_features, "swbreak+") != nullptr;
 
     stringstream supported;
     // Encourage gdb to use very large packets since we support any packet size

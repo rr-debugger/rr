@@ -1788,6 +1788,7 @@ set(TESTS_WITHOUT_PROGRAM
   final_sigkill
   first_instruction
   fork_exec_info_thr
+  gdb_bare_qsupported
   get_thread_list
   hardlink_mmapped_files
   hbreak
