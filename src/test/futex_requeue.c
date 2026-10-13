@@ -4,22 +4,45 @@
 
 static volatile int v;
 static volatile int v2;
+static int other;
 
-static volatile int saw_v2_equals_1;
-static volatile int saw_v2_equals_2;
+static int saw_v2_equals_1;
+static int saw_v2_equals_2;
 
 static void* run_thread(__attribute__((unused)) void* p) {
-  test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 0, (void*)0, (void*)0, 0));
+  test_assert(0 ==
+              syscall(SYS_futex, &v, FUTEX_WAIT, 0, (void*)0, (void*)0, 0));
   if (v2 == 1) {
-    ++saw_v2_equals_1;
+    __sync_fetch_and_add(&saw_v2_equals_1, 1);
   } else if (v2 == 2) {
-    ++ saw_v2_equals_2;
+    __sync_fetch_and_add(&saw_v2_equals_2, 1);
   }
   return NULL;
 }
 
+/* Wait until n threads wait on v. To count them, requeue them all to another
+   futex and back. */
+static void wait_for_waiters(int n) {
+  while (1) {
+    int count = syscall(SYS_futex, &v, FUTEX_REQUEUE, 0, INT_MAX, &other, 0);
+    test_assert(count ==
+                syscall(SYS_futex, &other, FUTEX_REQUEUE, 0, INT_MAX, &v, 0));
+    if (count == n) {
+      return;
+    }
+    test_assert(count < n);
+    sched_yield();
+  }
+}
+
+static int threads_done(void) {
+  return __sync_fetch_and_add(&saw_v2_equals_1, 0) +
+         __sync_fetch_and_add(&saw_v2_equals_2, 0);
+}
+
 int main(void) {
   pthread_t thread1, thread2, thread3;
+  int i;
 
   v = 0;
   v2 = 1;
@@ -27,23 +50,30 @@ int main(void) {
   pthread_create(&thread2, NULL, run_thread, NULL);
   pthread_create(&thread3, NULL, run_thread, NULL);
 
-  // Give all the threads a chance to block.
-  usleep(500000);
+  wait_for_waiters(3);
 
   // Wake one thread, and requeue one thread onto v2.
   test_assert(2 == syscall(SYS_futex, &v, FUTEX_REQUEUE, 1, 1, &v2, 0));
-  usleep(250000);
+  // Let the woken thread see v2 == 1.
+  while (threads_done() < 1) {
+    sched_yield();
+  }
 
   test_assert(-1 == syscall(SYS_futex, &v, FUTEX_CMP_REQUEUE, 1, 1, &v2, 42));
   test_assert(EAGAIN == errno);
 
   // Requeue the remaining thread onto v2.
   test_assert(1 == syscall(SYS_futex, &v, FUTEX_REQUEUE, 0, 1, &v2, 0));
-  usleep(250000);
+  // That must not have woken the thread. If it did, give the thread a chance
+  // to run and see v2 == 1, which the checks below catch.
+  for (i = 0; i < 10; ++i) {
+    sched_yield();
+  }
 
   ++v2;
   // Wake both threads.
-  test_assert(2 == syscall(SYS_futex, &v2, FUTEX_CMP_REQUEUE, 2, INT_MAX, &v, 2));
+  test_assert(2 ==
+              syscall(SYS_futex, &v2, FUTEX_CMP_REQUEUE, 2, INT_MAX, &v, 2));
 
   pthread_join(thread1, NULL);
   pthread_join(thread2, NULL);
