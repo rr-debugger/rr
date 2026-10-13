@@ -1,0 +1,19 @@
+source `dirname $0`/util.sh
+# Without the syscall buffer, every syscall is traced anyway.
+skip_if_no_syscall_buf
+RECORD_ARGS=--chaos
+record $TESTNAME
+replay
+# Of the program's 4000 read()s and write()s, chaos mode traces about 11%
+# (365 to 495 in 100000 simulated runs). Fail if it traced more than a
+# quarter of them, or fewer than 100, which means we didn't find them in
+# the dump.
+traced=$(get_events |
+         grep -c "event:.SYSCALL: \(read\|write\)' (state:ENTERING_SYSCALL)")
+if (( traced < 100 )); then
+  failed "only $traced traced read()s and write()s; is the rr dump format still matched?"
+elif (( traced > 1000 )); then
+  failed "chaos mode traced $traced of the 4000 read()s and write()s"
+else
+  check EXIT-SUCCESS
+fi
