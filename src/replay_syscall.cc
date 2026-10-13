@@ -1277,14 +1277,14 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         t->move_to_signal_stop();
       }
       t->set_regs(trace_regs);
-      t->set_extra_regs(trace_frame.extra_regs());
+      t->set_recorded_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;
       return;
 
     case Arch::pkey_alloc:
       // Older versions of rr (incorrectly) did not record the extra regs here.
       if (t->session().has_trace_quirk(TraceReader::PkeyAllocRecordedExtraRegs)) {
-        t->set_extra_regs(trace_frame.extra_regs());
+        t->set_recorded_extra_regs(trace_frame.extra_regs());
       }
       return;
 

@@ -40,6 +40,12 @@ public:
    */
   void post_exec_syscall(const std::string& replay_exe, const std::string& original_replay_exe);
 
+  /**
+   * Set the extra registers recorded in a trace frame, `regs`. If there are
+   * none, because the recorder couldn't read them, keep the current ones.
+   */
+  void set_recorded_extra_regs(const ExtraRegisters& regs);
+
   void set_name(AutoRemoteSyscalls& remote, const std::string& name) override;
 
   void did_prctl_set_prname(remote_ptr<void> child_addr) override;

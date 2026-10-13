@@ -79,9 +79,18 @@ void ReplayTask::post_exec_syscall(const string& replay_exe, const string& origi
   // are set while we populate AddressSpace. We need that for the kernel
   // to identify the original stack region correctly.
   set_regs(current_trace_frame().regs());
-  extra_registers = current_trace_frame().extra_regs();
-  ASSERT(this, !extra_registers.empty());
-  set_extra_regs(extra_registers);
+  set_recorded_extra_regs(current_trace_frame().extra_regs());
+}
+
+void ReplayTask::set_recorded_extra_regs(const ExtraRegisters& regs) {
+  if (regs.empty()) {
+    // The recorder couldn't read them: the task had been SIGKILLed, and until
+    // it reaches its PTRACE_EVENT_EXIT stop, ptrace requests on it fail. It
+    // never runs again, so the registers it has will do.
+    LOG(debug) << "No extra registers recorded";
+    return;
+  }
+  set_extra_regs(regs);
 }
 
 void ReplayTask::set_name(AutoRemoteSyscalls& remote, const std::string& name) {
