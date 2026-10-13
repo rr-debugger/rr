@@ -1813,6 +1813,7 @@ set(TESTS_WITHOUT_PROGRAM
   hbreak
   interrupt_after_exit
   interrupt_while_stopped
+  kill_before_initial_exec
   large_file
   mprotect_step
   nested_detach

@@ -164,7 +164,16 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->stable_exit || t->was_reaped()) {
     LOG(debug) << "stable exit";
   } else {
-    if (!t->may_be_blocked()) {
+    if (!t->session().done_initial_exec()) {
+      // The task was killed before we saw its first execve complete: it was
+      // still running rr's own code (see Task::spawn()), or it was in that
+      // execve, before any of the program's code ran. None of that is the
+      // program's execution, and replay runs rr's code in its own process,
+      // at other addresses, so it couldn't reach a SCHED recorded there.
+      // Don't record where the task was; replay just ends the task (at the
+      // execve's entry if it got that far, since we never record its exit).
+      LOG(debug) << "killed before the initial exec";
+    } else if (!t->may_be_blocked()) {
       // might have been hit by a SIGKILL or a SECCOMP_RET_KILL, in which case
       // there might be some execution since its last recorded event that we
       // need to replay.

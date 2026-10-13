@@ -418,12 +418,15 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 
   session->do_bind_cpu();
   ScopedFd error_fd = session->create_spawn_task_error_pipe();
+  // The first frame (which the constructor has read already) is the
+  // initial task's. It may be the only one: when the task was killed
+  // before its first execve, the trace can have just its EXIT.
   ReplayTask* t = static_cast<ReplayTask*>(
       Task::spawn(*session, error_fd, &session->tracee_socket_fd(),
                   &session->tracee_socket_receiver_fd(),
                   &session->tracee_socket_fd_number,
                   exe_path, argv, env,
-                  session->trace_reader().peek_frame().tid()));
+                  session->trace_frame.tid()));
   session->on_create(t);
 
   return session;
