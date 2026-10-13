@@ -323,7 +323,7 @@ static void local_memset(void* dest, uint8_t c, int n) {
 /**
  * Xorshift* RNG
  */
-static int64_t local_random(void) {
+static uint64_t local_random(void) {
   uint64_t x = globals.random_seed;
   x ^= x >> 12;
   x ^= x << 25;

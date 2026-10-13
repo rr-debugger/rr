@@ -1554,6 +1554,7 @@ set(TESTS_WITH_PROGRAM
   breakpoint_overlap
   call_function
   call_gettid
+  chaos_buffered_syscalls
   chaos_oom
   # Disabled because it's very slow
   # check_session_leaks
