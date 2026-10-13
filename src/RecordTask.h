@@ -85,6 +85,11 @@ public:
   bool enable_chaos_memory_allocations() const;
 
   std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
+  /**
+   * The internal breakpoints will_resume_execution() sets when tracee code is
+   * going to run, and did_wait() removes.
+   */
+  std::vector<remote_code_ptr> syscallbuf_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
   bool is_at_syscallbuf_final_instruction_breakpoint();
   bool is_at_syscallstub_exit_breakpoint();
@@ -800,7 +805,13 @@ public:
   bool break_at_syscallbuf_traced_syscalls;
   bool break_at_syscallbuf_untraced_syscalls;
   bool break_at_syscallbuf_final_instruction;
+  // Set by will_resume_execution() along with the breakpoint at the
+  // syscallbuf's final exit instruction: if the task is at the end of a jump
+  // stub (aarch64 only), the stub's exit, otherwise null.
   remote_code_ptr syscallstub_exit_breakpoint;
+  // True when will_resume_execution() set the syscallbuf_breakpoints() for the
+  // current resume.
+  bool did_set_syscallbuf_breakpoints;
 
   // The pmc is programmed to interrupt at a value requested by the tracee, not
   // by rr.

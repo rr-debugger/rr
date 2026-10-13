@@ -197,6 +197,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       break_at_syscallbuf_untraced_syscalls(false),
       break_at_syscallbuf_final_instruction(false),
       syscallstub_exit_breakpoint(),
+      did_set_syscallbuf_breakpoints(false),
       next_pmc_interrupt_is_for_user(false),
       did_record_robust_futex_changes(false),
       waiting_for_reap(false),
@@ -711,41 +712,55 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
 
   // RESUME_NO_TICKS means that tracee code is not going to run so there's no
   // need to set breakpoints and in fact they might interfere with rr
-  // processing.
-  if (ticks_request != RESUME_NO_TICKS) {
-    if (!at_may_restart_syscall()) {
-      // If the tracee has SIGTRAP blocked or ignored and we hit one of these
-      // breakpoints, the kernel will automatically unblock the signal and set
-      // its disposition to DFL, effects which we ought to undo to keep these
-      // SIGTRAPs invisible to tracees. Fixing the sigmask happens
-      // automatically in did_wait(). Restoring the signal-ignored status is
-      // handled in `handle_syscallbuf_breakpoint`.
-
-      // Set breakpoints at untraced syscalls to catch us entering an untraced
-      // syscall. We don't need to do this (and shouldn't do this) if the
-      // execution requestor wants to stop inside untraced syscalls.
-      // If we have an interrupted syscall that we may restart, don't
-      // set the breakpoints because we should restart the syscall instead
-      // of breaking and delivering signals. The syscallbuf code doesn't
-      // (and must not) perform more than one blocking syscall for any given
-      // buffered syscall.
-      for (auto p : syscallbuf_syscall_entry_breakpoints()) {
-        vm()->add_breakpoint(p, BKPT_INTERNAL);
-      }
-    }
+  // processing. Tracee code doesn't run after PTRACE_EVENT_EXIT either.
+  if (ticks_request != RESUME_NO_TICKS && !seen_ptrace_exit_event()) {
+    // If the tracee has SIGTRAP blocked or ignored and we hit one of these
+    // breakpoints, the kernel will automatically unblock the signal and set
+    // its disposition to DFL, effects which we ought to undo to keep these
+    // SIGTRAPs invisible to tracees. Fixing the sigmask happens
+    // automatically in did_wait(). Restoring the signal-ignored status is
+    // handled in `handle_syscallbuf_breakpoint`.
     if (break_at_syscallbuf_final_instruction) {
-      vm()->add_breakpoint(
-          syscallbuf_code_layout.syscallbuf_final_exit_instruction,
-          BKPT_INTERNAL);
-      auto stub_bp = as->monkeypatcher().get_jump_stub_exit_breakpoint(ip(), this);
-      if (stub_bp) {
-        syscallstub_exit_breakpoint = stub_bp;
-        vm()->add_breakpoint(stub_bp, BKPT_INTERNAL);
+      syscallstub_exit_breakpoint =
+          as->monkeypatcher().get_jump_stub_exit_breakpoint(ip(), this);
+    }
+    for (auto p : syscallbuf_breakpoints()) {
+      if (!vm()->add_breakpoint(p, BKPT_INTERNAL)) {
+        // add_breakpoint() had a running task (this one) to read memory with,
+        // so reading the memory at p failed. That's OK only if the task was
+        // killed and its memory is gone (see ptrace_if_stopped()), since then
+        // it won't run tracee code.
+        unsigned long msg;
+        ASSERT(this, !ptrace_if_stopped(PTRACE_GETEVENTMSG, nullptr, &msg))
+            << "Can't set breakpoint at " << p;
       }
     }
+    did_set_syscallbuf_breakpoints = true;
   }
 
   desched_fd.drain_events();
+}
+
+vector<remote_code_ptr> RecordTask::syscallbuf_breakpoints() {
+  vector<remote_code_ptr> result;
+  if (!at_may_restart_syscall()) {
+    // Set breakpoints at untraced syscalls to catch us entering an untraced
+    // syscall. We don't need to do this (and shouldn't do this) if the
+    // execution requestor wants to stop inside untraced syscalls.
+    // If we have an interrupted syscall that we may restart, don't
+    // set the breakpoints because we should restart the syscall instead
+    // of breaking and delivering signals. The syscallbuf code doesn't
+    // (and must not) perform more than one blocking syscall for any given
+    // buffered syscall.
+    result = syscallbuf_syscall_entry_breakpoints();
+  }
+  if (break_at_syscallbuf_final_instruction) {
+    result.push_back(syscallbuf_code_layout.syscallbuf_final_exit_instruction);
+    if (syscallstub_exit_breakpoint) {
+      result.push_back(syscallstub_exit_breakpoint);
+    }
+  }
+  return result;
 }
 
 vector<remote_code_ptr> RecordTask::syscallbuf_syscall_entry_breakpoints() {
@@ -767,16 +782,15 @@ vector<remote_code_ptr> RecordTask::syscallbuf_syscall_entry_breakpoints() {
 }
 
 void RecordTask::did_wait() {
-  for (auto p : syscallbuf_syscall_entry_breakpoints()) {
-    vm()->remove_breakpoint(p, BKPT_INTERNAL);
-  }
-  if (break_at_syscallbuf_final_instruction) {
-    vm()->remove_breakpoint(
-        syscallbuf_code_layout.syscallbuf_final_exit_instruction,
-        BKPT_INTERNAL);
-  }
-  if (syscallstub_exit_breakpoint) {
-    vm()->remove_breakpoint(syscallstub_exit_breakpoint, BKPT_INTERNAL);
+  if (did_set_syscallbuf_breakpoints) {
+    // syscallbuf_breakpoints() depends only on state that rr doesn't change
+    // while the task runs tracee code, so these are the breakpoints
+    // will_resume_execution() set. The tasks of an address space share its
+    // breakpoints, which are reference counted.
+    for (auto p : syscallbuf_breakpoints()) {
+      vm()->remove_breakpoint(p, BKPT_INTERNAL);
+    }
+    did_set_syscallbuf_breakpoints = false;
   }
 
   if (stashed_signals_blocking_more_signals) {
