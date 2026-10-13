@@ -3,9 +3,11 @@
 #include "util.h"
 
 static int pipe_fds[2];
+static int ready_fds[2];
 
 static void* child_thread(__attribute__((unused)) void* p) {
   char ch;
+  test_assert(1 == write(ready_fds[1], "R", 1));
   test_assert(1 == read(pipe_fds[0], &ch, 1));
   test_assert(ch == 'K');
   exit(77);
@@ -13,6 +15,7 @@ static void* child_thread(__attribute__((unused)) void* p) {
 }
 
 static void* child_thread_running(__attribute__((unused)) void* p) {
+  test_assert(1 == write(ready_fds[1], "R", 1));
   while (1) {
     asm("" : : : "memory");
   }
@@ -32,15 +35,18 @@ static void run_child(void) {
 int main(void) {
   pid_t child;
   int status;
-  struct timespec ts = { 0, 50000000 };
+  char ch;
 
   test_assert(0 == pipe(pipe_fds));
+  test_assert(0 == pipe(ready_fds));
 
   if (0 == (child = fork())) {
     run_child();
   }
 
-  nanosleep(&ts, NULL);
+  /* Wait for both threads to start */
+  test_assert(1 == read(ready_fds[0], &ch, 1));
+  test_assert(1 == read(ready_fds[0], &ch, 1));
   test_assert(0 == ptrace(PTRACE_ATTACH, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGSTOP << 8) | 0x7f));
