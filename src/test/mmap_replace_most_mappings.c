@@ -26,6 +26,12 @@ void callback(uint64_t env, char* name, map_properties_t* props) {
          the kernel gets confused by syscallbuf's stack switching */
       contains_symbol(props, &env) ||
       (props->start <= RR_PAGE_ADDR && RR_PAGE_ADDR < props->end) ||
+#ifdef __RR_SOFTTICKS__
+      /* Built for software ticks: this code decrements the countdown in the thread
+         locals page, so that page must stay mapped and writable (see below too). */
+      (props->start <= RR_THREAD_LOCALS_PAGE_ADDR &&
+       RR_THREAD_LOCALS_PAGE_ADDR < props->end) ||
+#endif
       strcmp(name, "[stack]") == 0) {
     return;
   }
@@ -126,7 +132,9 @@ int main(void) {
   my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096,
              PROT_READ | PROT_WRITE, 0, 0, 0);
   *((uint64_t*)RR_THREAD_LOCALS_PAGE_ADDR) = RR_PAGE_ADDR;
+#ifndef __RR_SOFTTICKS__
   my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_NONE, 0, 0, 0);
+#endif
 
   breakpoint();
 

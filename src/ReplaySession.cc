@@ -26,6 +26,7 @@
 #include "log.h"
 #include "replay_syscall.h"
 #include "util.h"
+#include "SoftwareTicks.h"
 
 using namespace std;
 
@@ -407,6 +408,20 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 
 /*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir,
                                                         const ReplaySession::Flags& flags) {
+  {
+    // A trace with software ticks (SoftwareTicks.h) is replayed without the
+    // PMU: decide before the Session base is constructed.
+    TraceReader trace(dir);
+    if (trace.ticks_semantics() == TICKS_SOFTWARE) {
+      if (trace.software_ticks_abi_version() != SOFTWARE_TICKS_ABI_VERSION) {
+        CLEAN_FATAL() << "Trace was recorded with software ticks of ABI version "
+                      << trace.software_ticks_abi_version()
+                      << "; this rr supports version "
+                      << SOFTWARE_TICKS_ABI_VERSION << ".";
+      }
+      set_software_ticks_mode(true);
+    }
+  }
   shr_ptr session(new ReplaySession(dir, flags));
 
   // It doesn't really matter what we use for argv/env here, since

@@ -54,6 +54,10 @@ void CPUIDBugDetector::notify_reached_syscall_during_replay(ReplayTask* t) {
   if (!is_x86ish(t->arch())) {
     return;
   }
+  // A PMU bug: software ticks don't count rr's own code.
+  if (t->hpc.is_software()) {
+    return;
+  }
   if (t->session().done_initial_exec()) {
     return;
   }

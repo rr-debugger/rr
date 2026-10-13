@@ -33,7 +33,8 @@
  * system calls, the code is rather delicate.  The following rules
  * must be followed
  *
- * o No rr headers (other than seccomp-bpf.h and rr.h) may be included
+ * o No rr headers (other than seccomp-bpf.h, rr.h and softticks.h) may be
+ *   included
  * o All syscalls invoked by this code must be called directly, not
  *   through libc wrappers (which this file may itself indirectly override)
  *
@@ -82,6 +83,7 @@
 
 #include "preload_interface.h"
 #include "rr/rr.h"
+#include "rr/softticks.h"
 
 #ifndef SOL_NETLINK
 #define SOL_NETLINK 270
@@ -1401,6 +1403,11 @@ static void force_tick(void) {
 #else
 #error Unknown architecture
 #endif
+  /* A software tick as well (include/rr/softticks.h), for recordings that
+     count software ticks: the conditional branch above is not one. The
+     sequence is the ABI's, byte for byte, so a trap in it is an ordinary tick
+     trap. With hardware ticks rr parks the countdown, so this never traps. */
+  RR_SOFTTICK();
 }
 
 static void __attribute__((noinline)) do_breakpoint(size_t value)
