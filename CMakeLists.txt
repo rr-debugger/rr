@@ -1448,6 +1448,7 @@ set(BASIC_TESTS
   sock_name_null
   sock_names_opts
   software_ticks
+  software_ticks_jit_loop
   spinlock_priorities
   splice
   stack_growth_after_syscallbuf

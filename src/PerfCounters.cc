@@ -1116,6 +1116,10 @@ Ticks PerfCounters::stop(Task* t, Error* error) {
     if (error) {
       *error = Error::None;
     }
+    // Disable the hardware breakpoint that try_set_hardware_breakpoint
+    // enabled, as below: else it fires the next time the task executes its
+    // address.
+    infallible_perf_event_disable_if_open(fd_hardware_breakpoint);
     return software_stop(t);
   }
   Ticks ticks = read_ticks(t, error);
