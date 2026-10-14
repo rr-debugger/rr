@@ -599,6 +599,13 @@ void restore_initial_resource_limits();
 size_t word_size(SupportedArch arch);
 
 /**
+ * For the first |input_len| bytes in |input|, append two characters to |buf|
+ * as snprintf("%02x") would, then write a zero terminator.
+ */
+void write_hex_string(const uint8_t* input, size_t input_len,
+                             char* buf, size_t buf_len);
+
+/**
  * Print JSON-escaped version of the string, including double-quotes.
  */
 std::string json_escape(const std::string& str, size_t pos = 0);

@@ -17,7 +17,7 @@ TraceFrame::TraceFrame(FrameTime global_time, pid_t tid, const Event& event,
       ticks_(tick_count),
       monotonic_time_(monotonic_time ? monotonic_time : monotonic_now_sec()) {}
 
-void TraceFrame::dump(FILE* out) const {
+void TraceFrame::dump(FILE* out, bool dump_registers) const {
   out = out ? out : stdout;
 
   fprintf(out, "{\n  real_time:%f global_time:%llu, event:`%s' ",
@@ -26,7 +26,7 @@ void TraceFrame::dump(FILE* out) const {
     fprintf(out, "(state:%s) ", state_name(event().Syscall().state));
   }
   fprintf(out, "tid:%d, ticks:%" PRId64 "\n", tid(), ticks());
-  if (!event().record_regs()) {
+  if (!event().record_regs() || !dump_registers) {
     return;
   }
 
@@ -38,12 +38,12 @@ void TraceFrame::dump(FILE* out) const {
   fprintf(out, "\n");
 }
 
-void TraceFrame::dump_raw(FILE* out) const {
+void TraceFrame::dump_raw(FILE* out, bool dump_registers) const {
   out = out ? out : stdout;
 
   fprintf(out, " %lld %d %d %" PRId64, (long long)time(), tid(), event().type(),
           ticks());
-  if (!event().record_regs()) {
+  if (!event().record_regs() || !dump_registers) {
     fprintf(out, "\n");
     return;
   }
