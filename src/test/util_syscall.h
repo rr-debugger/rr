@@ -25,7 +25,7 @@ static inline uintptr_t unbufferable_syscall(uintptr_t syscall, uintptr_t arg1,
                    "cmp $0x77,%%rax\n\t"
                    : "=a"(ret)
                    : "a"(syscall), "D"(arg1), "S"(arg2), "d"(arg3)
-                   : "flags");
+                   : "rcx", "r11", "flags");
 #elif defined(__i386__)
   __asm__ volatile("xchg %%esi,%%edi\n\t"
                    "int $0x80\n\t"

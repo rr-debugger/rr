@@ -317,6 +317,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   // re-running the syscall with the same registers should put us right back
   // to this same seccomp trap.
   if (initial_at_seccomp && t->ptrace_event() != PTRACE_EVENT_SECCOMP) {
+    Registers seccomp_regs = regs;
     regs.set_ip(initial_ip.decrement_by_syscall_insn_length(t->arch()));
     regs.set_syscallno(regs.original_syscallno());
     t->set_regs(regs);
@@ -332,6 +333,10 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
       rt->stash_sig();
     }
     ASSERT(rt, rt->ptrace_event() == PTRACE_EVENT_SECCOMP);
+    // Executing the syscall instruction again may have changed registers
+    // that we had already set at the seccomp stop: on x86-64 it sets rcx and
+    // r11, which we had canonicalized. Put them back.
+    t->set_regs(seccomp_regs);
   } else {
     // Restore stomped registers.
     t->set_regs(regs);
