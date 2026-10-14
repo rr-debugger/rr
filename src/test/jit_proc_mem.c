@@ -64,6 +64,14 @@ int main(void) {
   test_assert(to_write > 0);
   int nwritten =
       pwrite(memfd, first, to_write, (uintptr_t)space);
+  if (nwritten < 0 && errno == EIO) {
+    // The kernel doesn't let us write to our own non-writable memory via
+    // /proc/self/mem (probably CONFIG_PROC_MEM_FORCE_PTRACE=y).
+    // Fall back to writing with the page writeable.
+    test_assert(0 == mprotect(space, 4096, PROT_EXEC | PROT_READ | PROT_WRITE));
+    nwritten = pwrite(memfd, first, to_write, (uintptr_t)space);
+    test_assert(0 == mprotect(space, 4096, PROT_EXEC | PROT_READ));
+  }
   test_assert(to_write == nwritten);
 
   int ret = ((int (*)(char*, puts_func))space)("EXIT-SUCCESS", atomic_puts);
