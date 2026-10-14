@@ -4864,6 +4864,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case Arch::pause:
+    case Arch::futex_waitv:
       return ALLOW_SWITCH;
 
     case Arch::ppoll_time64:

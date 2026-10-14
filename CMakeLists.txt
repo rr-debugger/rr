@@ -1126,6 +1126,7 @@ set(BASIC_TESTS
   futex_requeue
   futex_restart_race
   futex_restart_clone
+  futex_waitv
   gcrypt_rdrand
   getcpu
   getgroups
