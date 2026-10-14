@@ -1416,6 +1416,7 @@ set(BASIC_TESTS
   sigqueueinfo
   sigtrap_process_group
   x86/sigreturn
+  sigreturn_erestart
   sigreturn_reg
   sigreturnmask
   sigrt
@@ -1674,6 +1675,7 @@ set(TESTS_WITH_PROGRAM
   rseq
   rseq_syscallbuf
   rseq_cpu_id_reset_longrunning
+  sched_at_interrupted_syscall_exit
   search
   seccomp_blocks_rr
   seccomp_open

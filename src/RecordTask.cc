@@ -2039,6 +2039,22 @@ void RecordTask::maybe_reset_syscallbuf() {
   }
 }
 
+bool RecordTask::at_aarch64_syscall_exit_before_restart(
+    const Event& event, const Registers& registers) {
+  // Syscall events record the syscall's own registers. A sigreturn never
+  // restarts (restore_sigframe() calls forget_syscall()), whatever value it
+  // restores to x0.
+  if (arch() != aarch64 || event.is_syscall_event() ||
+      !status().is_syscall() || !registers.syscall_may_restart() ||
+      is_sigreturn(registers.original_syscallno(), arch())) {
+    return false;
+  }
+  // The exit of an interrupted syscall has been recorded and the syscall is
+  // waiting to be restarted.
+  return ev().type() == EV_SYSCALL_INTERRUPTION ||
+         (prev_ev() && prev_ev()->type() == EV_SYSCALL_INTERRUPTION);
+}
+
 void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
                               AllowSyscallbufReset reset,
                               const Registers* registers) {
@@ -2072,9 +2088,19 @@ void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
   }
 
   const ExtraRegisters* extra_registers = nullptr;
+  Registers restarted_registers;
   if (ev.record_regs()) {
     if (!registers) {
       registers = &regs();
+    }
+    if (at_aarch64_syscall_exit_before_restart(ev, *registers)) {
+      // The kernel changes x0 and pc to restart the syscall when the task
+      // leaves this stop, before any signal stop, and replay makes those
+      // changes when it processes the syscall exit. Record the registers
+      // the task will run from.
+      restarted_registers = *registers;
+      restarted_registers.apply_aarch64_syscall_restart();
+      registers = &restarted_registers;
     }
     if (ev.record_extra_regs()) {
       extra_registers = extra_regs_fallible();

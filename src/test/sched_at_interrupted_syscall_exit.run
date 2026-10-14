@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+RECORD_ARGS="-s"
+compare_test EXIT-SUCCESS
