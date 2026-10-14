@@ -21,6 +21,7 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
   if (tid > 0) {
     Task* target = t->session().find_task(tid);
     if (target) {
+      this->tid = tid;
       auid = target->vm()->uid();
     }
   }
@@ -62,6 +63,17 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                      r.length);
     offset += r.length;
   }
+}
+
+Task* ProcMemMonitor::target_task(Task* t) {
+  if (!tid) {
+    return nullptr;
+  }
+  Task* target = t->session().find_task(tid);
+  if (!target || target->vm()->uid() != auid) {
+    return nullptr;
+  }
+  return target;
 }
 
 bool ProcMemMonitor::target_is_vm(AddressSpace *vm) {

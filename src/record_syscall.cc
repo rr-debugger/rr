@@ -3999,6 +3999,97 @@ static Switchable reject_preadv2_pwritev2(RecordTask* t,
   return PREVENT_SWITCH;
 }
 
+/**
+ * With CONFIG_PROC_MEM_FORCE_PTRACE=y, writing to /proc/<pid>/mem will fail
+ * on read-only pages unless the writer is ptracing <pid>. Under rr, rr is
+ * the real ptracer, so we need to emulate those writes on the tracee's behalf.
+ */
+template <typename Arch>
+static Switchable maybe_emulate_proc_mem_write(RecordTask* t,
+                                               TaskSyscallState& syscall_state,
+                                               int syscallno) {
+  const Registers& regs = t->regs();
+  int fd = (int)regs.arg1_signed();
+  Switchable switchable = t->fd_table()->will_write(t, fd);
+  FileMonitor* monitor = t->fd_table()->get_monitor(fd);
+  if (!monitor || monitor->type() != FileMonitor::ProcMem) {
+    return switchable;
+  }
+  RecordTask* target = static_cast<RecordTask*>(
+      static_cast<ProcMemMonitor*>(monitor)->target_task(t));
+  if (!target || target->emulated_ptracer != t) {
+    return switchable;
+  }
+
+  vector<FileMonitor::Range> ranges;
+  if (syscallno == Arch::write || syscallno == Arch::pwrite64) {
+    ranges.push_back(FileMonitor::Range(regs.arg2(), regs.arg3()));
+  } else {
+    auto iovecs = t->read_mem(remote_ptr<typename Arch::iovec>(regs.arg2()),
+                              regs.arg3());
+    for (auto& v : iovecs) {
+      ranges.push_back(FileMonitor::Range(v.iov_base, v.iov_len));
+    }
+  }
+  bool implicit_offset = syscallno == Arch::write || syscallno == Arch::writev;
+  int64_t offset;
+  if (implicit_offset) {
+    offset = t->fd_offset(fd);
+  } else if (sizeof(typename Arch::unsigned_word) == 4) {
+    offset = regs.arg4() | (uint64_t(regs.arg5_signed()) << 32);
+  } else {
+    offset = regs.arg4_signed();
+  }
+
+  // Like the kernel, write as much as we can, a chunk at a time, stopping at
+  // the first failure.
+  const size_t chunk_size = 1024 * 1024;
+  vector<uint8_t> bytes;
+  int64_t written = 0;
+  int error = 0;
+  for (auto& r : ranges) {
+    for (size_t done = 0; done < r.length && !error;) {
+      size_t len = min(chunk_size, r.length - done);
+      bytes.resize(len);
+      bool ok = true;
+      t->read_bytes_helper(r.data + done, len, bytes.data(), &ok);
+      if (!ok) {
+        error = EFAULT;
+        break;
+      }
+      remote_ptr<uint8_t> addr = offset + written;
+      ssize_t nwritten = target->write_bytes_helper(addr, len, bytes.data(), &ok);
+      if (nwritten > 0) {
+        target->vm()->maybe_update_breakpoints(target, addr, nwritten);
+        written += nwritten;
+        done += nwritten;
+      }
+      if (!ok || nwritten <= 0) {
+        error = EIO;
+      }
+    }
+    if (error) {
+      break;
+    }
+  }
+  if (!written && error) {
+    written = -error;
+  }
+  LOG(debug) << "Emulated write to /proc/" << target->tid << "/mem at "
+             << HEX(offset) << ": " << written;
+  if (implicit_offset && written > 0) {
+    AutoRemoteSyscalls remote(t);
+    remote.infallible_lseek_syscall(fd, offset + written, SEEK_SET);
+  }
+
+  syscall_state.emulate_result(written);
+  // We can just let the write go through as normal. This avoids
+  // having to modify the syscall arguments and restore them afterward.
+  // If the kernel returns EIO it doesn't matter since we're replacing it
+  // with our result.
+  return PREVENT_SWITCH;
+}
+
 template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state,
@@ -4715,7 +4806,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::writev:
     case Arch::pwrite64:
     case Arch::pwritev:
-      return t->fd_table()->will_write(t, regs.arg1_signed());
+      return maybe_emulate_proc_mem_write<Arch>(t, syscall_state, syscallno);
 
     /* ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt,
                         off_t offset, int flags); */
@@ -4723,7 +4814,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       if ((uint32_t)regs.arg6() & ~RR_KNOWN_PWRITEV2_FLAGS) {
         return reject_preadv2_pwritev2<Arch>(t, syscall_state);
       }
-      return t->fd_table()->will_write(t, regs.arg1_signed());
+      return maybe_emulate_proc_mem_write<Arch>(t, syscall_state, syscallno);
 
     case Arch::copy_file_range: {
       syscall_state.reg_parameter<typename Arch::loff_t>(2, IN_OUT);

@@ -31,9 +31,15 @@ public:
 
   bool target_is_vm(AddressSpace *t);
 
+  // The task whose /proc/<pid>/mem this is, if it's a tracee (at the time
+  // the file was opened) and its address space hasn't changed since.
+  Task* target_task(Task* t);
+
 private:
-  // 0 if this doesn't object doesn't refer to a tracee's proc-mem.
+  // 0 if this object doesn't refer to a tracee's proc-mem.
   AddressSpaceUid auid;
+  // The tid of the task whose /proc/<pid>/mem this is, or 0.
+  pid_t tid = 0;
 };
 
 } // namespace rr

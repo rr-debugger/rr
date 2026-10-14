@@ -3786,6 +3786,24 @@ static long sys_statfs(struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/**
+ * Only a task's ptracer can write to its non-writable memory through
+ * /proc/<pid>/mem when the kernel has CONFIG_PROC_MEM_FORCE_PTRACE=y.
+ * rr is the actual ptracer, so such a write fails with EIO here but rr
+ * can do it for us if we do a raw syscall.
+ */
+static long commit_raw_syscall_with_retry(struct syscall_info* call,
+                                          enum syscallbuf_fd_classes cls,
+                                          int syscallno,
+                                          void* ptr,
+                                          long ret) {
+  ret = commit_raw_syscall(syscallno, ptr, ret);
+  if (ret == -EIO && cls == FD_CLASS_PROC_MEM) {
+    return traced_raw_syscall(call);
+  }
+  return ret;
+}
+
 static long sys_write(struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Writing to a pipe or FIFO could unblock a higher priority task */
@@ -3797,6 +3815,7 @@ static long sys_write(struct syscall_info* call) {
   const void* buf = (const void*)call->args[1];
   size_t count = call->args[2];
 
+  enum syscallbuf_fd_classes cls = fd_class(fd);
   void* ptr = prep_syscall_for_fd(fd);
   long ret;
 
@@ -3808,7 +3827,7 @@ static long sys_write(struct syscall_info* call) {
 
   ret = untraced_syscall3(syscallno, fd, buf, count);
 
-  return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall_with_retry(call, cls, syscallno, ptr, ret);
 }
 
 /* On x86-32, pread/pwrite take the offset in two registers. We don't bother
@@ -3840,7 +3859,7 @@ static long sys_pwrite64(struct syscall_info* call) {
     ret = untraced_syscall4(syscallno, fd, buf, count, offset);
   }
 
-  return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall_with_retry(call, cls, syscallno, ptr, ret);
 }
 #endif
 
@@ -3855,6 +3874,7 @@ static long sys_writev(struct syscall_info* call) {
   const struct iovec* iov = (const struct iovec*)call->args[1];
   unsigned long iovcnt = call->args[2];
 
+  enum syscallbuf_fd_classes cls = fd_class(fd);
   void* ptr = prep_syscall_for_fd(fd);
   long ret;
 
@@ -3866,7 +3886,7 @@ static long sys_writev(struct syscall_info* call) {
 
   ret = untraced_syscall3(syscallno, fd, iov, iovcnt);
 
-  return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall_with_retry(call, cls, syscallno, ptr, ret);
 }
 
 static long sys_prctl(struct syscall_info* call) {

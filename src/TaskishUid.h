@@ -61,6 +61,9 @@ public:
     return TaskishUid<AddressSpace>::operator==(other) &&
            exec_count_ == other.exec_count_;
   }
+  bool operator!=(const AddressSpaceUid& other) const {
+    return !(*this == other);
+  }
   bool operator<(const AddressSpaceUid& other) const {
     if (TaskishUid<AddressSpace>::operator<(other)) {
       return true;
