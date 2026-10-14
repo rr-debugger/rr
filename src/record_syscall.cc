@@ -4712,10 +4712,18 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case Arch::write:
-    case Arch::writev: {
-      int fd = (int)regs.arg1_signed();
-      return t->fd_table()->will_write(t, fd);
-    }
+    case Arch::writev:
+    case Arch::pwrite64:
+    case Arch::pwritev:
+      return t->fd_table()->will_write(t, regs.arg1_signed());
+
+    /* ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt,
+                        off_t offset, int flags); */
+    case Arch::pwritev2:
+      if ((uint32_t)regs.arg6() & ~RR_KNOWN_PWRITEV2_FLAGS) {
+        return reject_preadv2_pwritev2<Arch>(t, syscall_state);
+      }
+      return t->fd_table()->will_write(t, regs.arg1_signed());
 
     case Arch::copy_file_range: {
       syscall_state.reg_parameter<typename Arch::loff_t>(2, IN_OUT);
@@ -4762,15 +4770,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       for (int i = 0; i < iovcnt; ++i) {
         syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(iovecsp + i, iov_base),
                                         io_size.limit_size(iovecs[i].iov_len));
-      }
-      return ALLOW_SWITCH;
-    }
-
-    /* ssize_t pwritev2(int fd, const struct iovec *iov, int iovcnt,
-                        off_t offset, int flags); */
-    case Arch::pwritev2: {
-      if ((uint32_t)regs.arg6() & ~RR_KNOWN_PWRITEV2_FLAGS) {
-        return reject_preadv2_pwritev2<Arch>(t, syscall_state);
       }
       return ALLOW_SWITCH;
     }

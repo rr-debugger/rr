@@ -951,7 +951,7 @@ rt_sigsuspend = IrregularEmulatedSyscall(x86=179, x64=130, generic=133)
 # pread, pwrite - read from or write to a file descriptor at a given
 # offset
 pread64 = IrregularEmulatedSyscall(x86=180, x64=17, generic=67)
-pwrite64 = EmulatedSyscall(x86=181, x64=18, generic=68)
+pwrite64 = IrregularEmulatedSyscall(x86=181, x64=18, generic=68)
 
 chown = EmulatedSyscall(x86=182, x64=92)
 
@@ -1606,7 +1606,7 @@ pipe2 = EmulatedSyscall(x86=331, x64=293, generic=59, arg1="int[2]")
 inotify_init1 = EmulatedSyscall(x86=332, x64=294, generic=26)
 
 preadv = IrregularEmulatedSyscall(x86=333, x64=295, generic=69)
-pwritev = EmulatedSyscall(x86=334, x64=296, generic=70)
+pwritev = IrregularEmulatedSyscall(x86=334, x64=296, generic=70)
 
 #  int rt_sigqueueinfo(pid_t tgid, int sig, siginfo_t *uinfo);
 #  int rt_tgsigqueueinfo(pid_t tgid, pid_t tid, int sig,
