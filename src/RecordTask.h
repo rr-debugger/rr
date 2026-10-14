@@ -687,6 +687,14 @@ private:
   /** Update the clear-tid futex to |tid_addr|. */
   void set_tid_addr(remote_ptr<int> tid_addr);
 
+  /**
+   * Return true if |registers|, recorded for |event|, are this task's
+   * registers at the exit stop of a syscall that returned a -ERESTART* error
+   * and is waiting to be restarted.
+   */
+  bool at_aarch64_syscall_exit_before_restart(const Event& event,
+                                              const Registers& registers);
+
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 
 public:

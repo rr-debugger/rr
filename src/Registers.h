@@ -310,6 +310,15 @@ public:
    */
   bool syscall_may_restart() const;
 
+  /**
+   * For aarch64 registers at the exit of a syscall that returned a -ERESTART*
+   * error: make the changes the kernel makes to restart the syscall before it
+   * looks for a signal to deliver, i.e. before any signal stop (see
+   * arch_do_signal_or_restart() in arch/arm64/kernel/signal.c): x0 gets
+   * orig_x0 back and pc moves back to the syscall instruction.
+   */
+  void apply_aarch64_syscall_restart();
+
   // Some X86-specific stuff follows. Use of these accessors should be guarded
   // by an architecture test.
   /**
