@@ -69,39 +69,6 @@ static void handle_sigill(__attribute__((unused)) int sig,
   caught_sigill = 1;
 }
 
-static int main_thread_blocked_in_read(void) {
-  char path[PATH_MAX];
-  char buf[1024];
-  char* p;
-  long nr;
-  unsigned long arg1;
-  int fd;
-  ssize_t len;
-
-  sprintf(path, "/proc/self/task/%d/stat", main_tid);
-  fd = open(path, O_RDONLY);
-  test_assert(fd >= 0);
-  len = read(fd, buf, sizeof(buf) - 1);
-  test_assert(len > 0);
-  buf[len] = 0;
-  test_assert(0 == close(fd));
-  p = strrchr(buf, ')');
-  test_assert(p != NULL);
-  if (p[2] != 'S') {
-    return 0;
-  }
-
-  sprintf(path, "/proc/self/task/%d/syscall", main_tid);
-  fd = open(path, O_RDONLY);
-  test_assert(fd >= 0);
-  len = read(fd, buf, sizeof(buf) - 1);
-  test_assert(len > 0);
-  buf[len] = 0;
-  test_assert(0 == close(fd));
-  return sscanf(buf, "%ld 0x%lx", &nr, &arg1) == 2 && nr == SYS_read &&
-         arg1 == (unsigned long)data_fds[0];
-}
-
 static void* do_thread(__attribute__((unused)) void* p) {
   sigset_t set;
   char ch;
@@ -111,9 +78,7 @@ static void* do_thread(__attribute__((unused)) void* p) {
   sigaddset(&set, SIGCHLD);
   test_assert(0 == pthread_sigmask(SIG_UNBLOCK, &set, NULL));
 
-  while (!main_thread_blocked_in_read()) {
-    sched_yield();
-  }
+  wait_for_task_asleep_in_syscall(main_tid, SYS_read, data_fds[0]);
   memcpy(code_page + syscall_offset, illegal_insn, sizeof(illegal_insn));
   __builtin___clear_cache((char*)code_page, (char*)code_page + sizeof(code));
   test_assert(1 == write(child_fds[1], "x", 1));
