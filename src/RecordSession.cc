@@ -2143,7 +2143,7 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
         t->record_event(Event::patch_syscall());
         return true;
       }
-      if (!t->is_stopped()) {
+      if (!t->is_stopped() || t->ptrace_event() == PTRACE_EVENT_EXIT) {
         // task exited while we were trying to patch it.
         // Make sure that this exit event gets processed
         step_state->continue_type = DONT_CONTINUE;

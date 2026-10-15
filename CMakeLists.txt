@@ -1174,6 +1174,7 @@ set(BASIC_TESTS
   joystick
   kcmp
   keyctl
+  kill_before_syscall_patch_exit
   kill_newborn
   kill_ptracee
   landlock
