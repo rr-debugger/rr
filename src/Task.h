@@ -168,7 +168,8 @@ public:
 
   /**
    * Kill this task and wait for it to exit.
-   * N.B.: If may_reap() is false, this may hang.
+   * N.B.: If this is a thread-group leader with other live threads, this
+   * may hang.
    * Returns the WaitStatus of the task at exit (usually SIGKILL, but may not
    * be if we raced with another exit reason).
    */

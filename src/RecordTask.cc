@@ -257,8 +257,8 @@ RecordTask::~RecordTask() {
     // We kept the zombie of the original task around to prevent its pid from
     // being re-used. Reap that now.
     proceed_to_exit();
-    if (!was_reaped() && may_reap()) {
-      reap();
+    if (!was_reaped()) {
+      try_reap();
     }
     did_kill();
   }
@@ -897,12 +897,8 @@ void RecordTask::did_reach_zombie() {
   as->erase_task(this);
   fds->erase_task(this);
 
-  if (!was_reaped()) {
-    if (may_reap()) {
-      reap();
-    } else {
-      waiting_for_reap = true;
-    }
+  if (!was_reaped() && !try_reap()) {
+    waiting_for_reap = true;
   }
   if ((was_reaped() || !waiting_for_reap) && !emulated_stop_pending) {
     delete this;
@@ -2228,32 +2224,43 @@ void RecordTask::set_tid_and_update_serial(pid_t tid,
   own_namespace_rec_tid = own_namespace_tid;
 }
 
-bool RecordTask::may_reap() {
+bool RecordTask::try_reap(bool consume) {
   if (emulated_stop_pending) {
     LOG(debug) << "Declining to reap " << tid << "; emulated stop pending " << emulated_stop_code;
     // Don't reap until the emulated ptrace stop has been processed.
     return false;
   }
-  // Non thread-group-leaders may always be reaped
-  if (tid != real_tgid()) {
+  if (was_reaped_) {
+    // E.g. the scheduler collected our exit status while waiting for any task.
     return true;
   }
-  for (auto it : thread_group()->task_set()) {
-    if (&*it != this) {
-      LOG(debug) << "Declining to reap " << tid << "; leader of non-empty thread-group with active thread " << it->tid;
-      return false;
+  // A thread-group leader can't be reaped until all its other threads have been
+  if (tid == real_tgid()) {
+    for (auto it : thread_group()->task_set()) {
+      if (&*it != this) {
+        LOG(debug) << "Declining to reap " << tid << "; leader of non-empty thread-group with active thread " << it->tid;
+        return false;
+      }
     }
   }
-  return true;
-}
 
-void RecordTask::reap() {
-  ASSERT(this, !was_reaped_);
-  LOG(debug) << "Reaping " << tid;
+  LOG(debug) << (consume ? "Reaping " : "Checking if we can reap ") << tid;
   WaitOptions options(tid);
   options.block_seconds = 0;
-  WaitManager::wait_exit(options);
-  was_reaped_ = true;
+  options.consume = consume;
+  WaitResult result = WaitManager::wait_exit(options);
+  if (result.code == WAIT_NO_STATUS) {
+    // The task has not reached the zombie state yet, e.g. because it's
+    // the last thread of a pid-namespace init process and is waiting
+    // in zap_pid_ns_processes for other tasks in the namespace to be reaped.
+    // We must not forget about it; it needs to be reaped later.
+    LOG(debug) << "  " << tid << " not ready to be reaped yet";
+    return false;
+  }
+  if (consume) {
+    was_reaped_ = true;
+  }
+  return true;
 }
 
 static uint64_t read_pid_ns(const RecordTask* t) {

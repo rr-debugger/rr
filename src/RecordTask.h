@@ -622,18 +622,18 @@ public:
   bool is_container_init() const { return tg->tgid_own_namespace == 1; }
 
   /**
+   * Tries to reap a task-exit notification, thus detaching us from the tracee.
+   * Does not block. Returns false if we're not allowed to reap this task yet
+   * or it has not reached the zombie state yet, in which case we must try
+   * again later.
    * Linux requires the invariant that all members of a thread group
-   * are reaped before the thread group leader. This determines whether or
-   * not we're allowed to attempt reaping this thread or whether doing so
-   * risks deadlock.
+   * are reaped before the thread group leader, so we won't try to reap
+   * a thread group leader with other live threads.
+   * If `consume` is false, we only check whether the task could be reaped
+   * and leave the exit notification in the kernel.
+   * Returns true if the task has already been reaped.
    */
-  bool may_reap();
-
-  /**
-   * Reaps a task-exit notification, thus detaching us from the tracee.
-   * N.B.: If may_reap is false, this risks a deadlock.
-   */
-  void reap();
+  bool try_reap(bool consume = true);
 
   bool waiting_for_pid_namespace_tasks_to_exit() const;
   int process_depth() const;

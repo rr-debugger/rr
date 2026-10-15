@@ -296,7 +296,10 @@ bool Scheduler::is_task_runnable(RecordTask* t, WaitAggregator& wait_aggregator,
   }
 
   if (t->waiting_for_reap) {
-    if (t->may_reap()) {
+    // If the task can't be reaped yet (e.g. it's blocked in
+    // zap_pid_ns_processes), we'll pick up its exit status when we block
+    // waiting for any task.
+    if (t->try_reap(false)) {
       LOGM(debug) << "  " << t->tid << " is waiting to be reaped, and can be reaped";
       return true;
     }
