@@ -378,6 +378,74 @@ inline static void iterate_maps(uint64_t env, maps_callback callback,
 }
 
 /**
+ * Return the state of task |tid|, which can be any thread of this or
+ * another process, as /proc/<tid>/stat shows it, e.g. 'R', 'S', 't' or 'Z'.
+ */
+inline static char get_task_state(pid_t tid) {
+  char path[64];
+  char buf[1024];
+  char* p;
+  int fd;
+  ssize_t len;
+
+  sprintf(path, "/proc/%d/stat", tid);
+  fd = open(path, O_RDONLY);
+  test_assert(fd >= 0);
+  len = read(fd, buf, sizeof(buf) - 1);
+  test_assert(len > 0);
+  buf[len] = 0;
+  test_assert(0 == close(fd));
+  /* The state follows the command name, which is in parentheses and can
+     contain ')' itself. */
+  p = strrchr(buf, ')');
+  test_assert(p != NULL && p[1] == ' ');
+  return p[2];
+}
+
+/**
+ * Return true if task |tid| is asleep (in state 'S') in syscall
+ * |syscallno| with first argument |arg1|, or with any first argument if
+ * |arg1| is -1. |tid| must be a thread of this process or of a process
+ * this one may ptrace (e.g. a child), since /proc/<tid>/syscall can't be
+ * read otherwise.
+ */
+inline static int task_asleep_in_syscall(pid_t tid, long syscallno, long arg1) {
+  char path[64];
+  char buf[1024];
+  long nr;
+  unsigned long first_arg;
+  int fd;
+  ssize_t len;
+
+  if (get_task_state(tid) != 'S') {
+    return 0;
+  }
+  /* "running" if the task is runnable or changes state while it is being
+     read. Otherwise the syscall number in decimal followed in hex by the
+     six arguments, the stack pointer and the PC, or -1 followed by the
+     stack pointer and the PC if the task isn't in a syscall. */
+  sprintf(path, "/proc/%d/syscall", tid);
+  fd = open(path, O_RDONLY);
+  test_assert(fd >= 0);
+  len = read(fd, buf, sizeof(buf) - 1);
+  test_assert(len > 0);
+  buf[len] = 0;
+  test_assert(0 == close(fd));
+  return sscanf(buf, "%ld 0x%lx", &nr, &first_arg) == 2 && nr == syscallno &&
+         (arg1 == -1 || first_arg == (unsigned long)arg1);
+}
+
+/**
+ * Wait until task_asleep_in_syscall(tid, syscallno, arg1) is true.
+ */
+inline static void wait_for_task_asleep_in_syscall(pid_t tid, long syscallno,
+                                                   long arg1) {
+  while (!task_asleep_in_syscall(tid, syscallno, arg1)) {
+    sched_yield();
+  }
+}
+
+/**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
  */
