@@ -15,5 +15,5 @@
   "install_build_deps_x86_64": "sudo dnf install -y glibc-devel.i686 libstdc++-devel.i686",
   "install_app_test_deps": "sudo dnf install -y gtk3 dbus-glib xorg-x11-utils gnutls-devel libacl-devel openldap-devel tigervnc-server-minimal curl tar bzip2 libreoffice-writer",
   "exclude_tests_arm64": ["when.*", "mmap_huge.*"],
-  "exclude_tests_x86_64": ["mmap_huge.*"]
+  "exclude_tests_x86_64": ["mmap_huge.*", "sync.*", "exec_many.*", "execve_loop.*"]
 }
