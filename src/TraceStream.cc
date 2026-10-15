@@ -408,6 +408,11 @@ static const size_t reasonable_frame_message_words = 64;
 void TraceWriter::write_frame(RecordTask* t, const Event& ev,
                               const Registers* registers,
                               const ExtraRegisters* extra_registers) {
+  for (auto& d : raw_recs_at_end_of_frame) {
+    write_raw(d.rec_tid, d.data.data(), d.data.size(), d.addr);
+  }
+  raw_recs_at_end_of_frame.clear();
+
   // Use an on-stack first segment that should be adequate for most cases. A
   // simple syscall event takes 320 bytes currently. The default Capnproto
   // implementation does a calloc(8192) for the first segment.
@@ -1249,6 +1254,13 @@ void TraceWriter::write_raw_header(pid_t rec_tid, size_t total_len,
                                    const std::vector<WriteHole>& holes,
                                    MemWriteSizeValidation size_validation) {
   raw_recs.push_back({ addr, total_len, rec_tid, holes, size_validation });
+}
+
+void TraceWriter::write_raw_at_end_of_frame(pid_t tid, const void* data,
+                                            size_t len, remote_ptr<void> addr) {
+  auto bytes = static_cast<const uint8_t*>(data);
+  raw_recs_at_end_of_frame.push_back(
+      { tid, addr, std::vector<uint8_t>(bytes, bytes + len) });
 }
 
 void TraceWriter::write_raw_data(const void* d, size_t len) {

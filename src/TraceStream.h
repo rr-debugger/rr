@@ -246,6 +246,15 @@ public:
   void write_raw_header(pid_t tid, size_t total_len, remote_ptr<void> addr,
                         const std::vector<WriteHole>& holes,
                         MemWriteSizeValidation size_validation = MemWriteSizeValidation::EXACT);
+  /**
+   * Like write_raw, but the record is placed after all other raw-data
+   * records for the next frame. Use this for memory writes performed outside
+   * the processing of any particular event, so they can't get in front of
+   * records that replay expects to come first (e.g. the syscallbuf contents
+   * in a SYSCALLBUF_FLUSH frame).
+   */
+  void write_raw_at_end_of_frame(pid_t tid, const void* data, size_t len,
+                                 remote_ptr<void> addr);
 
   /**
    * Write a task event (clone or exec record) to the trace.
@@ -330,6 +339,12 @@ private:
    */
   std::map<std::pair<dev_t, ino_t>, std::string> files_assumed_immutable;
   std::vector<RawDataMetadata> raw_recs;
+  struct DeferredRawData {
+    pid_t rec_tid;
+    remote_ptr<void> addr;
+    std::vector<uint8_t> data;
+  };
+  std::vector<DeferredRawData> raw_recs_at_end_of_frame;
   std::vector<CPUIDRecord> cpuid_records;
   TicksSemantics ticks_semantics_;
   // Keep the 'incomplete' (later renamed to 'version') file open until we

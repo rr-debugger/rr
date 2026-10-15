@@ -2581,7 +2581,11 @@ void AddressSpace::fd_tables_changed() {
       return;
     }
     rt->write_mem(addr, fdt_uniform);
-    rt->record_local(addr, sizeof(fdt_uniform), &fdt_uniform);
+    // We can get here outside of any event for `rt` (e.g. when some task
+    // reaches the zombie state), so the next frame might be a
+    // SYSCALLBUF_FLUSH. Don't put our write ahead of the syscallbuf contents.
+    rt->trace_writer().write_raw_at_end_of_frame(rt->rec_tid, &fdt_uniform,
+                                                 sizeof(fdt_uniform), addr);
   }
 }
 
