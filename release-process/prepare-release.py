@@ -12,7 +12,7 @@ import time
 # These are where we build the release binaries. They should be as old as possible
 # while still supported. Update these when the distro release is no longer supported.
 dist_packaging = {
-    ('ubuntu20-lts', 'x86_64'): 'TGZ;DEB',
+    ('ubuntu22-lts', 'x86_64'): 'TGZ;DEB',
     ('ubuntu22-lts', 'arm64'): 'TGZ;DEB',
     ('centos9', 'x86_64'): 'RPM',
     ('centos9', 'arm64'): 'RPM',
