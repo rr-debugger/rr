@@ -1002,7 +1002,10 @@ static char do_test_ticks_basic;
 static char do_test_ticks_syscalls;
 
 /* Tell the parent we're ready, then wait for the parent to signal us,
-   without executing any conditional branches */
+   without executing any conditional branches.
+   Note: this must be compiled with -fno-stack-protector or we'll get a conditional
+   branch in here.
+ */
 static void child_wait(void) {
 #if defined(__x86_64__)
   /* write(child_to_parent_fds[1], buf, 1) */

@@ -8,7 +8,7 @@ It copies some code from rr sources to make a standalone test for easier debuggi
 
 Run with
 ```
-g++ counters.cc -o /tmp/counters && /tmp/counters
+g++ -fno-stack-protector counters.cc -o /tmp/counters && /tmp/counters
 ```
 
 ## Intensive interrupt testing
