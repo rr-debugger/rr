@@ -5,6 +5,44 @@ static bool has_kvm_in_txcp_bug;
 static bool has_xen_pmi_bug;
 static bool supports_txcp;
 
+struct AMDZenModels {
+  unsigned int family;
+  unsigned int first_model;
+  unsigned int last_model;
+  CpuMicroarch uarch;
+};
+
+// Zen generations by family and model range, matching bsp_init_amd() in
+// Linux arch/x86/kernel/cpu/amd.c (as of 87db7795cbaa).
+static const AMDZenModels amd_zen_models[] = {
+  // Includes Naples, Whitehaven, Summit Ridge, Snowy Owl, Raven Ridge,
+  // Great Horned Owl, Banded Kestrel, Dali (Zen), Colfax, Pinnacle Ridge,
+  // Picasso (Zen+)
+  { 0x17, 0x00, 0x2f, AMDZen },
+  { 0x17, 0x50, 0x5f, AMDZen },
+  // Includes Rome, Castle Peak, Renoir, Lucienne, Matisse, Van Gogh
+  { 0x17, 0x30, 0x4f, AMDZen2 },
+  { 0x17, 0x60, 0x7f, AMDZen2 },
+  { 0x17, 0x90, 0x91, AMDZen2 },
+  { 0x17, 0xa0, 0xaf, AMDZen2 },
+  // Includes Milan, Chagall, Vermeer, Cezanne, Rembrandt (Zen 3+)
+  { 0x19, 0x00, 0x0f, AMDZen3 },
+  { 0x19, 0x20, 0x5f, AMDZen3 },
+  // Includes Raphael, Phoenix, Hawk Point, 7975WX
+  { 0x19, 0x10, 0x1f, AMDZen4 },
+  { 0x19, 0x60, 0xaf, AMDZen4 },
+  // Includes Turin, Strix Point, Strix Halo, Krackan Point
+  { 0x1a, 0x00, 0x2f, AMDZen5 },
+  { 0x1a, 0x40, 0x4f, AMDZen5 },
+  { 0x1a, 0x60, 0x7f, AMDZen5 },
+  { 0x1a, 0xd0, 0xd7, AMDZen5 },
+  // UNTESTED
+  { 0x1a, 0x50, 0x5f, AMDZen6 },
+  { 0x1a, 0x80, 0xaf, AMDZen6 },
+  { 0x1a, 0xc0, 0xcf, AMDZen6 },
+  { 0x1a, 0xd8, 0xef, AMDZen6 },
+};
+
 /**
  * Return the detected, known microarchitecture of this CPU, or don't
  * return; i.e. never return UnknownCpu.
@@ -135,45 +173,17 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x1502: // Piledriver
     case 0x1530: // Steamroller
       return AMDF15;
-    case 0x1701: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen)
-    case 0x1708: // Colfax, Pinnacle Ridge (Zen+)
-    case 0x1711: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
-    case 0x1718: // Banded Kestrel (Zen), Picasso (Zen+)
-    case 0x1720: // Dali (Zen)
-      return AMDZen;
-    case 0x1731: // Rome, Castle Peak (Zen 2)
-    case 0x1760: // Renoir (Zen 2)
-    case 0x1768: // Lucienne (Zen 2)
-    case 0x1771: // Matisse (Zen 2)
-    case 0x1790: // Van Gogh (Zen 2)
-    case 0x1911:
-    case 0x1918: // 7975WX
-    case 0x1920:
-      return AMDZen2;
-    case 0x1901: // Milan (Zen 3) (UNTESTED)
-    case 0x1908: // Chagall (Zen 3) (UNTESTED)
-    case 0x1921: // Vermeer (Zen 3)
-    case 0x1944: // Rembrandt (Zen 3+)
-    case 0x1950: // Cezanne (Zen 3)
-      return AMDZen3;
-    case 0x1961: // Raphael (Zen 4)
-    case 0x1974: // Phoenix (Zen 4)
-    case 0x1975: // Hawk Point (Zen 4)
-      return AMDZen4;
-    case 0x1a02: // Turin (Zen 5)
-    case 0x1a24: // Strix Point (Zen 5)
-    case 0x1a31:
-    case 0x1a60: // Krackan Point (Zen 5) (EXPERIMENTAL)
-    case 0x1a68:
-    case 0x1a70: // Strix Halo (Zen 5)
-    case 0x1a71:
-    case 0x1a90:
-      return AMDZen5;
     default:
       break;
   }
 
   if (!strncmp(vendor, "AuthenticAMD", sizeof(vendor))) {
+    for (const auto& zen : amd_zen_models) {
+      if (family == zen.family && zen.first_model <= model &&
+          model <= zen.last_model) {
+        return zen.uarch;
+      }
+    }
     CLEAN_FATAL() << "AMD CPU family " << HEX(family) << " model " << HEX(model)
                   << " unknown";
   } else {
