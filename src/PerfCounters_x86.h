@@ -122,9 +122,18 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0xc0650:
     case 0xc0660:
       return IntelArrowLake;
-    case 0xf20:  // Piledriver
-    case 0x30f00:  // Steamroller
-      return AMDF15;
+    case 0x00f20: // Piledriver, Turin (Zen 5)
+      if (ext_family == 6) {
+        return AMDF15;
+      } else if (ext_family == 0xb) {
+        return AMDZen5;
+      }
+      break;
+    case 0x30f00: // Steamroller
+      if (ext_family == 6) {
+        return AMDF15;
+      }
+      break;
     case 0x00f10: // A8-3530MX, Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
       if (ext_family == 8) {
         return AMDZen;
