@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 
+#include <libgen.h>
 #include <limits.h>
 #include <memory>
 #include <sstream>
@@ -321,7 +322,9 @@ void launch_debugger(ScopedFd& params_pipe_fd,
                     RENAME_NOREPLACE)) {
         FATAL() << "Can't fix temp file name";
       }
-      string module_name(basename(file.name.c_str()));
+      // POSIX basename() may modify its argument, so give it a copy.
+      string module_path = file.name;
+      string module_name(basename(&module_path[0]));
       string script = lldb_python_rr_macros(&new_name, &module_name);
       write_all(file.fd, script.data(), script.size());
       cmd.push_back("-o");

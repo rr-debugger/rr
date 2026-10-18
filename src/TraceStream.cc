@@ -10,6 +10,7 @@
 #include <capnp/message.h>
 #include <capnp/serialize-packed.h>
 #include <inttypes.h>
+#include <libgen.h>
 #include <limits.h>
 #include <sched.h>
 #include <sys/file.h>
@@ -1355,10 +1356,12 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
     int nonce = 0;
     int ret;
     string dir;
+    // POSIX basename() may modify its argument, so give it a copy.
+    string exe_path_copy = exe_path;
+    string exe_name(basename(&exe_path_copy[0]));
     do {
       stringstream ss;
-      ss << trace_save_dir() << "/" << basename(exe_path.c_str()) << "-"
-         << nonce++;
+      ss << trace_save_dir() << "/" << exe_name << "-" << nonce++;
       dir = ss.str();
       ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
     } while (ret && EEXIST == errno);
