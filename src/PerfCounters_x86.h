@@ -37,159 +37,148 @@ static CpuMicroarch compute_cpu_microarch() {
   }
 
   auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-  unsigned int cpu_type = cpuid_data.eax & 0xF0FF0;
-  unsigned int ext_family = (cpuid_data.eax >> 20) & 0xff;
-  switch (cpu_type) {
-    case 0x006F0:
-    case 0x10660:
+  // Compute the family and model as described in the CPUID documentation
+  // from Intel and AMD.
+  unsigned int base_family = (cpuid_data.eax >> 8) & 0xf;
+  unsigned int family = base_family;
+  if (base_family == 0xf) {
+    family += (cpuid_data.eax >> 20) & 0xff;
+  }
+  unsigned int model = (cpuid_data.eax >> 4) & 0xf;
+  if (base_family == 0x6 || base_family == 0xf) {
+    model |= ((cpuid_data.eax >> 16) & 0xf) << 4;
+  }
+  switch ((family << 8) | model) {
+    case 0x60f:
+    case 0x616:
       return IntelMerom;
-    case 0x10670:
-    case 0x106D0:
+    case 0x617:
+    case 0x61d:
       return IntelPenryn;
-    case 0x106A0:
-    case 0x106E0:
-    case 0x206E0:
+    case 0x61a:
+    case 0x61e:
+    case 0x62e:
       return IntelNehalem;
-    case 0x20650:
-    case 0x206C0:
-    case 0x206F0:
+    case 0x625:
+    case 0x62c:
+    case 0x62f:
       return IntelWestmere;
-    case 0x206A0:
-    case 0x206D0:
-    case 0x306e0:
+    case 0x62a:
+    case 0x62d:
+    case 0x63e:
       return IntelSandyBridge;
-    case 0x306A0:
+    case 0x63a:
       return IntelIvyBridge;
-    case 0x306C0: /* Devil's Canyon */
-    case 0x306F0:
-    case 0x40650:
-    case 0x40660:
+    case 0x63c: /* Devil's Canyon */
+    case 0x63f:
+    case 0x645:
+    case 0x646:
       return IntelHaswell;
-    case 0x306D0:
-    case 0x40670:
-    case 0x406F0:
-    case 0x50660:
+    case 0x63d:
+    case 0x647:
+    case 0x64f:
+    case 0x656:
       return IntelBroadwell;
-    case 0x406e0:
-    case 0x50650:
-    case 0x506e0:
+    case 0x64e:
+    case 0x655:
+    case 0x65e:
       return IntelSkylake;
-    case 0x30670:
-    case 0x406c0:
-    case 0x50670:
+    case 0x637:
+    case 0x64c:
+    case 0x657:
       return IntelSilvermont;
-    case 0x506f0:
-    case 0x706a0:
-    case 0x506c0:
+    case 0x65f:
+    case 0x67a:
+    case 0x65c:
       return IntelGoldmont;
-    case 0x906c0:
+    case 0x69c:
       return IntelTremont;
-    case 0x706e0:
-    case 0x606a0:
-    case 0x80660:
+    case 0x67e:
+    case 0x66a:
+    case 0x686:
       return IntelIceLake;
-    case 0x806c0:
-    case 0x806d0:
+    case 0x68c:
+    case 0x68d:
       return IntelTigerLake;
-    case 0x806e0:
-    case 0x906e0:
+    case 0x68e:
+    case 0x69e:
       return IntelKabyLake;
-    case 0xa0650:
-    case 0xa0660:
+    case 0x6a5:
+    case 0x6a6:
       return IntelCometLake;
-    case 0xa0670:
+    case 0x6a7:
       return IntelRocketLake;
-    case 0x90670:
-    case 0x906a0:
+    case 0x697:
+    case 0x69a:
       return IntelAlderLake;
-    case 0xb0670:
-    case 0xb06a0:
-    case 0xb06f0:
+    case 0x6b7:
+    case 0x6ba:
+    case 0x6bf:
       return IntelRaptorLake;
-    case 0x806f0:
+    case 0x68f:
       return IntelSapphireRapids;
-    case 0xc06f0:
+    case 0x6cf:
       return IntelEmeraldRapids;
-    case 0xa06d0:
+    case 0x6ad:
       return IntelGraniteRapids;
-    case 0xa06a0:
+    case 0x6aa:
       return IntelMeteorLake;
-    case 0xb06d0:
+    case 0x6bd:
       return IntelLunarLake;
-    case 0xb06e0:
+    case 0x6be:
       return IntelGracemont;
-    case 0xb0650:
-    case 0xc0650:
-    case 0xc0660:
+    case 0x6b5:
+    case 0x6c5:
+    case 0x6c6:
       return IntelArrowLake;
-    case 0x00f20: // Piledriver, Turin (Zen 5)
-      if (ext_family == 6) {
-        return AMDF15;
-      } else if (ext_family == 0xb) {
-        return AMDZen5;
-      }
-      break;
-    case 0x30f00: // Steamroller
-      if (ext_family == 6) {
-        return AMDF15;
-      }
-      break;
-    case 0x00f10: // A8-3530MX, Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen), Milan (Zen 3) (UNTESTED)
-      if (ext_family == 8) {
-        return AMDZen;
-      } else if (ext_family == 0xa) {
-        return AMDZen3;
-      } else if (ext_family == 3) {
-        return AMDF15;
-      }
-      break;
-    case 0x00f80: // Colfax, Pinnacle Ridge (Zen+), Chagall (Zen3) (UNTESTED)
-      if (ext_family == 8) {
-        return AMDZen;
-      } else if (ext_family == 0xa) {
-        return AMDZen3;
-      }
-      break;
-    case 0x10f10: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
-    case 0x10f80: // Banded Kestrel (Zen), Picasso (Zen+), 7975WX (Zen2)
-    case 0x20f00: // Dali (Zen)
-      if (ext_family == 8) {
-        return AMDZen;
-      } else if (ext_family == 0xa) {
-        return AMDZen2;
-      }
-      break;
-    case 0x30f10: // Rome, Castle Peak (Zen 2)
-    case 0x60f00: // Renoir (Zen 2), Krackan Point (Zen 5) (EXPERIMENTAL)
-    case 0x70f10: // Matisse (Zen 2)
-    case 0x60f80: // Lucienne (Zen 2)
-    case 0x90f00: // Van Gogh (Zen 2)
-      if (ext_family == 8) {
-        return AMDZen2;
-      } else if (ext_family == 0xb) {
-        return AMDZen5;
-      }
-      break;
-    case 0x20f10: // Vermeer (Zen 3)
-    case 0x50f00: // Cezanne (Zen 3)
-    case 0x40f40: // Rembrandt (Zen 3+)
+    case 0x1201: // A8-3530MX
+    case 0x1502: // Piledriver
+    case 0x1530: // Steamroller
+      return AMDF15;
+    case 0x1701: // Naples, Whitehaven, Summit Ridge, Snowy Owl (Zen)
+    case 0x1708: // Colfax, Pinnacle Ridge (Zen+)
+    case 0x1711: // Raven Ridge, Great Horned Owl (Zen) (UNTESTED)
+    case 0x1718: // Banded Kestrel (Zen), Picasso (Zen+)
+    case 0x1720: // Dali (Zen)
+      return AMDZen;
+    case 0x1731: // Rome, Castle Peak (Zen 2)
+    case 0x1760: // Renoir (Zen 2)
+    case 0x1768: // Lucienne (Zen 2)
+    case 0x1771: // Matisse (Zen 2)
+    case 0x1790: // Van Gogh (Zen 2)
+    case 0x1911:
+    case 0x1918: // 7975WX
+    case 0x1920:
+      return AMDZen2;
+    case 0x1901: // Milan (Zen 3) (UNTESTED)
+    case 0x1908: // Chagall (Zen 3) (UNTESTED)
+    case 0x1921: // Vermeer (Zen 3)
+    case 0x1944: // Rembrandt (Zen 3+)
+    case 0x1950: // Cezanne (Zen 3)
       return AMDZen3;
-    case 0x60f10: // Raphael (Zen 4)
-    case 0x70f40: // Phoenix (Zen 4)
-    case 0x70f50: // Hawk Point (Zen 4)
+    case 0x1961: // Raphael (Zen 4)
+    case 0x1974: // Phoenix (Zen 4)
+    case 0x1975: // Hawk Point (Zen 4)
       return AMDZen4;
-    case 0x20f40: // Strix Point (Zen 5)
-    case 0x70f00: // Strix Halo (Zen 5)
+    case 0x1a02: // Turin (Zen 5)
+    case 0x1a24: // Strix Point (Zen 5)
+    case 0x1a31:
+    case 0x1a60: // Krackan Point (Zen 5) (EXPERIMENTAL)
+    case 0x1a68:
+    case 0x1a70: // Strix Halo (Zen 5)
+    case 0x1a71:
+    case 0x1a90:
       return AMDZen5;
     default:
       break;
   }
 
   if (!strncmp(vendor, "AuthenticAMD", sizeof(vendor))) {
-    CLEAN_FATAL() << "AMD CPU type " << HEX(cpu_type) <<
-                     " (ext family " << HEX(ext_family) << ") unknown";
+    CLEAN_FATAL() << "AMD CPU family " << HEX(family) << " model " << HEX(model)
+                  << " unknown";
   } else {
-    CLEAN_FATAL() << "Intel CPU type " << HEX(cpu_type) << " unknown";
+    CLEAN_FATAL() << "Intel CPU family " << HEX(family) << " model " << HEX(model)
+                  << " unknown";
   }
   return UnknownCpu; // not reached
 }
