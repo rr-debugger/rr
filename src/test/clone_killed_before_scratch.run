@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+# The program makes rr SIGKILL its child just before rr maps the child's
+# scratch memory.
+record $TESTNAME
+replay
+check EXIT-SUCCESS
+grep -q "child was killed" record.out || failed ": the child wasn't killed"
