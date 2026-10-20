@@ -1323,6 +1323,7 @@ set(BASIC_TESTS
   ptrace_group_stop
   ptrace_interrupt_syscall
   ptrace_kill_grandtracee
+  ptrace_restart_syscall
   ptrace_resume_signal_ignored
   x86/ptrace_tls
   ptrace_seize
@@ -1364,6 +1365,7 @@ set(BASIC_TESTS
   recvmsg_short_namelen
   redzone_integrity
   rename
+  restart_syscall_sleep
   rlimit
   rrcall_arm_kill
   rrcall_arm_kill_inherit
