@@ -370,9 +370,7 @@ void emergency_debug(Task* t) {
     fd.extract();
   }
 
-  char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
-  if (test_monitor_pid) {
-    pid_t pid = atoi(test_monitor_pid);
+  if (getenv("RUNNING_UNDER_TEST_MONITOR")) {
     // Tell test-monitor to wake up and take a snapshot. It will also
     // connect the emergency debugger so let that happen.
     FILE* gdb_cmd = fopen("gdb_cmd", "w");
@@ -383,7 +381,7 @@ void emergency_debug(Task* t) {
               DebuggerType::GDB)).c_str(), gdb_cmd);
       fclose(gdb_cmd);
     }
-    kill(pid, SIGURG);
+    notify_test_monitor();
   } else {
     vector<string> cmd = debugger_launch_command(t,
         listen_socket.domain, listen_socket.host, listen_socket.port,

@@ -39,12 +39,12 @@ static void print_usage(FILE* out) {
 static unsigned long timeout;
 static unsigned long diagnose_timeout = ULONG_MAX;
 
+// The SIGURG or SIGALRM that made us gather information.
 static siginfo_t received_siginfo;
+// Set when the timeout expires while we gather information.
+static volatile sig_atomic_t timed_out;
 
-static void sighandler(__attribute__((unused)) int sig, siginfo_t* si,
-                       __attribute__((unused)) void* ctx) {
-  received_siginfo = *si;
-}
+static void alarm_handler(__attribute__((unused)) int sig) { timed_out = 1; }
 
 struct ProcessInfo {
   ProcessInfo() : is_traced(false) {}
@@ -145,7 +145,9 @@ static void dump_popen_cmdline(const char* cmdline, FILE* out) {
       close(fds[0]);
       dup2(fds[1], 1);
       close(fds[1]);
-      int ret = execl("/bin/sh", "/bin/sh", "-c", cmdline, NULL);
+      // Make the shell exec the command, so that killing |pid| kills it.
+      string exec_cmdline = string("exec ") + cmdline;
+      int ret = execl("/bin/sh", "/bin/sh", "-c", exec_cmdline.c_str(), NULL);
       const char *msg = "(execution failed)\n";
       __attribute__((unused)) ssize_t ret2 = write(fds[1], msg, strlen(msg));
       exit(ret);
@@ -168,11 +170,13 @@ static void dump_popen_cmdline(const char* cmdline, FILE* out) {
       if (ret != 0)
           break;
       time_t new_time = time(NULL);
-      if (new_time > start_time &&
-          (unsigned long)(new_time - start_time) > diagnose_timeout) {
-          fprintf(out, "Command timeout: %s\n", cmdline);
-          kill(pid, SIGKILL);
-          break;
+      if (timed_out ||
+          (new_time > start_time &&
+           (unsigned long)(new_time - start_time) > diagnose_timeout)) {
+        fprintf(out, "Command timeout: %s\n", cmdline);
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        break;
       }
       if (has_output)
           continue;
@@ -200,7 +204,9 @@ static void force_trace_closure(pid_t child, FILE* out) {
                    "-ex q </dev/null 2>&1",
           child);
   dump_popen_cmdline(cmdline, out);
-  sleep(2); /* give the force_close_record_session time to take effect */
+  if (!timed_out) {
+    sleep(2); /* give the force_close_record_session time to take effect */
+  }
 }
 
 static void dump_emergency_debugger(char* gdb_cmd, FILE* out) {
@@ -288,6 +294,13 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
 
   setlinebuf(out);
 
+  // Gathering information may hang, whatever the processes that we look at do
+  // (e.g. rr may hang instead of answering the emergency debugger that we
+  // connect to below, or gdb may hang attaching to a wedged process). The test
+  // must not hang, so give up after another timeout period.
+  timed_out = 0;
+  alarm(timeout);
+
   if (received_siginfo.si_signo == SIGURG) {
     fprintf(out, "process %d sent SIGURG\n", received_siginfo.si_pid);
   } else {
@@ -320,7 +333,10 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
     dump_gdb_stacktrace(sig_pid ? sig_pid : rr_pid, out);
     lseek(STDERR_FILENO, 0, SEEK_END);
 
-    if (sig_pid) {
+    if (timed_out) {
+      fprintf(out, "timeout %lu exceeded, not gathering more information\n",
+              timeout);
+    } else if (sig_pid) {
       // Try to connect to the emergency debugger and get stack/regs.
       // If rr is in a broken state this might hang, so we do this last.
       FILE* gdb_cmd = fopen("gdb_cmd", "r");
@@ -363,6 +379,23 @@ int main(int argc, char* argv[]) {
       }
   }
 
+  struct sigaction sa;
+  sa.sa_flags = 0;
+  sa.sa_handler = alarm_handler;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGALRM, &sa, NULL);
+
+  // Until we start gathering information, we wait for SIGURG, SIGALRM and
+  // SIGCHLD with sigwaitinfo(), so that we notice a SIGURG right away even if
+  // the child sends it before we wait.
+  sigset_t wait_sigs;
+  sigset_t old_mask;
+  sigemptyset(&wait_sigs);
+  sigaddset(&wait_sigs, SIGURG);
+  sigaddset(&wait_sigs, SIGALRM);
+  sigaddset(&wait_sigs, SIGCHLD);
+  sigprocmask(SIG_BLOCK, &wait_sigs, &old_mask);
+
   pid_t child;
   while (true) {
     child = fork();
@@ -376,6 +409,7 @@ int main(int argc, char* argv[]) {
     if (child > 0) {
       break;
     }
+    sigprocmask(SIG_SETMASK, &old_mask, NULL);
     /* Put the child in its own process group */
     setpgid(0, 0);
     char buf[1024];
@@ -386,26 +420,31 @@ int main(int argc, char* argv[]) {
     return 2;
   }
 
-  struct sigaction sa;
-  sa.sa_flags = SA_SIGINFO;
-  sa.sa_sigaction = sighandler;
-  sigemptyset(&sa.sa_mask);
-  sigaction(SIGURG, &sa, NULL);
-  sigaction(SIGALRM, &sa, NULL);
-
   alarm(timeout);
   int status;
-  int ret = waitpid(child, &status, 0);
-  if (ret < 0) {
-    if (errno != EINTR) {
+  while (true) {
+    int ret = waitpid(child, &status, WNOHANG);
+    if (ret < 0) {
       perror("waitpid failed");
       return 2;
     }
-    if (!received_siginfo.si_signo) {
-      fputs("Interrupted by unexpected signal\n", stderr);
-      return 3;
+    if (ret == child) {
+      break;
     }
-
+    siginfo_t si;
+    if (sigwaitinfo(&wait_sigs, &si) < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      perror("sigwaitinfo failed");
+      return 2;
+    }
+    if (si.si_signo == SIGCHLD) {
+      continue;
+    }
+    received_siginfo = si;
+    // Let the SIGALRM handler see the timeout while we gather information.
+    sigprocmask(SIG_SETMASK, &old_mask, NULL);
     dump_state_and_kill(child, argv[2]);
     return 124;
   }

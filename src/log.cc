@@ -479,6 +479,19 @@ static void dump_last_events(const TraceStream& trace) {
 }
 
 static void start_emergency_debug(Task* t) {
+  static bool started = false;
+  if (started &&
+      (t->session().is_recording() || getenv("RUNNING_UNDER_TEST_MONITOR"))) {
+    // We failed again while serving the emergency debugger for an earlier
+    // failure (or setting it up), e.g. answering a debugger request about a
+    // task that isn't stopped. During recording, we can't start another
+    // emergency debugger (closing the trace writer again fails), and under
+    // test-monitor, its gdb is waiting for our answer and won't connect to
+    // another one. Give up. Otherwise, the user can connect a new debugger.
+    dump_stack_and_abort();
+  }
+  started = true;
+
   ftrace::stop();
 
   // Enable SIGINT in case it was disabled. Users want to be able to ctrl-C

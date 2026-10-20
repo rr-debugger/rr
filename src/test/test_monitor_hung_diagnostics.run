@@ -1,0 +1,72 @@
+source `dirname $0`/util.sh
+# This doesn't run rr, so the variants would all do the same.
+skip_if_test_32_bit
+skip_if_no_syscall_buf
+
+# When the command that test-monitor runs (normally rr) sends it SIGURG, or
+# when the timeout expires, test-monitor gathers information: it runs gdb on
+# the process that sent the SIGURG, or on the process named rr. Here the inner
+# test-monitor's command is a shell script named rr that sends it SIGURG, and
+# gdb never exits, as when rr hangs while serving the emergency debugger that
+# gdb is connected to. Whichever comes first, the SIGURG or the timeout,
+# the inner test-monitor must stop gathering information, kill everything and
+# exit with 124 once its timeout expires again, instead of hanging. The outer
+# test-monitor ends the test if it doesn't.
+
+# Test the SIGALRM path, not RR_TEST_DIAGNOSE_TIMEOUT's per-command limit.
+unset RR_TEST_DIAGNOSE_TIMEOUT
+
+mkdir fakebin
+# The fake gdb and rr note their pids, so that we can check that test-monitor
+# killed them.
+printf '#!/bin/sh\necho $$ >> gdb.pids\nexec sleep 1000\n' > fakebin/gdb
+# The script blocks in a builtin, so it has no children that test-monitor
+# could miss when it kills everything.
+printf '#!/bin/sh\necho $$ > rr.pid\nkill -URG $RUNNING_UNDER_TEST_MONITOR\nread x < never_written\n' > fakebin/rr
+# Not just chmod: $OBJDIR/bin, which comes first in PATH, has a test called chmod.
+/bin/chmod +x fakebin/gdb fakebin/rr
+mkfifo never_written
+# Nothing that test-monitor might leave behind gets our stdout, so that it
+# can't keep ctest waiting.
+test-monitor $TIMEOUT outer.out \
+  env PATH="$PWD/fakebin:$PATH" test-monitor 5 inner.out fakebin/rr \
+  < /dev/null > monitors.out 2>&1
+status=$?
+
+# Kills the processes listed in file $1 that are still running here as $2
+# and that nobody has sent SIGKILL (which stays pending in ShdPnd until the
+# process is reaped), and prints their pids.
+function kill_leftovers { pidfile=$1; comm=$2;
+  for pid in $(cat $pidfile 2>/dev/null); do
+    if [[ "$(cat /proc/$pid/comm 2>/dev/null)" == $comm &&
+          /proc/$pid/cwd -ef . &&
+          "$(awk '{print $3}' /proc/$pid/stat 2>/dev/null)" != Z ]]; then
+      shdpnd=$(awk '/^ShdPnd:/ {print $2}' /proc/$pid/status 2>/dev/null)
+      if [[ -n "$shdpnd" ]] && (( (0x$shdpnd & 0x100) == 0 )); then
+        echo -n " $pid"
+        kill -KILL $pid
+      fi
+    fi
+  done
+}
+gdb_left=$(kill_leftovers gdb.pids sleep)
+rr_left=$(kill_leftovers rr.pid rr)
+
+if [[ -s outer.out ]]; then
+  failed ": the inner test-monitor hung"
+  cat outer.out monitors.out
+elif [[ $status != 124 ]]; then
+  failed ": test-monitor exited with $status, not 124"
+  cat inner.out monitors.out
+elif ! grep -q "Command timeout" inner.out; then
+  failed ": test-monitor didn't stop gathering information"
+  cat inner.out monitors.out
+elif [[ -n "$gdb_left" ]]; then
+  failed ": test-monitor left gdb running (pid$gdb_left)"
+elif [[ -n "$rr_left" ]]; then
+  failed ": test-monitor left rr running (pid$rr_left)"
+elif [[ ! -s gdb.pids || ! -s rr.pid ]]; then
+  failed ": test-monitor didn't run gdb or rr"
+else
+  passed
+fi
