@@ -1659,6 +1659,7 @@ set(TESTS_WITH_PROGRAM
   mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
+  negative_syscall_switch
   nested_detach_wait
   nested_detach_kill_stuck
   nested_release_signal
