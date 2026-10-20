@@ -1784,16 +1784,25 @@ OpenedSocket open_socket(const string& host, unsigned short port,
   return result;
 }
 
-void notifying_abort() {
+bool notify_test_monitor() {
+  static bool notified = false;
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
-  if (test_monitor_pid) {
-    pid_t pid = atoi(test_monitor_pid);
-    // Tell test-monitor to wake up and take a snapshot, and wait for it to
-    // do so.
-    kill(pid, SIGURG);
+  if (!test_monitor_pid || notified) {
+    return false;
+  }
+  notified = true;
+  kill(atoi(test_monitor_pid), SIGURG);
+  return true;
+}
+
+void notifying_abort() {
+  if (notify_test_monitor()) {
+    // Wait for test-monitor to take its snapshot. It kills us when it's done.
     sleep(10000);
   }
-
+  // If we've told test-monitor about an earlier failure already, it may be
+  // waiting for us, e.g. for the emergency debugger session with us that it
+  // started to end. It won't kill us before that.
   abort();
 }
 

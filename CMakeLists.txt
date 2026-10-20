@@ -1846,6 +1846,7 @@ set(TESTS_WITHOUT_PROGRAM
   subprocess_exit_ends_session
   switch_processes
   syscallbuf_timeslice_250
+  test_monitor_hung_diagnostics
   tick0
   tick0_less
   trace_version

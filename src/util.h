@@ -432,6 +432,14 @@ OpenedSocket open_socket(const std::string& host, unsigned short port,
                          ProbePort probe);
 
 /**
+ * If we're running under test-monitor, tell it that rr has failed, so that it
+ * takes a snapshot of rr and its tracees and then kills them. Returns false if
+ * we're not running under test-monitor, or if we've already told it.
+ * We try not to allocate.
+ */
+bool notify_test_monitor();
+
+/**
  * Like `abort`, but tries to wake up test-monitor for a snapshot if possible.
  * We try not to allocate.
  */
