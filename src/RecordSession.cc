@@ -452,7 +452,6 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // Don't continue yet. At the next iteration of record_step, we'll
     // enter syscall_state_changed and that will trigger a continue to
     // the syscall exit.
-    last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = RecordSession::DONT_CONTINUE;
     if (!process_syscall_entry(t, step_state, result, t->arch())) {
       // The task was killed.
