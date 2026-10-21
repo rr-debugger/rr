@@ -1826,6 +1826,7 @@ set(TESTS_WITHOUT_PROGRAM
   checksum_sanity_noclone
   comm
   cont_signal
+  continue_exec_from_other_thread
   copy_all
   x86/cpuid
   dead_thread_target

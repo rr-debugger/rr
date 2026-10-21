@@ -382,7 +382,13 @@ private:
 
   void check_virtual_address_size() const;
 
-  ReplayTask* revive_task_for_exec();
+  /**
+   * When a thread other than the thread-group leader execs, it takes over the
+   * leader's tid, and its frames from the execve's exit on are under that
+   * tid. If the current frame is the first of them, move the thread's task to
+   * that tid.
+   */
+  void maybe_revive_task_for_exec();
   ReplayTask* setup_replay_one_trace_frame(ReplayTask* t);
   void advance_to_next_trace_frame();
   Completion emulate_signal_delivery(ReplayTask* oldtask);

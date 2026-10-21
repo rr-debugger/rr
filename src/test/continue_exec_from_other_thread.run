@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+record exec_from_other_thread$bitness
+debug_gdb_only continue_exec_from_other_thread
+# Debug the first child, whose second thread execs.
+CHILD_PID=$(do_ps | awk 'NR == 3 { print $1 }')
+debug_gdb_only exec_stop "-f $CHILD_PID"
