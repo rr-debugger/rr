@@ -1402,6 +1402,7 @@ set(BASIC_TESTS
   x86/seccomp_stop_remote_syscall
   seccomp_tsync
   seccomp_veto_exec
+  seccomp_veto_exit
   self_shebang
   self_sigint
   sem
