@@ -1,5 +1,6 @@
 source `dirname $0`/util.sh
 if [ $TIMEOUT -lt 600 ]; then TIMEOUT=600; fi
+if [ "$RR_ASAN" == "true" ]; then TIMEOUT=800; fi
 record record_replay_subject$bitness
 just_record rr "--suppress-environment-warnings replay -a $workdir/*-0"
 replay
