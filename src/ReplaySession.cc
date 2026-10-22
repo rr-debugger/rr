@@ -2178,6 +2178,8 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
     check_for_watchpoint_changes(t, result.break_status);
     check_approaching_ticks_target(t, constraints, result.break_status);
+
+    t->unmap_dead_syscallbufs_if_required();
   }
 
   advance_to_next_trace_frame();
