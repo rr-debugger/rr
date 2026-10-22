@@ -1184,6 +1184,7 @@ set(BASIC_TESTS
   large_write_deadlock
   legacy_ugid
   x86/lsl
+  lsm_self_attr
   madvise
   madvise_dontneed_private
   madvise_free

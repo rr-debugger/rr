@@ -5491,6 +5491,31 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::lsm_get_self_attr: {
+      // ctx->id is an input when LSM_FLAG_SINGLE is set.
+      // On success *size is set to the number of bytes written. On E2BIG
+      // *size is set to the required size, which exceeds the buffer size,
+      // but entries for LSMs that fit may already have been written, so we
+      // must record the whole buffer; taking the minimum of the incoming and
+      // outgoing *size does that. On other errors *size is unchanged.
+      auto size_ptr = syscall_state.reg_parameter<uint32_t>(3, IN_OUT);
+      syscall_state.reg_parameter(
+          2, ParamSize::from_initialized_mem(t, size_ptr), IN_OUT);
+      return PREVENT_SWITCH;
+    }
+
+    case Arch::lsm_list_modules: {
+      // On E2BIG *size is set to the required size but nothing is written.
+      // On success the result is the number of ids written.
+      auto size_ptr = syscall_state.reg_parameter<uint32_t>(2, IN_OUT);
+      if (!size_ptr.is_null()) {
+        syscall_state.reg_parameter(
+            1, ParamSize::from_syscall_result<uint32_t>(t->read_mem(size_ptr),
+                                                        sizeof(uint64_t)));
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::sched_setaffinity: {
       // Ignore all sched_setaffinity syscalls. They might interfere
       // with our own affinity settings.
