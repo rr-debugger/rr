@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+# Make rr SIGKILL the child just after mapping its scratch memory, and then
+# act as if it hadn't seen the mmap's result.
+record clone_killed_before_scratch$bitness after
+replay
+check EXIT-SUCCESS
+grep -q "child was killed" record.out || failed ": the child wasn't killed"

@@ -55,15 +55,12 @@ static const char* trim_leading_blanks(const char* str) {
   return trimmed;
 }
 
-/**
- * Returns true if a task in t's thread-group other than t is doing an exec.
- */
-static bool thread_group_in_exec(Task* t) {
+/*static*/ bool AddressSpace::thread_group_in_exec(Task* t) {
   if (!t->session().is_recording()) {
     return false;
   }
   for (Task* tt : t->thread_group()->task_set()) {
-    if (tt == t || t->already_exited()) {
+    if (tt == t || tt->already_exited()) {
       continue;
     }
     RecordTask* rt = static_cast<RecordTask*>(tt);
@@ -78,9 +75,9 @@ static bool thread_group_in_exec(Task* t) {
 KernelMapIterator::KernelMapIterator(Task* t, bool* ok)
   : tid(t->tid) {
   // See https://lkml.org/lkml/2016/9/21/423
-  ASSERT(t, !thread_group_in_exec(t)) << "Task-group in execve, so reading "
-                                         "/proc/.../maps may trigger kernel "
-                                         "deadlock!";
+  ASSERT(t, !AddressSpace::thread_group_in_exec(t))
+      << "Task-group in execve, so reading /proc/.../maps may trigger kernel "
+         "deadlock!";
   init(ok);
 }
 

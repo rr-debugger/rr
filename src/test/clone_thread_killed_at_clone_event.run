@@ -1,0 +1,10 @@
+source `dirname $0`/util.sh
+# The program makes rr SIGKILL its child at the PTRACE_EVENT_CLONE stop of
+# the child's pthread_create(), before rr reads the new thread's tid.
+record $TESTNAME
+replay
+if ! grep -q "child was killed" record.out; then
+  failed ": the child wasn't killed"
+else
+  check EXIT-SUCCESS
+fi

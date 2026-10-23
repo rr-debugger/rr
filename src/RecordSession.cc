@@ -241,6 +241,10 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // task is already completely dead and gone.
           SyscallEvent event(r.original_syscallno(), t->arch());
           event.state = ENTERING_SYSCALL;
+          // The task was killed before it could do the syscall. In
+          // particular, a clone() didn't create a task, so replay mustn't
+          // try to create one.
+          event.failed_during_preparation = true;
           // Don't try to reset the syscallbuf here. The task may be exiting
           // while in arbitrary syscallbuf code. And of course, because it's
           // exiting, it doesn't matter if we don't reset the syscallbuf.
@@ -1220,6 +1224,14 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       debug_exec_state("after cont", t);
       t->ev().Syscall().state = PROCESSING_SYSCALL;
+
+      if (t->is_exiting()) {
+        // The task was killed (e.g. by SIGKILL) while rec_prepare_syscall()
+        // was running it. Don't resume it out of its PTRACE_EVENT_EXIT stop;
+        // the next record_step() handles the exit.
+        step_state->continue_type = DONT_CONTINUE;
+        return;
+      }
 
       if (t->emulated_stop_pending) {
         t->held_at_emulated_ptrace_event = true;
