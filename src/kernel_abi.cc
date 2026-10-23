@@ -301,6 +301,7 @@ static void set_arch_siginfo_arch(const siginfo_t& src, void* dest,
   u.linux_api = src;
   auto& siginfo = u.native_api;
 
+  memset(si, 0, sizeof(*si));
   si->si_signo = siginfo.si_signo;
   si->si_errno = siginfo.si_errno;
   si->si_code = siginfo.si_code;
@@ -339,11 +340,26 @@ static void set_arch_siginfo_arch(const siginfo_t& src, void* dest,
         case SIGBUS:
         case SIGFPE:
         case SIGSEGV:
-        case SIGTRAP:
           si->_sifields._sigfault.si_addr_ =
               siginfo._sifields._sigfault.si_addr_.rptr();
           si->_sifields._sigfault.si_addr_lsb_ =
               siginfo._sifields._sigfault.si_addr_lsb_;
+          break;
+        case SIGTRAP:
+          // ptrace stops can have si_signo == SIGTRAP and si_code == SIGTRAP (| 0x80)
+          // in which case pid/uid are set instead of addr/lsb.
+          // SIGTRAP == TRAP_UNK and most architectures don't generate TRAP_UNK at all,
+          // so we should be OK here.
+          if (siginfo.si_code == SIGTRAP ||
+              siginfo.si_code == (SIGTRAP | 0x80)) {
+            si->_sifields._kill.si_pid_ = siginfo._sifields._kill.si_pid_;
+            si->_sifields._kill.si_uid_ = siginfo._sifields._kill.si_uid_;
+          } else {
+            si->_sifields._sigfault.si_addr_ =
+                siginfo._sifields._sigfault.si_addr_.rptr();
+            si->_sifields._sigfault.si_addr_lsb_ =
+                siginfo._sifields._sigfault.si_addr_lsb_;
+          }
           break;
         case SIGIO:
           si->_sifields._sigpoll.si_band_ = siginfo._sifields._sigpoll.si_band_;
