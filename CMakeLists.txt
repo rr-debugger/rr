@@ -1093,6 +1093,7 @@ set(BASIC_TESTS
   exec_killed_before_exit_event
   exec_stopsig
   execveat
+  exit_killed_during_preparation
   exit_with_syscallbuf_signal
   fadvise
   fatal_init_signal

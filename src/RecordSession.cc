@@ -1221,6 +1221,14 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       debug_exec_state("after cont", t);
       t->ev().Syscall().state = PROCESSING_SYSCALL;
 
+      if (t->is_exiting()) {
+        // The task was killed (e.g. by SIGKILL) while rec_prepare_syscall()
+        // was running it. Don't resume it out of its PTRACE_EVENT_EXIT stop;
+        // the next record_step() handles the exit.
+        step_state->continue_type = DONT_CONTINUE;
+        return;
+      }
+
       if (t->emulated_stop_pending) {
         t->held_at_emulated_ptrace_event = true;
         step_state->continue_type = DONT_CONTINUE;

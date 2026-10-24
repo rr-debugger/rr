@@ -255,5 +255,16 @@ enum rrcall_kill_point {
      the task is dying. */
   RRCALL_KILL_BEFORE_SYSCALL_PATCH,
 
+  /* exit() and exit_group() */
+
+  /* A task in exit(), or in exit_group() if it's the only task in its
+     thread group, while rr prepares the exit, at the step given by `arg`:
+     1, just before rr makes the task block all signals; 2, just before rr
+     unmaps the task's syscall buffer and scratch memory and closes rr's
+     file descriptors in it; 3, just before rr restarts the exit. rr waits
+     until the task has reached its PTRACE_EVENT_EXIT stop (or has exited),
+     without collecting that stop. */
+  RRCALL_KILL_IN_EXIT_PREPARATION,
+
   RRCALL_KILL_NUM_POINTS
 };
