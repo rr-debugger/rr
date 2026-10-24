@@ -4549,6 +4549,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     // Various syscalls that can block but don't otherwise have behavior we need
     // to record.
+    case Arch::creat:
     case Arch::fdatasync:
     case Arch::fsync:
     case Arch::msgsnd:
@@ -7564,12 +7565,15 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::creat:
     case Arch::open:
     case Arch::openat:
     case Arch::openat2: {
       Registers r = t->regs();
       if (r.syscall_failed()) {
-        uintptr_t path = syscallno == Arch::open ? r.orig_arg1() : r.arg2();
+        uintptr_t path = syscallno == Arch::creat || syscallno == Arch::open
+                             ? r.orig_arg1()
+                             : r.arg2();
         bool ok = true;
         string pathname = t->read_c_str(remote_ptr<char>(path), &ok);
         if (ok && is_gcrypt_deny_file(pathname.c_str())) {
@@ -7581,6 +7585,9 @@ static void rec_process_syscall_arch(RecordTask* t,
 
         int flags;
         switch (syscallno) {
+        case Arch::creat:
+          flags = O_CREAT | O_WRONLY | O_TRUNC;
+          break;
         case Arch::open:
           flags = r.arg2();
           break;

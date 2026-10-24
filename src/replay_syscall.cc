@@ -1352,6 +1352,9 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::open:
       handle_opened_files(t, t->regs().arg2());
       break;
+    case Arch::creat:
+      handle_opened_files(t, O_CREAT | O_WRONLY | O_TRUNC);
+      break;
 
     case Arch::write:
     case Arch::writev:

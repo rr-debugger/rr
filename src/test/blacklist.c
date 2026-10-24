@@ -21,6 +21,12 @@ int main(void) {
   test_assert(fd < 0);
   test_assert(errno == ENOENT);
 
+#ifdef SYS_creat
+  fd = syscall(SYS_creat, file_name, 0700);
+  test_assert(fd < 0);
+  test_assert(errno == ENOENT);
+#endif
+
   getcwd(buf, PATH_MAX);
   dirfd = syscall(SYS_openat, -1, buf, O_PATH);
   test_assert(dirfd >= 0);

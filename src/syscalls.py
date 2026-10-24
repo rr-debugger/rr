@@ -146,7 +146,7 @@ waitpid = IrregularEmulatedSyscall(x86=7)
 #
 # creat() is equivalent to open() with flags equal to
 # O_CREAT|O_WRONLY|O_TRUNC.
-creat = EmulatedSyscall(x86=8, x64=85)
+creat = IrregularEmulatedSyscall(x86=8, x64=85)
 
 #  int link(const char *oldpath, const char *newpath);
 #
