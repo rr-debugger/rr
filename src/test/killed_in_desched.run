@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+# Without the syscall buffer there is no desched signal, so nothing would
+# kill the child.
+skip_if_no_syscall_buf
+compare_test EXIT-SUCCESS
