@@ -311,8 +311,13 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   }
 
   TraceReader::MappedData data;
-  KernelMapping km = t->trace_reader().read_mapped_region(&data);
-  init_scratch_memory(new_task, km, data);
+  bool found;
+  KernelMapping km = t->trace_reader().read_mapped_region(&data, &found);
+  // If the new task died before rr could map its scratch memory, the trace
+  // has no scratch mapping for it.
+  if (found) {
+    init_scratch_memory(new_task, km, data);
+  }
 }
 
 static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
@@ -474,18 +479,24 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     restore_mapped_region(t, remote, kms[0], datas[0]);
   }
 
+  // The last mapping is the scratch memory rr mapped after the exec, unless
+  // the task died before rr could map it.
+  bool have_scratch = kms.size() > 1 &&
+      kms.back().start() == AddressSpace::exec_scratch_start();
   {
     // Now that [stack] is mapped, reinitialize AutoRemoteSyscalls with
     // memory parameters enabled.
     AutoRemoteSyscalls remote(t);
 
     // Now map in all the mappings that we recorded from the real exec.
-    for (ssize_t i = 1; i < ssize_t(kms.size()) - 1; ++i) {
+    for (ssize_t i = 1; i < ssize_t(kms.size()) - (have_scratch ? 1 : 0); ++i) {
       restore_mapped_region(t, remote, kms[i], datas[i]);
     }
   }
 
-  init_scratch_memory(t, kms.back(), datas.back());
+  if (have_scratch) {
+    init_scratch_memory(t, kms.back(), datas.back());
+  }
 
   // Apply final data records --- fixing up the last page in each data segment
   // for zeroing applied by the kernel, and applying monkeypatches.
