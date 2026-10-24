@@ -95,6 +95,7 @@
 #include "SysCpuMonitor.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "WaitManager.h"
 #include "cpp_supplement.h"
 #include "ftrace.h"
 #include "kernel_abi.h"
@@ -3462,6 +3463,27 @@ static bool send_signal_during_init_buffers() {
 }
 
 /**
+ * This is purely for testing purposes. See RRCALL_KILL_IN_EXIT_PREPARATION.
+ * If a kill armed for `t` at `step` of prepare_exit() fires now, SIGKILL `t`
+ * and wait until it has reached its PTRACE_EVENT_EXIT stop (or has exited),
+ * leaving that stop for prepare_exit() to find.
+ */
+static void maybe_kill_task_in_exit_preparation(RecordTask* t, int step) {
+  if (t->is_exiting() ||
+      !t->take_armed_kill(RRCALL_KILL_IN_EXIT_PREPARATION, step)) {
+    return;
+  }
+  t->tgkill(SIGKILL);
+  WaitOptions options(t->tid);
+  options.consume = false;
+  WaitResult result;
+  do {
+    result = WaitManager::wait_stop_or_exit(options);
+  } while (result.code == WAIT_NO_STATUS);
+  ASSERT(t, result.code == WAIT_OK) << "Task disappeared";
+}
+
+/**
  * At thread exit time, undo the work that init_buffers() did.
  *
  * Call this when the tracee has already entered SYS_exit/SYS_exit_group. The
@@ -3502,15 +3524,22 @@ static void prepare_exit(RecordTask* t) {
   r.set_arg3(0);
   r.set_arg4(sizeof(sig_set_t));
   t->set_regs(r);
+  maybe_kill_task_in_exit_preparation(t, 1);
   // This exits the SYS_rt_sigprocmask.  Now the tracee is ready to do our
   // bidding.
   t->exit_syscall(arch);
   check_signals_while_exiting(t);
 
   // Do the actual buffer and fd cleanup.
+  maybe_kill_task_in_exit_preparation(t, 2);
   t->destroy_buffers();
 
   check_signals_while_exiting(t);
+  if (t->is_exiting()) {
+    // The task was killed (e.g. by SIGKILL) while we were preparing its exit.
+    // Don't resume it out of its PTRACE_EVENT_EXIT stop.
+    return;
+  }
 
   // Restore these regs to what they would have been just before
   // the tracee trapped at SYS_exit/SYS_exit_group.  When we've finished
@@ -3522,6 +3551,7 @@ static void prepare_exit(RecordTask* t) {
       << "Tracee should have entered through int $0x80.";
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);
+  maybe_kill_task_in_exit_preparation(t, 3);
   t->enter_syscall(arch);
   check_signals_while_exiting(t);
 
