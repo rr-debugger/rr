@@ -241,6 +241,11 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // task is already completely dead and gone.
           SyscallEvent event(r.original_syscallno(), t->arch());
           event.state = ENTERING_SYSCALL;
+          // A clone() goes ahead only when prepare_clone() resumes it from
+          // its syscall-entry stop, before we record that entry, so a clone()
+          // that gets here created no task. Replay's prepare_clone(), the
+          // only reader of this flag in replay, then doesn't create one.
+          event.failed_during_preparation = true;
           // Don't try to reset the syscallbuf here. The task may be exiting
           // while in arbitrary syscallbuf code. And of course, because it's
           // exiting, it doesn't matter if we don't reset the syscallbuf.
