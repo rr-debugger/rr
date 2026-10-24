@@ -3585,10 +3585,6 @@ static void prepare_mmap_register_params(RecordTask* t) {
 }
 
 enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
-/* Pointer used when running RR in WINE. Memory below this address is
-   unmapped by WINE immediately after exec, so start the scratch buffer
-   here. */
-static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
 
 /**
  * This is purely for testing purposes. See RRCALL_KILL_BEFORE_CLONE_SCRATCH,
@@ -3620,26 +3616,36 @@ static void init_scratch_memory(RecordTask* t,
   // segment, we could remove this hack.
   int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+  remote_ptr<void> scratch_ptr;
   {
     /* initialize the scratchpad for blocking system calls */
     AutoRemoteSyscalls remote(t);
 
     if (addr_type == DYNAMIC_ADDRESS) {
       maybe_kill_task_at_scratch(t, RRCALL_KILL_BEFORE_CLONE_SCRATCH);
-      t->scratch_ptr = remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(), sz,
-                                                               prot, flags, -1, 0);
+      scratch_ptr = remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(), sz,
+                                                            prot, flags, -1, 0);
       if (maybe_kill_task_at_scratch(t, RRCALL_KILL_AFTER_CLONE_SCRATCH)) {
         // Act as if we hadn't seen the mmap's result.
-        t->scratch_ptr = nullptr;
+        scratch_ptr = nullptr;
       }
     } else {
       maybe_kill_task_at_scratch(t, RRCALL_KILL_BEFORE_EXEC_SCRATCH);
-      t->scratch_ptr =
-          remote.infallible_mmap_syscall_if_alive(remote_ptr<void>(FIXED_SCRATCH_PTR),
-                                                  sz, prot, flags | MAP_FIXED, -1, 0);
+      scratch_ptr = remote.infallible_mmap_syscall_if_alive(
+          AddressSpace::exec_scratch_start(), sz, prot, flags | MAP_FIXED, -1, 0);
     }
-    t->scratch_size = scratch_size;
   }
+  if (scratch_ptr.is_null()) {
+    // The task was killed (e.g. by a SIGKILL, or because its pid namespace
+    // is being torn down) before we saw the mmap's result. Record no scratch
+    // memory, in our address space or in the trace; replay sees that the
+    // trace has no scratch mapping here and doesn't create one either.
+    LOG(debug) << "Task " << t->tid
+               << " died before we saw the result of its scratch mmap";
+    return;
+  }
+  t->scratch_ptr = scratch_ptr;
+  t->scratch_size = scratch_size;
 
   t->setup_preload_thread_locals();
 

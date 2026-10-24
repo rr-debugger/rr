@@ -734,6 +734,13 @@ public:
     return PRELOAD_THREAD_LOCALS_SIZE;
   }
 
+  /**
+   * After an exec we map the task's scratch memory here. (When running rr in
+   * WINE, memory below this address is unmapped by WINE immediately after
+   * exec.)
+   */
+  static remote_ptr<void> exec_scratch_start() { return 0x68000000; }
+
   enum Traced { TRACED, UNTRACED };
   enum Privileged { PRIVILEGED, UNPRIVILEGED };
   /**
