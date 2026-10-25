@@ -1097,7 +1097,18 @@ static void syscall_not_restarted(RecordTask* t) {
   bool should_retry_patch = t->ev().Syscall().should_retry_patch;
   remote_code_ptr orig_syscall_ip = t->ev().Syscall().regs.ip();
   t->pop_syscall_interruption();
-  if (should_retry_patch) {
+  // We get here when the task isn't restarting its interrupted syscall.
+  // That doesn't mean it has left the syscall's site: when a signal handler
+  // changed the number of a syscall that would restart, the kernel still
+  // moved the task back to the syscall instruction, which now makes a
+  // different syscall. The patch overwrites the instructions that end at
+  // orig_syscall_ip, including that syscall instruction, so we can't patch
+  // while the task is there: it would resume in the middle of the patch
+  // instead of making the syscall. The new syscall defers the patch to its
+  // exit again.
+  remote_code_ptr ip = t->regs().ip();
+  if (should_retry_patch &&
+      ip != orig_syscall_ip.decrement_by_syscall_insn_length(t->arch())) {
     LOG(debug) << "Retrying deferred syscall patching non-restarted syscall at " << orig_syscall_ip << " (current ip " << t->regs().ip() << ")";
     retry_syscall_patch(t, orig_syscall_ip);
   }
