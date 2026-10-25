@@ -232,14 +232,8 @@ RecordTask::~RecordTask() {
           << "PTRACE_O_TRACEEXIT only supported for stable exits for now";
     }
   }
-  for (RecordTask* t : emulated_ptrace_tracees) {
-    // XXX emulate PTRACE_O_EXITKILL
-    ASSERT(this, t->emulated_ptracer == this);
-    t->emulated_ptracer = nullptr;
-    t->emulated_ptrace_options = 0;
-    t->emulated_stop_pending = false;
-    t->emulated_stop_type = NOT_STOPPED;
-  }
+  // Our tracees are still attached if our exit wasn't handled.
+  detach_emulated_ptrace_tracees();
 
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
@@ -894,6 +888,31 @@ void RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
     // This is a bit wrong; this is an exit stop, not a signal/ptrace stop.
     emulate_ptrace_stop(exit_status);
   }
+}
+
+void RecordTask::detach_emulated_ptrace_tracees() {
+  for (RecordTask* t : emulated_ptrace_tracees) {
+    // XXX emulate PTRACE_O_EXITKILL
+    ASSERT(this, t->emulated_ptracer == this);
+    t->emulated_ptracer = nullptr;
+    t->emulated_ptrace_options = 0;
+    t->emulated_stop_pending = false;
+    t->emulated_stop_type = NOT_STOPPED;
+    // The scheduler deals with tracees at other emulated stops.
+    t->leave_held_ptrace_event_stop();
+  }
+  emulated_ptrace_tracees.clear();
+}
+
+void RecordTask::leave_held_ptrace_event_stop() {
+  // A task that has reached its PTRACE_EVENT_EXIT has left its syscall.
+  if (!held_at_emulated_ptrace_event || seen_ptrace_exit_event()) {
+    return;
+  }
+  ASSERT(this, ev().is_syscall_event() &&
+                   PROCESSING_SYSCALL == ev().Syscall().state);
+  // Finish the syscall we held the task in.
+  resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, RESUME_NO_TICKS);
 }
 
 void RecordTask::did_reach_zombie() {

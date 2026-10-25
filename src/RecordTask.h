@@ -141,6 +141,17 @@ public:
    * If necessary, signal the ptracer that this task has exited.
    */
   void do_ptrace_exit_stop(WaitStatus exit_status);
+  /**
+   * Detach our emulated ptrace tracees, as Linux does when a ptracer thread
+   * exits, and resume any tracee we hold at a ptrace event.
+   */
+  void detach_emulated_ptrace_tracees();
+  /**
+   * If we hold this task at a ptrace event stop (see
+   * held_at_emulated_ptrace_event), resume it to finish its syscall, as
+   * Linux does when the ptracer resumes or detaches it.
+   */
+  void leave_held_ptrace_event_stop();
 
   void record_exit_trace_event(WaitStatus exit_status);
   /**
@@ -791,8 +802,9 @@ public:
   bool emulated_stop_pending;
   // true when we've left the task stopped in the middle of a syscall, at a
   // stop we've already processed, to report a ptrace event of the syscall
-  // (e.g. PTRACE_EVENT_FORK) to the ptracer. prepare_ptrace_cont resumes the
-  // task when the ptracer does. Cleared whenever the task is resumed.
+  // (e.g. PTRACE_EVENT_FORK) to the ptracer. leave_held_ptrace_event_stop()
+  // resumes the task when the ptracer resumes or detaches it. Cleared
+  // whenever the task is resumed.
   bool held_at_emulated_ptrace_event;
   // true when we've called post_exec() at the PTRACE_EVENT_EXEC stop the
   // task is at. Cleared whenever the task is resumed.

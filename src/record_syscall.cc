@@ -2553,13 +2553,7 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   tracee->emulated_stop_code = WaitStatus();
   tracee->emulated_ptrace_cont_command = command;
 
-  if (held) {
-    ASSERT(tracee, tracee->ev().is_syscall_event() &&
-                       PROCESSING_SYSCALL == tracee->ev().Syscall().state);
-    // Continue the task since we didn't in enter_syscall
-    tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
-                             RESUME_NO_TICKS);
-  }
+  tracee->leave_held_ptrace_event_stop();
 }
 
 static uint64_t widen_buffer_unsigned(const void* buf, size_t size) {
