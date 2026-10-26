@@ -2419,6 +2419,26 @@ static bool ignore_signal_for_detached_proxy(int sig) {
   }
 }
 
+/**
+ * PTRACE_GETSIGINFO in a signal-stop of |t| returned |si|. Return true if
+ * that's really the siginfo of |t|'s PTRACE_EVENT_EXIT stop, because a SIGKILL
+ * took |t| out of the signal-stop and on to that stop before we read it.
+ */
+static bool got_exit_stop_siginfo(Task* t, const siginfo_t& si) {
+  if (si.si_signo != SIGTRAP ||
+      si.si_code != (SIGTRAP | (PTRACE_EVENT_EXIT << 8))) {
+    return false;
+  }
+  // Either `t` was kicked out of the signal stop by a kill or this
+  // SIGTRAP/si_code combination was sent explicitly.
+  // In the former case, the PTRACE_EVENT_EXIT stop will be pending
+  // In the latter case, there will be no new stop pending.
+  WaitOptions options(t->tid);
+  options.block_seconds = 0;
+  options.consume = false;
+  return WaitManager::wait_stop_or_exit(options).code == WAIT_OK;
+}
+
 bool Task::did_waitpid(WaitStatus status) {
   if (is_detached_proxy() &&
       ignore_signal_for_detached_proxy(status.stop_sig())) {
@@ -2485,6 +2505,14 @@ bool Task::did_waitpid(WaitStatus status) {
       if (!ptrace_if_stopped(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death getting siginfo for " << tid;
         // Let's pretend this stop never happened.
+        set_stopped(false);
+        in_unexpected_exit = true;
+        return false;
+      }
+      if (got_exit_stop_siginfo(this, pending_siginfo)) {
+        LOG(debug) << "Task " << tid << " reached its PTRACE_EVENT_EXIT stop "
+                   << "before we got the siginfo of its signal-stop";
+        // As above. We'll get the PTRACE_EVENT_EXIT stop next.
         set_stopped(false);
         in_unexpected_exit = true;
         return false;

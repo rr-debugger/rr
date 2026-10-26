@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+# The program makes rr SIGKILL the child in its signal-stop for SIGUSR1.
+record $TESTNAME
+replay
+check EXIT-SUCCESS
+grep -q "child was killed" record.out || failed ": the child wasn't killed"

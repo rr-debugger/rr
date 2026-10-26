@@ -1516,6 +1516,12 @@ void RecordTask::verify_signal_states() {
     // This task isn't real
     return;
   }
+  if (!is_stopped()) {
+    // We haven't seen a stop since we last resumed the task (e.g. it was
+    // SIGKILLed out of the stop it reached), so did_wait() hasn't restored
+    // the signal mask that will_resume_execution() may have changed.
+    return;
+  }
 
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
   if (results.empty()) {

@@ -1099,6 +1099,7 @@ set(BASIC_TESTS
   exit_killed_during_preparation
   exit_with_syscallbuf_signal
   fadvise
+  fake_ptrace_exit_siginfo
   fatal_init_signal
   fatal_sigsegv_thread
   x86/fault_in_code_page
@@ -1671,6 +1672,8 @@ set(TESTS_WITH_PROGRAM
   invalid_interpreter
   invalid_jump
   jit_proc_mem
+  killed_in_signal_stop
+  killed_injecting_signal
   killed_task_exit_order
   link
   madvise_dontfork

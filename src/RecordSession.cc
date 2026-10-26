@@ -2076,8 +2076,15 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // without letting the task execute at least one instruction, which
       // we don't want to do here.
       bool inject_signal = is_fatal && sig != get_continue_through_sig();
+      bool preinject_failed = false;
+      if (inject_signal && !preinject_signal(t)) {
+        // The task was SIGKILLed (or equivalent) before we could get it into
+        // a signal-stop. It's exiting anyway. Resuming it would take it out
+        // of its PTRACE_EVENT_EXIT stop.
+        inject_signal = false;
+        preinject_failed = true;
+      }
       if (inject_signal) {
-        preinject_signal(t);
         t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, RESUME_NO_TICKS,
                             sig);
       }
@@ -2092,7 +2099,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       // Mark each task in this address space as expecting a ptrace exit
       // to avoid causing any ptrace_exit races.
-      if (is_fatal && is_coredumping_signal(sig)) {
+      if (is_fatal && !preinject_failed && is_coredumping_signal(sig)) {
         for (Task *ot : t->vm()->task_set()) {
           if (t != ot) {
             if (t->tgid() == ot->tgid() || coredumping_signal_takes_down_entire_vm()) {

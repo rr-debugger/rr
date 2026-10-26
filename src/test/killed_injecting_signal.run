@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+# The program makes rr SIGKILL the children in their signal-stops for SIGPWR,
+# rr's syscall buffer desched signal, which rr sends them before injecting
+# SIGTRAP.
+record $TESTNAME
+replay
+check EXIT-SUCCESS
+[ "$(grep -c "child was killed" record.out)" = 2 ] || failed ": the children weren't killed"
