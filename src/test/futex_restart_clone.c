@@ -20,7 +20,10 @@ static int futex(int* uaddr, int op, int val, const struct timespec* timeout,
 static int child(__attribute__((unused)) void* arg) {
   sched_yield();
 
-  tgkill(parent_tid, parent_tid, SIGUSR1);
+  // Our parent's SIGUSR1 handler can run before its clone() returns.
+  __atomic_store_n(&child_pid, sys_gettid(), __ATOMIC_SEQ_CST);
+  pid_t parent = __atomic_load_n(&parent_tid, __ATOMIC_SEQ_CST);
+  tgkill(parent, parent, SIGUSR1);
   char* execv_argv[] = {"/proc/self/exe", "--inner", NULL};
   execve("/proc/self/exe", execv_argv, NULL);
   test_assert(0 && "Exec should not have failed");
@@ -33,8 +36,10 @@ static void usr1_handler(
                     __attribute__((unused)) int sig,
                     __attribute__((unused)) siginfo_t* si,
                     __attribute__((unused)) void* p) {
+  pid_t pid = __atomic_load_n(&child_pid, __ATOMIC_SEQ_CST);
+  test_assert(pid > 1);
   atomic_printf("EXIT-SUCCESS\n");
-  kill(child_pid, SIGKILL);
+  kill(pid, SIGKILL);
   exit(0);
 }
 
@@ -45,7 +50,7 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
-  parent_tid = sys_gettid();
+  __atomic_store_n(&parent_tid, sys_gettid(), __ATOMIC_SEQ_CST);
 
   struct sigaction sa;
 
@@ -64,8 +69,9 @@ int main(int argc, char *argv[]) {
   test_assert(futex_addr != MAP_FAILED);
   *futex_addr = 0;
 
-  child_pid = clone(child, stack + stack_size, CLONE_VM | SIGCHLD, NULL, NULL, NULL,
-              NULL);
+  pid_t pid = clone(child, stack + stack_size, CLONE_VM | SIGCHLD, NULL, NULL,
+                    NULL, NULL);
+  test_assert(pid > 0);
 
   // Wait on the futex addr. This is a restartable syscall and we're expecting
   // that the child's exec will kick us out of the syscall with register state
