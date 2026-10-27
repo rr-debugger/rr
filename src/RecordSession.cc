@@ -99,8 +99,11 @@ static void record_robust_futex_changes_arch(RecordTask* t) {
   }
   record_robust_futex_change<Arch>(t, head,
                                    mask_low_bit(head.list_op_pending.rptr()));
+  // Like the kernel, give up on a list that's too long or has a cycle that
+  // doesn't lead back to the head.
+  int limit = ROBUST_LIST_LIMIT;
   for (auto current = mask_low_bit(head.list.next.rptr());
-       current.as_int() != head_ptr.as_int();) {
+       current.as_int() != head_ptr.as_int() && limit > 0; --limit) {
     record_robust_futex_change<Arch>(t, head, current);
     auto next = t->read_mem(current, &ok);
     if (!ok) {
