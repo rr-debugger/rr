@@ -5438,11 +5438,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
 
     case Arch::clock_nanosleep:
-      syscall_state.reg_parameter<typename Arch::timespec>(4);
+      // The kernel writes the remaining time only for a relative sleep.
+      if (!(regs.arg2() & TIMER_ABSTIME)) {
+        syscall_state.reg_parameter<typename Arch::timespec>(4);
+      }
       return ALLOW_SWITCH;
 
     case Arch::clock_nanosleep_time64:
-      syscall_state.reg_parameter<typename Arch::Arch64::timespec>(4);
+      if (!(regs.arg2() & TIMER_ABSTIME)) {
+        syscall_state.reg_parameter<typename Arch::Arch64::timespec>(4);
+      }
       return ALLOW_SWITCH;
 
     case Arch::sched_yield:
@@ -6000,26 +6005,24 @@ static void rec_prepare_restart_syscall_arch(RecordTask* t,
   int syscallno = t->ev().Syscall().number;
   aarch64_kernel_bug_workaround(t, syscall_state);
   switch (syscallno) {
-    case Arch::nanosleep:
-    case Arch::clock_nanosleep:
-    case Arch::clock_nanosleep_time64:
-      /* Hopefully uniquely among syscalls, nanosleep()/clock_nanosleep()
-       * requires writing to its remaining-time outparam
-       * *only if* the syscall fails with -EINTR.  When a
-       * nanosleep() is interrupted by a signal, we don't
-       * know a priori whether it's going to be eventually
-       * restarted or not.  (Not easily, anyway.)  So we
-       * don't know whether it will eventually return -EINTR
-       * and would need the outparam written.  To resolve
-       * that, we do what the kernel does, and update the
-       * outparam at the -ERESTART_RESTART interruption
-       * regardless. */
-      syscall_state.process_syscall_results();
-      break;
     case Arch::ppoll:
     case Arch::ppoll_time64:
     case Arch::pselect6:
     case Arch::pselect6_time64:
+      t->invalidate_sigmask();
+      RR_FALLTHROUGH;
+    case Arch::select:
+    case Arch::_newselect:
+    case Arch::nanosleep:
+    case Arch::clock_nanosleep:
+    case Arch::clock_nanosleep_time64:
+      /* When a signal interrupts these, the kernel writes the remaining time
+       * to the timeout argument of select(), pselect6 and ppoll, or to the
+       * remaining-time argument of a relative sleep, whether the syscall
+       * then fails with EINTR or is restarted. A restarted select(),
+       * pselect6 or ppoll waits only for the remaining time. */
+      syscall_state.process_syscall_results();
+      break;
     case Arch::sigsuspend:
     case Arch::rt_sigsuspend:
       t->invalidate_sigmask();
