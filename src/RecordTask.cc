@@ -1156,6 +1156,15 @@ static pid_t get_ppid(pid_t pid) {
 }
 
 void RecordTask::apply_group_stop(int sig) {
+  if (emulated_ptracer && is_exiting()) {
+    // An exiting task, such as a zombie leader, doesn't enter the group
+    // stop (task_set_jobctl_pending()), so its tracer sees no stop of it.
+    // For a traced task the stop below is a ptrace stop, which only the
+    // tracer sees. For an untraced task it is the job-control stop that
+    // the parent's wait reports, and Linux reports that through a zombie
+    // leader too (wait_consider_task()).
+    return;
+  }
   if (emulated_stop_type == NOT_STOPPED) {
     LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal " << sig;
     WaitStatus status = WaitStatus::for_group_sig(sig, this);
