@@ -4939,7 +4939,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           t->in_wait_type = WAIT_TYPE_PID;
           break;
         case P_PGID:
-          t->in_wait_type = WAIT_TYPE_PGID;
+          // Since Linux 5.4 (821cc7b0b205), an id of 0 means the caller's
+          // process group.
+          t->in_wait_type = wait_pid ? WAIT_TYPE_PGID : WAIT_TYPE_SAME_PGID;
           break;
         case P_PIDFD:
           wait_pid = t->pid_of_pidfd(regs.arg2());
