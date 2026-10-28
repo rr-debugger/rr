@@ -1517,6 +1517,7 @@ set(BASIC_TESTS
   x86/x87env
   wait
   wait_sigstop
+  waitid_pgid_zero
   write_race
   writev
   xattr
