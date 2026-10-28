@@ -1091,6 +1091,7 @@ set(BASIC_TESTS
   exec_from_main_thread
   exec_from_other_thread
   exec_killed_before_exit_event
+  exec_rseq
   exec_stopsig
   execveat
   exit_killed_during_preparation
@@ -1314,6 +1315,7 @@ set(BASIC_TESTS
   ptrace_event_stop_sigcont
   ptrace_exec
   x86/ptrace_exec32
+  ptrace_exec_multithreaded
   ptrace_group_stop
   ptrace_interrupt_syscall
   ptrace_kill_grandtracee
@@ -1618,6 +1620,7 @@ set(TESTS_WITH_PROGRAM
   exclusion_region
   exec_failed
   exec_killed_before_scratch
+  exec_leader_exit_race
   exec_many
   exec_shared_as
   execve_loop

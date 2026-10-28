@@ -309,6 +309,14 @@ public:
 
   void did_kill();
 
+  /**
+   * Call when another thread's exec has killed this task, the thread-group
+   * leader, and de_thread() has reaped it before we handled its
+   * PTRACE_EVENT_EXIT. Like did_kill(), and also marks the task as reaped
+   * so nothing touches it through its tid.
+   */
+  void did_die_in_exec();
+
   void unmap_buffers_for(
       AutoRemoteSyscalls& remote, Task* t,
       remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child);
