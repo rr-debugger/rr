@@ -1152,6 +1152,7 @@ set(BASIC_TESTS
   intr_pselect
   intr_read_no_restart
   intr_read_restart
+  intr_remaining_time
   intr_sleep
   intr_sleep_no_restart
   invalid_exec
