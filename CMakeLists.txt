@@ -1162,6 +1162,7 @@ set(BASIC_TESTS
   ioctl
   ioctl_blk
   ioctl_br
+  ioctl_dm
   ioctl_fb
   ioctl_fs
   ioctl_pty

@@ -9,6 +9,7 @@
 #include <linux/blkzoned.h>
 #include <linux/capability.h>
 #include <linux/cdrom.h>
+#include <linux/dm-ioctl.h>
 #include <linux/dma-buf.h>
 #include <linux/elf.h>
 #include <linux/ethtool.h>
@@ -2134,6 +2135,48 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(PERF_EVENT_IOC_ID):
       syscall_state.reg_parameter<uint64_t>(3);
       return PREVENT_SWITCH;
+
+    case IOCTL_MASK_SIZE(DM_VERSION):
+    case IOCTL_MASK_SIZE(DM_REMOVE_ALL):
+    case IOCTL_MASK_SIZE(DM_LIST_DEVICES):
+    case IOCTL_MASK_SIZE(DM_DEV_CREATE):
+    case IOCTL_MASK_SIZE(DM_DEV_REMOVE):
+    case IOCTL_MASK_SIZE(DM_DEV_RENAME):
+    case IOCTL_MASK_SIZE(DM_DEV_SUSPEND):
+    case IOCTL_MASK_SIZE(DM_DEV_STATUS):
+    case IOCTL_MASK_SIZE(DM_DEV_WAIT):
+    case IOCTL_MASK_SIZE(DM_DEV_ARM_POLL):
+    case IOCTL_MASK_SIZE(DM_TABLE_LOAD):
+    case IOCTL_MASK_SIZE(DM_TABLE_CLEAR):
+    case IOCTL_MASK_SIZE(DM_TABLE_DEPS):
+    case IOCTL_MASK_SIZE(DM_TABLE_STATUS):
+    case IOCTL_MASK_SIZE(DM_LIST_VERSIONS):
+    case IOCTL_MASK_SIZE(DM_GET_TARGET_VERSION):
+    case IOCTL_MASK_SIZE(DM_TARGET_MSG):
+    case IOCTL_MASK_SIZE(DM_DEV_SET_GEOMETRY): {
+      // struct dm_ioctl has the same layout on all architectures. It is
+      // followed by a variable-length payload; data_size is the total size of
+      // the buffer on input and the size of the data written back on output.
+      auto argp = remote_ptr<struct dm_ioctl>(t->regs().arg3());
+      bool ok = true;
+      uint32_t data_size = t->read_mem(REMOTE_PTR_FIELD(argp, data_size), &ok);
+      if (!ok || data_size < offsetof(struct dm_ioctl, data)) {
+        // The kernel writes back |version| before checking data_size.
+        syscall_state.reg_parameter(3, sizeof(dm_ioctl::version), IN_OUT);
+      } else {
+        syscall_state.reg_parameter(
+            3, ParamSize::from_initialized_mem(
+                   t, REMOTE_PTR_FIELD(argp, data_size)),
+            IN_OUT);
+      }
+      // DM_DEV_WAIT waits for a device event. DM_DEV_SUSPEND waits for
+      // in-flight I/O to complete.
+      if (IOCTL_MASK_SIZE(request) == IOCTL_MASK_SIZE(DM_DEV_WAIT) ||
+          IOCTL_MASK_SIZE(request) == IOCTL_MASK_SIZE(DM_DEV_SUSPEND)) {
+        return ALLOW_SWITCH;
+      }
+      return PREVENT_SWITCH;
+    }
 
     case IOCTL_MASK_SIZE(USBDEVFS_ALLOC_STREAMS):
     case IOCTL_MASK_SIZE(USBDEVFS_CLAIMINTERFACE):
