@@ -1169,6 +1169,7 @@ set(BASIC_TESTS
   ioctl_sg
   ioctl_tty
   ioctl_ttyS
+  ioctl_usbdevfs
   ioctl_vt
   ioprio
   x86/ioperm

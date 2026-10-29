@@ -1996,7 +1996,9 @@ static Switchable prepare_ioctl(RecordTask* t,
         return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_REAPURB):
       case IOCTL_MASK_SIZE(USBDEVFS_REAPURBNDELAY):
-        syscall_state.reg_parameter(3, size);
+        // IN_OUT so that the URB pointer isn't clobbered with scratch
+        // garbage when the ioctl fails (e.g. EAGAIN).
+        syscall_state.reg_parameter(3, size, IN_OUT);
         syscall_state.after_syscall_action(record_usbdevfs_reaped_urb<Arch>);
         return ALLOW_SWITCH;
       case IOCTL_MASK_SIZE(TUNSETIFF):
