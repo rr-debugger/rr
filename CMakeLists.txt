@@ -1218,6 +1218,7 @@ set(BASIC_TESTS
   mmap_shared_grow
   mmap_shared_grow_under_map
   mmap_shared_multiple
+  mmap_shared_sendfile
   mmap_shared_subpage
   mmap_shared_write
   mmap_shared_write_fork

@@ -19,7 +19,12 @@ using namespace std;
 template <typename Arch>
 static bool is_implicit_offset_syscall_arch(int syscallno) {
   return syscallno == Arch::writev || syscallno == Arch::write ||
-         syscallno == Arch::readv || syscallno == Arch::read;
+         syscallno == Arch::readv || syscallno == Arch::read ||
+         // sendfile() writes at the output fd's offset. splice() can also
+         // take the offset from memory, which replay restores only after
+         // notifying monitors, so the trace keeps it too.
+         syscallno == Arch::sendfile || syscallno == Arch::sendfile64 ||
+         syscallno == Arch::splice;
 }
 
 template <typename Arch>
@@ -61,6 +66,22 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
         // know how many bytes were written.
         offset - regs.syscall_result() :
         offset;
+    }
+    case Arch::sendfile:
+    case Arch::sendfile64:
+    case Arch::splice: {
+      ASSERT(t, t->session().is_recording())
+          << "Can only read a file descriptor's offset while recording";
+      // The offset of the output after the write, less the bytes written.
+      remote_ptr<int64_t> off_out;
+      int fd = regs.orig_arg1_signed();
+      if (syscallno == Arch::splice) {
+        off_out = remote_ptr<int64_t>(regs.arg4());
+        fd = regs.arg3_signed();
+      }
+      int64_t offset = off_out.is_null() ? t->fd_offset(fd)
+                                         : t->read_mem(off_out);
+      return offset - regs.syscall_result();
     }
     default: {
       ASSERT(t, false) << "Can not retrieve offset for this system call.";
