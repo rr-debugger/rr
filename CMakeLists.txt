@@ -1338,6 +1338,7 @@ set(BASIC_TESTS
   ptrace_waiter_thread
   ptrace_wnohang
   ptrace_wnohang_poll
+  ptrace_zombie_leader_group_stop
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
