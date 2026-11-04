@@ -170,6 +170,26 @@ remote_ptr<void> ceil_page_size(remote_ptr<void> addr);
 size_t floor_page_size(size_t sz);
 remote_ptr<void> floor_page_size(remote_ptr<void> addr);
 
+/**
+ * Return |addr| without the tag in its top byte, which aarch64 ignores in user
+ * addresses. Bit 55 of a user address is 0, so this is what the kernel's
+ * untagged_addr() returns for one.
+ */
+inline remote_ptr<void> aarch64_untagged_addr(remote_ptr<void> addr) {
+  return remote_ptr<void>(
+      uintptr_t(uint64_t(addr.as_int()) & ((uint64_t(1) << 56) - 1)));
+}
+
+/**
+ * Return |addr| as the kernel's memory-management syscalls (mprotect, munmap,
+ * etc) and /proc/<pid>/mem interpret it for a task of |arch|: on aarch64 they
+ * ignore its tag, whether or not the task has enabled the tagged address ABI.
+ */
+inline remote_ptr<void> untagged_addr(SupportedArch arch,
+                                      remote_ptr<void> addr) {
+  return arch == aarch64 ? aarch64_untagged_addr(addr) : addr;
+}
+
 /** Return the system page size. */
 size_t page_size();
 

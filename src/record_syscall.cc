@@ -7275,11 +7275,13 @@ static void fake_gcrypt_file(RecordTask* t, Registers* r) {
 
 static void record_madvise(RecordTask* t) {
   Registers regs = t->regs();
-  remote_ptr<void> start = floor_page_size(remote_ptr<void>(regs.orig_arg1()));
+  // The kernel ignores the tag of the address.
+  remote_ptr<void> addr = untagged_addr(t->arch(), regs.orig_arg1());
+  remote_ptr<void> start = floor_page_size(addr);
   remote_ptr<void> end = ceil_page_size(start + regs.arg2());
   int advice = regs.arg3();
   int result = regs.syscall_result_signed();
-  if (end <= start || !result || start != regs.orig_arg1()) {
+  if (end <= start || !result || start != addr) {
     // Everything was affected according to the madvise
     // parameters, so we don't need to record anything special.
     return;
@@ -7479,7 +7481,9 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::mremap:
-      process_mremap(t, t->regs().orig_arg1(), t->regs().arg2(), t->regs().arg3(),
+      // The kernel ignores the tag of the old address.
+      process_mremap(t, untagged_addr(Arch::arch(), t->regs().orig_arg1()),
+                     t->regs().arg2(), t->regs().arg3(),
                      (int)t->regs().arg4_signed());
       break;
 

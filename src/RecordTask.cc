@@ -2008,7 +2008,7 @@ void RecordTask::maybe_flush_syscallbuf() {
     records = read_mem(REMOTE_PTR_FIELD(preload_globals, mprotect_records[0]),
                        hdr.mprotect_record_count);
     for (auto& r : records) {
-      as->protect(this, r.start, r.size, r.prot);
+      as->protect(this, untagged_addr(arch(), r.start), r.size, r.prot);
     }
   }
 
