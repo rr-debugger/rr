@@ -222,6 +222,25 @@ public:
   void on_destroy_record_task(RecordTask* t);
 
 private:
+  /**
+   * Called when the scheduler returns |t| at a PTRACE_EVENT_EXEC stop it
+   * collected for |t|, whose tid now refers to the new image. It can return
+   * the same stop again in a later step if |t| hasn't been resumed since.
+   * Returns the task that did the exec, switched to the new image with
+   * post_exec() once per stop. If that task isn't |t|, |t| is the
+   * thread-group leader, which the exec killed: we record its exit if we
+   * haven't yet, destroy it, and revive_task_for_exec(). Returns null if
+   * the task that did the exec was killed before we could read its
+   * registers.
+   */
+  RecordTask* switch_to_exec_image(RecordTask* t);
+
+  /**
+   * Record the exit of the thread-group leader |leader|, which a non-leader
+   * thread's exec killed, if we haven't yet, and destroy it.
+   */
+  void dispose_of_leader_killed_by_exec(RecordTask* leader);
+
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp,

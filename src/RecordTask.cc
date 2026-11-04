@@ -174,6 +174,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       emulated_ptrace_cont_command(0),
       emulated_stop_pending(false),
       held_at_emulated_ptrace_event(false),
+      did_post_exec_at_exec_stop(false),
       emulated_ptrace_SIGCHLD_pending(false),
       emulated_SIGCHLD_pending(false),
       emulated_ptrace_seized(false),
@@ -678,6 +679,7 @@ bool RecordTask::is_at_syscallstub_exit_breakpoint() {
 void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
                                        TicksRequest ticks_request, int sig) {
   held_at_emulated_ptrace_event = false;
+  did_post_exec_at_exec_stop = false;
 
   // We may execute user code, which could lead to an RDTSC or grow-map
   // operation which unblocks SIGSEGV, and we'll need to know whether to
@@ -2092,7 +2094,9 @@ void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
     }
   }
 
-  if (trace_writer().clear_fip_fdp()) {
+  // A reaped task is gone; anything we'd read or write through its tid
+  // could belong to another task (see Task::did_die_in_exec()).
+  if (trace_writer().clear_fip_fdp() && !was_reaped()) {
     const ExtraRegisters* maybe_extra = extra_regs_fallible();
     if (maybe_extra) {
       ExtraRegisters extra_registers = *maybe_extra;

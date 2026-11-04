@@ -498,6 +498,10 @@ public:
   /** Return the event at the top of this's stack. */
   Event& ev() { return pending_events.back(); }
   const Event& ev() const { return pending_events.back(); }
+  /** Return true if this is in an execve or execveat. */
+  bool is_in_execve() const {
+    return ev().is_syscall_event() && ev().Syscall().is_exec();
+  }
 
   /**
    * Obtain the previous event on the stack (if any) or nullptr (if not)
@@ -790,6 +794,9 @@ public:
   // (e.g. PTRACE_EVENT_FORK) to the ptracer. prepare_ptrace_cont resumes the
   // task when the ptracer does. Cleared whenever the task is resumed.
   bool held_at_emulated_ptrace_event;
+  // true when we've called post_exec() at the PTRACE_EVENT_EXEC stop the
+  // task is at. Cleared whenever the task is resumed.
+  bool did_post_exec_at_exec_stop;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop
   bool emulated_ptrace_SIGCHLD_pending;

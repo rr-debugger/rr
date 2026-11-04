@@ -761,46 +761,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
     }
 
     case PTRACE_EVENT_EXEC: {
-      if (t->thread_group()->task_set().size() > 1) {
-        // All tasks but the task that did the execve should have exited by
-        // now and notified us of their exits. However, it's possible that
-        // while running the thread-group leader, our PTRACE_CONT raced with its
-        // PTRACE_EVENT_EXIT and it exited, and the next event we got is this
-        // PTRACE_EVENT_EXEC after the exec'ing task changed its tid to the
-        // leader's tid. Or maybe there are kernel bugs; on
-        // 4.2.0-42-generic running exec_from_other_thread, we reproducibly
-        // enter PTRACE_EVENT_EXEC for the thread-group leader without seeing
-        // its PTRACE_EVENT_EXIT.
-
-        // So, record this task's exit and destroy it.
-        // XXX We can't do record_robust_futex_changes here because the address
-        // space has already gone. That would only matter if some of them were
-        // in memory accessible to another process even after exec, i.e. a
-        // shared-memory mapping or two different thread-groups sharing the same
-        // address space.
-        pid_t tid = t->rec_tid;
-        WaitStatus status = t->status();
-        t->record_exit_trace_event(WaitStatus(0));
-        t->record_exit_event();
-        // Don't call RecordTask::destroy() because we don't want to
-        // PTRACE_DETACH.
-        delete t;
-        // Steal the exec'ing task and make it the thread-group leader, and
-        // carry on!
-        t = revive_task_for_exec(tid);
-        scheduler().set_current(t);
-        *t_ptr = t;
-        // Tell t that it is actually stopped, because the stop we got is really
-        // for this task, not the old dead task.
-        if (!t->did_waitpid(status)) {
-          // This is totally untested and almost certainly broken, but if the
-          // task was SIGKILLed out of the EXEC stop then we should probably
-          // just pretend the exec never happened.
-          step_state->continue_type = CONTINUE_SYSCALL;
-          break;
-        }
-      }
-      t->post_exec();
+      // record_step() has called switch_to_exec_image() for this stop.
       t->session().scheduler().did_exit_execve(t);
 
       // This is purely for testing purposes. See RRCALL_KILL_AFTER_EXEC_STOP.
@@ -1476,8 +1437,7 @@ bool RecordSession::kill_exec_task_for_testing(pid_t rec_tid, int point) {
   // only serializes them later on), so try each of them.
   for (Task* tt : tg->task_set()) {
     RecordTask* rt = static_cast<RecordTask*>(tt);
-    if (rt->ev().is_syscall_event() && rt->ev().Syscall().is_exec() &&
-        rt->take_armed_kill(point)) {
+    if (rt->is_in_execve() && rt->take_armed_kill(point)) {
       syscall(SYS_tgkill, rec_tid, rec_tid, SIGKILL);
       if (point == RRCALL_KILL_BEFORE_EXEC_GETEVENTMSG_AT_EXIT_STOP) {
         WaitOptions options(rec_tid);
@@ -1529,6 +1489,55 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
   // task.
   t->set_tid_and_update_serial(rec_tid, own_namespace_tid);
 
+  return t;
+}
+
+void RecordSession::dispose_of_leader_killed_by_exec(RecordTask* leader) {
+  if (!leader->handled_ptrace_exit_event()) {
+    // We haven't handled the leader's PTRACE_EVENT_EXIT. Either it never
+    // stopped there, because it was already exiting (e.g. in SYS_exit or
+    // exit_group) when the exec killed it, or the exec's SIGKILL took it out
+    // of that stop before we handled it. Record its exit now.
+    // did_die_in_exec() marks the exit as handled, which ~Task() requires,
+    // and the task as reaped, so we don't touch it through its tid, which
+    // now refers to the new image; e.g. record_event() leaves the leader's
+    // rseq area alone.
+    // The ticks hpc.stop() reads are lost, as in handle_ptrace_exit_event();
+    // replay doesn't check them for EV_EXIT.
+    // XXX We can't do record_robust_futex_changes here because the address
+    // space has already gone. That would only matter if some of them were
+    // in memory accessible to another process even after exec, i.e. a
+    // shared-memory mapping or two different thread-groups sharing the same
+    // address space.
+    leader->did_die_in_exec();
+    leader->hpc.stop(leader);
+    leader->record_exit_trace_event(WaitStatus(0));
+    leader->record_exit_event();
+  }
+  // Don't call RecordTask::destroy() because we don't want to PTRACE_DETACH.
+  delete leader;
+}
+
+RecordTask* RecordSession::switch_to_exec_image(RecordTask* t) {
+  if (!t->is_in_execve()) {
+    // t isn't in an execve, so another thread of t's thread group did the
+    // exec. The exec killed t, the thread-group leader, and the thread that
+    // exec'd has taken over t's tid; we collected its exec stop for t, e.g.
+    // because we hadn't handled t's exit yet.
+    pid_t tid = t->tid;
+    WaitStatus status = t->status();
+    dispose_of_leader_killed_by_exec(t);
+    t = revive_task_for_exec(tid);
+    scheduler().set_current(t);
+    // The stop we got is really for this task.
+    if (!t->did_waitpid(status)) {
+      return nullptr;
+    }
+  }
+  if (!t->did_post_exec_at_exec_stop) {
+    t->post_exec();
+    t->did_post_exec_at_exec_stop = true;
+  }
   return t;
 }
 
@@ -2778,6 +2787,21 @@ RecordSession::RecordResult RecordSession::record_step() {
     }
     prev_task->pop_event(EV_SCHED);
   }
+  // This comes before switch_to_exec_image(): at the initial exec stop,
+  // post_exec() sets done_initial_exec(), which ends these kills.
+  maybe_kill_task_before_initial_exec(t);
+  if (rescheduled.by_waitpid && t->ptrace_event() == PTRACE_EVENT_EXEC) {
+    // t's tid now refers to the new image. Switch to it before anything
+    // (e.g. will_schedule() writing to the rseq area) uses the old image's
+    // state through that tid.
+    t = switch_to_exec_image(t);
+    if (!t) {
+      // The task that did the exec was SIGKILLed out of the exec stop.
+      // Pretend this stop never happened and wait for its exit event.
+      last_task_switchable = ALLOW_SWITCH;
+      return result;
+    }
+  }
   if (t->tuid() != prev_task_tuid) {
     t->will_schedule();
   }
@@ -2792,7 +2816,6 @@ RecordSession::RecordResult RecordSession::record_step() {
     t->log_pending_events();
   }
 
-  maybe_kill_task_before_initial_exec(t);
   if (handle_ptrace_exit_event(t)) {
     // t may have been deleted.
     last_task_switchable = ALLOW_SWITCH;
