@@ -23,6 +23,9 @@ int main(void) {
   ret = prctl(PR_SET_TAGGED_ADDR_CTRL, PR_TAGGED_ADDR_ENABLE | PR_MTE_TCF_ASYNC,
               0, 0, 0);
   test_assert(ret == -1 && errno == EINVAL);
+  // And the call must not have changed anything.
+  ret = prctl(PR_GET_TAGGED_ADDR_CTRL, 0, 0, 0, 0);
+  test_assert(ret == PR_TAGGED_ADDR_ENABLE);
 
   atomic_puts("EXIT-SUCCESS");
 }

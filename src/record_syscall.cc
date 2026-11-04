@@ -5258,6 +5258,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             // 2) It is indeterminate when a SIGSEGV/SEGV_MTEAERR signal will
             //    be raised if an asynchronous tag check fault is taken.
             // Both of these issues should be fixable with some kernel changes.
+            // Prevent the actual call, which would set them where the
+            // hardware supports MTE.
+            Registers r = regs;
+            r.set_arg1(intptr_t(-1));
+            t->set_regs(r);
             syscall_state.emulate_result(-EINVAL);
           }
           break;
