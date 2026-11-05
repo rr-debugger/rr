@@ -760,6 +760,25 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       return;
     }
 
+    case Arch::sendfile:
+    case Arch::sendfile64:
+    case Arch::splice: {
+      int fd = (int)(syscallno == Arch::splice ? regs.arg3_signed()
+                                               : regs.orig_arg1_signed());
+      ssize_t amount = regs.syscall_result_signed();
+      // Notify only an MmappedFileMonitor, which needs just the file range
+      // written; the data was never in this task's memory.
+      FileMonitor* monitor = fd_table()->get_monitor(fd);
+      if (amount > 0 && monitor &&
+          monitor->type() == FileMonitor::Mmapped) {
+        vector<FileMonitor::Range> ranges;
+        ranges.push_back(FileMonitor::Range(remote_ptr<void>(), amount));
+        FileMonitor::LazyOffset offset(this, regs, syscallno);
+        monitor->did_write(this, ranges, offset);
+      }
+      return;
+    }
+
     case Arch::pwritev:
     case Arch::pwritev2:
     case Arch::writev: {
