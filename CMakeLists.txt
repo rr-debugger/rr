@@ -1085,11 +1085,13 @@ set(BASIC_TESTS
   epoll_pwait_eintr_sigmask
   epoll_pwait2
   eventfd
+  exec_after_waking_readers
   exec_flags
   exec_no_env
   exec_self
   exec_from_main_thread
   exec_from_other_thread
+  exec_killed_after_entry
   exec_killed_before_exit_event
   exec_rseq
   exec_stopsig
