@@ -37,12 +37,19 @@ int main(void) {
   struct itimerval off = { { 0, 0 }, { 0, 0 } };
   long i;
 
-  signal(SIGALRM, handler);
-  setitimer(ITIMER_REAL, &timer, NULL);
-  for (i = 0; i < 3000000 && sigs < 20; ++i) {
+  /* ITIMER_VIRTUAL, not ITIMER_REAL: it counts only the time we spend running
+   * our own code, so the loop runs between any two signals however long rr
+   * takes to record one. With ITIMER_REAL, if that takes longer than the
+   * period, the next signal is due by the time the handler returns, every
+   * time, and the loop never runs again. The kernel checks the timer at its
+   * scheduler tick, so the signals can come only once per tick: allow for 20
+   * of them at HZ=250. */
+  signal(SIGVTALRM, handler);
+  setitimer(ITIMER_VIRTUAL, &timer, NULL);
+  for (i = 0; i < 30000000 && sigs < 20; ++i) {
     tick();
   }
-  setitimer(ITIMER_REAL, &off, NULL);
+  setitimer(ITIMER_VIRTUAL, &off, NULL);
 #ifndef __i386__
   __asm__ __volatile__(".globl tick_bp\n\t"
                        ".type tick_bp, %%function\n"
