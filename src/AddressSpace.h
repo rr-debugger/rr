@@ -818,9 +818,8 @@ public:
 
   /**
    * Reads the /proc/<pid>/maps entry for a specific address. Does no caching.
-   * If performed on a file in a btrfs file system, this may return the
-   * wrong device number! If you stick to anonymous or special file
-   * mappings, this should be OK.
+   * For a file on btrfs, the device number is the filesystem's, while
+   * fstat() reports the subvolume's (see KernelMapping::device_).
    */
   KernelMapping read_kernel_mapping(Task* t, remote_ptr<void> addr);
 

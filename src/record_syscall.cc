@@ -6736,7 +6736,7 @@ static vector<WriteHole> find_holes(RecordTask* t, int desc, uint64_t offset, ui
   return ret;
 }
 
-static void check_outside_mappings(const KernelMapping& tracee_km, const RecordSession& session) {
+static void check_outside_mappings(RecordTask* t, remote_ptr<void> addr) {
 #if defined(__i386__)
   struct utsname buf;
   if (uname(&buf) != 0) {
@@ -6748,6 +6748,16 @@ static void check_outside_mappings(const KernelMapping& tracee_km, const RecordS
       FATAL() << "Cannot use --check_outside_mmaps with 32-bit rr at 64-bit kernel.";
   }
 #endif
+  // On btrfs, /proc/<pid>/maps shows a different device number than fstat()
+  // (see KernelMapping::device_), so compare the other processes' entries
+  // with the tracee's own /proc/<tid>/maps entry.
+  KernelMapping tracee_km = t->vm()->read_kernel_mapping(t, addr);
+  if (tracee_km.inode() == KernelMapping::NO_INODE) {
+    // No entry for addr (the tracee is gone). An empty entry would match
+    // every anonymous mapping.
+    return;
+  }
+  const RecordSession& session = t->session();
   DIR* proc = opendir("/proc");
   if (!proc) {
     FATAL() << "Failed to read /proc";
@@ -6904,7 +6914,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     }
 
     if (t->session().check_outside_mmaps()) {
-      check_outside_mappings(km, t->session());
+      check_outside_mappings(t, addr);
     }
   }
 
