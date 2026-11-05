@@ -1,0 +1,132 @@
+# rr's tests with software ticks (include/rr/softticks.h), on GitHub's hosted runners, which
+# have no PMU that rr can use. The job runs in a Linux image in which every binary is
+# instrumented for software ticks and whose compilers instrument what they build, so rr's
+# test programs carry the software-ticks note and rr records them with software ticks.
+# 64-bit only: the image has no 32-bit toolchain.
+name: Software ticks
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+env:
+  CAPNPROTO_VERSION: 1.5.0
+  CAPNPROTO_SHA256: 77dbc13ca82d9c87ddb4581dd49559d45b63096433d3dadea08b7f31b360a5ba
+
+jobs:
+  x86-64:
+    name: x86-64, software ticks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        # The steps run in the image's container, from the action below on.
+        shell: ygglet {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up the runner
+        shell: bash
+        run: |
+          # As scripts/github-actions-test.sh does: perf events, ptrace-attach to any process
+          # and user namespaces for the tests.
+          echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid > /dev/null
+          echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope > /dev/null
+          (echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns) > /dev/null || true
+          # The image has no lldb: the tests use the runner's (see "lldb" below).
+          sudo apt-get update -y
+          sudo apt-get install -y lldb
+          echo "HOST_LLDB=$(readlink -f /usr/bin/lldb)" >> "$GITHUB_ENV"
+          grep -m1 'model name' /proc/cpuinfo
+          nproc
+
+      - name: Start the container
+        id: image
+        uses: ChronitonAI/rift-action@84cb4f9441ce4bfd6be8acd8a3b7bdbc2f2a806b # main, 2026-10-13
+        with:
+          # Mount namespaces for the tests (Docker's AppArmor profile refuses mount), room in
+          # /dev/shm, and the runner's /usr for its lldb.
+          docker-options: >-
+            --security-opt apparmor=unconfined --shm-size 4g -v /usr:/host/usr:ro
+
+      - name: lldb
+        shell: ygglet --root {0}
+        run: |
+          # The runner's lldb, with the runner's own dynamic loader, libraries and Python.
+          cat > /usr/local/bin/lldb <<EOF
+          #!/bin/sh
+          PYTHONHOME=/host/usr exec /host/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 \\
+            --library-path /host/usr/lib/x86_64-linux-gnu /host${HOST_LLDB} "\$@"
+          EOF
+          chmod +x /usr/local/bin/lldb
+          lldb --version
+
+      - name: Cache capnproto
+        id: capnproto
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/capnproto
+          key: capnproto-${{ env.CAPNPROTO_VERSION }}-${{ steps.image.outputs.image }}
+
+      - name: Download capnproto
+        if: steps.capnproto.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 5 -o capnproto.tar.gz \
+            "https://capnproto.org/capnproto-c++-${CAPNPROTO_VERSION}.tar.gz"
+          echo "${CAPNPROTO_SHA256}  capnproto.tar.gz" | sha256sum -c --quiet -
+          tar xzf capnproto.tar.gz
+
+      - name: Build capnproto
+        if: steps.capnproto.outputs.cache-hit != 'true'
+        run: |
+          # The image has no capnproto. Static libraries, so rr needs none at run time.
+          cd "$RUNNER_TEMP"
+          cmake -S "capnproto-c++-${CAPNPROTO_VERSION}" -B capnproto-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWITH_OPENSSL=OFF -DWITH_ZLIB=OFF \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/capnproto"
+          ninja -C capnproto-build install > /dev/null
+          rm -rf capnproto-build "capnproto-c++-${CAPNPROTO_VERSION}" capnproto.tar.gz
+
+      - name: Build
+        run: |
+          echo "$RUNNER_TEMP/capnproto/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/capnproto/bin:$PATH"
+          mkdir obj
+          cd obj
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=DEBUG -Dstaticlibs=FALSE -Ddisable32bit=ON \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/capnproto" ..
+          ninja
+          readelf -nW bin/simple | grep -E '^\s+rr\s'
+
+      - name: Test
+        id: test
+        run: |
+          cd obj
+          mkdir -p Testing/Temporary
+          cp ../scripts/github-actions-CTestCostData.txt Testing/Temporary/CTestCostData.txt
+          status=0
+          ctest -j"$(nproc)" --output-on-failure || status=$?
+          if [[ $status != 0 ]]; then
+            mkdir -p "$GITHUB_WORKSPACE/failed-tests"
+            cd /tmp
+            rm -f rr-test-cpu-lock
+            for dir in rr-test-*; do
+              [[ -d $dir ]] || continue
+              "$GITHUB_WORKSPACE/obj/bin/rr" pack "$dir/latest-trace" || true
+              tar zcf "$GITHUB_WORKSPACE/failed-tests/$dir.tar.gz" "$dir"
+              rm -rf "$dir"
+            done
+          fi
+          exit $status
+
+      - name: Upload failed-test artifacts
+        uses: actions/upload-artifact@v7
+        if: failure() && steps.test.outcome == 'failure'
+        with:
+          name: failed-tests-software-ticks-x86_64
+          path: failed-tests/*
+          compression-level: 0
