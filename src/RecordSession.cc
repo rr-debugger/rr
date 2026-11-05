@@ -1229,7 +1229,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       if (t->is_exiting()) {
         // The task was killed (e.g. by SIGKILL) while rec_prepare_syscall()
         // was running it. Don't resume it out of its PTRACE_EVENT_EXIT stop;
-        // the next record_step() handles the exit.
+        // record_step() handles the exit.
         step_state->continue_type = DONT_CONTINUE;
         return;
       }
@@ -2727,6 +2727,32 @@ static bool maybe_kill_task_before_initial_exec(RecordTask* t) {
   return true;
 }
 
+/**
+ * This is purely for testing purposes. See RRCALL_KILL_AFTER_EXEC_ENTRY.
+ * record_step() calls this just before it resumes `t`. If `t` is in an
+ * execve that it has entered, before its PTRACE_EVENT_EXEC stop, and the
+ * kill armed for `t` fires now, SIGKILL `t` and wait until it has reached
+ * its PTRACE_EVENT_EXIT stop (or has exited), leaving that stop for
+ * task_continue() to find.
+ */
+static void maybe_kill_task_after_exec_entry(RecordTask* t) {
+  if (t->is_exiting() || !t->ev().is_syscall_event() ||
+      !t->ev().Syscall().is_exec() ||
+      t->ev().Syscall().state != PROCESSING_SYSCALL ||
+      t->ptrace_event() == PTRACE_EVENT_EXEC ||
+      !t->take_armed_kill(RRCALL_KILL_AFTER_EXEC_ENTRY)) {
+    return;
+  }
+  t->tgkill(SIGKILL);
+  WaitOptions options(t->tid);
+  options.consume = false;
+  WaitResult result;
+  do {
+    result = WaitManager::wait_stop_or_exit(options);
+  } while (result.code == WAIT_NO_STATUS);
+  ASSERT(t, result.code == WAIT_OK) << "Task disappeared";
+}
+
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 
@@ -2824,14 +2850,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     }
   } else {
     ASSERT(t, t->is_stopped()) << "handle_ptrace_event left us in a not-stopped state";
-    if (rescheduled.by_waitpid && handle_signal_event(t, &step_state)) {
-      // Tracee may have exited while processing descheds; handle that.
-      if (handle_ptrace_exit_event(t)) {
-        // t may have been deleted.
-        last_task_switchable = ALLOW_SWITCH;
-        return result;
-      }
-    } else {
+    if (!rescheduled.by_waitpid || !handle_signal_event(t, &step_state)) {
       ASSERT(t, t->is_stopped()) << "handle_signal_event left us in a not-stopped state";
       runnable_state_changed(t, &step_state, &result, rescheduled.by_waitpid);
 
@@ -2860,6 +2879,17 @@ RecordSession::RecordResult RecordSession::record_step() {
     }
   }
 
+  // The tracee may have reached its PTRACE_EVENT_EXIT stop during an
+  // internal wait while we processed this stop (e.g. in
+  // desched_state_changed()); handle that now. While a thread group is in
+  // execve the scheduler only waits for new statuses, and the exec can't
+  // complete until its other threads have exited.
+  if (handle_ptrace_exit_event(t)) {
+    // t may have been deleted.
+    last_task_switchable = ALLOW_SWITCH;
+    return result;
+  }
+
   t->verify_signal_states();
   t->unmap_dead_syscallbufs_if_required();
 
@@ -2876,7 +2906,16 @@ RecordSession::RecordResult RecordSession::record_step() {
 
     debug_exec_state("EXEC_START", t);
 
+    maybe_kill_task_after_exec_entry(t);
     task_continue(step_state);
+  }
+
+  // prepare_to_inject_signal() and task_continue() may also have found the
+  // tracee at its PTRACE_EVENT_EXIT stop (resume_execution() checks for it
+  // before resuming the tracee); handle that now as well.
+  if ((t->is_stopped() || t->was_reaped()) && handle_ptrace_exit_event(t)) {
+    // t may have been deleted.
+    last_task_switchable = ALLOW_SWITCH;
   }
 
   return result;
