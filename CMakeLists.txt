@@ -1482,6 +1482,7 @@ set(BASIC_TESTS
   sysinfo
   syslog
   arm/tagged_addr_ctrl
+  arm/tagged_addr_syscalls
   arm/sve_vl
   tgkill
   thread_yield
