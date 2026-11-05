@@ -1879,6 +1879,7 @@ set(TESTS_WITHOUT_PROGRAM
   simple_script
   simple_script_debug
   simple_winch
+  software_ticks_script
   stack_overflow_debug
   step1
   x86/step_rdtsc

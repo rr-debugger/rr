@@ -2482,6 +2482,51 @@ static ExeInfo read_exe_info(const string& exe_file) {
   return ret;
 }
 
+/**
+ * The interpreter that the kernel runs for |exe_file| if it is a #! script,
+ * following #! lines the way the kernel does (the interpreter is the first
+ * word after "#!"; a relative path is relative to the current directory), or
+ * |exe_file| itself if it is not a script. Like the kernel, gives up after a
+ * few levels.
+ */
+static string script_interpreter(const string& exe_file) {
+  string ret = exe_file;
+  for (int depth = 0; depth < 5; ++depth) {
+    ScopedFd fd(ret.c_str(), O_RDONLY);
+    if (!fd.is_open()) {
+      break;
+    }
+    char buf[256];
+    ssize_t n = read(fd, buf, sizeof(buf) - 1);
+    if (n < 2 || buf[0] != '#' || buf[1] != '!') {
+      break;
+    }
+    buf[n] = 0;
+    const char* start = buf + 2;
+    while (*start == ' ' || *start == '\t') {
+      ++start;
+    }
+    const char* end = start;
+    while (*end && *end != ' ' && *end != '\t' && *end != '\n') {
+      ++end;
+    }
+    if (end == start) {
+      break;
+    }
+    ret = string(start, end - start);
+  }
+  return ret;
+}
+
+static uint32_t read_software_ticks_note(const string& exe_file) {
+  ScopedFd fd(exe_file.c_str(), O_RDONLY);
+  if (!fd.is_open()) {
+    return 0;
+  }
+  ElfFileReader reader(fd);
+  return read_software_ticks_note(reader);
+}
+
 static string lookup_by_path(const string& name) {
   if (name.find('/') != string::npos) {
     return name;
@@ -2563,16 +2608,21 @@ static string lookup_by_path(const string& name) {
   }
   ExeInfo exe_info = read_exe_info(full_path);
   // An executable built with a software-ticks compiler pass is recorded with
-  // software ticks (SoftwareTicks.h), without the PMU.
-  if (exe_info.software_ticks_abi_version) {
-    if (exe_info.software_ticks_abi_version != SOFTWARE_TICKS_ABI_VERSION) {
-      CLEAN_FATAL() << "'" << full_path
+  // software ticks (SoftwareTicks.h), without the PMU. A #! script runs its
+  // interpreter's code, so for a script that is the executable that counts.
+  string ticks_exe = script_interpreter(full_path);
+  uint32_t software_ticks_abi_version =
+      ticks_exe == full_path ? exe_info.software_ticks_abi_version
+                             : read_software_ticks_note(ticks_exe);
+  if (software_ticks_abi_version) {
+    if (software_ticks_abi_version != SOFTWARE_TICKS_ABI_VERSION) {
+      CLEAN_FATAL() << "'" << ticks_exe
                     << "' was built for software ticks of ABI version "
-                    << exe_info.software_ticks_abi_version
+                    << software_ticks_abi_version
                     << "; this rr supports version "
                     << SOFTWARE_TICKS_ABI_VERSION << ".";
     }
-    LOG(info) << "'" << full_path << "' counts software ticks; recording with them";
+    LOG(info) << "'" << ticks_exe << "' counts software ticks; recording with them";
     set_software_ticks_mode(true);
   }
   if (exe_info.sanitizer_exclude_memory_ranges.empty()) {
