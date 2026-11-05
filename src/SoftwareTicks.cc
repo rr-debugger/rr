@@ -139,6 +139,14 @@ static bool read_code(Task* t, uintptr_t addr, size_t len, uint8_t* buf) {
 }
 
 bool is_software_tick_trap(Task* t, const siginfo_t& si) {
+  // Only our countdown's traps are ours. Where the page at the countdown's
+  // address is not the one we created (software_ticks_slot_usable), we never
+  // arm a countdown, so a tick trap there comes from a countdown that someone
+  // else programs, e.g. an rr that is our tracee recording or replaying its
+  // own tracee: it is an ordinary SIGTRAP for the tracee (or its ptracer).
+  if (!software_ticks_slot_usable(t)) {
+    return false;
+  }
   const uint8_t* seq;
   size_t len;
   size_t trap_len;
@@ -179,6 +187,11 @@ bool is_software_tick_trap(Task* t, const siginfo_t& si) {
 }
 
 bool complete_software_tick_sequence(Task* t) {
+  // Without our countdown (see is_software_tick_trap), the trap that the rest
+  // of the sequence may execute is not ours to drop.
+  if (!software_ticks_slot_usable(t)) {
+    return false;
+  }
   // The offsets of the instructions after the commit (the decrement): jnz and
   // int3 (x86-64); jnz, the borrow's subl, jae and int3 (i386); cbnz and brk
   // (aarch64).

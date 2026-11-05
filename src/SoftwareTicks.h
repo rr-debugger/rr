@@ -63,11 +63,15 @@ uint32_t read_software_ticks_note(ElfFileReader& reader);
 /* Called after rr creates a preload thread-locals page: park the countdown. */
 void init_software_ticks_slot(Task* t);
 
-/* Whether t's current SIGTRAP stop, with siginfo |si|, is a tick trap: the
- * trap instruction of a tick sequence (x86: the pc is after the int3;
- * aarch64: at the brk), not one of rr's breakpoints. It need not have found
- * the countdown at 0: a tick whose trap was pending at an earlier stop traps
- * when the task resumes, and is treated the same way. */
+/* Whether t's current SIGTRAP stop, with siginfo |si|, is a tick trap of
+ * our countdown: the trap instruction of a tick sequence (x86: the pc is
+ * after the int3; aarch64: at the brk), not one of rr's breakpoints, in an
+ * address space whose countdown is in the preload thread-locals page rr
+ * created. It need not have found the countdown at 0: a tick whose trap was
+ * pending at an earlier stop traps when the task resumes, and is treated the
+ * same way. Where that page is not rr's (the tracee mapped over it, e.g. a
+ * tracee that is itself an rr placing its own page in its tracee), a tick
+ * trap is the tracee's signal. */
 bool is_software_tick_trap(Task* t, const siginfo_t& si);
 
 /* When recording, move a task stopped between a tick's decrement and the end
@@ -79,7 +83,8 @@ bool is_software_tick_trap(Task* t, const siginfo_t& si);
  * already been stopped, which counted the tick and parked the countdown, and
  * they are re-armed before it runs again, so completing the sequence only
  * drops a pending tick trap, i.e. a time-slice interrupt that the stop has
- * made moot (and on i386 a borrow that no longer applies to anything).
+ * made moot (and on i386 a borrow that no longer applies to anything). Only
+ * done where the countdown is ours (as for is_software_tick_trap).
  * Returns whether the pc moved. */
 bool complete_software_tick_sequence(Task* t);
 
