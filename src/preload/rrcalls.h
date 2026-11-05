@@ -266,5 +266,13 @@ enum rrcall_kill_point {
      without collecting that stop. */
   RRCALL_KILL_IN_EXIT_PREPARATION,
 
+  /* execve(), entry */
+
+  /* A thread that execs, once rr has handled the execve's syscall-entry
+     stop, just before rr resumes the thread into the execve. rr waits until
+     the task has reached its PTRACE_EVENT_EXIT stop (or has exited),
+     without collecting that stop. */
+  RRCALL_KILL_AFTER_EXEC_ENTRY,
+
   RRCALL_KILL_NUM_POINTS
 };
