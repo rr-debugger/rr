@@ -10,6 +10,11 @@
 
 __asm__(RR_SOFTTICKS_INIT_ASM);
 
+#if defined(__RR_SOFTTICKS__) && __has_attribute(disable_sanitizer_instrumentation)
+/* Built by a software-ticks compiler pass, which would tick in the loop below
+   as well. */
+__attribute__((disable_sanitizer_instrumentation))
+#endif
 int main(void) {
   int i;
   RR_SOFTTICK();
