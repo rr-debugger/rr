@@ -25,6 +25,9 @@ remote_ptr<uint64_t> software_ticks_countdown_address() {
 }
 
 uint32_t read_software_ticks_note(ElfFileReader& reader) {
+  if (!reader.ok()) {
+    return 0;
+  }
   SectionOffsets offsets =
       reader.find_section_file_offsets(RR_SOFTWARE_TICKS_NOTE_SECTION);
   if (!offsets.start) {
