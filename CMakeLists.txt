@@ -1719,6 +1719,7 @@ set(TESTS_WITH_PROGRAM
   simple
   software_ticks_async_kill
   software_ticks_break_in_tick
+  software_ticks_disarmed
   software_ticks_replace_page
   x86/singlestep_pushf
   stack_growth

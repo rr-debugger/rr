@@ -44,8 +44,9 @@ int main(void) {
   unsigned long f = 0;
   int i;
   /* Under rr's software ticks the tracer arms the countdown before resuming
-   * us, with fewer than 2^63 ticks to go: its high word is below 2^31. With
-   * the PMU, rr parks it at 2^64 - 1. */
+   * us, with fewer than 2^63 ticks to go: its top bit is clear (its high word
+   * is below 2^31), or our ticks would skip it. With the PMU, rr parks it at
+   * 2^64 - 1, which they skip. */
   volatile uint32_t* countdown = (volatile uint32_t*)RR_SOFTTICKS_COUNTDOWN_ADDR;
   test_assert(countdown[1] < 0x80000000);
 

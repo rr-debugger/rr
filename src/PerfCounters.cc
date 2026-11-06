@@ -1534,8 +1534,14 @@ void PerfCounters::software_start(Task* t, Ticks ticks_period) {
       prev->hpc.sw_owned = false;
     }
   }
+  // Armed countdowns are in [1, 2^63) (ticks_period is a non-negative Ticks):
+  // ticks skip a countdown whose top bit is set, and one of 0 would wrap to
+  // that at its first tick.
   sw_period = ticks_period > 0 ? uint64_t(ticks_period) : SOFTWARE_TICKS_UNLIMITED;
   sw_harvested = 0;
+  // A countdown outside that range would not count at all, and on i386 a
+  // pending borrow adds 2^32 to the slot.
+  ASSERT(t, sw_period < (uint64_t(1) << 63) - (uint64_t(1) << 32)) << sw_period;
   uint64_t slot = software_ticks_slot_for(t, sw_period);
   // Before the first exec there is no page; nothing ticks there either.
   sw_owned = write_software_ticks_slot(t, slot);

@@ -24,36 +24,23 @@ static void handler(__attribute__((unused)) int sig) {
   ++sigs;
 }
 
-/* long loop(long n): tick n times. */
+/* long loop(long n): tick n times. Assembled here from the ABI's tick
+ * sequence, and copied to writable memory to run. */
 #if defined(__x86_64__)
-static const uint8_t loop_code[] = {
-  0x31, 0xc0,                                     /* xor %eax,%eax */
-  /* 1: */
-  0x48, 0xff, 0x0c, 0x25, 0x00, 0x18, 0x00, 0x70, /* decq 0x70001800 */
-  0x75, 0x01,                                     /* jnz 2f */
-  0xcc,                                           /* int3 */
-  /* 2: */
-  0x48, 0xff, 0xc0,                               /* inc %rax */
-  0x48, 0x39, 0xf8,                               /* cmp %rdi,%rax */
-  0x75, 0xed,                                     /* jne 1b */
-  0xc3,                                           /* ret */
-};
-#elif defined(__i386__)
-static const uint8_t loop_code[] = {
-  0x31, 0xc0,                                     /* xor %eax,%eax */
-  /* 1: */
-  0x83, 0x2d, 0x00, 0x18, 0x00, 0x70, 0x01,       /* subl $1,0x70001800 */
-  0x75, 0x0a,                                     /* jnz 2f */
-  0x83, 0x2d, 0x04, 0x18, 0x00, 0x70, 0x01,       /* subl $1,0x70001804 */
-  0x73, 0x01,                                     /* jae 2f */
-  0xcc,                                           /* int3 */
-  /* 2: */
-  0x40,                                           /* inc %eax */
-  0x3b, 0x44, 0x24, 0x04,                         /* cmp 4(%esp),%eax */
-  0x75, 0xe6,                                     /* jne 1b */
-  0xc3,                                           /* ret */
-};
+#define LOOP_STEP "inc %rax\n\tcmp %rdi, %rax\n\t"
+#else
+#define LOOP_STEP "inc %eax\n\tcmp 4(%esp), %eax\n\t"
 #endif
+__asm__(".pushsection .rodata\n"
+        "loop_code:\n\t"
+        "xor %eax, %eax\n"
+        "2:\n\t" RR_SOFTTICKS_TICK_ASM "\n\t"
+        LOOP_STEP
+        "jne 2b\n\t"
+        "ret\n"
+        "loop_code_end:\n\t"
+        ".popsection");
+extern const uint8_t loop_code[], loop_code_end[];
 #endif
 
 int main(void) {
@@ -67,7 +54,7 @@ int main(void) {
   p = mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC,
            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   test_assert(p != MAP_FAILED);
-  memcpy(p, loop_code, sizeof(loop_code));
+  memcpy(p, loop_code, loop_code_end - loop_code);
   loop = (long (*)(long))p;
 
   signal(SIGPROF, handler);

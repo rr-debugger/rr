@@ -104,28 +104,48 @@ void init_software_ticks_slot(Task* t) {
   t->vm()->set_software_ticks_owner(TaskUid());
 }
 
-// The tick sequences (include/rr/softticks.h).
+// The tick sequences (include/rr/softticks.h), with their offsets. Each
+// first tests the countdown's top bit (the guard) and skips the tick while it
+// is set (the countdown is disarmed).
 static const uint8_t tick_x64[] = {
-  0x48, 0xff, 0x0c, 0x25, 0x00, 0x18, 0x00, 0x70, // decq 0x70001800
-  0x75, 0x01,                                     // jnz 1f
-  0xcc                                            // int3
+  0xf6, 0x04, 0x25, 0x07, 0x18, 0x00, 0x70, 0x80, // 0: testb $0x80, 0x70001807
+  0x75, 0x0b,                                     // 8: jnz 1f
+  0x48, 0xff, 0x0c, 0x25, 0x00, 0x18, 0x00, 0x70, // 10: decq 0x70001800
+  0x75, 0x01,                                     // 18: jnz 1f
+  0xcc                                            // 20: int3
 };
 static const uint8_t tick_x86[] = {
-  0x83, 0x2d, 0x00, 0x18, 0x00, 0x70, 0x01, // subl $1, 0x70001800
-  0x75, 0x0a,                               // jnz 1f
-  0x83, 0x2d, 0x04, 0x18, 0x00, 0x70, 0x01, // subl $1, 0x70001804
-  0x73, 0x01,                               // jae 1f (no borrow)
-  0xcc                                      // int3
+  0xf6, 0x05, 0x07, 0x18, 0x00, 0x70, 0x80, // 0: testb $0x80, 0x70001807
+  0x75, 0x13,                               // 7: jnz 1f
+  0x83, 0x2d, 0x00, 0x18, 0x00, 0x70, 0x01, // 9: subl $1, 0x70001800
+  0x75, 0x0a,                               // 16: jnz 1f
+  0x83, 0x2d, 0x04, 0x18, 0x00, 0x70, 0x01, // 18: subl $1, 0x70001804
+  0x73, 0x01,                               // 25: jae 1f (no borrow)
+  0xcc                                      // 27: int3
 };
 static const uint8_t tick_arm64[] = {
-  0x30, 0x00, 0xae, 0xd2, // movz x16, #0x7001, lsl #16
-  0x11, 0x02, 0x44, 0xf9, // ldr x17, [x16, #0x800]
-  0x31, 0x06, 0x00, 0xd1, // sub x17, x17, #1
-  0x11, 0x02, 0x04, 0xf9, // str x17, [x16, #0x800]
-  0x51, 0x00, 0x00, 0xb5, // cbnz x17, 1f
-  0x80, 0x6a, 0x2a, 0xd4, // brk #0x5354
-  0xf1, 0x03, 0x1f, 0xaa  // 1: mov x17, xzr
+  0x30, 0x00, 0xae, 0xd2, // 0: movz x16, #0x7001, lsl #16
+  0x11, 0x02, 0x44, 0xf9, // 4: ldr x17, [x16, #0x800]
+  0xb1, 0x00, 0xf8, 0xb7, // 8: tbnz x17, #63, 1f
+  0x31, 0x06, 0x00, 0xd1, // 12: sub x17, x17, #1
+  0x11, 0x02, 0x04, 0xf9, // 16: str x17, [x16, #0x800]
+  0x51, 0x00, 0x00, 0xb5, // 20: cbnz x17, 1f
+  0x80, 0x6a, 0x2a, 0xd4, // 24: brk #0x5354
+  0xf1, 0x03, 0x1f, 0xaa  // 28: 1: mov x17, xzr
 };
+// The longest of them, for buffers.
+static const size_t TICK_MAX_SIZE = sizeof(tick_arm64);
+static_assert(sizeof(tick_x64) <= TICK_MAX_SIZE &&
+                  sizeof(tick_x86) <= TICK_MAX_SIZE,
+              "tick buffers too small");
+
+// Whether an aarch64 tick stopped at |offset| in its sequence, with |x17|, is
+// yet to commit, and will: from the tbnz to the str (the commit), except at
+// the tbnz when the ldr loaded a disarmed countdown (x17's top bit set), where
+// the guard skips the tick and stores nothing.
+static bool arm64_commit_ahead(size_t offset, uint64_t x17) {
+  return offset >= 8 && offset < 20 && !(offset == 8 && (x17 >> 63));
+}
 
 // Read code from t's memory as the program has it: without the int3s of rr's
 // breakpoints (a debugger's breakpoint may be inside a tick sequence).
@@ -155,17 +175,17 @@ bool is_software_tick_trap(Task* t, const siginfo_t& si) {
     case x86_64:
       seq = tick_x64;
       len = sizeof(tick_x64);
-      trap_offset = 10;
+      trap_offset = 20;
       break;
     case x86:
       seq = tick_x86;
       len = sizeof(tick_x86);
-      trap_offset = 18;
+      trap_offset = 27;
       break;
     case aarch64:
       seq = tick_arm64;
       len = sizeof(tick_arm64);
-      trap_offset = 20;
+      trap_offset = 24;
       break;
     default:
       return false;
@@ -180,7 +200,7 @@ bool is_software_tick_trap(Task* t, const siginfo_t& si) {
       BKPT_NONE) {
     return false;
   }
-  uint8_t buf[sizeof(tick_arm64)];
+  uint8_t buf[TICK_MAX_SIZE];
   if (!read_code(t, trap - trap_offset, len, buf)) {
     return false;
   }
@@ -194,54 +214,57 @@ Ticks complete_software_tick_sequence(Task* t) {
     return 0;
   }
   // The offsets of the instructions after the commit (the decrement): jnz and
-  // int3 (x86-64); jnz, the borrow's subl, jae and int3 (i386). On aarch64
-  // x17 holds the countdown from the ldr until the mov at the end clears it,
-  // so also the instructions before the commit (the str): sub and str, then
-  // cbnz, brk and mov.
-  static const size_t x64_offsets[] = { 8, 10 };
-  static const size_t x86_offsets[] = { 7, 9, 16, 18 };
-  static const size_t arm64_offsets[] = { 8, 12, 16, 20, 24 };
+  // int3 (x86-64); jnz, the borrow's subl, jae and int3 (i386). Before the
+  // commit the x86 flags come from the guard's testb of the countdown's top
+  // bit, which is clear while the task runs, in recording and replay alike. On
+  // aarch64 x17 holds the countdown from the ldr until the mov at the end
+  // clears it, so also the instructions before the commit (the str): tbnz, sub
+  // and str, then cbnz, brk and mov (which the tbnz jumps to when the guard
+  // skips the tick).
+  static const size_t x64_offsets[] = { 18, 20 };
+  static const size_t x86_offsets[] = { 16, 18, 25, 27 };
+  static const size_t arm64_offsets[] = { 8, 12, 16, 20, 24, 28 };
   const uint8_t* seq;
   size_t len;
-  // The offset of the instruction after the commit.
-  size_t commit_end;
   const size_t* offsets;
   size_t noffsets;
   switch (t->arch()) {
     case x86_64:
       seq = tick_x64;
       len = sizeof(tick_x64);
-      commit_end = 8;
       offsets = x64_offsets;
-      noffsets = 2;
+      noffsets = sizeof(x64_offsets) / sizeof(x64_offsets[0]);
       break;
     case x86:
       seq = tick_x86;
       len = sizeof(tick_x86);
-      commit_end = 7;
       offsets = x86_offsets;
-      noffsets = 4;
+      noffsets = sizeof(x86_offsets) / sizeof(x86_offsets[0]);
       break;
     case aarch64:
       seq = tick_arm64;
       len = sizeof(tick_arm64);
-      commit_end = 16;
       offsets = arm64_offsets;
-      noffsets = 5;
+      noffsets = sizeof(arm64_offsets) / sizeof(arm64_offsets[0]);
       break;
     default:
       return 0;
   }
   uintptr_t pc = t->ip().register_value();
-  uint8_t buf[sizeof(tick_arm64)];
+  uint8_t buf[TICK_MAX_SIZE];
   for (size_t i = 0; i < noffsets; ++i) {
     uintptr_t start = pc - offsets[i];
     if (!read_code(t, start, len, buf) || memcmp(buf, seq, len)) {
       continue;
     }
-    // Before the commit the counters have not counted the tick (the
-    // countdown still holds what the ldr loaded): completing commits it.
-    Ticks committed = offsets[i] < commit_end ? 1 : 0;
+    // Before the commit (only on aarch64) the counters have not counted the
+    // tick (the countdown still holds what the ldr loaded): completing commits
+    // it, if the tick would commit at all.
+    Ticks committed = 0;
+    if (t->arch() == aarch64 &&
+        arm64_commit_ahead(offsets[i], t->regs().x(17))) {
+      committed = 1;
+    }
     LOG(debug) << "  stopped inside a tick sequence at " << t->ip()
                << "; completing it" << (committed ? " and its tick" : "");
     Registers r = t->regs();
@@ -258,9 +281,9 @@ Ticks complete_software_tick_sequence(Task* t) {
 
 // Whether t, an i386 task, is stopped between a tick's two subl instructions:
 // after the low word reached 0 (ZF set) and before the borrow from the high
-// word, i.e. at the jnz or at the second subl. Or just after an int3 that rr
-// put there for a breakpoint: the pc is then 1 byte into the instruction
-// (which no jump targets), before rr moves it back.
+// word, i.e. at the jnz (offset 16) or at the second subl (18). Or just after
+// an int3 that rr put there for a breakpoint: the pc is then 1 byte into the
+// instruction (which no jump targets), before rr moves it back.
 static bool x86_borrow_pending(Task* t) {
   // A task whose stop we have not processed has no registers to look at. (A
   // task blocked in the kernel is not inside a tick sequence.)
@@ -273,7 +296,7 @@ static bool x86_borrow_pending(Task* t) {
   }
   uintptr_t pc = r.ip().register_value();
   uint8_t buf[sizeof(tick_x86)];
-  for (size_t offset : { 7, 9, 8, 10 }) {
+  for (size_t offset : { 16, 18, 17, 19 }) {
     if (read_code(t, pc - offset, sizeof(buf), buf) &&
         !memcmp(buf, tick_x86, sizeof(buf))) {
       LOG(debug) << "  stopped at " << r.ip()
@@ -285,10 +308,10 @@ static bool x86_borrow_pending(Task* t) {
 }
 
 // Whether t, an aarch64 task, is stopped between a tick's ldr and its str
-// (the commit), where x17 holds what the str will store: the countdown the
-// ldr loaded, less 1 once the sub has run. Returns the offset in the sequence
-// (8: at the sub; 12: at the str), else 0. (On aarch64 rr's breakpoints do
-// not move the pc.)
+// (the commit), with the commit ahead (arm64_commit_ahead), where x17 holds
+// what the str will store: the countdown the ldr loaded, less 1 once the sub
+// has run. Returns the offset in the sequence (8: at the tbnz; 12: at the sub;
+// 16: at the str), else 0. (On aarch64 rr's breakpoints do not move the pc.)
 static size_t arm64_commit_pending(Task* t) {
   // As in x86_borrow_pending.
   if (!t->stopped_or_unexpected_exit()) {
@@ -300,17 +323,20 @@ static size_t arm64_commit_pending(Task* t) {
     return 0;
   }
   uintptr_t pc = r.ip().register_value();
-  // Then the instruction at the pc (sub or str), before the whole sequence.
+  // Then the instruction at the pc (tbnz, sub or str), before the whole
+  // sequence.
   uint8_t insn[4];
   if (!read_code(t, pc, sizeof(insn), insn)) {
     return 0;
   }
-  size_t offset;
-  if (!memcmp(insn, tick_arm64 + 8, sizeof(insn))) {
-    offset = 8;
-  } else if (!memcmp(insn, tick_arm64 + 12, sizeof(insn))) {
-    offset = 12;
-  } else {
+  size_t offset = 0;
+  for (size_t o : { 8, 12, 16 }) {
+    if (!memcmp(insn, tick_arm64 + o, sizeof(insn))) {
+      offset = o;
+      break;
+    }
+  }
+  if (!arm64_commit_ahead(offset, r.x(17))) {
     return 0;
   }
   uint8_t buf[sizeof(tick_arm64)];
@@ -331,10 +357,11 @@ void rebase_pending_software_tick(Task* t, uint64_t slot) {
   if (!offset) {
     return;
   }
-  // As if the ldr had loaded the countdown just armed: the str then commits
-  // one tick against it, and the trap comes when that runs out.
+  // As if the ldr had loaded the countdown just armed (top bit clear, so a
+  // stop at the tbnz still commits): the str then commits one tick against it,
+  // and the trap comes when that runs out.
   Registers r = t->regs();
-  r.set_x(17, offset == 8 ? slot : slot - 1);
+  r.set_x(17, offset == 16 ? slot - 1 : slot);
   t->set_regs(r);
   // resume_execution has flushed the registers when it starts the counter.
   t->flush_regs();

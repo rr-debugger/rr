@@ -1406,7 +1406,8 @@ static void force_tick(void) {
   /* A software tick as well (include/rr/softticks.h), for recordings that
      count software ticks: the conditional branch above is not one. The
      sequence is the ABI's, byte for byte, so a trap in it is an ordinary tick
-     trap. With hardware ticks rr parks the countdown, so this never traps. */
+     trap. With hardware ticks rr parks the countdown (its top bit set), so
+     this only reads it. */
   RR_SOFTTICK();
 }
 

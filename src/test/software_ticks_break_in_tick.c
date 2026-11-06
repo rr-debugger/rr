@@ -7,7 +7,8 @@
  * must count the tick that stopped there (its borrow is still to come), arm
  * the countdown so that the borrow does not take from it, and recognize the
  * sequence despite the breakpoint; replay must reach every recorded event.
- * Elsewhere every place in the sequence but the trap runs at every tick, so
+ * Elsewhere every place in the sequence but the trap runs at every tick (the
+ * countdown is armed whenever rr runs us, so the guard never skips one), so
  * the breakpoint is after the loop. */
 
 #include "util.h"
@@ -25,7 +26,9 @@ static __attribute__((noinline, noclone)) void tick(void) {
   __asm__ __volatile__("tick_seq:\n\t" RR_SOFTTICKS_TICK_ASM "\n\t"
                        ".globl tick_bp\n\t"
                        ".type tick_bp, @function\n\t"
-                       ".set tick_bp, tick_seq + 9"
+                       /* After the guard (testb, jnz) and the low
+                          word's subl and jnz. */
+                       ".set tick_bp, tick_seq + 18"
                        ::: RR_SOFTTICKS_TICK_CLOBBERS);
 #else
   RR_SOFTTICK();
