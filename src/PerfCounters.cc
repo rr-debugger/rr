@@ -1536,8 +1536,12 @@ void PerfCounters::software_start(Task* t, Ticks ticks_period) {
   }
   sw_period = ticks_period > 0 ? uint64_t(ticks_period) : SOFTWARE_TICKS_UNLIMITED;
   sw_harvested = 0;
+  uint64_t slot = software_ticks_slot_for(t, sw_period);
   // Before the first exec there is no page; nothing ticks there either.
-  sw_owned = write_software_ticks_slot(t, software_ticks_slot_for(t, sw_period));
+  sw_owned = write_software_ticks_slot(t, slot);
+  if (sw_owned) {
+    rebase_pending_software_tick(t, slot);
+  }
   as->set_software_ticks_owner(sw_owned ? t->tuid() : TaskUid());
   opened = true;
   counting = true;

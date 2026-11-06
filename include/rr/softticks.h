@@ -36,17 +36,25 @@
  *     subtracts from the same count. A page the initializer below creates holds 2^64 - 1
  *     (both words all ones), which never traps in practice.
  *
- * Each tick commits in one instruction (the decrement), so the countdown is valid at any
- * stop (on i386, taking into account where the task stopped; see above). The trap comes
- * after the commit: the stop of a tick trap is at a fixed place in the sequence (x86:
- * SIGTRAP from the int3, pc after it; aarch64: SIGTRAP from `brk #RR_SOFTTICKS_BRK_IMM`,
- * pc at the brk, which the tracer must step over). A SIGTRAP at a sequence's trap
- * instruction is a tick trap; if the countdown is not 0 then, it is a stale one (the tick
- * was counted before an earlier stop) and the tracer just resumes. A stop between the
- * commit and the trap is an ordinary position: a replayer reaches it by running to one
- * tick before and advancing from there (a skid of 1). Inside a sequence, state that
- * depends on the countdown's value (x86: the flags; aarch64: x17) differs between
- * recording and replay; a replayer must not compare it there.
+ * Each tick commits in one instruction (x86: the decrement; aarch64: the str), so the
+ * countdown is valid at any stop (on i386, taking into account where the task stopped; see
+ * above). On aarch64 the str stores what the ldr loaded, less 1: while the task is stopped
+ * after the ldr and before the str, x17 holds the countdown in flight, so a tracer that
+ * writes the countdown (W) then must also set x17 as if the ldr had loaded W (W after the
+ * ldr, W - 1 after the sub), or the str overwrites W. The trap comes after the commit: the
+ * stop of a tick trap is at a fixed place in the sequence (x86: SIGTRAP from the int3, pc
+ * after it, the end of the sequence; aarch64: SIGTRAP from `brk #RR_SOFTTICKS_BRK_IMM`, pc
+ * at the brk, which the tracer must step over; rr resumes at the end of the sequence,
+ * setting x17 = 0 as the mov there would). A SIGTRAP at a sequence's trap instruction is a
+ * tick trap; if the countdown is not 0 then, it is a stale one (the tick was counted
+ * before an earlier stop) and the tracer just resumes. A stop between the commit and the
+ * trap is an ordinary position: a replayer reaches it by running to one tick before and
+ * advancing from there (a skid of 1). Inside a sequence, state that depends on the
+ * countdown's value (x86: the flags; aarch64: x17, from the ldr to the mov) differs
+ * between recording and replay; a replayer must not compare it there, or a recorder must
+ * not record a stop there (while recording, rr moves a signal stop there to the end of
+ * the sequence; on aarch64, from before the str, that counts the tick the str would have
+ * committed).
  *
  * Outside rr, each instrumented module's initializer (RR_SOFTTICKS_INIT_ASM, run from
  * .init_array at priority RR_SOFTTICKS_INIT_PRIORITY) maps the page if it is not mapped.

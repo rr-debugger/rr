@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "Ticks.h"
 #include "remote_ptr.h"
 
 /**
@@ -83,10 +84,25 @@ bool is_software_tick_trap(Task* t, const siginfo_t& si);
  * already been stopped, which counted the tick and parked the countdown, and
  * they are re-armed before it runs again, so completing the sequence only
  * drops a pending tick trap, i.e. a time-slice interrupt that the stop has
- * made moot (and on i386 a borrow that no longer applies to anything). Only
- * done where the countdown is ours (as for is_software_tick_trap).
- * Returns whether the pc moved. */
-bool complete_software_tick_sequence(Task* t);
+ * made moot (and on i386 a borrow that no longer applies to anything). On
+ * aarch64 the countdown's value is in x17 from the ldr until the mov at the
+ * end clears it, so this applies from the ldr on, and sets x17 to 0 as the
+ * mov does; before the str (the commit) the tick has not been counted, and
+ * completing the sequence commits it (the slot is parked; the str would only
+ * have overwritten that). Only done where the countdown is ours (as for
+ * is_software_tick_trap). Returns the number of ticks this committed (1 or
+ * 0), which the caller adds to the task's. */
+Ticks complete_software_tick_sequence(Task* t);
+
+/* Called after arming t's countdown with |slot|, before resuming t. On
+ * aarch64 a task stopped between a tick's ldr and its str (where
+ * complete_software_tick_sequence did not move it: in replay, or when
+ * recording at a SIGTRAP, group or exit stop) has in x17 the value the str will store, computed from the
+ * countdown the ldr loaded, which would overwrite the countdown just armed.
+ * Set x17 as if the ldr had loaded the new countdown, so that the str commits
+ * one tick against it. (The counterpart of i386's pending borrow, which
+ * software_ticks_slot_for compensates in the slot.) */
+void rebase_pending_software_tick(Task* t, uint64_t slot);
 
 /* Zero the countdown's slot in a copy of a preload thread-locals page (for
  * memory checksums: recording and replay program different values there). */
@@ -103,7 +119,9 @@ bool read_software_ticks_slot(Task* t, uint64_t* value);
 bool write_software_ticks_slot(Task* t, uint64_t value);
 
 /* The number of ticks t executes before its tick traps (0: the trap is due),
- * given the slot's value. On x86-64 and aarch64 that is the slot's value. On
+ * given the slot's value. On x86-64 and aarch64 that is the slot's value (on
+ * aarch64 also between a tick's ldr and its str: the tick has not been
+ * committed; see rebase_pending_software_tick). On
  * i386 the countdown is 64 bits but decremented one 32-bit word at a time:
  * when a tick takes the low word to 0 it borrows from the high word in a
  * second instruction, and traps if the high word was 0. With lo and hi the

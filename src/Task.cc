@@ -2534,9 +2534,15 @@ bool Task::did_waitpid(WaitStatus status) {
     LOG(debug) << "  software tick trap at " << ip()
                << "; treating as TIME_SLICE_SIGNAL";
     if (arch() == aarch64) {
-      // The pc is at the brk; continue after it.
+      // The pc is at the brk. Continue at the end of the sequence, doing
+      // what the `mov x17, xzr` after the brk does (x17 is 0 at the brk
+      // anyway). As on x86, a trap's stop is then where no register depends
+      // on the countdown: replay reaches the mov with whatever its own
+      // countdown left in x17, so a stop recorded there could not be found
+      // again.
       Registers r = regs();
-      r.set_ip(ip() + 4);
+      r.set_ip(ip() + 8);
+      r.set_x(17, 0);
       set_regs(r);
     }
     status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
@@ -2548,9 +2554,10 @@ bool Task::did_waitpid(WaitStatus status) {
   } else if (!status.reaped() && status.stop_sig() &&
              status.stop_sig() != SIGTRAP && !status.ptrace_event() &&
              hpc.is_software() && session().is_recording()) {
-    // A signal stop between a tick's decrement and its trap is moved to the
-    // end of the tick sequence, where replay can find it again.
-    complete_software_tick_sequence(this);
+    // A signal stop between a tick's decrement and its trap (aarch64: from
+    // the ldr on) is moved to the end of the tick sequence, where replay can
+    // find it again. On aarch64 that can commit the tick.
+    more_ticks += complete_software_tick_sequence(this);
   }
 
   wait_status = status;
