@@ -1120,6 +1120,7 @@ set(BASIC_TESTS
   flock2
   fork_brk
   fork_child_crash
+  fork_in_syscall_hook
   fork_many
   fsmount
   fstatat
@@ -1192,6 +1193,7 @@ set(BASIC_TESTS
   x86/lsl
   lsm_self_attr
   madvise
+  madvise_dontfork_child_mappings
   madvise_dontneed_private
   madvise_fork_enomem
   madvise_free

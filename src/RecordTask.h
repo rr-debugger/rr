@@ -848,6 +848,13 @@ public:
 
   SyscallbufCodeLayout syscallbuf_code_layout;
   ContextSwitchEvent desched_fd;
+  /* In a task created by fork() (or clone() without CLONE_VM), the address
+   * of its address space's copy of the syscall buffer of the task that
+   * created it (or of the copy that task inherited), still shared with that
+   * buffer's owner; otherwise null. init_buffers() maps our own syscall
+   * buffer over that copy when it can, and clears this; exec clears it
+   * too. */
+  remote_ptr<struct syscallbuf_hdr> inherited_syscallbuf;
   /* Value of hdr->num_rec_bytes when the buffer was flushed */
   uint32_t flushed_num_rec_bytes;
   /* Nonzero after the trace recorder has flushed the

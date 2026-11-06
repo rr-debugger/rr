@@ -3674,6 +3674,28 @@ static bool maybe_kill_task_at_scratch(RecordTask* t, int point) {
   return true;
 }
 
+static void use_scratch_memory(RecordTask* t, const KernelMapping& km) {
+  t->scratch_ptr = km.start();
+  t->scratch_size = km.size();
+
+  t->setup_preload_thread_locals();
+
+  // record this mmap for the replay
+  Registers r = t->regs();
+  uintptr_t saved_result = r.syscall_result();
+  r.set_syscall_result(t->scratch_ptr);
+  t->set_regs(r);
+
+  struct stat stat;
+  memset(&stat, 0, sizeof(stat));
+  auto record_in_trace = t->trace_writer().write_mapped_region(t,
+    km, stat, km.fsname(), vector<TraceRemoteFd>());
+  ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
+
+  r.set_syscall_result(saved_result);
+  t->set_regs(r);
+}
+
 static void init_scratch_memory(RecordTask* t,
                                 ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
   const int scratch_size = 512 * page_size();
@@ -3712,27 +3734,29 @@ static void init_scratch_memory(RecordTask* t,
                << " died before we saw the result of its scratch mmap";
     return;
   }
-  t->scratch_ptr = scratch_ptr;
-  t->scratch_size = scratch_size;
+  KernelMapping km = t->vm()->map(t, scratch_ptr, sz, prot, flags, 0, string());
+  use_scratch_memory(t, km);
+}
 
-  t->setup_preload_thread_locals();
+/**
+ * `t` was created by fork() (or clone() without CLONE_VM), so its address
+ * space started as a copy of `parent`'s, with copies of `parent`'s scratch
+ * memory and syscall buffer. `t` uses those ranges for its own instead of
+ * taking memory where the tracee can expect to have none, e.g. in ranges
+ * `parent` marked MADV_DONTFORK, which the kernel unmapped for `t`. Replay
+ * uses the copy of the scratch memory the same way.
+ */
+static void init_forked_task_buffers(RecordTask* t, RecordTask* parent) {
+  t->inherited_syscallbuf = parent->syscallbuf_child
+                                ? parent->syscallbuf_child
+                                : parent->inherited_syscallbuf;
 
-  // record this mmap for the replay
-  Registers r = t->regs();
-  uintptr_t saved_result = r.syscall_result();
-  r.set_syscall_result(t->scratch_ptr);
-  t->set_regs(r);
-
-  KernelMapping km =
-      t->vm()->map(t, t->scratch_ptr, sz, prot, flags, 0, string());
-  struct stat stat;
-  memset(&stat, 0, sizeof(stat));
-  auto record_in_trace = t->trace_writer().write_mapped_region(t,
-    km, stat, km.fsname(), vector<TraceRemoteFd>());
-  ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
-
-  r.set_syscall_result(saved_result);
-  t->set_regs(r);
+  KernelMapping km = t->inherited_scratch_memory(parent);
+  if (km.size()) {
+    use_scratch_memory(t, km);
+  } else {
+    init_scratch_memory(t);
+  }
 }
 
 static int ptrace_option_for_event(int ptrace_event) {
@@ -3867,7 +3891,11 @@ static Switchable prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) 
   t->session().trace_writer().write_task_event(TraceTaskEvent::for_clone(
       new_task->tid, t->tid, new_task->own_namespace_rec_tid, flags));
 
-  init_scratch_memory(new_task);
+  if (flags & CLONE_VM) {
+    init_scratch_memory(new_task);
+  } else {
+    init_forked_task_buffers(new_task, t);
+  }
 
   Switchable switchable = (flags & CLONE_VFORK) ? ALLOW_SWITCH : PREVENT_SWITCH;
   if ((t->emulated_ptrace_options & ptrace_option_for_event(ptrace_event)) &&

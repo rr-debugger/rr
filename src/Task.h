@@ -991,6 +991,14 @@ public:
     return scratch_ptr.is_null() ? remote_ptr<void>()
                                  : scratch_ptr + scratch_size;
   }
+  /**
+   * In a task that `creator` created with fork() (or clone() without
+   * CLONE_VM): the mapping that is our address space's copy of `creator`'s
+   * scratch memory, or an empty mapping if that range isn't exactly one
+   * mapping here. Such a task uses the copy as its own scratch memory, in
+   * recording and replay.
+   */
+  KernelMapping inherited_scratch_memory(Task* creator);
   void setup_preload_thread_locals();
   void setup_preload_thread_locals_from_clone(Task* origin);
   // If `fetch_full` is false, avoid fetching the full stub_scratch_2 on aarch64

@@ -26,7 +26,7 @@ namespace rr {
 /**
  * Bump this when rr changes mean that traces produced by new rr can't be replayed by old rr.
  */
-const int FORWARD_COMPATIBILITY_VERSION = 3;
+const int FORWARD_COMPATIBILITY_VERSION = 4;
 
 struct CPUIDRecord;
 struct DisableCPUIDFeatures;
@@ -541,6 +541,9 @@ public:
     BufferedSyscallForcedTick = 0x8,
     // Whether this trace requires globals.is_replay to be toggled.
     UsesGlobalsInReplay = 0x10,
+    // Whether forked tasks in this trace use their copy of their creator's
+    // scratch memory as their own when they have one.
+    ForkedTaskUsesInheritedScratch = 0x20,
   };
 
   int quirks() const { return quirks_; }

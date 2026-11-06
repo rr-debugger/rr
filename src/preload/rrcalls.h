@@ -169,7 +169,8 @@ enum rrcall_kill_point {
      scratch memory, before the task has run. Arm it with
      RRCALL_ARM_KILL_INHERIT in the task that creates it. rr waits until it
      knows the task is dying (normally the task is then at its
-     PTRACE_EVENT_EXIT stop). */
+     PTRACE_EVENT_EXIT stop). A forked task that has a copy of its
+     creator's scratch memory uses the copy, so rr maps none for it. */
   RRCALL_KILL_BEFORE_CLONE_SCRATCH,
   /* The same, but just after rr's mmap of the scratch memory has taken
      effect. rr then acts as if it had never seen the mmap's result. */

@@ -391,6 +391,8 @@ void RecordTask::post_exec() {
   // soon after exec, we must not do a bogus set_robust_list syscall for
   // the clone.
   set_robust_list(nullptr, 0);
+  // The new address space has no copy of another task's syscall buffer.
+  inherited_syscallbuf = nullptr;
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 
@@ -517,7 +519,24 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
 
   args.cloned_file_data_fd = -1;
   args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
-  KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
+  // Replace the copy of a syscall buffer our address space inherited, if
+  // it's still there, rather than taking memory where the tracee can expect
+  // to have none (see init_forked_task_buffers()).
+  remote_ptr<void> map_hint;
+  if (inherited_syscallbuf && vm()->has_mapping(inherited_syscallbuf)) {
+    const AddressSpace::Mapping& m = vm()->mapping_of(inherited_syscallbuf);
+    bool in_use = false;
+    for (Task* tt : vm()->task_set()) {
+      in_use |= tt->syscallbuf_child == inherited_syscallbuf;
+    }
+    if ((m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) && !in_use &&
+        m.map.start() == inherited_syscallbuf &&
+        m.map.size() == syscallbuf_size) {
+      map_hint = inherited_syscallbuf;
+    }
+  }
+  inherited_syscallbuf = nullptr;
+  KernelMapping syscallbuf_km = init_syscall_buffer(remote, map_hint);
   if (!syscallbuf_km.size()) {
     // Syscallbuf allocation failed. This should mean the child is dead,
     // but just in case, return an error.
