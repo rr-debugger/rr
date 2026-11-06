@@ -44,7 +44,7 @@ jobs:
 
       - name: Start the container
         id: image
-        uses: ChronitonAI/rift-action@84cb4f9441ce4bfd6be8acd8a3b7bdbc2f2a806b # main, 2026-10-13
+        uses: ChronitonAI/rift-action@ad1431773c3f77021f03ec91465253d53772f89c # main, 2026-11-06
         with:
           # Mount namespaces for the tests (Docker's AppArmor profile refuses mount), room in
           # /dev/shm, and the runner's /usr for its lldb.
