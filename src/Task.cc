@@ -474,6 +474,18 @@ void Task::unmap_buffers_for(
   }
 }
 
+KernelMapping Task::inherited_scratch_memory(Task* creator) {
+  ASSERT(this, as != creator->as);
+  MemoryRange scratch(creator->scratch_ptr, creator->scratch_size);
+  if (scratch.size() && as->has_mapping(scratch.start())) {
+    const KernelMapping& km = as->mapping_of(scratch.start()).map;
+    if (MemoryRange(km) == scratch) {
+      return km;
+    }
+  }
+  return KernelMapping();
+}
+
 void Task::did_kill()
 {
   /* We may or may not have seen this event (see the note on race conditions
@@ -2781,9 +2793,10 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       // space.
       AutoRemoteSyscalls remote(t);
       for (Task* tt : as->task_set()) {
-        // Leak the scratch buffer for the task we cloned from. We need to do
-        // this because we may be using part of it for the syscallbuf stack
-        // and unmapping it now would cause a crash in the new task.
+        // Keep the buffers of the task we cloned from: the new task may be
+        // running on part of its scratch memory (e.g. the syscallbuf alt
+        // stack). The new task normally uses that scratch memory as its own
+        // and maps its syscall buffer over that one.
         if (tt != this) {
           t->unmap_buffers_for(remote, tt, tt->syscallbuf_child);
         }

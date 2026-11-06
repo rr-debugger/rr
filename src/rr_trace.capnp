@@ -134,6 +134,11 @@ struct Header {
     # Whether the version of rr that recorded this was using the globals.in_replay
     # flag rather than the rr page in_replay flag.
     usesGlobalsInReplay @24 :Bool = true;
+
+    # Whether the version of rr that recorded this made a task created by
+    # fork() (or clone() without CLONE_VM) use its copy of its creator's
+    # scratch memory as its own scratch memory when it had one.
+    forkedTaskUsesInheritedScratch @32 :Bool = false;
   }
   # Are we known to be in chaos mode? Useful for debugging.
   chaosMode @16 :ChaosMode = unknown;

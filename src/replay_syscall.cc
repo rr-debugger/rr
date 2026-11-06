@@ -71,13 +71,16 @@ namespace rr {
 
 #endif // CHECK_SYSCALL_NUMBERS
 
+static void use_scratch_memory(ReplayTask* t, const KernelMapping& km) {
+  t->scratch_ptr = km.start();
+  t->scratch_size = km.size();
+  t->setup_preload_thread_locals();
+}
+
 static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
                                 const TraceReader::MappedData& data) {
   ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
 
-  t->scratch_ptr = km.start();
-  t->scratch_size = km.size();
-  size_t sz = t->scratch_size;
   // Make the scratch buffer read/write during replay so that
   // preload's sys_read can use it to buffer cloned data.
   ASSERT(t, (km.prot() & (PROT_READ | PROT_WRITE)) == (PROT_READ | PROT_WRITE));
@@ -87,13 +90,13 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
 
   {
     AutoRemoteSyscalls remote(t);
-    remote.infallible_mmap_syscall_if_alive(t->scratch_ptr, sz, km.prot(),
+    remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(),
                                             km.flags() | MAP_FIXED, -1, 0);
-    t->vm()->map(t, t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
+    t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), 0, string(),
                  KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
                  &km);
   }
-  t->setup_preload_thread_locals();
+  use_scratch_memory(t, km);
 }
 
 /**
@@ -291,7 +294,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_task->set_regs(new_r);
   new_task->canonicalize_regs(new_task->arch());
 
-  if (!syscall_shares_vm<Arch>(r)) {
+  bool shares_vm = syscall_shares_vm<Arch>(r);
+  if (!shares_vm) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for
@@ -316,7 +320,21 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // If the new task died before rr could map its scratch memory, the trace
   // has no scratch mapping for it.
   if (found) {
-    init_scratch_memory(new_task, km, data);
+    // A forked task's scratch memory is its copy of its creator's when the
+    // recorded mapping is that copy, in traces whose recorder did that (see
+    // init_forked_task_buffers() in record_syscall.cc). The task may be
+    // running on it (e.g. on the syscallbuf alt stack, if it forked in the
+    // syscall hook), so keep it.
+    KernelMapping inherited;
+    if (!shares_vm && t->session().has_trace_quirk(
+                          TraceReader::ForkedTaskUsesInheritedScratch)) {
+      inherited = new_task->inherited_scratch_memory(t);
+    }
+    if (inherited.size() && MemoryRange(inherited) == MemoryRange(km)) {
+      use_scratch_memory(new_task, km);
+    } else {
+      init_scratch_memory(new_task, km, data);
+    }
   }
 }
 
