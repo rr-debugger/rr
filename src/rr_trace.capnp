@@ -38,6 +38,11 @@ enum TicksSemantics {
   retiredConditionalBranches @0;
   # Excludes interrupts, far branches, and rets
   takenBranches @1;
+  # Counted by the recorded program itself, not by the CPU: the compiler places
+  # ticks so that no instrumented code can execute twice without a tick in
+  # between (at function entries, loop headers and after returns_twice calls).
+  # Code that was not instrumented does not tick. See Header.softwareTicks.
+  software @2;
 }
 
 enum CpuTriState {
@@ -163,6 +168,20 @@ struct Header {
   # optimization is not disabled) but the user chose to force recording to
   # continue regardless.
   cpuImproperlyConfigured @29 :CpuTriState = unknown;
+  # Only meaningful when ticksSemantics is software.
+  softwareTicks :group {
+    # The version of the tracee ABI the instrumented code follows. Version 1: each
+    # tick tests the top bit of the 64-bit countdown at countdownAddress (a slot
+    # in the preload thread-locals area; on i386 two 32-bit words, the high one
+    # decremented when the low one reaches zero) and, while it is clear (armed),
+    # decrements the countdown and traps (x86: int3, aarch64: brk) when it runs
+    # out; a countdown with the top bit set is disarmed and left alone. The
+    # recorder and the replayer arm 1 <= N < 2^63 before resuming a task, the way
+    # they program the PMU's sample period; the ticks a task executed are how far
+    # its countdown dropped.
+    abiVersion @32 :UInt32 = 0;
+    countdownAddress @33 :RemotePtr;
+  }
 }
 
 # A file descriptor belonging to a task
