@@ -4249,6 +4249,36 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
+    /* ssize_t vmsplice(int fd, const struct iovec *iov, unsigned long nr_segs,
+                        unsigned int flags); */
+    case Arch::vmsplice: {
+      // When fd is open for reading but not for writing (the read end of a
+      // pipe), the kernel copies pipe data into the iovecs like readv().
+      // Otherwise it writes no user memory.
+      int fd_flags = t->fd_flags((int)regs.arg1_signed());
+      // import_iovec() takes nr_segs as an unsigned int.
+      unsigned int nr_segs = (unsigned int)regs.arg3();
+      if (fd_flags < 0 || (fd_flags & O_ACCMODE) != O_RDONLY ||
+          nr_segs > IOV_MAX) {
+        return ALLOW_SWITCH;
+      }
+      auto iovecsp = remote_ptr<typename Arch::iovec>(regs.arg2());
+      bool ok = true;
+      auto iovecs = t->read_mem(iovecsp, nr_segs, &ok);
+      if (!ok) {
+        return ALLOW_SWITCH;
+      }
+      syscall_state.reg_parameter(2, sizeof(typename Arch::iovec) * nr_segs,
+                                  IN);
+      ParamSize io_size =
+          ParamSize::from_syscall_result<typename Arch::ssize_t>();
+      for (unsigned int i = 0; i < nr_segs; ++i) {
+        syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(iovecsp + i, iov_base),
+                                        io_size.limit_size(iovecs[i].iov_len));
+      }
+      return ALLOW_SWITCH;
+    }
+
     case Arch::sendfile: {
       syscall_state.reg_parameter<typename Arch::off_t>(3, IN_OUT);
       return ALLOW_SWITCH;

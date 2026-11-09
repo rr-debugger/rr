@@ -1515,6 +1515,7 @@ set(BASIC_TESTS
   vfork_shared
   video_capture
   vm_readv_writev
+  vmsplice
   vsyscall
   vsyscall_timeslice
   x86/x87env

@@ -2887,7 +2887,8 @@ static void copy_tls(const Task::CapturedState& state,
   RR_ARCH_FUNCTION(copy_tls_arch, remote.arch(), state, remote);
 }
 
-static int64_t fdinfo_field(Task* t, int fd, const char* field, bool must_exist) {
+static int64_t fdinfo_field(Task* t, int fd, const char* field, bool must_exist,
+                            int base = 10) {
   char buf[1024];
   sprintf(buf, "/proc/%d/fdinfo/%d", t->tid, fd);
   ScopedFd info(buf, O_RDONLY);
@@ -2905,7 +2906,7 @@ static int64_t fdinfo_field(Task* t, int fd, const char* field, bool must_exist)
   while (*p) {
     if (strncmp(p, field, field_len) == 0) {
       char* end;
-      long long int r = strtoll(p + field_len, &end, 10);
+      long long int r = strtoll(p + field_len, &end, base);
       ASSERT(t, *end == 0 || *end == '\n');
       return r;
     }
@@ -2926,6 +2927,10 @@ int64_t Task::fd_offset(int fd) {
 
 pid_t Task::pid_of_pidfd(int fd) {
   return fdinfo_field(this, fd, "Pid:", false);
+}
+
+int Task::fd_flags(int fd) {
+  return fdinfo_field(this, fd, "flags:", false, 8);
 }
 
 Task::CapturedState Task::capture_state() {
