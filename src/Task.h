@@ -257,6 +257,11 @@ public:
    * Get pid of pidfd |fd|
    */
   pid_t pid_of_pidfd(int fd);
+  /**
+   * Get the file status flags of |fd| (as open(2) takes them, including the
+   * access mode), or -1 if |fd| is not open.
+   */
+  int fd_flags(int fd);
 
   /**
    * Records the wait status of this task as |status|, e.g. if
