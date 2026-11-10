@@ -1372,6 +1372,7 @@ set(BASIC_TESTS
   samask
   save_data_fd
   sched_attr
+  sched_reap_zombie
   sched_setaffinity
   sched_setparam
   sched_yield
