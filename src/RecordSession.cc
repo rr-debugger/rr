@@ -47,74 +47,122 @@ template <typename T> static remote_ptr<T> mask_low_bit(remote_ptr<T> p) {
   return p.as_int() & ~uintptr_t(1);
 }
 
-template <typename Arch>
-static void record_robust_futex_change(
-    RecordTask* t, const typename Arch::robust_list_head& head,
-    remote_ptr<void> base) {
-  if (base.is_null()) {
-    return;
+/**
+ * Whether the kernel's own accesses to the `size` bytes at `addr` work: it
+ * reads only readable memory and writes only writable memory, unlike our
+ * accesses through /proc/<pid>/mem.
+ */
+static bool kernel_can_access(RecordTask* t, remote_ptr<void> addr,
+                              size_t size, bool write) {
+  int prot = write ? PROT_WRITE : PROT_READ | PROT_WRITE;
+  // On aarch64 the kernel ignores the tag of the address when the task has
+  // enabled the tagged address ABI, as tasks that tag pointers do.
+  addr = untagged_addr(t->arch(), addr);
+  for (remote_ptr<void> p : { addr, addr + (size - 1) }) {
+    if (!t->vm()->has_mapping(p) ||
+        !(t->vm()->mapping_of(p).map.prot() & prot)) {
+      return false;
+    }
   }
-  remote_ptr<void> futex_void_ptr = base + head.futex_offset;
-  auto futex_ptr = futex_void_ptr.cast<uint32_t>();
-  // We can't just record the current futex value because at this point
-  // in task exit the robust futex handling has not happened yet. So we have
-  // to emulate what the kernel will do!
+  return true;
+}
+
+struct RobustFutexWrite {
+  remote_ptr<uint32_t> futex;
+  uint32_t value;
+};
+
+/**
+ * Emulates the kernel's handle_futex_death(): if the futex holds `t`'s tid,
+ * the kernel marks it FUTEX_OWNER_DIED, keeping FUTEX_WAITERS, and wakes a
+ * waiter. Returns false where the kernel gives up on the list.
+ */
+static bool robust_futex_exit_write(RecordTask* t, remote_ptr<uint32_t> futex,
+                                    vector<RobustFutexWrite>& writes) {
+  if (futex.as_int() % sizeof(uint32_t) ||
+      !kernel_can_access(t, futex, sizeof(uint32_t), false)) {
+    return false;
+  }
   bool ok = true;
-  uint32_t val = t->read_mem(futex_ptr, &ok);
+  uint32_t val = t->read_mem(futex, &ok);
   if (!ok) {
-    return;
+    return false;
   }
   if (pid_t(val & FUTEX_TID_MASK) != t->own_namespace_rec_tid) {
-    return;
+    return true;
   }
-  val = (val & FUTEX_WAITERS) | FUTEX_OWNER_DIED;
-  // Update memory now so that the kernel doesn't decide to do it later, at
-  // a time that might race with other tracee execution.
-  t->write_mem(futex_ptr, val);
-  t->record_local(futex_ptr, &val);
+  if (!kernel_can_access(t, futex, sizeof(uint32_t), true)) {
+    return false;
+  }
+  writes.push_back({ futex, (val & FUTEX_WAITERS) | FUTEX_OWNER_DIED });
+  return true;
 }
 
 /**
- * Any user-space writes performed by robust futex handling are captured here.
- * They must be emulated during replay; the kernel will not do it for us
+ * Returns the writes the kernel's robust futex handling (exit_robust_list())
+ * will make when `t` exits. It hasn't happened yet at this point in task
+ * exit, so we walk the list the way the kernel does.
+ * The writes must be emulated during replay; the kernel will not do it for us
  * during replay because the TID value in each futex is the recorded
  * TID, not the actual TID of the dying task.
  */
 template <typename Arch>
-static void record_robust_futex_changes_arch(RecordTask* t) {
+static vector<RobustFutexWrite> robust_futex_exit_writes_arch(RecordTask* t) {
+  vector<RobustFutexWrite> writes;
   if (t->did_record_robust_futex_changes) {
-    return;
+    return writes;
   }
   t->did_record_robust_futex_changes = true;
 
-  auto head_ptr = t->robust_list().cast<typename Arch::robust_list_head>();
+  typedef typename Arch::robust_list robust_list;
+  typedef typename Arch::robust_list_head robust_list_head;
+  auto head_ptr = t->robust_list().cast<robust_list_head>();
   if (head_ptr.is_null()) {
-    return;
+    return writes;
   }
-  ASSERT(t, t->robust_list_len() == sizeof(typename Arch::robust_list_head));
-  bool ok = true;
+  ASSERT(t, t->robust_list_len() == sizeof(robust_list_head));
+  bool ok = kernel_can_access(t, head_ptr, sizeof(robust_list_head), false);
+  if (!ok) {
+    return writes;
+  }
   auto head = t->read_mem(head_ptr, &ok);
   if (!ok) {
-    return;
+    return writes;
   }
-  record_robust_futex_change<Arch>(t, head,
-                                   mask_low_bit(head.list_op_pending.rptr()));
+  auto futex_of = [&head](remote_ptr<robust_list> entry) {
+    remote_ptr<void> futex = remote_ptr<void>(entry) + head.futex_offset;
+    return futex.cast<uint32_t>();
+  };
+  auto pending = mask_low_bit(head.list_op_pending.rptr());
   // Like the kernel, give up on a list that's too long or has a cycle that
   // doesn't lead back to the head.
   int limit = ROBUST_LIST_LIMIT;
   for (auto current = mask_low_bit(head.list.next.rptr());
        current.as_int() != head_ptr.as_int() && limit > 0; --limit) {
-    record_robust_futex_change<Arch>(t, head, current);
-    auto next = t->read_mem(current, &ok);
-    if (!ok) {
-      return;
+    // The kernel reads the next entry before it handles this one, and it
+    // handles the pending futex, which may be on the list, last.
+    remote_ptr<robust_list> next;
+    ok = kernel_can_access(t, current, sizeof(robust_list), false);
+    if (ok) {
+      next = mask_low_bit(t->read_mem(current, &ok).next.rptr());
     }
-    current = mask_low_bit(next.next.rptr());
+    if (current != pending &&
+        !robust_futex_exit_write(t, futex_of(current), writes)) {
+      return writes;
+    }
+    if (!ok) {
+      return writes;
+    }
+    current = next;
   }
+  if (!pending.is_null()) {
+    robust_futex_exit_write(t, futex_of(pending), writes);
+  }
+  return writes;
 }
 
-static void record_robust_futex_changes(RecordTask* t) {
-  RR_ARCH_FUNCTION(record_robust_futex_changes_arch, t->arch(), t);
+static vector<RobustFutexWrite> robust_futex_exit_writes(RecordTask* t) {
+  RR_ARCH_FUNCTION(robust_futex_exit_writes_arch, t->arch(), t);
 }
 
 static bool looks_like_syscall_entry(RecordTask* t) {
@@ -276,11 +324,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     t->destroy_buffers(nullptr, nullptr);
   }
 
+  vector<RobustFutexWrite> robust_futex_writes;
   WaitStatus exit_status;
   if (t->was_reaped()) {
     exit_status = t->status();
   } else {
-    record_robust_futex_changes(t);
+    robust_futex_writes = robust_futex_exit_writes(t);
 
     unsigned long msg = 0;
     // If ptrace_if_stopped fails, then the task has been killed by SIGKILL
@@ -308,6 +357,16 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // letting this task complete its exit.
   bool may_wait_exit = !t->was_reaped() && !is_coredumping_signal(exit_status.fatal_sig()) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
+  // If we wait for this task to exit, the kernel makes its robust futex writes
+  // while we wait, so they can't race with other tracees, and wakes the
+  // futexes' waiters. Otherwise make the writes now so that the kernel doesn't
+  // make them later, at a time that might race with other tracee execution.
+  for (auto& w : robust_futex_writes) {
+    if (!may_wait_exit) {
+      t->write_mem(w.futex, w.value);
+    }
+    t->record_local(w.futex, &w.value);
+  }
   t->record_exit_trace_event(exit_status);
   t->record_exit_event(
     (!t->was_reaped() && !may_wait_exit) ? RecordTask::WRITE_CHILD_TID : RecordTask::KERNEL_WRITES_CHILD_TID);
@@ -1507,7 +1566,7 @@ void RecordSession::dispose_of_leader_killed_by_exec(RecordTask* leader) {
     // rseq area alone.
     // The ticks hpc.stop() reads are lost, as in handle_ptrace_exit_event();
     // replay doesn't check them for EV_EXIT.
-    // XXX We can't do record_robust_futex_changes here because the address
+    // XXX We can't record the robust futex writes here because the address
     // space has already gone. That would only matter if some of them were
     // in memory accessible to another process even after exec, i.e. a
     // shared-memory mapping or two different thread-groups sharing the same
