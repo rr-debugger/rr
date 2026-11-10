@@ -1193,6 +1193,7 @@ set(BASIC_TESTS
   lsm_self_attr
   madvise
   madvise_dontneed_private
+  madvise_fork_enomem
   madvise_free
   madvise_misc
   madvise_remove

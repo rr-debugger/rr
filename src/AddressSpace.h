@@ -961,6 +961,8 @@ private:
   void populate_address_space(Task* t);
 
   void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
+  void add_range_where_mapped(std::set<MemoryRange>& ranges,
+                              const MemoryRange& range);
   void update_syscall_ips(Task* t);
 
   bool update_watchpoint_value(const MemoryRange& range,
