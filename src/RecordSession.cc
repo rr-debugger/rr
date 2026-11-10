@@ -165,6 +165,15 @@ static vector<RobustFutexWrite> robust_futex_exit_writes(RecordTask* t) {
   RR_ARCH_FUNCTION(robust_futex_exit_writes_arch, t->arch(), t);
 }
 
+/**
+ * Whether `t`'s process may be dumping core. The CoreDumping field is new in
+ * Linux 4.15 (c643401218be); without it we can't tell.
+ */
+static bool may_be_dumping_core(RecordTask* t) {
+  auto core_dumping = read_proc_status_fields(t->tid, "CoreDumping");
+  return core_dumping.empty() || core_dumping[0] != "0";
+}
+
 static bool looks_like_syscall_entry(RecordTask* t) {
   bool ok;
   bool at_syscall = is_at_syscall_instruction(t,
@@ -347,15 +356,17 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // safely.
   t->hpc.stop(t);
 
-  // If we died because of a coredumping signal, that is a barrier event, and
-  // every task in the address space needs to pass its PTRACE_EXIT_EVENT before
-  // they proceed to (potentially hidden) zombie state, so we can't wait for
-  // that to happen.
+  // If we died because of a coredumping signal while the core dump is in
+  // progress, we can't wait for this task to exit: before Linux 5.16
+  // (92307383082d) the task waits for the dump in exit_mm(), after its
+  // PTRACE_EVENT_EXIT stop, and the dump waits for every task in the address
+  // space to pass its PTRACE_EVENT_EXIT stop and get there.
   // Similarly we can't wait for this task to exit if there are other
   // tasks in its pid namespace that need to exit and this is the last thread
   // of pid-1 in that namespace, because the kernel must reap them before
   // letting this task complete its exit.
-  bool may_wait_exit = !t->was_reaped() && !is_coredumping_signal(exit_status.fatal_sig()) &&
+  bool may_wait_exit = !t->was_reaped() &&
+    !(is_coredumping_signal(exit_status.fatal_sig()) && may_be_dumping_core(t)) &&
     !t->waiting_for_pid_namespace_tasks_to_exit();
   // If we wait for this task to exit, the kernel makes its robust futex writes
   // while we wait, so they can't race with other tracees, and wakes the
