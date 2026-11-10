@@ -1370,6 +1370,7 @@ set(BASIC_TESTS
   rlimit
   robust_futex_clone
   robust_futex_cycle
+  robust_futex_walk
   rrcall_arm_kill
   rrcall_arm_kill_inherit
   rseq_cpu_id_reset
@@ -1550,7 +1551,8 @@ if(FANOTIFY_H)
 endif()
 
 if(HAVE_ROBUST_MUTEX)
-  set(BASIC_TESTS ${BASIC_TESTS} robust_futex)
+  set(BASIC_TESTS ${BASIC_TESTS} robust_futex robust_futex_owner_died
+      robust_futex_owner_died_thread)
 endif()
 
 set(BASIC_CPP_TESTS
