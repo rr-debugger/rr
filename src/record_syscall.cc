@@ -187,9 +187,11 @@ enum ArgMode {
   // so we can modify it without making the modifications potentially visible
   // to user code. Otherwise, such parameters can be ignored.
   IN,
-  // Syscall memory parameter is out-parameter only.
+  // Syscall memory parameter is out-parameter only. Value is written back from
+  // scratch only if the syscall succeeds.
   OUT,
-  // Syscall memory parameter is an in-out parameter.
+  // Syscall memory parameter is an in-out parameter. Value is written back from
+  // scratch whether the syscall succeeds or fails.
   IN_OUT,
   // Syscall memory parameter is an in-out parameter but we must not use
   // scratch (e.g. for futexes, we must use the actual memory word).
@@ -803,11 +805,8 @@ size_t TaskSyscallState::eval_param_size(size_t i,
 void TaskSyscallState::process_syscall_results() {
   ASSERT(t, preparation_done);
 
-  // XXX what's the best way to handle failed syscalls? Currently we just
-  // record everything as if it succeeded. That handles failed syscalls that
-  // wrote partial results, but doesn't handle syscalls that failed with
-  // EFAULT.
   vector<size_t> actual_sizes;
+  bool syscall_failed = t->regs().syscall_failed();
   if (scratch_enabled) {
     size_t scratch_num_bytes = scratch - t->scratch_ptr;
     auto data = t->read_mem(t->scratch_ptr.cast<uint8_t>(), scratch_num_bytes);
@@ -818,7 +817,7 @@ void TaskSyscallState::process_syscall_results() {
       auto& param = param_list[i];
       size_t size = eval_param_size(i, actual_sizes);
       if (write_back == WRITE_BACK &&
-          (param.mode == IN_OUT || param.mode == OUT)) {
+          (param.mode == IN_OUT || (param.mode == OUT && !syscall_failed))) {
         const uint8_t* d = data.data() + (param.scratch - t->scratch_ptr);
         t->write_bytes_helper(param.dest, size, d);
       }
@@ -842,7 +841,7 @@ void TaskSyscallState::process_syscall_results() {
         size_t size = actual_sizes[i];
         if (param.mode == IN_OUT_NO_SCRATCH) {
           t->record_remote(param.dest, size);
-        } else if (param.mode == IN_OUT || param.mode == OUT) {
+        } else if (param.mode == IN_OUT || (param.mode == OUT && !syscall_failed)) {
           // If pointers in memory were fixed up in step 2, then record
           // from tracee memory to ensure we record such fixes. Otherwise we
           // can record from our local data.
@@ -872,7 +871,7 @@ void TaskSyscallState::process_syscall_results() {
         for (size_t i = 0; i < param_list.size(); ++i) {
           auto& param2 = param_list[i];
           size_t param2_size = actual_sizes[i];
-          if (param2.mode == IN) {
+          if (param2.mode == IN || (param.mode == OUT && syscall_failed)) {
             continue;
           }
           MemoryRange intersection = MemoryRange(param2.dest, param2_size).
@@ -895,7 +894,7 @@ void TaskSyscallState::process_syscall_results() {
     for (size_t i = 0; i < param_list.size(); ++i) {
       auto& param = param_list[i];
       size_t size = actual_sizes[i];
-      if (param.mode != IN) {
+      if (param.mode != IN && (param.mode != OUT || !syscall_failed)) {
         t->record_remote(param.dest, size);
       }
     }
@@ -5546,19 +5545,19 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
      * switching and we should take the hint. */
 
     case Arch::nanosleep:
-      syscall_state.reg_parameter<typename Arch::timespec>(2);
+      syscall_state.reg_parameter<typename Arch::timespec>(2, IN_OUT);
       return ALLOW_SWITCH;
 
     case Arch::clock_nanosleep:
       // The kernel writes the remaining time only for a relative sleep.
       if (!(regs.arg2() & TIMER_ABSTIME)) {
-        syscall_state.reg_parameter<typename Arch::timespec>(4);
+        syscall_state.reg_parameter<typename Arch::timespec>(4, IN_OUT);
       }
       return ALLOW_SWITCH;
 
     case Arch::clock_nanosleep_time64:
       if (!(regs.arg2() & TIMER_ABSTIME)) {
-        syscall_state.reg_parameter<typename Arch::Arch64::timespec>(4);
+        syscall_state.reg_parameter<typename Arch::Arch64::timespec>(4, IN_OUT);
       }
       return ALLOW_SWITCH;
 
@@ -5587,7 +5586,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::rt_sigaction: {
       syscall_state.reg_parameter<typename Arch::kernel_sigaction>(
           2, IN, protect_rr_sigs_sa_mask);
-      syscall_state.reg_parameter<typename Arch::kernel_sigaction>(3, OUT);
+      syscall_state.reg_parameter<typename Arch::kernel_sigaction>(3);
       return PREVENT_SWITCH;
     }
 
