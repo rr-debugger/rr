@@ -2770,14 +2770,10 @@ RecordSession::RecordResult RecordSession::record_step() {
     // to do something (e.g. terminate the recording).
     return result;
   }
-  // If the task has been reaped prematurely then it's not running
-  // and we can't get registers etc, so minimize what we do between here
-  // to handle_ptrace_exit_event().
-  if (t->waiting_for_reap) {
-    // Give it another chance to be reaped
-    t->did_reach_zombie();
-    return result;
-  }
+  // Record the SCHED of the task we switched away from before the early
+  // returns below, so replay runs that task up to where it stopped before
+  // what we run next. This includes a switch to a task that we only reap:
+  // that leaves no current task, so the next step has no `prev_task`.
   RecordTask* prev_task = find_task(prev_task_tuid);
   if (prev_task && prev_task->ev().type() == EV_SCHED) {
     if (prev_task != t) {
@@ -2786,6 +2782,14 @@ RecordSession::RecordResult RecordSession::record_step() {
       prev_task->record_current_event();
     }
     prev_task->pop_event(EV_SCHED);
+  }
+  // If the task has been reaped prematurely then it's not running
+  // and we can't get registers etc, so minimize what we do between here
+  // to handle_ptrace_exit_event().
+  if (t->waiting_for_reap) {
+    // Give it another chance to be reaped
+    t->did_reach_zombie();
+    return result;
   }
   // This comes before switch_to_exec_image(): at the initial exec stop,
   // post_exec() sets done_initial_exec(), which ends these kills.
