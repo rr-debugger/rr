@@ -2730,7 +2730,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
                                   TaskSyscallState& syscall_state)
 {
   pid_t pid = (pid_t)t->regs().arg2_signed();
-  int command = (int)t->regs().arg1_signed();
+  int command = t->regs().arg1_signed();
   switch (command) {
     case Arch::PTRACE_PEEKUSR: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
@@ -2889,7 +2889,7 @@ static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
   pid_t tid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
-  int command = (int)t->regs().arg1_signed();
+  int command = t->regs().arg1_signed();
   switch (non_negative_command(command)) {
     case PTRACE_ATTACH: {
       RecordTask* tracee = prepare_ptrace_attach(t, tid, syscall_state);
@@ -3395,7 +3395,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           emulate = false;
           break;
         }
-        int code = (int)t->regs().arg4();
+        int code = t->regs().arg4();
         switch (code) {
           case ARCH_GET_FS:
           case ARCH_GET_GS: {
@@ -4108,7 +4108,7 @@ static Switchable maybe_emulate_proc_mem_write(RecordTask* t,
                                                TaskSyscallState& syscall_state,
                                                int syscallno) {
   const Registers& regs = t->regs();
-  int fd = (int)regs.arg1_signed();
+  int fd = regs.arg1_signed();
   Switchable switchable = t->fd_table()->will_write(t, fd);
   FileMonitor* monitor = t->fd_table()->get_monitor(fd);
   if (!monitor || monitor->type() != FileMonitor::ProcMem) {
@@ -4493,7 +4493,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case MSGCTL: {
-          int cmd = (int)regs.arg3_signed() & ~IPC_64;
+          int cmd = regs.arg3_signed() & ~IPC_64;
           return prepare_msgctl<Arch>(syscall_state, cmd, 5);
         }
 
@@ -4521,12 +4521,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         }
 
         case SHMCTL: {
-          int cmd = (int)regs.arg3_signed() & ~IPC_64;
+          int cmd = regs.arg3_signed() & ~IPC_64;
           return prepare_shmctl<Arch>(syscall_state, cmd, 5);
         }
 
         case SEMCTL: {
-          int cmd = (int)regs.arg4_signed() & ~IPC_64;
+          int cmd = regs.arg4_signed() & ~IPC_64;
           return prepare_semctl<Arch>(t, syscall_state, (int)regs.arg2_signed(),
                                       cmd, 5, DEREFERENCE);
         }
@@ -4919,8 +4919,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::copy_file_range: {
       syscall_state.reg_parameter<typename Arch::loff_t>(2, IN_OUT);
       syscall_state.reg_parameter<typename Arch::loff_t>(4, IN_OUT);
-      int in_fd = (int)regs.arg1_signed();
-      int out_fd = (int)regs.arg3_signed();
+      int in_fd = regs.arg1_signed();
+      int out_fd = regs.arg3_signed();
       ASSERT(t, !t->fd_table()->is_monitoring(in_fd) &&
              !t->fd_table()->is_monitoring(out_fd))
              << "copy_file_range for monitored fds not supported yet";
@@ -4939,8 +4939,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           ((uint32_t)regs.arg6() & ~RR_KNOWN_PREADV2_FLAGS)) {
         return reject_preadv2_pwritev2<Arch>(t, syscall_state);
       }
-      int fd = (int)regs.arg1_signed();
-      int iovcnt = (int)regs.arg3_signed();
+      int fd = regs.arg1_signed();
+      int iovcnt = regs.arg3_signed();
       remote_ptr<void> iovecsp_void = syscall_state.reg_parameter(
           2, sizeof(typename Arch::iovec) * iovcnt, IN);
       auto iovecsp = iovecsp_void.cast<typename Arch::iovec>();
@@ -5073,7 +5073,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       // lowering the child's nice value.
       if ((int)regs.arg1_signed() == PRIO_PROCESS) {
         RecordTask* target =
-            (int)regs.arg2_signed()
+            regs.arg2_signed()
                 ? t->session().find_task((int)regs.arg2_signed())
                 : t;
         if (target) {
@@ -5247,7 +5247,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           Registers r = regs;
           r.set_arg1(intptr_t(-1));
           t->set_regs(r);
-          int val = (int)regs.arg2();
+          int val = regs.arg2();
           if (val != PR_TSC_ENABLE && val != PR_TSC_SIGSEGV) {
             syscall_state.emulate_result(-EINVAL);
           } else {
@@ -5373,7 +5373,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           Registers r = t->regs();
           r.set_arg1(intptr_t(-1));
           t->set_regs(r);
-          int val = (int)t->regs().arg2();
+          int val = t->regs().arg2();
           t->cpuid_mode = !!val;
           syscall_state.emulate_result(0);
           break;
@@ -7000,7 +7000,7 @@ static string extra_expected_errno_info(RecordTask* t,
     case EINVAL:
       switch (t->regs().original_syscallno()) {
         case Arch::ioctl: {
-          int request = (int)t->regs().arg2_signed();
+          int request = t->regs().arg2_signed();
           if (request == SIOCETHTOOL) {
             auto ifreq_ptr = remote_ptr<typename Arch::ifreq>(t->regs().arg3());
             auto ifreq = t->read_mem(ifreq_ptr);
@@ -7023,7 +7023,7 @@ static string extra_expected_errno_info(RecordTask* t,
           ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
         case Arch::prctl: {
-          int request = (int)t->regs().orig_arg1_signed();
+          int request = t->regs().orig_arg1_signed();
           if (request == PR_SET_MM) {
             ss << "; unknown prctl(PR_SET_MM, " << HEX((int)t->regs().arg2_signed()) << ")";
           } else {
@@ -7644,7 +7644,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::recvmmsg_time64:
     case Arch::recvmmsg:
       if (!t->regs().syscall_failed()) {
-        int msg_count = (int)t->regs().syscall_result_signed();
+        int msg_count = t->regs().syscall_result_signed();
         auto msgs = t->read_mem(
             remote_ptr<typename Arch::mmsghdr>(t->regs().arg2()), msg_count);
         for (auto& m : msgs) {
