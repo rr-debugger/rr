@@ -1458,6 +1458,31 @@ void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
   update_watchpoint_values(addr, addr + num_bytes);
 }
 
+// madvise applies the advice only to mapped memory, failing with ENOMEM
+// where the range has gaps. Add each contiguous mapped part of |range| as
+// one range.
+void AddressSpace::add_range_where_mapped(set<MemoryRange>& ranges,
+                                          const MemoryRange& range) {
+  remote_ptr<void> start;
+  remote_ptr<void> end;
+  for (const auto& m : maps_containing_or_after(range.start())) {
+    MemoryRange r = m.map.intersect(range);
+    if (!r.size()) {
+      break;
+    }
+    if (r.start() != end) {
+      if (start != end) {
+        add_range(ranges, MemoryRange(start, end));
+      }
+      start = r.start();
+    }
+    end = r.end();
+  }
+  if (start != end) {
+    add_range(ranges, MemoryRange(start, end));
+  }
+}
+
 void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
                           int advice) {
   LOG(debug) << "madvise(" << addr << ", " << num_bytes << ", " << advice
@@ -1466,13 +1491,13 @@ void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
 
   switch (advice) {
     case MADV_DONTFORK:
-      add_range(dont_fork, MemoryRange(addr, num_bytes));
+      add_range_where_mapped(dont_fork, MemoryRange(addr, num_bytes));
       break;
     case MADV_DOFORK:
       remove_range(dont_fork, MemoryRange(addr, num_bytes));
       break;
     case MADV_WIPEONFORK:
-      add_range(wipe_on_fork, MemoryRange(addr, num_bytes));
+      add_range_where_mapped(wipe_on_fork, MemoryRange(addr, num_bytes));
       break;
     case MADV_KEEPONFORK:
       remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));

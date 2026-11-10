@@ -628,11 +628,15 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
   // mprotect can change the protection status of some mapped regions before
   // failing.
+  // madvise applies the advice to the mapped parts of the range when it
+  // fails with ENOMEM because other parts are unmapped.
   // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
   // note its usage here.
   if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())
       && !is_pkey_mprotect_syscall(syscallno, regs.arch())
-      && !is_prctl_syscall(syscallno, regs.arch())) {
+      && !is_prctl_syscall(syscallno, regs.arch())
+      && !(is_madvise_syscall(syscallno, regs.arch()) &&
+           regs.syscall_result_signed() == -ENOMEM)) {
     return;
   }
 
