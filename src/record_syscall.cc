@@ -806,7 +806,9 @@ void TaskSyscallState::process_syscall_results() {
   ASSERT(t, preparation_done);
 
   vector<size_t> actual_sizes;
-  bool syscall_failed = t->regs().syscall_failed();
+  bool syscall_failed = should_emulate_result
+      ? -4096 < (int64_t)emulated_result && (int64_t)emulated_result < 0
+      : t->regs().syscall_failed();
   if (scratch_enabled) {
     size_t scratch_num_bytes = scratch - t->scratch_ptr;
     auto data = t->read_mem(t->scratch_ptr.cast<uint8_t>(), scratch_num_bytes);
