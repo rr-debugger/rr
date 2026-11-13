@@ -119,13 +119,15 @@ enum CpuMicroarch {
   IntelMeteorLake,
   IntelLunarLake,
   IntelArrowLake,
+  IntelPantherLake,
   IntelSilvermont,
   IntelGoldmont,
   IntelTremont,
   IntelGracemont,
   IntelCrestmont,
   IntelSkymont,
-  LastIntel = IntelSkymont,
+  IntelDarkmont,
+  LastIntel = IntelDarkmont,
   FirstAMD,
   AMDF15 = FirstAMD,
   AMDZen,
@@ -243,12 +245,16 @@ static const PmuConfig pmu_configs[] = {
   { IntelMeteorLake, "Intel Meteor Lake", 0x5111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelLunarLake, "Intel Lunar Lake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelArrowLake, "Intel Arrow Lake", 0x100005111c4, 0, 0, 125, PMU_TICKS_RCB },
+  // Panther Lake BR_INST_RETIRED.COND: event 0xc4, umask 0x07.
+  { IntelPantherLake, "Intel Panther Lake", 0x5107c4, 0, 0, 125, PMU_TICKS_RCB },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelTremont, "Intel Tremont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelGracemont, "Intel Gracemont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelCrestmont, "Intel Crestmont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
   { IntelSkymont, "Intel Skymont", 0x517ec4, 0, 0, 100, PMU_TICKS_RCB },
+  // Darkmont uses the same conditional-branch event as Panther Lake P-cores.
+  { IntelDarkmont, "Intel Darkmont", 0x5107c4, 0, 0, 100, PMU_TICKS_RCB },
   { AMDF15, "AMD Family 15h", 0xc4, 0xc6, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
   // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
   // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken

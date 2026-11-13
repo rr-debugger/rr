@@ -169,6 +169,8 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x6c5:
     case 0x6c6:
       return IntelArrowLake;
+    case 0x6cc:
+      return IntelPantherLake;
     case 0x1201: // A8-3530MX
     case 0x1502: // Piledriver
     case 0x1530: // Steamroller
@@ -240,6 +242,9 @@ static vector<CPUInfo> compute_cpus_info() {
             // for the PMU.
             uarch = IntelSkymont;
             break;
+          case IntelPantherLake:
+            uarch = IntelDarkmont;
+            break;
           default:
             FATAL() << "Atom architecture detected but not known for " << uarch;
           }
@@ -247,6 +252,9 @@ static vector<CPUInfo> compute_cpus_info() {
           switch (uarch) {
           case IntelArrowLake:
             uarch = IntelCrestmont;
+            break;
+          case IntelPantherLake:
+            uarch = IntelDarkmont;
             break;
           default:
             FATAL() << "Lowpower architecture detected but not known for " << uarch;
