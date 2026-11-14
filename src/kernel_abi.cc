@@ -20,6 +20,8 @@
 #include <linux/if_bonding.h>
 #include <linux/ipc.h>
 #include <linux/mqueue.h>
+#include <linux/mroute.h>
+#include <linux/mroute6.h>
 #include <linux/msg.h>
 #include <linux/net.h>
 #include <linux/netfilter/x_tables.h>
