@@ -353,8 +353,8 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
   priority = rt->priority;
   syscallbuf_code_layout = rt->syscallbuf_code_layout;
   prctl_seccomp_status = rt->prctl_seccomp_status;
-  robust_futex_list = rt->robust_futex_list;
-  robust_futex_list_len = rt->robust_futex_list_len;
+  // A new task starts without a robust futex list, as in the kernel
+  // (copy_process() -> futex_init_task()).
   tsc_mode = rt->tsc_mode;
   cpuid_mode = rt->cpuid_mode;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
