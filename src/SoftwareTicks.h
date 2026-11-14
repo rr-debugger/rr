@@ -1,0 +1,150 @@
+/* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+#ifndef RR_SOFTWARE_TICKS_H_
+#define RR_SOFTWARE_TICKS_H_
+
+#include <signal.h>
+#include <stdint.h>
+#include <stddef.h>
+
+#include "Ticks.h"
+#include "remote_ptr.h"
+
+/**
+ * Software ticks (TICKS_SOFTWARE). A program built with a software-ticks
+ * compiler pass counts its own ticks: the pass places a tick so that no
+ * instrumented instruction executes twice in the same stack frame without a
+ * tick in between (at function entries, loop headers and after returns_twice
+ * calls). A tick decrements a countdown at SOFTWARE_TICKS_COUNTDOWN_ADDR, in
+ * the preload thread-locals page, and traps when it reaches 0, unless the
+ * countdown's top bit is set, which disarms it: then the tick only reads it
+ * (include/rr/softticks.h is the tracee ABI). With TICKS_SOFTWARE,
+ * PerfCounters programs that countdown instead of the PMU, and
+ * Task::did_waitpid turns a tick trap into the TIME_SLICE_SIGNAL stop the PMU
+ * would have caused, so the rest of the recorder and the replayer work
+ * unchanged. Such a program carries the note RR_SOFTWARE_TICKS_NOTE_SECTION;
+ * rr records it with software ticks when it is the program rr starts.
+ *
+ * The countdown is per address space, not per task: rr runs one task at a
+ * time, and PerfCounters::start takes it over for the task it resumes, first
+ * counting the ticks of the task that had it.
+ */
+
+namespace rr {
+
+class ElfFileReader;
+class Task;
+
+/* The tracee ABI version rr implements (Header.softwareTicks.abiVersion and
+ * the descriptor of the .note.rrsoftticks note). */
+const uint32_t SOFTWARE_TICKS_ABI_VERSION = 1;
+
+#define RR_SOFTWARE_TICKS_NOTE_SECTION ".note.rrsoftticks"
+const uint32_t SOFTWARE_TICKS_NOTE_TYPE = 1;
+
+/* The slot's value while no task's countdown is armed (2^64 - 1, on every
+ * architecture: the top bit is set, so ticks leave it alone). rr writes it
+ * when it creates the preload thread-locals page (the page's creator must
+ * disarm the countdown) and when a task stops. */
+const uint64_t SOFTWARE_TICKS_PARKED = 0xFFFFFFFFFFFFFFFFULL;
+
+/* The countdown rr arms when it wants no interrupt (as for the PMU). Armed
+ * countdowns are below 2^63, with the top bit clear. */
+const uint64_t SOFTWARE_TICKS_UNLIMITED = uint64_t(1) << 60;
+
+remote_ptr<uint64_t> software_ticks_countdown_address();
+
+/* Whether this recording or replay counts software ticks. Set before the
+ * session is created, so that PerfCounters::default_ticks_semantics() never
+ * touches the PMU. */
+bool software_ticks_mode();
+void set_software_ticks_mode(bool on);
+
+/* The ABI version of the file's .note.rrsoftticks note, or 0 if it has none. */
+uint32_t read_software_ticks_note(ElfFileReader& reader);
+
+/* Called after rr creates a preload thread-locals page: park the countdown. */
+void init_software_ticks_slot(Task* t);
+
+/* Whether t's current SIGTRAP stop, with siginfo |si|, is a tick trap of
+ * our countdown: the trap instruction of a tick sequence (x86: the pc is
+ * after the int3; aarch64: at the brk), not one of rr's breakpoints, in an
+ * address space whose countdown is in the preload thread-locals page rr
+ * created. It need not have found the countdown at 0: a tick whose trap was
+ * pending at an earlier stop traps when the task resumes, and is treated the
+ * same way. Where that page is not rr's (the tracee mapped over it, e.g. a
+ * tracee that is itself an rr placing its own page in its tracee), a tick
+ * trap is the tracee's signal. */
+bool is_software_tick_trap(Task* t, const siginfo_t& si);
+
+/* When recording, move a task stopped between a tick's decrement and the end
+ * of its sequence to the end of the sequence. What lies in between (the
+ * branch on the result; on i386 the borrow from the high word and a second
+ * branch; the trap) only affects the countdown and whether the trap runs,
+ * which depend on the countdown's value, which replay programs differently: a
+ * recorded event there could not be found again. (Before the decrement, the
+ * guard that tests the countdown's top bit sees it clear in recording and in
+ * replay alike.) The task's counters have already been stopped, which counted
+ * the tick and parked the countdown, and they are re-armed before it runs
+ * again, so completing the sequence only drops a pending tick trap, i.e. a
+ * time-slice interrupt that the stop has made moot (and on i386 a borrow that
+ * no longer applies to anything). On aarch64 the countdown's value is in x17
+ * from the ldr until the mov at the end clears it, so this applies from the
+ * ldr on (the guard's tbnz), and sets x17 to 0 as the mov does; before the
+ * str (the commit) the tick has not been counted, and completing the sequence
+ * commits it (the slot is parked; the str would only have overwritten that),
+ * unless the guard would skip it (at the tbnz, with x17's top bit set). Only
+ * done where the countdown is ours (as for is_software_tick_trap). Returns the
+ * number of ticks this committed (1 or 0), which the caller adds to the
+ * task's. */
+Ticks complete_software_tick_sequence(Task* t);
+
+/* Called after arming t's countdown with |slot|, before resuming t. On
+ * aarch64 a task stopped between a tick's ldr and its str (where
+ * complete_software_tick_sequence did not move it: in replay, or when
+ * recording at a SIGTRAP, group or exit stop) has in x17 the value the str
+ * will store, computed from the countdown the ldr loaded, which would
+ * overwrite the countdown just armed. Set x17 as if the ldr had loaded the new
+ * countdown, so that the str commits one tick against it (except at the
+ * guard's tbnz with x17's top bit set, where the tick skips the str). (The
+ * counterpart of i386's pending borrow, which software_ticks_slot_for
+ * compensates in the slot.) */
+void rebase_pending_software_tick(Task* t, uint64_t slot);
+
+/* Zero the countdown's slot in a copy of a preload thread-locals page (for
+ * memory checksums: recording and replay program different values there). */
+void normalize_software_ticks_slot(uint8_t* page, size_t size);
+
+/* The size of the preload_thread_locals segment: PRELOAD_THREAD_LOCALS_SIZE
+ * would end the shared file before the countdown, and the kernel does not
+ * keep what is written to a shared mapping's page beyond the end of the file,
+ * so the segment covers the countdown too. */
+size_t software_ticks_thread_locals_size();
+
+/* Read and write the slot through t's memory. */
+bool read_software_ticks_slot(Task* t, uint64_t* value);
+bool write_software_ticks_slot(Task* t, uint64_t value);
+
+/* The number of ticks t executes before its tick traps (0: the trap is due),
+ * given the slot's value. On x86-64 and aarch64 that is the slot's value (on
+ * aarch64 also between a tick's ldr and its str: the tick has not been
+ * committed; see rebase_pending_software_tick). On
+ * i386 the countdown is 64 bits but decremented one 32-bit word at a time:
+ * when a tick takes the low word to 0 it borrows from the high word in a
+ * second instruction, and traps if the high word was 0. With lo and hi the
+ * two words, it is hi * 2^32 + lo, where a low word of 0 counts as 2^32 (the
+ * borrow has been taken), less 2^32 while t is stopped between the two
+ * instructions (the borrow is still to come), modulo 2^64. So it depends on
+ * where t is stopped, and is unchanged by the borrow itself. */
+uint64_t software_ticks_remaining(Task* t, uint64_t slot);
+
+/* The slot value that makes software_ticks_remaining(t, slot) == remaining
+ * (1 <= remaining < 2^63, so that the slot's top bit is clear: armed. On i386,
+ * with a borrow pending, the slot's high word is 1 more, which keeps its top
+ * bit clear for remaining <= 2^63 - 2^32; the pending borrow's tick has
+ * passed its guard already anyway). */
+uint64_t software_ticks_slot_for(Task* t, uint64_t remaining);
+
+} // namespace rr
+
+#endif /* RR_SOFTWARE_TICKS_H_ */
