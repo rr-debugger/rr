@@ -10,6 +10,12 @@ static void exit_handler(__attribute__((unused)) int sig) {
 int main(void) {
   uint64_t old, new;
   signal(SIGSEGV, exit_handler);
+  /* A call that fails doesn't store the old set, also when that is where the
+     new set is. */
+  new = (uint64_t)-1;
+  test_assert(-1 == syscall(SYS_rt_sigprocmask, 99, &new, &new, sizeof(new)));
+  test_assert(errno == EINVAL);
+  test_assert(new == (uint64_t)-1);
   new = (uint64_t)-1;
   test_assert(0 == syscall(SYS_rt_sigprocmask, 2, &new, (void*)0, sizeof(new)));
   test_assert(new == (uint64_t)-1);
