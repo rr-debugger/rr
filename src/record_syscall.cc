@@ -873,7 +873,7 @@ void TaskSyscallState::process_syscall_results() {
         for (size_t i = 0; i < param_list.size(); ++i) {
           auto& param2 = param_list[i];
           size_t param2_size = actual_sizes[i];
-          if (param2.mode == IN || (param.mode == OUT && syscall_failed)) {
+          if (param2.mode == IN || (param2.mode == OUT && syscall_failed)) {
             continue;
           }
           MemoryRange intersection = MemoryRange(param2.dest, param2_size).
