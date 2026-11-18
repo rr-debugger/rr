@@ -1058,9 +1058,13 @@ static bool maybe_restart_syscall(RecordTask* t) {
   }
   if (t->is_syscall_restart()) {
     t->ev().transform(EV_SYSCALL);
-    Registers regs = t->regs();
-    regs.set_original_syscallno(t->ev().Syscall().regs.original_syscallno());
-    t->set_regs(regs);
+    // The task may be entering restart_syscall, which continues the
+    // interrupted syscall where it left off. Record the entry with the
+    // interrupted syscall's number; replay processes the exit by it.
+    // restart_syscall uses the pointers that the interrupted syscall got,
+    // which may point to scratch memory; rec_prepare_syscall() puts the
+    // same parameters at the same scratch addresses again.
+    t->ev().Syscall().regs.set_original_syscallno(t->ev().Syscall().number);
     t->canonicalize_regs(t->arch());
     return true;
   }
@@ -1171,8 +1175,16 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       last_task_switchable = PREVENT_SWITCH;
       t->ev().Syscall().regs = t->regs();
       t->ev().Syscall().state = ENTERING_SYSCALL;
-      // The syscallno may have been changed by the ptracer
-      t->ev().Syscall().number = t->regs().original_syscallno();
+      if (t->ev().Syscall().is_restart &&
+          is_restart_syscall_syscall(t->regs().original_syscallno(),
+                                     t->ev().Syscall().arch())) {
+        // See maybe_restart_syscall().
+        t->ev().Syscall().regs.set_original_syscallno(
+            t->ev().Syscall().number);
+      } else {
+        // The syscallno may have been changed by the ptracer
+        t->ev().Syscall().number = t->regs().original_syscallno();
+      }
       return;
 
     case ENTERING_SYSCALL: {
