@@ -2,13 +2,25 @@
 
 #include "nsutils.h"
 #include "util.h"
+#ifdef __RR_SOFTTICKS__
+#include <rr/softticks.h>
+#endif
 
 static int child_to_parent[2];
 
 /* Do a busy delay loop that changes registers so won't trigger
    rr's spinlock-detection heuristic */
 static char delay(void) {
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(RR_SOFTTICKS_TICK_ASM) && (defined(__x86_64__) || defined(__i386__))
+  /* Built for software ticks: the loop ticks, as the compiler would make a C loop
+     tick. Otherwise only ecx distinguishes its iterations, and replay has to stop
+     at every one of them to find where a time slice ended. */
+  asm("mov $10000000,%%ecx\n\t"
+      "2: " RR_SOFTTICKS_TICK_ASM "\n\t"
+      "loop 2b\n\t"
+      : : : "ecx", "memory", "cc");
+  return 0;
+#elif defined(__x86_64__) || defined(__i386__)
   asm("mov $10000000,%%ecx\n\t"
       "1: loop 1b\n\t"
       : : : "ecx", "memory");

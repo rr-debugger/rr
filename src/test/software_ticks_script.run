@@ -1,0 +1,13 @@
+source `dirname $0`/util.sh
+# A #! script whose interpreter counts software ticks (the software_ticks
+# test program, which ignores its arguments) is recorded with software ticks.
+save_exe software_ticks
+printf '#!%s\n' "$PWD/software_ticks-$nonce" > script-$nonce
+/bin/chmod +x script-$nonce
+just_record ./script-$nonce
+_RR_TRACE_DIR="$workdir" $RR_EXE $GLOBAL_OPTIONS traceinfo > traceinfo.txt ||
+  failed "traceinfo failed"
+grep -q '"ticksSemantics":"software"' traceinfo.txt ||
+  failed "the script was not recorded with software ticks"
+replay
+check EXIT-SUCCESS
