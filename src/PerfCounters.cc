@@ -1407,9 +1407,9 @@ void BpfAccelerator::match_regs_and_open_counter(const Registers& regs, ScopedFd
 }
 #endif
 
-static ScopedFd create_hw_breakpoint_counter(pid_t tid) {
+static ScopedFd create_hw_breakpoint_counter(pid_t tid, remote_code_ptr ip) {
   struct perf_event_attr attr = init_hw_breakpoint_attr();
-  attr.bp_addr = 0;
+  attr.bp_addr = ip.register_value();
   ScopedFd fd = start_counter(tid, -1, &attr);
 
   struct f_owner_ex own;
@@ -1423,13 +1423,26 @@ static ScopedFd create_hw_breakpoint_counter(pid_t tid) {
   return fd;
 }
 
-static void configure_hw_breakpoint_counter(remote_code_ptr ip, ScopedFd& fd) {
+// Returns false if the kernel doesn't support PERF_EVENT_IOC_MODIFY_ATTRIBUTES.
+// It's supported since Linux 4.17
+// (https://github.com/torvalds/linux/commit/32ff77e8cc9e66cc4fb38098f64fd54cc8f54573)
+// and for 32-bit processes on 64-bit kernels since 4.18
+// (https://github.com/torvalds/linux/commit/82489c5fe5f99ca95f708fecae9f2c8aa99398bb).
+static bool modify_hw_breakpoint_counter(remote_code_ptr ip, ScopedFd& fd) {
+  static bool modify_unsupported;
+  if (modify_unsupported) {
+    return false;
+  }
   struct perf_event_attr attr = init_hw_breakpoint_attr();
   attr.bp_addr = ip.register_value();
   if (ioctl(fd, PERF_EVENT_IOC_MODIFY_ATTRIBUTES, &attr)) {
-    FATAL() << "Failed PERF_EVENT_IOC_MODIFY_ATTRIBUTES";
+    if (errno != ENOTTY) {
+      FATAL() << "Failed PERF_EVENT_IOC_MODIFY_ATTRIBUTES";
+    }
+    modify_unsupported = true;
+    return false;
   }
-  infallible_perf_event_enable_if_open(fd);
+  return true;
 }
 
 bool PerfCounters::try_set_hardware_breakpoint(const Registers& regs) {
@@ -1448,13 +1461,19 @@ bool PerfCounters::try_set_hardware_breakpoint(const Registers& regs) {
     return true;
   }
 #endif
+  if (fd_hardware_breakpoint.is_open() &&
+      !modify_hw_breakpoint_counter(regs.ip(), fd_hardware_breakpoint)) {
+    // Close the old counter first so its debug register is free for the
+    // new one.
+    fd_hardware_breakpoint.close();
+  }
   if (!fd_hardware_breakpoint.is_open()) {
-    fd_hardware_breakpoint = create_hw_breakpoint_counter(tid);
+    fd_hardware_breakpoint = create_hw_breakpoint_counter(tid, regs.ip());
     if (!fd_hardware_breakpoint.is_open()) {
       return false;
     }
   }
-  configure_hw_breakpoint_counter(regs.ip(), fd_hardware_breakpoint);
+  infallible_perf_event_enable_if_open(fd_hardware_breakpoint);
   return true;
 }
 
