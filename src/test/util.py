@@ -12,7 +12,7 @@ __all__ = [ 'expect_rr', 'expect_list', 'expect_debugger',
             'scheduler_locking_on', 'scheduler_locking_off',
             'expect_expression', 'expect_threads',
             'send_custom_command', 'stepi', 'watchpoint_at_address_fail',
-            'send_lldb', 'send_debugger', 'debugger_type' ]
+            'send_lldb', 'send_debugger', 'debugger_type', 'skipped' ]
 
 # Don't use python timeout. Use test-monitor timeout instead.
 TIMEOUT_SEC = 10000
@@ -207,6 +207,13 @@ def ok():
     send_debugger('quit', 'quit')
     send_debugger('y', 'y')
     clean_up()
+
+# Like ok(), but exits with status 77, which debug_gdb_only in util.sh
+# treats as a skipped gdb half.
+def skipped(why):
+    print('NOTE: skipped:', why)
+    ok()
+    sys.exit(77)
 
 def get_exe_arch():
     send_gdb('show architecture')
