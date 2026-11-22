@@ -1,6 +1,10 @@
 from util import *
 import re
 
+# gdb before 13.1 can crash calling an ifunc such as strlen
+# (PR gdb/29941).
+call_ifunc = debugger_type != 'GDB' or get_gdb_version() >= 13.1
+
 send_custom_command('when-end')
 expect_debugger(re.compile(r'Event at end of recording: (\d+)'))
 first_when_end_result = int(last_match().group(1))
@@ -53,21 +57,24 @@ expect_debugger(re.compile(r'Event at end of recording: (\d+)'))
 second_when_end_result = int(last_match().group(1))
 
 # Ensure 'when' terminates a diversion
-expect_expression('(int)strlen("abcd")', 4)
+if call_ifunc:
+    expect_expression('(int)strlen("abcd")', 4)
 send_custom_command('when')
 expect_debugger(re.compile(r'Completed event: (\d+)'))
 t3 = int(last_match().group(1))
 if t3 != t2:
     failed('ERROR ... diversion changed event')
 
-expect_expression('(int)strlen("abcd")', 4)
+if call_ifunc:
+    expect_expression('(int)strlen("abcd")', 4)
 send_custom_command('when-ticks')
 expect_debugger(re.compile(r'Current tick: (\d+)'))
 ticks3 = int(last_match().group(1))
 if ticks3 != ticks2:
     failed('ERROR ... diversion changed ticks')
 
-expect_expression('(int)strlen("abcd")', 4)
+if call_ifunc:
+    expect_expression('(int)strlen("abcd")', 4)
 send_custom_command('when-tid')
 expect_debugger(re.compile(r'Current tid: (\d+)'))
 tid3 = int(last_match().group(1))
@@ -92,4 +99,6 @@ if t3 >= first_when_end_result:
 if t3 >= first_when_end_result:
     failed("ERROR ... Third when result was after when-end")
 
+if not call_ifunc:
+    skipped('calling strlen needs gdb 13.1 or later')
 ok()

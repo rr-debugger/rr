@@ -86,6 +86,9 @@ function onexit {
         if [[ "$nontmp_workdir" != "" ]]; then
             rm -rf $nontmp_workdir
         fi
+        if [[ "$test_skipped" == "y" ]]; then
+            exit 77
+        fi
     else
         echo -n Test $TESTNAME failed, leaving behind $tmp_workdir
         (rmdir "$nontmp_workdir" 2>/dev/null && echo) || echo " and $nontmp_workdir"
@@ -153,6 +156,9 @@ nontmp_workdir=
 # output around for developers to debug, and exit with a nonzero
 # exit code.
 test_passed=y
+# Did a debugger script skip checks?  If so, and nothing failed, we
+# exit with code 77 so that ctest reports the test as skipped.
+test_skipped=n
 # The unique ID allocated to this test directory.
 nonce=
 
@@ -397,8 +403,11 @@ function debug_gdb_only { expectscript=$1; replayargs=$2
     RR_LOG_FILE=rr.log _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT test-monitor.output \
         python3 $TESTDIR/$expectscript.py \
         $RR_EXE $GLOBAL_OPTIONS replay -o-n -o-ix -o$TESTDIR/test_setup.gdb $replayargs
-    if [[ $? == 0 ]]; then
+    exit_code=$?
+    if [[ $exit_code == 0 ]]; then
         passed_msg gdb
+    elif [[ $exit_code == 77 ]]; then
+        skipped_msg gdb
     else
         failed "debug script failed (gdb); see `pwd`/gdb_rr.log and `pwd`/test-monitor.output"
         echo "--------------------------------------------------"
@@ -419,6 +428,11 @@ function passed {
 
 function passed_msg { msg=$1
     echo "Test '$TESTNAME' PASSED ($msg)"
+}
+
+function skipped_msg { msg=$1
+    test_skipped=y
+    echo "NOTE: Test '$TESTNAME' skipped ($msg)"
 }
 
 function just_check_replay_err {
