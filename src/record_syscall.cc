@@ -1991,7 +1991,18 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(TCSETSW2):
       case IOCTL_MASK_SIZE(TCSETSF2):
         return PREVENT_SWITCH;
+      case IOCTL_MASK_SIZE(FIBMAP):
+        // Reads a block number and writes one back despite not having the
+        // _IOC_READ bit. It writes 0 also when it fails with EINVAL because
+        // the filesystem has no bmap, or with ERANGE.
+        syscall_state.reg_parameter<int>(3, IN_OUT);
+        return PREVENT_SWITCH;
+      case IOCTL_MASK_SIZE(FIGETBSZ):
+        // Writes its parameter despite not having the _IOC_READ bit.
+        syscall_state.reg_parameter<int>(3);
+        return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
+      case IOCTL_MASK_SIZE(EVIOCSFF):
         // Reads and writes its parameter despite not having the _IOC_READ bit.
         syscall_state.reg_parameter(3, size);
         return PREVENT_SWITCH;
