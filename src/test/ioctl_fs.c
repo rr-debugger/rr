@@ -12,6 +12,8 @@ int main(void) {
   char filebuf[4096] = {};
   char fmbuf[4096] = {};
   struct fiemap *fm;
+  int* blocksize;
+  int* block;
   int ret;
 
   test_assert(fd >= 0);
@@ -59,6 +61,34 @@ int main(void) {
       atomic_printf("i=%d fe_logical=0x%llx fe_physical=0x%llx fe_length=0x%llx fe_flags=0x%x\n", i,
                     fe->fe_logical, fe->fe_physical, fe->fe_length, fe->fe_flags);
     }
+  }
+
+  ALLOCATE_GUARD(blocksize, 0);
+  ret = ioctl(fd, FIGETBSZ, blocksize);
+  VERIFY_GUARD(blocksize);
+  if (ret < 0) {
+    /* Filesystems without a block size, e.g. overlayfs */
+    test_assert(errno == EINVAL);
+  } else {
+    test_assert(*blocksize > 0);
+    atomic_printf("blocksize=%d\n", *blocksize);
+  }
+
+  /* Block 1000 is past the end of the file. FIBMAP stores 0 for it, also
+     when it then fails with EINVAL because the filesystem has no bmap
+     (e.g. btrfs and tmpfs). Kernels before 5.6 fail with EINVAL without
+     storing anything in that case, see
+     https://github.com/torvalds/linux/commit/0d89fdae2afe833dd3025edd8c8287675d45c74e */
+  ALLOCATE_GUARD(block, 'd');
+  *block = 1000;
+  ret = ioctl(fd, FIBMAP, block);
+  VERIFY_GUARD(block);
+  if (ret < 0 && errno == EPERM) {
+    atomic_puts("FIBMAP needs CAP_SYS_RAWIO, skipping");
+  } else {
+    test_assert(ret == 0 || errno == EINVAL);
+    test_assert(*block == 0 || (ret < 0 && *block == 1000));
+    atomic_printf("FIBMAP ret=%d block=%d\n", ret, *block);
   }
 
   atomic_puts("EXIT-SUCCESS");
