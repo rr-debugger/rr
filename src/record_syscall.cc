@@ -5719,6 +5719,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       unsigned long maxnode = t->regs().arg3();
       unsigned long align_mask = 8 * sizeof(typename Arch::unsigned_long) - 1;
       unsigned long aligned_maxnode = (maxnode + align_mask) & ~align_mask;
+      // A 32-bit task's nodemask is written in 32-bit words, but the kernel
+      // zeroes it up to ALIGN(maxnode - 1, 64) bits when that is more than
+      // its own nodemask.
+      aligned_maxnode = max(aligned_maxnode, (maxnode - 1 + 63) & ~63UL);
       syscall_state.reg_parameter(2, aligned_maxnode / 8);
       return PREVENT_SWITCH;
     }
