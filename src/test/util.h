@@ -446,6 +446,37 @@ inline static void wait_for_task_asleep_in_syscall(pid_t tid, long syscallno,
 }
 
 /**
+ * Return true if signal |sig| is pending for task |tid|, which can be any
+ * thread of this or another process: in the thread's own pending set or in
+ * its process's shared one, as /proc/<tid>/status shows them (SigPnd and
+ * ShdPnd).
+ */
+inline static int task_has_pending_signal(pid_t tid, int sig) {
+  static const char* const fields[] = { "\nSigPnd:", "\nShdPnd:" };
+  char path[64];
+  char buf[4096];
+  size_t i;
+  int fd;
+  ssize_t len;
+
+  sprintf(path, "/proc/%d/status", tid);
+  fd = open(path, O_RDONLY);
+  test_assert(fd >= 0);
+  len = read(fd, buf, sizeof(buf) - 1);
+  test_assert(len > 0);
+  buf[len] = 0;
+  test_assert(0 == close(fd));
+  for (i = 0; i < sizeof(fields) / sizeof(fields[0]); ++i) {
+    char* p = strstr(buf, fields[i]);
+    test_assert(p != NULL);
+    if ((strtoull(p + strlen(fields[i]), NULL, 16) >> (sig - 1)) & 1) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/**
  * Represents syscall params.  Makes it simpler to pass them around,
  * and avoids pushing/popping all the data for calls.
  */

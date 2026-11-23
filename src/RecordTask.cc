@@ -200,6 +200,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       break_at_syscallbuf_final_instruction(false),
       syscallstub_exit_breakpoint(),
       did_set_syscallbuf_breakpoints(false),
+      resumed_at_aarch64_syscall_exit_before_restart(false),
       next_pmc_interrupt_is_for_user(false),
       did_record_robust_futex_changes(false),
       waiting_for_reap(false),
@@ -693,6 +694,8 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
                                        TicksRequest ticks_request, int sig) {
   held_at_emulated_ptrace_event = false;
   did_post_exec_at_exec_stop = false;
+  resumed_at_aarch64_syscall_exit_before_restart =
+      at_aarch64_syscall_exit_before_restart(regs());
 
   // We may execute user code, which could lead to an RDTSC or grow-map
   // operation which unblocks SIGSEGV, and we'll need to know whether to
@@ -836,6 +839,11 @@ void RecordTask::did_wait() {
         blocked_sigs = syscallbuf.blocked_sigs;
       }
     }
+  }
+
+  if (resumed_at_aarch64_syscall_exit_before_restart) {
+    resumed_at_aarch64_syscall_exit_before_restart = false;
+    restore_aarch64_restarted_syscall_arg1();
   }
 }
 
@@ -2103,12 +2111,11 @@ void RecordTask::maybe_reset_syscallbuf() {
 }
 
 bool RecordTask::at_aarch64_syscall_exit_before_restart(
-    const Event& event, const Registers& registers) {
-  // Syscall events record the syscall's own registers. A sigreturn never
-  // restarts (restore_sigframe() calls forget_syscall()), whatever value it
-  // restores to x0.
-  if (arch() != aarch64 || event.is_syscall_event() ||
-      !status().is_syscall() || !registers.syscall_may_restart() ||
+    const Registers& registers) {
+  // A sigreturn never restarts (restore_sigframe() calls forget_syscall()),
+  // whatever value it restores to x0.
+  if (arch() != aarch64 || !status().is_syscall() ||
+      !registers.syscall_may_restart() ||
       is_sigreturn(registers.original_syscallno(), arch())) {
     return false;
   }
@@ -2116,6 +2123,35 @@ bool RecordTask::at_aarch64_syscall_exit_before_restart(
   // waiting to be restarted.
   return ev().type() == EV_SYSCALL_INTERRUPTION ||
          (prev_ev() && prev_ev()->type() == EV_SYSCALL_INTERRUPTION);
+}
+
+void RecordTask::restore_aarch64_restarted_syscall_arg1() {
+  // When the task left the syscall-exit stop, the kernel moved pc back to
+  // the syscall instruction and set x0 to orig_x0 to restart the syscall.
+  // Since Linux 7.3 and its stable backports
+  // (https://github.com/torvalds/linux/commit/88b839ce497ccb1ff92f7ae742c78dd2937ba572),
+  // setting the registers at a syscall-entry stop also sets orig_x0, so it
+  // holds any x0 we gave the syscall there (e.g. scratch memory for poll's
+  // fds), and ptrace can't set it at the syscall-exit stop. Before the
+  // syscall runs again (at a stop at the syscall instruction, or at the
+  // restarted syscall's entry stop), set x0 to the value the tracee passed,
+  // which is in orig_arg1.
+  if (status().reaped() || ptrace_event() == PTRACE_EVENT_EXIT) {
+    return;
+  }
+  remote_code_ptr exit_ip = last_execution_resume();
+  bool at_restart =
+      ip() == exit_ip.decrement_by_syscall_insn_length(arch()) ||
+      ((status().is_syscall() || is_ptrace_seccomp_event()) &&
+       ip() == exit_ip);
+  Registers r = regs();
+  if (!at_restart || r.arg1() == r.orig_arg1()) {
+    return;
+  }
+  LOG(debug) << "Setting x0 of restarted syscall from " << HEX(r.arg1())
+             << " to " << HEX(r.orig_arg1());
+  r.set_arg1(r.orig_arg1());
+  set_regs(r);
 }
 
 void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
@@ -2158,7 +2194,9 @@ void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
     if (!registers) {
       registers = &regs();
     }
-    if (at_aarch64_syscall_exit_before_restart(ev, *registers)) {
+    // Syscall events record the syscall's own registers.
+    if (!ev.is_syscall_event() &&
+        at_aarch64_syscall_exit_before_restart(*registers)) {
       // The kernel changes x0 and pc to restart the syscall when the task
       // leaves this stop, before any signal stop, and replay makes those
       // changes when it processes the syscall exit. Record the registers

@@ -748,12 +748,18 @@ private:
   void set_tid_addr(remote_ptr<int> tid_addr);
 
   /**
-   * Return true if |registers|, recorded for |event|, are this task's
-   * registers at the exit stop of a syscall that returned a -ERESTART* error
-   * and is waiting to be restarted.
+   * Return true if |registers| are this task's registers at the exit stop of
+   * a syscall that returned a -ERESTART* error and is waiting to be
+   * restarted.
    */
-  bool at_aarch64_syscall_exit_before_restart(const Event& event,
-                                              const Registers& registers);
+  bool at_aarch64_syscall_exit_before_restart(const Registers& registers);
+
+  /**
+   * Called at the first stop after the task left the exit stop of an aarch64
+   * syscall waiting to be restarted. Give the restarted syscall the x0 the
+   * tracee passed.
+   */
+  void restore_aarch64_restarted_syscall_arg1();
 
   virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 
@@ -914,6 +920,9 @@ public:
   // True when will_resume_execution() set the syscallbuf_breakpoints() for the
   // current resume.
   bool did_set_syscallbuf_breakpoints;
+  // True when the current resume is from the exit stop of an aarch64 syscall
+  // waiting to be restarted (at_aarch64_syscall_exit_before_restart()).
+  bool resumed_at_aarch64_syscall_exit_before_restart;
 
   // The pmc is programmed to interrupt at a value requested by the tracee, not
   // by rr.
