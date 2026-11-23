@@ -32,6 +32,7 @@ static int get_mempolicy(int* mode, unsigned long* nodemask,
 }
 
 typedef struct { unsigned long m[64]; } Nodemask;
+typedef struct { uint32_t m[4]; } Nodemask128Bits;
 
 int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
@@ -39,6 +40,7 @@ int main(void) {
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   int ret;
   Nodemask* nodemask;
+  Nodemask128Bits* nodemask128;
   unsigned long mask = 0x1;
   int mode;
 
@@ -69,6 +71,24 @@ int main(void) {
     test_assert(nodemask->m[1] == 0);
   }
   VERIFY_GUARD(nodemask);
+
+  // With maxnode 96 and at most 96 possible nodes, the kernel writes 128
+  // bits of the nodemask, also for 32-bit tasks: it zeroes the bits past
+  // its own nodemask up to a 64-bit boundary. A 64-bit kernel without
+  // https://github.com/torvalds/linux/commit/e130242dc351f1cfa2bbeb6766a1486ce936ef88
+  // leaves the last 32 bits alone for 32-bit tasks.
+  ALLOCATE_GUARD(nodemask128, -1);
+  ret = get_mempolicy(&mode, (unsigned long*)nodemask128->m, 96, NULL, 0);
+  if (ret < 0) {
+    test_assert(errno == EINVAL || errno == ENOSYS);
+  } else {
+    test_assert(mode == MPOL_BIND);
+    test_assert(nodemask128->m[0] == 0x1);
+    test_assert(nodemask128->m[1] == 0);
+    test_assert(nodemask128->m[2] == 0);
+    test_assert(nodemask128->m[3] == 0 || nodemask128->m[3] == 0xffffffff);
+  }
+  VERIFY_GUARD(nodemask128);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
