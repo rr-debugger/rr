@@ -1239,6 +1239,31 @@ static enum syscallbuf_fd_classes fd_class(int fd) {
   return globals.syscallbuf_fd_class[fd];
 }
 
+static int is_bufferable_fd_read(int fd) {
+  switch (fd_class(fd)) {
+    case FD_CLASS_INVALID:
+    case FD_CLASS_UNTRACED:
+    case FD_CLASS_PROC_MEM:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Like prep_syscall, but preps a syscall for a read operation on a particular fd. If
+ * syscallbuf is disabled for this fd, returns NULL (in which case
+ * start_commit_syscall will abort cleanly and a traced syscall will be used).
+ * Allow negative fds to pass through; they'll either trigger an error or
+ * receive special treatment by the kernel (e.g. AT_FDCWD).
+ */
+static void* prep_syscall_for_fd_read(int fd) {
+  if (!is_bufferable_fd_read(fd)) {
+    return NULL;
+  }
+  return prep_syscall();
+}
+
 static int is_bufferable_fd(int fd) {
   switch (fd_class(fd)) {
     case FD_CLASS_INVALID:
@@ -2053,7 +2078,7 @@ static long sys_ioctl_fionread(struct syscall_info* call) {
   int* value = (int*)call->args[2];
   void* buf = NULL;
 
-  void* ptr = prep_syscall_for_fd(fd);
+  void* ptr = prep_syscall_for_fd_read(fd);
   long ret;
 
   if (value) {
@@ -2199,7 +2224,7 @@ static long sys_generic_getdents(struct syscall_info* call) {
   void* buf = (void*)call->args[1];
   unsigned int count = (unsigned int)call->args[2];
 
-  void* ptr = prep_syscall_for_fd(fd);
+  void* ptr = prep_syscall_for_fd_read(fd);
   void* buf2 = NULL;
   long ret;
 
@@ -2305,7 +2330,7 @@ static long sys_fgetxattr(struct syscall_info* call) {
   void* value = (void*)call->args[2];
   size_t size = call->args[3];
 
-  void* ptr = prep_syscall_for_fd(fd);
+  void* ptr = prep_syscall_for_fd_read(fd);
   void* value2 = NULL;
   long ret;
 
@@ -2361,7 +2386,7 @@ static long sys__llseek(struct syscall_info* call) {
   __kernel_loff_t* result = (__kernel_loff_t*)call->args[3];
   unsigned int whence = call->args[4];
 
-  void* ptr = prep_syscall_for_fd(fd);
+  void* ptr = prep_syscall_for_fd_read(fd);
   __kernel_loff_t* result2 = NULL;
   long ret;
 
@@ -2969,7 +2994,7 @@ static long sys_read(struct syscall_info* call) {
    * interleaving of old+new data for the read even without rr.
    */
   if (buf && count >= CLONE_SIZE_THRESHOLD &&
-      thread_locals->cloned_file_data_fd >= 0 && is_bufferable_fd(fd) &&
+      thread_locals->cloned_file_data_fd >= 0 && is_bufferable_fd_read(fd) &&
       sizeof(void*) == 8 && !(count & 4095)) {
     struct syscall_info lseek_call = { SYS_lseek,
                                        { fd, 0, SEEK_CUR, 0, 0, 0 } };
@@ -3032,7 +3057,7 @@ static long sys_read(struct syscall_info* call) {
     }
   }
 
-  ptr = prep_syscall_for_fd(fd);
+  ptr = prep_syscall_for_fd_read(fd);
 
   assert(syscallno == call->no);
 
@@ -3064,7 +3089,7 @@ static long sys_pread64(struct syscall_info* call) {
   void* buf2 = NULL;
   long ret;
 
-  ptr = prep_syscall_for_fd(fd);
+  ptr = prep_syscall_for_fd_read(fd);
 
   assert(syscallno == call->no);
 
@@ -3157,7 +3182,7 @@ static long sys_socketcall_recv(struct syscall_info* call) {
   unsigned int flags = args[3];
   unsigned long new_args[4];
 
-  void* ptr = prep_syscall_for_fd(sockfd);
+  void* ptr = prep_syscall_for_fd_read(sockfd);
   void* buf2 = NULL;
   long ret;
 
@@ -3210,7 +3235,7 @@ static long sys_recvfrom(struct syscall_info* call) {
   void* src_addr = (void*)call->args[4];
   socklen_t* addrlen = (socklen_t*)call->args[5];
 
-  void* ptr = prep_syscall_for_fd(sockfd);
+  void* ptr = prep_syscall_for_fd_read(sockfd);
   void* buf2 = NULL;
   struct sockaddr* src_addr2 = NULL;
   socklen_t* addrlen2 = NULL;
@@ -3281,7 +3306,7 @@ static long sys_recvmsg(struct syscall_info* call) {
   struct msghdr* msg = (struct msghdr*)call->args[1];
   int flags = call->args[2];
 
-  void* ptr = prep_syscall_for_fd(sockfd);
+  void* ptr = prep_syscall_for_fd_read(sockfd);
   long ret;
   struct msghdr* msg2;
   void* ptr_base = ptr;
@@ -3498,7 +3523,7 @@ static long sys_getsockopt(struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
-  void* ptr = prep_syscall_for_fd(sockfd);
+  void* ptr = prep_syscall_for_fd_read(sockfd);
   long ret;
 
   optlen2 = ptr;
@@ -3544,7 +3569,7 @@ static long sys_getsockname(struct syscall_info* call) {
   socklen_t* addrlen2;
   struct sockaddr* addr2 = NULL;
 
-  void* ptr = prep_syscall_for_fd(sockfd);
+  void* ptr = prep_syscall_for_fd_read(sockfd);
   long ret;
 
   addrlen2 = ptr;
