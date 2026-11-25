@@ -30,12 +30,29 @@ TraceReader& ReplayTask::trace_reader() const {
 
 template <typename Arch>
 void ReplayTask::init_buffers_arch() {
+  remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().arg1();
+  // If the tracee was killed before the recorder could record the out-params,
+  // the trace won't contain them, so clear them first rather than acting on
+  // uninitialized memory.
+  auto args = read_mem(child_args);
+  args.cloned_file_data_fd = -1;
+  args.syscallbuf_ptr = remote_ptr<void>();
+  args.syscallbuf_size = 0;
+  write_mem(child_args, args);
+
   apply_all_data_records_from_trace();
 
   AutoRemoteSyscalls remote(this);
 
-  remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().arg1();
-  auto args = read_mem(child_args);
+  args = read_mem(child_args);
+
+  if (!args.syscallbuf_ptr && !current_trace_frame().regs().syscall_failed() &&
+      current_trace_frame().regs().syscall_result()) {
+    // The recorder created the syscallbuf but the tracee was killed before the
+    // out-params were recorded. The tracee is about to exit so don't bother
+    // mapping the buffer, but skip its mmap record.
+    trace_reader().read_mapped_region();
+  }
 
   if (args.syscallbuf_ptr) {
     syscallbuf_size = args.syscallbuf_size;
@@ -58,7 +75,9 @@ void ReplayTask::init_buffers_arch() {
     }
   }
 
-  remote.regs().set_syscall_result(syscallbuf_child);
+  remote.regs().set_syscall_result(
+      args.syscallbuf_ptr ? syscallbuf_child.as_int()
+                          : current_trace_frame().regs().syscall_result());
 }
 
 void ReplayTask::init_buffers() {

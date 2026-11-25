@@ -771,7 +771,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     if (ret.is_open()) {
       return ret;
     }
-    if (errno == EBADF) {
+    if (errno == EBADF || errno == ESRCH) {
       // This can happen when the child was unexpectedly killed.
       return ret;
     }
@@ -868,9 +868,21 @@ remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
     if (ret) {
       ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
     } else {
-      if (!t->vm()->has_mapping(addr)) {
-        KernelMapping km = t->vm()->read_kernel_mapping(t, addr);
-        if (km.size()) {
+      // The tracee may have been killed after the mmap completed, in which
+      // case the new mapping exists even though we didn't see the result.
+      // It may have replaced a mapping we already know about.
+      KernelMapping km = t->vm()->read_kernel_mapping(t, addr);
+      if (km.size()) {
+        bool created = true;
+        if (t->vm()->has_mapping(addr)) {
+          const KernelMapping& old = t->vm()->mapping_of(addr).map;
+          // Device numbers aren't reliable (e.g. on btrfs), so just compare
+          // inodes and offsets.
+          created = km.inode() != old.inode() ||
+                    km.file_offset_bytes() + (addr - km.start()) !=
+                        old.file_offset_bytes() + (addr - old.start());
+        }
+        if (created) {
           ASSERT(t, km.start() == addr && km.size() == ceil_page_size(length));
           // The mapping was created. Pretend this call succeeded.
           ret = addr;
