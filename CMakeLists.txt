@@ -1541,6 +1541,7 @@ set(BASIC_TESTS
   wait
   wait_sigstop
   waitid_pgid_zero
+  waitid_rusage
   write_race
   writev
   xattr

@@ -5094,6 +5094,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             // We also take this path if pid_of_pidfd returns -1
             // because the fd is not a pidfd.
             syscall_state.reg_parameter<typename Arch::siginfo_t>(3);
+            // The kernel writes *ru only when it reports a child, so
+            // scratch must start with its contents.
+            syscall_state.reg_parameter<typename Arch::rusage>(5, IN_OUT);
             return ALLOW_SWITCH;
           }
           t->in_wait_type = WAIT_TYPE_PID;
@@ -5124,6 +5127,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       // We may modify emulated *infop so to make things
       // simple, don't use scratch.
       syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT_NO_SCRATCH);
+      syscall_state.reg_parameter<typename Arch::rusage>(5, IN_OUT_NO_SCRATCH);
       return should_switch;
     }
 
