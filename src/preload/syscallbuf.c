@@ -944,30 +944,35 @@ static void __attribute__((constructor)) init_process(void) {
       4,
       { 0x89, 0xc1, 0x31, 0xd2 },
       (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 },
-    /* getpid has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
+    /* liblsan internal_dup2 has 'syscall' followed by 'retq; nop */
     { PATCH_IS_MULTIPLE_INSTRUCTIONS,
-      9,
-      { 0xc3, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
-      (uintptr_t)_syscall_hook_trampoline_c3_nop },
-    /* liblsan internal_close has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
-    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
-      6,
-      { 0xc3, 0x0f, 0x1f, 0x44, 0x00, 0x00 },
-      (uintptr_t)_syscall_hook_trampoline_c3_nop },
-    /* glibc-2.29-15.fc30.x86_64 getpid has 'syscall' followed by 'retq; nopl 0x0(%rax) */
-    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
-      5,
-      { 0xc3, 0x0f, 0x1f, 0x40, 0x00 },
+      3,
+      { 0xc3, 0x66, 0x90 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* liblsan internal_open has 'syscall' followed by 'retq; nopl (%rax) */
     { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       4,
       { 0xc3, 0x0f, 0x1f, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
-    /* liblsan internal_dup2 has 'syscall' followed by 'retq; xchg %ax,%ax */
+    /* glibc-2.29-15.fc30.x86_64 getpid has 'syscall' followed by 'retq; nopl 0x0(%rax) */
     { PATCH_IS_MULTIPLE_INSTRUCTIONS,
-      3,
-      { 0xc3, 0x66, 0x90 },
+      5,
+      { 0xc3, 0x0f, 0x1f, 0x40, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* liblsan internal_close has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
+      6,
+      { 0xc3, 0x0f, 0x1f, 0x44, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* getpid has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
+      9,
+      { 0xc3, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* glibc-2.43-9.fc44.x86_64 has 'syscall' followed by 'retq; cs nopw 0x0(%rax,%rax,1) */
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
+      11,
+      { 0xc3, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* Go runtime has 'syscall' followed by 'retq; int3; int3 */
     { PATCH_IS_MULTIPLE_INSTRUCTIONS,
