@@ -1774,12 +1774,14 @@ void AddressSpace::ensure_replay_matches_single_recorded_mapping(Task* t, Memory
       // We replace the entire mapping even if part of it falls outside the desired range.
       // That's OK, this replacement preserves behaviour, it's simpler, even if a bit
       // less efficient in weird cases.
-      mem.erase(mapping.map);
       KernelMapping anonymous_km(mapping.map.start(), mapping.map.end(),
                                  string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                                  mapping.map.prot(), mapping.map.flags() | MAP_ANONYMOUS);
       Mapping new_mapping(anonymous_km, mapping.recorded_map);
+      unindex_mapping(mapping);
+      mem.erase(mapping.map);
       mem[new_mapping.map] = new_mapping;
+      index_mapping(new_mapping);
     }
   };
   for_each_in_range(range.start(), range.size(), fixer);
@@ -1904,6 +1906,7 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       brk_start(o.brk_start),
       brk_end(o.brk_end),
       mem(o.mem),
+      shared_file_mappings(o.shared_file_mappings),
       shm_sizes(o.shm_sizes),
       monitored_mem(o.monitored_mem),
       dont_fork(o.dont_fork),
@@ -2160,10 +2163,15 @@ void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
 
   // monitored-memory currently isn't coalescable so we don't need to
   // adjust monitored_mem
-  mem.erase(first_kv, ++last_kv);
+  ++last_kv;
+  for (auto it = first_kv; it != last_kv; ++it) {
+    unindex_mapping(it->second);
+  }
+  mem.erase(first_kv, last_kv);
 
   auto ins = mem.insert(MemoryMap::value_type(new_m.map, new_m));
   DEBUG_ASSERT(ins.second); // key didn't already exist
+  index_mapping(ins.first->second);
 }
 
 void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
@@ -2245,6 +2253,15 @@ void AddressSpace::for_each_in_range(
   }
 }
 
+vector<remote_ptr<void>> AddressSpace::shared_mappings_of(dev_t device,
+                                                          ino_t inode) const {
+  auto it = shared_file_mappings.find(make_pair(device, inode));
+  if (it == shared_file_mappings.end()) {
+    return {};
+  }
+  return vector<remote_ptr<void>>(it->second.begin(), it->second.end());
+}
+
 void AddressSpace::map_and_coalesce(
     Task* t, const KernelMapping& m, const KernelMapping& recorded_map,
     EmuFile::shr_ptr emu_file, unique_ptr<struct stat> mapped_file_stat,
@@ -2257,6 +2274,9 @@ void AddressSpace::map_and_coalesce(
   auto ins = mem.insert(MemoryMap::value_type(
       m, Mapping(m, recorded_map, emu_file, std::move(mapped_file_stat),
                  local_addr, std::move(monitored))));
+  if (ins.second) {
+    index_mapping(ins.first->second);
+  }
   coalesce_around(t, ins.first);
 
   update_watchpoint_values(m.start(), m.end());

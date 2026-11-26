@@ -13,6 +13,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "preload/preload_interface.h"
@@ -545,6 +546,17 @@ public:
   }
 
   /**
+   * Return the start addresses of the MAP_SHARED mappings of the file with
+   * the given device/inode (as recorded in the KernelMapping), using an index
+   * so we don't have to scan all mappings.
+   */
+  std::vector<remote_ptr<void>> shared_mappings_of(dev_t device,
+                                                   ino_t inode) const;
+  bool has_shared_mapping_of(dev_t device, ino_t inode) const {
+    return shared_file_mappings.count(std::make_pair(device, inode)) != 0;
+  }
+
+  /**
    * Change the protection bits of [addr, addr + num_bytes) to
    * |prot|.
    */
@@ -1031,13 +1043,47 @@ private:
                         std::shared_ptr<MonitoredSharedMemory> monitored);
 
   void remove_from_map(const MemoryRange& range) {
+    auto it = mem.find(range);
+    if (it != mem.end()) {
+      unindex_mapping(it->second);
+    }
     mem.erase(range);
     monitored_mem.erase(range.start());
   }
   void add_to_map(const Mapping& m) {
+    auto it = mem.find(m.map);
+    if (it != mem.end()) {
+      unindex_mapping(it->second);
+    }
     mem[m.map] = m;
+    index_mapping(m);
     if (m.monitored_shared_memory) {
       monitored_mem.insert(m.map.start());
+    }
+  }
+
+  // Maintain `shared_file_mappings`. Must be called whenever a Mapping is
+  // added to or removed from `mem`.
+  static bool is_indexed_mapping(const Mapping& m) {
+    return (m.map.flags() & MAP_SHARED) &&
+           m.map.inode() != KernelMapping::NO_INODE;
+  }
+  void index_mapping(const Mapping& m) {
+    if (is_indexed_mapping(m)) {
+      shared_file_mappings[std::make_pair(m.map.device(), m.map.inode())]
+          .insert(m.map.start());
+    }
+  }
+  void unindex_mapping(const Mapping& m) {
+    if (is_indexed_mapping(m)) {
+      auto it = shared_file_mappings.find(
+          std::make_pair(m.map.device(), m.map.inode()));
+      if (it != shared_file_mappings.end()) {
+        it->second.erase(m.map.start());
+        if (it->second.empty()) {
+          shared_file_mappings.erase(it);
+        }
+      }
     }
   }
 
@@ -1189,6 +1235,12 @@ private:
   remote_ptr<void> brk_end;
   /* All segments mapped into this address space. */
   MemoryMap mem;
+  /* Index of the MAP_SHARED file mappings in `mem`, by (device, inode).
+   * Mappings don't overlap, so we identify each one by its start address. */
+  typedef std::unordered_map<std::pair<dev_t, ino_t>,
+                             std::set<remote_ptr<void>>, DevInodeHash>
+      SharedFileMappings;
+  SharedFileMappings shared_file_mappings;
   /* Sizes of SYSV shm segments, by address. We use this to determine the size
    * of memory regions unmapped via shmdt(). */
   std::map<remote_ptr<void>, size_t> shm_sizes;

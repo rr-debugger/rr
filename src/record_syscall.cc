@@ -7199,12 +7199,15 @@ static bool all_tasks_exited(AddressSpace* vm) {
 
 static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
   for (AddressSpace* vm : t->session().vms()) {
-    if (all_tasks_exited(vm)) {
+    if (!vm->has_shared_mapping_of(st.st_dev, st.st_ino) ||
+        all_tasks_exited(vm)) {
       continue;
     }
-    for (auto& m : vm->maps()) {
-      if ((m.map.flags() & MAP_SHARED) &&
-          m.mapped_file_stat && m.mapped_file_stat->st_dev == st.st_dev &&
+    // All mapped_file_stats are created with the same device/inode as
+    // their KernelMapping, so the index finds every candidate.
+    for (auto addr : vm->shared_mappings_of(st.st_dev, st.st_ino)) {
+      const AddressSpace::Mapping& m = vm->mapping_of(addr);
+      if (m.mapped_file_stat && m.mapped_file_stat->st_dev == st.st_dev &&
           m.mapped_file_stat->st_ino == st.st_ino) {
         LOG(debug) << "is_mapped_shared is shared: "
           << st.st_dev << " " << st.st_ino;

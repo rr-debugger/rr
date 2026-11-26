@@ -45,29 +45,9 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
   int64_t realized_offset = 0;
 
   bool is_replay = t->session().is_replaying();
-  for (auto v : t->session().vms()) {
-    for (const auto& m : v->maps()) {
+  // Process one mapping we care about.
+  auto handle_mapping = [&](AddressSpace* v, const AddressSpace::Mapping& m) {
       auto km = m.map;
-
-      if (is_replay) {
-        if (!m.emu_file || m.emu_file->device() != device_ ||
-            m.emu_file->inode() != inode_) {
-          continue;
-        }
-      } else {
-        if (km.device() != device_ || km.inode() != inode_) {
-          continue;
-        }
-        // If the mapping is MAP_PRIVATE then this write is dangerous
-        // because it's unpredictable what will be seen in the mapping.
-        // However, it could be OK if the application doesn't read from
-        // this part of the mapping. Just optimistically assume this mapping
-        // is not affected.
-        if (!(km.flags() & MAP_SHARED)) {
-          LOG(warn) << "MAP_PRIVATE mapping affected by write";
-          continue;
-        }
-      }
 
       // We're discovering a mapping we care about
       if (dead_) {
@@ -103,6 +83,27 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
           }
         }
         local_offset += r.length;
+      }
+  };
+
+  for (auto v : t->session().vms()) {
+    if (is_replay) {
+      for (const auto& m : v->maps()) {
+        if (!m.emu_file || m.emu_file->device() != device_ ||
+            m.emu_file->inode() != inode_) {
+          continue;
+        }
+        handle_mapping(v, m);
+      }
+    } else {
+      // Only MAP_SHARED mappings matter. If a MAP_PRIVATE mapping is
+      // affected by the write, it's unpredictable what will be seen in the
+      // mapping. However, it could be OK if the application doesn't read
+      // from this part of the mapping, so we optimistically assume it's not
+      // affected. Use the index of shared mappings so we don't have to scan
+      // every mapping in every address space.
+      for (auto addr : v->shared_mappings_of(device_, inode_)) {
+        handle_mapping(v, v->mapping_of(addr));
       }
     }
   }

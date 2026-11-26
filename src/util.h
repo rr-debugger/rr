@@ -10,12 +10,15 @@
 #include <signal.h>
 #include <stdio.h>
 #include <math.h>
+#include <sys/types.h>
 
 #include <array>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(__i386__) || defined(__x86_64__)
@@ -352,6 +355,15 @@ std::string resource_path();
 double monotonic_now_sec();
 
 bool running_under_rr(bool cache = true);
+
+/**
+ * Hash for (device, inode) pairs identifying a file, for unordered containers.
+ */
+struct DevInodeHash {
+  size_t operator()(const std::pair<dev_t, ino_t>& id) const {
+    return std::hash<dev_t>()(id.first) * 31 + std::hash<ino_t>()(id.second);
+  }
+};
 
 std::vector<int> read_all_proc_fds(pid_t tid);
 
