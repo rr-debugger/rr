@@ -549,8 +549,6 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_89_c1_31_d2)
 SYSCALLHOOK_END(_syscall_hook_trampoline_89_c1_31_d2)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_c3_nop)
-        .cfi_offset %rip, 16
-        RSP_IS_CFA_PLUS_OFFSET(24)
         callq __morestack
         /* The original instructions after the syscall are
            retq; nopl 0x0(%rax,%rax,1) */
