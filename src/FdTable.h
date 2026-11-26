@@ -3,12 +3,16 @@
 #ifndef RR_FD_TABLE_H_
 #define RR_FD_TABLE_H_
 
+#include <sys/types.h>
+
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "FileMonitor.h"
 #include "HasTaskSet.h"
+#include "util.h"
 
 namespace rr {
 
@@ -76,6 +80,22 @@ public:
 
   void insert_task(Task* t) override;
   void erase_task(Task* t) override;
+
+  /**
+   * Recording only. Cache of the writable fds in this table, keyed by the
+   * (device, inode) of the file they refer to. When `writable_fds_valid` is
+   * true, every writable fd in the table is present, but entries can be
+   * stale (closed or reused fds), so users must revalidate each entry.
+   * Invalidate whenever a writable fd may have been created.
+   * Not copied by clone(); a cloned table starts out invalid.
+   */
+  std::unordered_map<std::pair<dev_t, ino_t>, std::vector<int>, DevInodeHash>
+      writable_fds_by_file;
+  bool writable_fds_valid = false;
+  void invalidate_writable_fds() {
+    writable_fds_valid = false;
+    writable_fds_by_file.clear();
+  }
 
 private:
   explicit FdTable(uint32_t syscallbuf_fds_disabled_size)

@@ -1755,6 +1755,15 @@ static long sys_generic_nonblocking(struct syscall_info* call) {
  * Call this for syscalls that have no memory effects, don't block, and
  * have an fd as their first parameter.
  */
+/**
+ * Call this after an untraced syscall that might have created a writable fd
+ * rr hasn't been told about, before the fd is returned to the application,
+ * so rr knows its cache of writable fds may be stale.
+ */
+static void note_writable_fd_created(void) {
+  ++globals.writable_fd_generation;
+}
+
 static long sys_generic_nonblocking_fd(struct syscall_info* call) {
   int fd = call->args[0];
   void* ptr = prep_syscall_for_fd(fd);
@@ -1766,6 +1775,14 @@ static long sys_generic_nonblocking_fd(struct syscall_info* call) {
   ret = untraced_syscall6(call->no, fd, call->args[1], call->args[2],
                           call->args[3], call->args[4], call->args[5]);
   return commit_raw_syscall(call->no, ptr, ret);
+}
+
+static long sys_dup(struct syscall_info* call) {
+  long ret = sys_generic_nonblocking_fd(call);
+  if (ret >= 0) {
+    note_writable_fd_created();
+  }
+  return ret;
 }
 
 /**
@@ -1978,6 +1995,14 @@ static long sys_fcntl(struct syscall_info* call)
 #endif
 {
   switch (call->args[1]) {
+    case F_DUPFD: {
+      long ret = sys_fcntl64_no_outparams(call);
+      if (ret >= 0) {
+        note_writable_fd_created();
+      }
+      return ret;
+    }
+
     case F_SETFL:
       if (call->args[2] == O_DIRECT) {
         /* This needs to go to rr so we can disable syscall buffering
@@ -1985,7 +2010,6 @@ static long sys_fcntl(struct syscall_info* call)
         return traced_raw_syscall(call);
       }
       /* Falls through. */
-    case F_DUPFD:
     case F_GETFD:
     case F_GETFL:
     case F_GETOWN:
@@ -2512,6 +2536,14 @@ static long sys_mprotect(struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/* Writable opens can be buffered only if they're O_EXCL | O_CREAT, because
+   then a new file must be created, so it can't already be mapped. Such fds
+   are not seen by rr, so callers must call note_writable_fd_created(). */
+static int allow_buffered_writable_open(int flags) {
+  return (flags & (O_RDWR | O_WRONLY)) &&
+    (flags & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT);
+}
+
 static int supported_open(const char* file_name, int flags) {
   if (!file_name) {
     /* XXXkhuey what about other bogus but non-null pointers?
@@ -2534,8 +2566,7 @@ static int supported_open(const char* file_name, int flags) {
      they could write to a mapped file.
      But if they're O_EXCL | O_CREAT, a new file must be created
      so that will be fine. */
-  return !(flags & (O_RDWR | O_WRONLY)) ||
-    (flags & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT);
+  return !(flags & (O_RDWR | O_WRONLY)) || allow_buffered_writable_open(flags);
 }
 
 static long sys_readlinkat(struct syscall_info* call, int privileged);
@@ -2617,7 +2648,11 @@ static long sys_open(struct syscall_info* call) {
   ret = untraced_syscall3(syscallno, pathname, flags, mode);
   struct check_open_state state = capture_check_open_state();
   ret = commit_raw_syscall(syscallno, ptr, ret);
-  return check_file_open_ok(call, ret, state);
+  ret = check_file_open_ok(call, ret, state);
+  if (ret >= 0 && allow_buffered_writable_open(flags)) {
+    note_writable_fd_created();
+  }
+  return ret;
 }
 #endif
 
@@ -2649,7 +2684,11 @@ static long sys_openat(struct syscall_info* call) {
   ret = untraced_syscall4(syscallno, dirfd, pathname, flags, mode);
   struct check_open_state state = capture_check_open_state();
   ret = commit_raw_syscall(syscallno, ptr, ret);
-  return check_file_open_ok(call, ret, state);
+  ret = check_file_open_ok(call, ret, state);
+  if (ret >= 0 && allow_buffered_writable_open(flags)) {
+    note_writable_fd_created();
+  }
+  return ret;
 }
 
 #if defined(SYS_openat2)
@@ -2682,7 +2721,11 @@ static long sys_openat2(struct syscall_info* call) {
   ret = untraced_syscall4(syscallno, dirfd, pathname, how, how_size);
   struct check_open_state state = capture_check_open_state();
   ret = commit_raw_syscall(syscallno, ptr, ret);
-  return check_file_open_ok(call, ret, state);
+  ret = check_file_open_ok(call, ret, state);
+  if (ret >= 0 && allow_buffered_writable_open(how->flags)) {
+    note_writable_fd_created();
+  }
+  return ret;
 }
 #endif
 
@@ -3398,6 +3441,8 @@ static long sys_recvmsg(struct syscall_info* call) {
        * file descriptors was received.
        */
       thread_locals->notify_control_msg = msg;
+      /* rr only learns about the fds at the next safe point. */
+      note_writable_fd_created();
     }
   } else {
     /* Allocate record space as least to cover the data we overwrote above.
@@ -4237,7 +4282,7 @@ static long syscall_hook_internal(struct syscall_info* call) {
 #if defined(SYS_creat)
     CASE(creat);
 #endif
-    CASE_GENERIC_NONBLOCKING_FD(dup);
+    CASE(dup);
     CASE_GENERIC_NONBLOCKING_FD(epoll_ctl);
 #if defined(SYS_epoll_wait)
 case SYS_epoll_wait:

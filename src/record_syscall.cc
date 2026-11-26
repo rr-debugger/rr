@@ -6604,13 +6604,95 @@ static bool is_writable(RecordTask* t, int fd) {
   return (lst.st_mode & S_IWUSR) != 0;
 }
 
+// Like Task::stat_fd/lstat_fd but returns false if the fd doesn't exist
+// (e.g. a stale entry in a writable-fd cache).
+static bool try_stat_fd(RecordTask* t, int fd, struct stat* st, bool use_lstat) {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", t->tid, fd);
+  return (use_lstat ? ::lstat(path, st) : ::stat(path, st)) == 0;
+}
+
+// Rebuild `table`'s writable-fd cache by scanning /proc/<tid>/fd.
+// Returns false if the task has exited out from underneath us.
+static bool scan_writable_fds(RecordTask* rt, FdTable* table) {
+  char buf[100];
+  sprintf(buf, "/proc/%d/fd", rt->tid);
+  DIR* dir = opendir(buf);
+  if (!dir && (errno == EACCES || errno == ENOENT)) {
+    return false;
+  }
+  ASSERT(rt, dir) << "Can't open fd directory " << buf;
+  table->writable_fds_by_file.clear();
+  struct dirent* d;
+  errno = 0;
+  while ((d = readdir(dir)) != nullptr) {
+    char* end;
+    int fd = strtol(d->d_name, &end, 10);
+    if (*end) {
+      // Some kind of parse error
+      continue;
+    }
+    struct stat lst;
+    if (!try_stat_fd(rt, fd, &lst, true) || !(lst.st_mode & S_IWUSR)) {
+      continue;
+    }
+    struct stat st = rt->stat_fd(fd);
+    table->writable_fds_by_file[make_pair(st.st_dev, st.st_ino)].push_back(fd);
+  }
+  ASSERT(rt, !errno) << "Can't read fd directory " << buf;
+  closedir(dir);
+  table->writable_fds_valid = true;
+  return true;
+}
+
+// Invalidate the writable-fd caches of the fd tables used by any address
+// space in which a buffered syscall may have created a writable fd since we
+// last looked. The preload library tells us via counters in preload_globals.
+static void refresh_writable_fd_caches(RecordTask* t) {
+  for (AddressSpace* vm : t->session().vms()) {
+    RecordTask* reader = nullptr;
+    for (Task* tt : vm->task_set()) {
+      if (!tt->already_exited() && !tt->preload_globals.is_null()) {
+        reader = static_cast<RecordTask*>(tt);
+        break;
+      }
+    }
+    if (!reader) {
+      // Either all tasks have exited or the preload library isn't
+      // initialized, so all fd-creating syscalls are traced.
+      continue;
+    }
+    bool ok = true;
+    uint32_t generation = reader->read_mem(
+        REMOTE_PTR_FIELD(reader->preload_globals, writable_fd_generation),
+        &ok);
+    if (!ok || generation != vm->writable_fd_generation_seen) {
+      for (Task* tt : vm->task_set()) {
+        tt->fd_table()->invalidate_writable_fds();
+      }
+      if (ok) {
+        vm->writable_fd_generation_seen = generation;
+      }
+    }
+  }
+}
+
 // Returns true if the fd used to map the file is writable and thus needs
-// monitoring.
+// monitoring. Fills `extra_fds` with the other writable fds for the file in
+// all fd tables.
 static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const struct stat& file,
                                    vector<TraceRemoteFd>& extra_fds) {
+  refresh_writable_fd_caches(mapped_t);
+
+  struct stat mapped_stat;
+  ASSERT(mapped_t, try_stat_fd(mapped_t, mapped_fd, &mapped_stat, false) &&
+                   mapped_stat.st_dev == file.st_dev &&
+                   mapped_stat.st_ino == file.st_ino)
+      << "Can't find fd for mapped file";
+  bool our_mapping_writable = is_writable(mapped_t, mapped_fd);
+
+  auto key = make_pair(file.st_dev, file.st_ino);
   unordered_set<FdTable*> tables;
-  bool found_our_mapping = false;
-  bool our_mapping_writable = false;
   auto mapped_table = mapped_t->fd_table();
   for (auto& ts : mapped_t->session().tasks()) {
     auto rt = static_cast<RecordTask*>(ts.second);
@@ -6621,50 +6703,47 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
     if (tables.find(table.get()) != tables.end()) {
       continue;
     }
-
-    char buf[100];
-    sprintf(buf, "/proc/%d/fd", rt->tid);
-    DIR* dir = opendir(buf);
-    if (!dir && (errno == EACCES || errno == ENOENT)) {
+    if (!table->writable_fds_valid && !scan_writable_fds(rt, table.get())) {
       LOG(warn) << "Task must have exited out from underneath us. Skipping it";
       continue;
     }
-    ASSERT(rt, dir) << "Can't open fd directory " << buf;
     tables.insert(table.get());
 
-    struct dirent* d;
-    errno = 0;
-    vector<string> names;
-    while ((d = readdir(dir)) != nullptr) {
-      char* end;
-      int fd = strtol(d->d_name, &end, 10);
-      if (*end) {
-        // Some kind of parse error
+    auto it = table->writable_fds_by_file.find(key);
+    if (it == table->writable_fds_by_file.end()) {
+      continue;
+    }
+    // Revalidate each entry, dropping stale ones.
+    vector<int>& fds = it->second;
+    size_t kept = 0;
+    for (int fd : fds) {
+      struct stat st, lst;
+      if (!try_stat_fd(rt, fd, &st, false) || st.st_dev != file.st_dev ||
+          st.st_ino != file.st_ino || !try_stat_fd(rt, fd, &lst, true) ||
+          !(lst.st_mode & S_IWUSR)) {
         continue;
       }
-      struct stat fd_stat = rt->stat_fd(fd);
-      if (fd_stat.st_dev != file.st_dev || fd_stat.st_ino != file.st_ino) {
-        // Not our file
-        continue;
-      }
-      bool writable = is_writable(rt, fd);
+      fds[kept++] = fd;
       if (table == mapped_table && fd == mapped_fd) {
         // This is what we're using to do the mmap. Don't put it in extra_fds.
-        found_our_mapping = true;
-        our_mapping_writable = writable;
-        continue;
-      }
-      if (!writable) {
-        // Ignore non-writable fds since they can't modify memory
         continue;
       }
       extra_fds.push_back({ rt->tid, fd });
     }
-    ASSERT(rt, !errno) << "Can't read fd directory " << buf;
-    closedir(dir);
+    fds.resize(kept);
   }
-  ASSERT(mapped_t, found_our_mapping) << "Can't find fd for mapped file";
+
   return our_mapping_writable;
+}
+
+// Recording only. Call after a traced syscall that might have created an fd
+// in the caller's fd table, other than via handle_opened_file
+// (open/openat/openat2/creat and SCM_RIGHTS), which invalidates the
+// writable-fd cache itself, and only for writable fds.
+static void maybe_created_writable_fd(RecordTask* t) {
+  if (!t->regs().syscall_failed()) {
+    t->fd_table()->invalidate_writable_fds();
+  }
 }
 
 static bool os_has_broken_zfs() {
@@ -7224,9 +7303,14 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
   string pathname = t->file_name_of_fd(fd);
   struct stat st = t->stat_fd(fd);
 
+  bool writable = is_writable(t, fd);
+  if (writable) {
+    t->fd_table()->invalidate_writable_fds();
+  }
+
   // This must be kept in sync with replay_syscall's handle_opened_files.
   FileMonitor* file_monitor = nullptr;
-  if (is_writable(t, fd) && is_mapped_shared(t, st)) {
+  if (writable && is_mapped_shared(t, st)) {
     // This is quite subtle. Because open(2) is ALLOW_SWITCH, we could have been
     // descheduled after entering the syscall we're now exiting. If that happened,
     // and another task did a shared mapping of this file while we were suspended,
@@ -7578,6 +7662,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
 
     case Arch::bpf:
+      maybe_created_writable_fd(t);
       if (!t->regs().syscall_failed()) {
         switch ((int)t->regs().orig_arg1()) {
           case RR_BPF_MAP_CREATE: {
@@ -7604,6 +7689,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::perf_event_open:
+      maybe_created_writable_fd(t);
       if (!t->regs().syscall_failed()) {
         int fd = t->regs().syscall_result_signed();
         if (t->regs().original_syscallno() == Arch::inotify_init1) {
@@ -7640,6 +7726,7 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::accept:
     case Arch::accept4: {
+      maybe_created_writable_fd(t);
       Registers r = t->regs();
       maybe_process_new_socket(t, r.syscall_result());
       break;
@@ -7760,6 +7847,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_original_syscallno(
           syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
+      maybe_created_writable_fd(t);
 
       if (!t->regs().syscall_failed()) {
         switch ((int)t->regs().orig_arg1_signed()) {
@@ -7818,6 +7906,10 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_arg3(syscall_state.syscall_entry_registers.arg3());
       t->set_regs(r);
 
+      if (r.arg2() == Arch::DUPFD || r.arg2() == Arch::DUPFD_CLOEXEC) {
+        maybe_created_writable_fd(t);
+      }
+
       if (!r.syscall_failed() && r.arg3() == O_DIRECT) {
         int fd = r.orig_arg1();
         // O_DIRECT can impose unknown alignment requirements, in which case
@@ -7843,17 +7935,48 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::open_by_handle_at:
+    case Arch::open_tree:
+    case Arch::fsopen:
+    case Arch::fsmount:
+    case Arch::fspick:
+    case Arch::dup:
+    case Arch::pidfd_getfd:
+    case Arch::pidfd_open:
+    case Arch::eventfd:
+    case Arch::eventfd2:
+    case Arch::timerfd_create:
+    case Arch::signalfd:
+    case Arch::signalfd4:
+    case Arch::epoll_create:
+    case Arch::epoll_create1:
+    case Arch::inotify_init:
+    case Arch::inotify_init1:
+    case Arch::fanotify_init:
+    case Arch::socket:
+    case Arch::socketpair:
+    case Arch::pipe:
+    case Arch::pipe2:
+    case Arch::landlock_create_ruleset:
+      maybe_created_writable_fd(t);
+      break;
+
+    case Arch::dup2:
+    case Arch::dup3:
+    // Some ioctls create fds (e.g. KVM, DRM PRIME, sync_file). Traced ioctls
+    // are rare enough that we don't try to distinguish them.
+    case Arch::ioctl:
+    case Arch::io_uring_setup:
+    case Arch::memfd_create:
+    case Arch::userfaultfd:
+      maybe_created_writable_fd(t);
+      RR_FALLTHROUGH;
     case Arch::clone3:
     case Arch::close_range:
     case Arch::close:
-    case Arch::dup2:
-    case Arch::dup3:
     case Arch::futex_time64:
     case Arch::futex:
-    case Arch::ioctl:
     case Arch::io_setup:
-    case Arch::io_uring_setup:
-    case Arch::memfd_create:
     case Arch::mprotect:
     case Arch::pkey_mprotect:
     case Arch::pread64:
@@ -7864,8 +7987,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::read:
     case Arch::readv:
     case Arch::rseq:
-    case Arch::sched_setaffinity:
-    case Arch::userfaultfd: {
+    case Arch::sched_setaffinity: {
       // Restore the registers that we may have altered.
       Registers r = t->regs();
       r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());

@@ -309,6 +309,17 @@ struct preload_globals {
   /* The CPU we're bound to, if any; -1 if not bound. Not read during replay. */
   int32_t cpu_binding;
   enum ContextSwitchEventStrategy context_switch_event_strategy;
+  /* Lets rr know when untraced (buffered) syscalls might have created a
+     writable fd that rr was not notified about, so rr can invalidate its
+     cache of writable fds for the fd tables used by this address space.
+     Incremented by preload after such a syscall has completed,
+     before the new fd is returned to the application. rr must treat the
+     cache as stale if this has changed. An fd that exists in the kernel
+     but has not yet been returned to the application may be missed; that
+     is a benign race, since the application can't use the fd yet and
+     hasn't ordered its creation before whatever rr is doing.
+     Read by rr during recording only. */
+  uint32_t writable_fd_generation;
 };
 
 /**

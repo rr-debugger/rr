@@ -557,6 +557,13 @@ public:
   }
 
   /**
+   * Recording only. The value of the tracee's
+   * preload_globals.writable_fd_generation when we last validated the fd
+   * tables of this address space.
+   */
+  uint32_t writable_fd_generation_seen = 0;
+
+  /**
    * Change the protection bits of [addr, addr + num_bytes) to
    * |prot|.
    */
