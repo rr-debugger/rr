@@ -1270,6 +1270,7 @@ set(BASIC_TESTS
   open_tree
   orphan_process
   packet_mmap_disable
+  patch_rlimit_as
   x86/patch_syscall_restart
   pause
   perf_event

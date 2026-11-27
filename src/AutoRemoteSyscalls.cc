@@ -847,23 +847,31 @@ void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_
   }
 }
 
-remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
+remote_ptr<void> AutoRemoteSyscalls::mmap_syscall_if_alive_internal(
     remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
-    uint64_t offset_bytes) {
+    uint64_t offset_bytes, bool infallible) {
   ASSERT(t, offset_bytes % page_size() == 0)
     << "mmap offset (" << offset_bytes << ") must be multiple of page size ("
     << page_size() << ")";
-  // The first syscall argument is called "arg 1", so
-  // our syscall-arg-index template parameter starts
-  // with "1".
-  remote_ptr<void> ret =
+  int syscallno = has_mmap2_syscall(arch()) ? syscall_number_for_mmap2(arch())
+                                            : syscall_number_for_mmap(arch());
+  long result =
       has_mmap2_syscall(arch())
-          ? infallible_syscall_ptr_if_alive(syscall_number_for_mmap2(arch()), addr,
-                                            length, prot, flags, child_fd,
-                                            (off_t)offset_bytes / 4096)
-          : infallible_syscall_ptr_if_alive(syscall_number_for_mmap(arch()), addr,
-                                            length, prot, flags, child_fd,
-                                            offset_bytes);
+          ? syscall(syscallno, addr, length, prot, flags, child_fd,
+                    (off_t)offset_bytes / 4096)
+          : syscall(syscallno, addr, length, prot, flags, child_fd,
+                    offset_bytes);
+  if (infallible) {
+    check_syscall_result(result, syscallno);
+  } else {
+    // Sign-extend because it can be a 32-bit negative errno
+    long err = word_size(t->arch()) == 4 ? (int)result : result;
+    if (-4096 < err && err < 0 && err != -ESRCH) {
+      LOG(debug) << "mmap failed with errno " << errno_name(-err);
+      return nullptr;
+    }
+  }
+  remote_ptr<void> ret = result == -ESRCH ? 0 : result;
   if (flags & MAP_FIXED) {
     if (ret) {
       ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;

@@ -199,7 +199,20 @@ public:
    */
   remote_ptr<void> infallible_mmap_syscall_if_alive(remote_ptr<void> addr, size_t length,
                                                     int prot, int flags, int child_fd,
-                                                    uint64_t offset_bytes);
+                                                    uint64_t offset_bytes) {
+    return mmap_syscall_if_alive_internal(addr, length, prot, flags, child_fd,
+                                          offset_bytes, true);
+  }
+  /**
+   * Like infallible_mmap_syscall_if_alive, but also returns null if the mmap
+   * fails.
+   */
+  remote_ptr<void> mmap_syscall_if_alive(remote_ptr<void> addr, size_t length,
+                                         int prot, int flags, int child_fd,
+                                         uint64_t offset_bytes) {
+    return mmap_syscall_if_alive_internal(addr, length, prot, flags, child_fd,
+                                          offset_bytes, false);
+  }
 
   /**
    * Returns false if the process died (or was already dead) without
@@ -284,6 +297,12 @@ public:
   // Calling this with allow_death false is DEPRECATED.
   // Returns true iff session was not replaying and allow_death is true and process is not alive (-ESRCH)
   bool check_syscall_result(long ret, int syscallno, bool allow_death = true);
+
+  remote_ptr<void> mmap_syscall_if_alive_internal(remote_ptr<void> addr,
+                                                  size_t length, int prot,
+                                                  int flags, int child_fd,
+                                                  uint64_t offset_bytes,
+                                                  bool infallible);
 
 private:
   void setup_path(bool enable_singlestep_path);

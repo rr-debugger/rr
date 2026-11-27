@@ -252,9 +252,12 @@ static remote_ptr<uint8_t> allocate_extended_jump_x86ish(
       AutoRemoteSyscalls remote(t);
       int prot = PROT_READ | PROT_EXEC;
       int flags = MAP_ANONYMOUS | MAP_FIXED | MAP_PRIVATE;
-      auto ret = remote.infallible_mmap_syscall_if_alive(addr, page_size(), prot, flags, -1, 0);
+      auto ret = remote.mmap_syscall_if_alive(addr, page_size(), prot, flags, -1, 0);
       if (!ret) {
-        /* Tracee died */
+        // The tracee died, or the mmap failed. The mmap can fail with ENOMEM
+        // if the tracee has lowered its RLIMIT_AS below its current address
+        // space size, e.g. in a forked child about to exec. Just don't patch.
+        LOG(debug) << "Can't allocate stub page";
         return nullptr;
       }
       KernelMapping recorded(addr, addr + page_size(), string(),
@@ -425,9 +428,12 @@ static remote_ptr<uint8_t> allocate_extended_jump_aarch64(
       AutoRemoteSyscalls remote(t);
       int prot = PROT_READ | PROT_EXEC;
       int flags = MAP_ANONYMOUS | MAP_FIXED | MAP_PRIVATE;
-      auto ret = remote.infallible_mmap_syscall_if_alive(addr, page_size(), prot, flags, -1, 0);
+      auto ret = remote.mmap_syscall_if_alive(addr, page_size(), prot, flags, -1, 0);
       if (!ret) {
-        /* Tracee died */
+        // The tracee died, or the mmap failed. The mmap can fail with ENOMEM
+        // if the tracee has lowered its RLIMIT_AS below its current address
+        // space size, e.g. in a forked child about to exec. Just don't patch.
+        LOG(debug) << "Can't allocate stub page";
         return nullptr;
       }
       KernelMapping recorded(addr, addr + page_size(), string(),
