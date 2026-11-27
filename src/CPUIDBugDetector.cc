@@ -54,6 +54,11 @@ void CPUIDBugDetector::notify_reached_syscall_during_replay(ReplayTask* t) {
   if (!is_x86ish(t->arch())) {
     return;
   }
+  // If we're not using performance counters there is nothing to detect
+  // and we'd get false positives because ticks aren't counted
+  if (!t->hpc) {
+    return;
+  }
   if (t->session().done_initial_exec()) {
     return;
   }

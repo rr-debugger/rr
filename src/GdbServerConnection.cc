@@ -74,7 +74,8 @@ GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid,
       hwbreak_supported_(false),
       swbreak_supported_(false),
       list_threads_in_stop_reply_(false),
-      target_description_(std::move(target_description)) {
+      target_description_(std::move(target_description)),
+      expecting_phantom_continue_(false) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -1058,6 +1059,13 @@ bool GdbServerConnection::process_vpacket(char* payload) {
   name = payload;
 
   if (!strcmp("Cont", name)) {
+    if (expecting_phantom_continue_) {
+      expecting_phantom_continue_ = false;
+      LOG(debug)
+          << "Interpreting vCont as phantom continue. Triggering interrupt.";
+      req = GdbRequest(DREQ_INTERRUPT);
+      return true;
+    }
     vector<GdbContAction> actions;
     bool has_default_action = false;
     GdbContAction default_action;

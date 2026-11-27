@@ -57,7 +57,7 @@ void AutoRestoreMem::init(const void* mem, ssize_t num_bytes) {
   bool ok = true;
   remote.task()->read_bytes_helper(addr, len, data.data(), &ok);
   if (mem) {
-    remote.task()->write_bytes_helper(addr, len, mem, &ok);
+    remote.task()->write_bytes_helper(addr, len, mem, &ok, Task::IS_AUTO_REMOTE_MEMORY);
   }
   if (!ok) {
     addr = nullptr;
@@ -70,7 +70,7 @@ AutoRestoreMem::~AutoRestoreMem() {
   if (addr) {
     // XXX what should we do if this task was sigkilled but the address
     // space is used by other live tasks?
-    remote.task()->write_bytes_helper(addr, len, data.data());
+    remote.task()->write_bytes_helper(addr, len, data.data(), nullptr, Task::IS_AUTO_REMOTE_MEMORY);
   }
   remote.regs().set_sp(remote.regs().sp() + len);
   remote.task()->set_regs(remote.regs());
@@ -179,7 +179,8 @@ void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
   if (!replaced_bytes.empty()) {
     // XXX what to do here to clean up if the task died unexpectedly?
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
-                 replaced_bytes.data(), replaced_bytes.size());
+                 replaced_bytes.data(), replaced_bytes.size(),
+                 nullptr, Task::IS_AUTO_REMOTE_MEMORY);
   }
 
   remote_code_ptr syscall_ip;
@@ -209,7 +210,7 @@ void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
     replaced_bytes.clear();
   } else {
     t->write_mem(initial_regs.ip().to_data_ptr<uint8_t>(), syscall.data(),
-                 syscall.size(), &ok);
+                 syscall.size(), &ok, Task::IS_AUTO_REMOTE_MEMORY);
   }
 }
 
@@ -274,7 +275,8 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   if (!replaced_bytes.empty()) {
     // XXX how to clean up if the task died and the address space is shared with live task?
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
-                 replaced_bytes.data(), replaced_bytes.size());
+                 replaced_bytes.data(), replaced_bytes.size(),
+                 nullptr, Task::IS_AUTO_REMOTE_MEMORY);
   }
   auto regs = initial_regs;
   regs.set_ip(initial_ip);
@@ -545,7 +547,8 @@ static void write_socketcall_args(Task* t, remote_ptr<void> remote_mem,
                                   typename Arch::signed_long arg3,
                                   bool* ok) {
   socketcall_args<Arch> sc_args = { { arg1, arg2, arg3 } };
-  t->write_mem(remote_mem.cast<socketcall_args<Arch>>(), sc_args, ok);
+  t->write_mem(remote_mem.cast<socketcall_args<Arch>>(), sc_args, ok,
+               Task::IS_AUTO_REMOTE_MEMORY);
 }
 
 template <typename Arch>
@@ -613,7 +616,7 @@ static long child_sendmsg(AutoRemoteSyscalls& remote, int child_sock, int fd) {
 
   bool ok = true;
   remote.task()->write_bytes_helper(remote_buf.get().cast<char>(),
-    sizeof(msg), &msg, &ok);
+    sizeof(msg), &msg, &ok, Task::IS_AUTO_REMOTE_MEMORY);
 
   if (!ok) {
     return -ESRCH;
@@ -637,7 +640,7 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
   }
 
   remote.task()->write_bytes_helper(remote_buf.get().cast<char>(),
-    sizeof(msg), &msg, &ok);
+    sizeof(msg), &msg, &ok, Task::IS_AUTO_REMOTE_MEMORY);
 
   if (!ok) {
     ASSERT(remote.task(), errno == ESRCH || errno == EIO)

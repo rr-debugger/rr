@@ -141,6 +141,8 @@ struct BreakStatus {
   }
 
   Task* task() const { return task_context.task; }
+
+  bool operator==(const BreakStatus& other) const;
 };
 enum RunCommand {
   // Continue until we hit a breakpoint or a new replay event
@@ -361,6 +363,7 @@ public:
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering() {
     return syscall_seccomp_ordering_;
   }
+  bool is_alive() const { return !is_dead; }
 
   static bool has_cpuid_faulting();
   static const char* rr_mapping_prefix();
@@ -372,6 +375,7 @@ public:
 
   virtual TraceStream* trace_stream() { return nullptr; }
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
+  virtual bool using_perf_counters() const { return true; }
 
   // Must be `UNBOUND` or `SPECIFIED_CORE`.
   virtual BindCPU cpu_binding() const;
@@ -490,6 +494,11 @@ protected:
    * True while we're collecting Intel PT data.
    */
   bool intel_pt_;
+
+  /**
+   * True once destroy_all_tasks begins.
+   */
+  bool is_dead;
 };
 
 } // namespace rr

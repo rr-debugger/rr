@@ -133,6 +133,15 @@ class RRCmd(gdb.Command):
         if response != '\n':
             gdb.write(response)
 
+class RRRefreshCmd(RRCmd):
+    def __init__(self, name, auto_args):
+        RRCmd.__init__(self, name, auto_args)
+
+    def invoke(self, arg, from_tty):
+        args = gdb.string_to_argv(arg)
+        self.rr_cmd(args)
+        gdb.execute("continue", to_string=True)
+
 def history_push(p):
     # ensure any output (e.g. produced by breakpoint commands running during our
     # processing, that were triggered by the stop we've been notified for)

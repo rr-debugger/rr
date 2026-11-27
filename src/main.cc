@@ -62,6 +62,7 @@ void print_global_options(FILE* out) {
       "should\n"
       "                             be located in PATH/bin, PATH/lib[64], and\n"
       "                             PATH/share as appropriate.\n"
+      "  --structured-errors        print JSON structured errors when possible\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"
@@ -129,6 +130,7 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 2, "resource-path", HAS_PARAMETER },
     { 3, "log", HAS_PARAMETER },
     { 4, "non-interactive", NO_PARAMETER },
+    { 5, "structured-errors", NO_PARAMETER },
     { 'A', "microarch", HAS_PARAMETER },
     { 'C', "checksum", HAS_PARAMETER },
     { 'D', "dump-on", HAS_PARAMETER },
@@ -166,6 +168,9 @@ bool parse_global_option(std::vector<std::string>& args) {
       break;
     case 4:
       flags.non_interactive = true;
+      break;
+    case 5:
+      flags.structured_errors = true;
       break;
     case 'A':
       flags.forced_uarch = opt.value;

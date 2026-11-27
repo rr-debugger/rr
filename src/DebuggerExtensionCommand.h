@@ -12,6 +12,11 @@
 
 namespace rr {
 
+enum DebuggerExtensionCommandType {
+  Simple,
+  Refresh,
+};
+
 class DebuggerExtensionCommand {
 protected:
   DebuggerExtensionCommand(const std::string& cmd_name, const std::string& documentation)
@@ -19,11 +24,27 @@ protected:
     DebuggerExtensionCommandHandler::register_command(*this);
   }
 
+  /**
+   * Returns the type of the DebuggerExtensionCommand.
+   */
+  virtual DebuggerExtensionCommandType type_() const = 0;
+
 public:
   virtual ~DebuggerExtensionCommand() {}
 
   const std::string& name() const { return cmd_name; }
   const std::string& docs() const { return documentation; }
+
+  std::string macro_name() const {
+    switch (type_()) {
+      case DebuggerExtensionCommandType::Simple:
+        return std::string("RRCmd");
+      case DebuggerExtensionCommandType::Refresh:
+        return std::string("RRRefreshCmd");
+      default:
+        abort();
+    }
+  }
 
   /**
    * Handle the RR Cmd and return a string response to be echo'd
@@ -57,6 +78,8 @@ private:
 };
 
 class SimpleDebuggerExtensionCommand : public DebuggerExtensionCommand {
+  virtual DebuggerExtensionCommandType type_() const override { return DebuggerExtensionCommandType::Simple; }
+
 public:
   SimpleDebuggerExtensionCommand(
       const std::string& cmd_name, const std::string& documentation,
@@ -72,6 +95,18 @@ public:
   std::function<std::string(GdbServer&, Task* t,
                             const std::vector<std::string>&)>
       invoker;
+};
+
+class RefreshDebuggerExtensionCommand : public SimpleDebuggerExtensionCommand {
+  virtual DebuggerExtensionCommandType type_() const { return DebuggerExtensionCommandType::Refresh; }
+
+public:
+  RefreshDebuggerExtensionCommand(
+      const std::string& cmd_name,
+      const std::string& documentation,
+      const std::function<std::string(
+          GdbServer&, Task* t, const std::vector<std::string>&)>& invoker)
+      : SimpleDebuggerExtensionCommand(cmd_name, documentation, invoker) {}
 };
 
 } // namespace rr

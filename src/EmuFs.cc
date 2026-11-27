@@ -30,6 +30,9 @@ namespace rr {
 
 EmuFile::~EmuFile() {
   LOG(debug) << "    EmuFs::~File(einode:" << inode_ << ")";
+  if (!filesystem_path_.empty()) {
+    unlink(filesystem_path_.c_str());
+  }
   owner.destroyed_file(*this);
 }
 
@@ -133,13 +136,20 @@ std::string make_temp_name(const string& orig_path, dev_t orig_device,
                                             dev_t orig_device, ino_t orig_inode,
                                             uint64_t orig_file_size) {
   string real_name = make_temp_name(orig_path, orig_device, orig_inode);
-  ScopedFd fd(open_memory_file(real_name));
+  string filesystem_name;
+  ScopedFd fd;
+  if (owner.expose_files()) {
+    fd = open_tmpfs_file(real_name, filesystem_name);
+  } else {
+    fd = open_memory_file(real_name);
+  }
   if (!fd.is_open()) {
     FATAL() << "Failed to create shmem segment for " << real_name;
   }
   resize_shmem_segment(fd, orig_file_size);
 
-  shr_ptr f(new EmuFile(owner, std::move(fd), orig_path, real_name, orig_device,
+  shr_ptr f(new EmuFile(owner, std::move(fd), orig_path, real_name,
+                        filesystem_name, orig_device,
                         orig_inode, orig_file_size));
 
   LOG(debug) << "created emulated file for " << orig_path << " as "
@@ -148,10 +158,12 @@ std::string make_temp_name(const string& orig_path, dev_t orig_device,
 }
 
 EmuFile::EmuFile(EmuFs& owner, ScopedFd&& fd, const string& orig_path,
-                 const string& real_path, dev_t orig_device, ino_t orig_inode,
+                 const string& real_path, const string& filesystem_path,
+                dev_t orig_device, ino_t orig_inode,
                  uint64_t orig_file_size)
     : orig_path(orig_path),
       tmp_path(real_path),
+      filesystem_path_(filesystem_path),
       file(std::move(fd)),
       owner(owner),
       size_(orig_file_size),
@@ -208,7 +220,7 @@ void EmuFs::log() const {
 
 /*static*/ EmuFs::shr_ptr EmuFs::create() { return shr_ptr(new EmuFs()); }
 
-EmuFs::EmuFs() {}
+EmuFs::EmuFs() : expose_files_(false) {}
 
 FileId::FileId(const KernelMapping& recorded_map)
     : device(recorded_map.device()), inode(recorded_map.inode()) {}

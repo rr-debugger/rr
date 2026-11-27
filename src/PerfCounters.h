@@ -26,6 +26,7 @@ namespace rr {
 class Registers;
 class Task;
 class BpfAccelerator;
+class CPUIDRecord;
 
 enum TicksSemantics {
   TICKS_RETIRED_CONDITIONAL_BRANCHES,
@@ -41,6 +42,17 @@ struct PTData {
     : data(std::move(data)) {}
   std::vector<std::vector<uint8_t>> data;
 };
+
+/**
+ * Returns host CPU microarchitecture name or nullptr if not known
+ */
+const char* cpu_microarch_name();
+
+/**
+ * Returns microarchitecture name from x86 CPUID records or nullptr if not known.
+ * (Always returns nullptr in ARM builds.)
+ */
+const char* x86_trace_cpu_microarch_name(const CPUIDRecord* records, size_t record_count);
 
 /**
  * A class encapsulating the performance counters we use to monitor

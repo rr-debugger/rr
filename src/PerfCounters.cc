@@ -29,6 +29,7 @@
 #include <regex>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "CPUs.h"
 #include "Flags.h"
@@ -44,32 +45,6 @@ using namespace std;
 namespace rr {
 
 #define PERF_COUNT_RR 0x72727272L
-
-static bool attributes_initialized;
-static bool cpu_improperly_configured;
-// At some point we might support multiple kinds of ticks for the same CPU arch.
-// At that point this will need to become more complicated.
-struct perf_event_attrs {
-  // bug_flags is an architecture dependent flags to determine
-  // what bugs need to be checked.
-  // Current, this is simply the uarch on x86 and unused on aarch64.
-  int bug_flags = 0;
-  perf_event_attr ticks{};
-  perf_event_attr minus_ticks{};
-  perf_event_attr cycles{};
-  perf_event_attr llsc_fail{};
-  const char *pmu_name = nullptr;
-  uint32_t pmu_flags = 0;
-  uint32_t skid_size = 0;
-  uint32_t ticks_min_period = 1;
-  bool checked = false;
-  bool has_ioc_period_bug = false;
-  bool only_one_counter = false;
-  bool activate_useless_counter = false;
-};
-// If this contains more than one element, it's indexed by the CPU index.
-static std::vector<perf_event_attrs> perf_attrs;
-static uint32_t pmu_semantics_flags;
 
 /*
  * Find out the cpu model using the cpuid instruction.
@@ -162,6 +137,33 @@ enum CpuMicroarch {
   AppleM2Avalanche,
   LastARM = AppleM2Avalanche,
 };
+
+static bool attributes_initialized;
+static bool cpu_improperly_configured;
+// At some point we might support multiple kinds of ticks for the same CPU arch.
+// At that point this will need to become more complicated.
+struct perf_event_attrs {
+  // bug_flags is an architecture dependent flags to determine
+  // what bugs need to be checked.
+  // Current, this is simply the uarch on x86 and unused on aarch64.
+  int bug_flags = 0;
+  perf_event_attr ticks{};
+  perf_event_attr minus_ticks{};
+  perf_event_attr cycles{};
+  perf_event_attr llsc_fail{};
+  const char *pmu_name = nullptr;
+  CpuMicroarch microarchitecture = UnknownCpu;
+  uint32_t pmu_flags = 0;
+  uint32_t skid_size = 0;
+  uint32_t ticks_min_period = 1;
+  bool checked = false;
+  bool has_ioc_period_bug = false;
+  bool only_one_counter = false;
+  bool activate_useless_counter = false;
+};
+// If this contains more than one element, it's indexed by the CPU index.
+static std::vector<perf_event_attrs> perf_attrs;
+static uint32_t pmu_semantics_flags;
 
 /*
  * Set if this CPU supports ticks counting retired conditional branches.
@@ -513,6 +515,15 @@ struct CPUInfo {
 #error Must define microarchitecture detection code for this architecture
 #endif
 
+static CpuMicroarch compute_x86_microarch_from_cpuid_records(const CPUIDRecord* records, size_t record_count) {
+  const CPUIDRecord* vendor = find_cpuid_record(records, record_count, CPUID_GETVENDORSTRING, 0);
+  const CPUIDRecord* features = find_cpuid_record(records, record_count, CPUID_GETFEATURES, 0);
+  if (!vendor || !features) {
+    CLEAN_FATAL() << "Trace CPUID records completely broken";
+  }
+  return compute_x86_microarch_from_cpuid(vendor->out, features->out);
+}
+
 static void check_working_counters(perf_event_attrs &perf_attr, int pmu_index) {
   struct perf_event_attr attr = perf_attr.ticks;
   attr.sample_period = 0;
@@ -626,6 +637,26 @@ static std::vector<PmuConfig> get_pmu_microarchs() {
   return pmu_uarchs;
 }
 
+static const char* get_microarch_name(CpuMicroarch uarch) {
+  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+    if (uarch == pmu_configs[i].uarch) {
+      return pmu_configs[i].name;
+    }
+  }
+  return nullptr;
+}
+
+const char* cpu_microarch_name() {
+  return get_microarch_name(perf_attrs[0].microarchitecture);
+}
+
+const char* x86_trace_cpu_microarch_name(const CPUIDRecord* records, size_t record_count) {
+  if (!record_count) {
+    return nullptr;
+  }
+  return get_microarch_name(compute_x86_microarch_from_cpuid_records(records, record_count));
+}
+
 static void init_attributes() {
   if (attributes_initialized) {
     return;
@@ -671,6 +702,7 @@ static void init_attributes() {
         continue;
       }
       perf_attr.pmu_name = pmu_uarch.pmu_name;
+      perf_attr.microarchitecture = pmu_uarch.uarch;
       perf_attr.skid_size = pmu_uarch.skid_size;
       perf_attr.pmu_flags = pmu_uarch.flags;
       perf_attr.bug_flags = (int)pmu_uarch.uarch;

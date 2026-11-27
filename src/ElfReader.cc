@@ -31,6 +31,10 @@ public:
   virtual bool addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
   virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) = 0;
+  virtual vector<ElfReader::Segment> read_segments() = 0;
+  virtual vector<ElfReader::Section> read_sections() = 0;
+  virtual void iterate_relocations(
+      const ElfReader::RelocationCallback& callback) = 0;
   bool ok() { return ok_; }
 
 protected:
@@ -52,6 +56,10 @@ public:
   virtual bool addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
   virtual const vector<uint8_t>* decompress_section(SectionOffsets offsets) override;
+  virtual vector<ElfReader::Segment> read_segments() override;
+  virtual vector<ElfReader::Section> read_sections() override;
+  virtual void iterate_relocations(
+      const ElfReader::RelocationCallback& callback) override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
@@ -63,6 +71,8 @@ private:
   size_t programheader_size;
   size_t sections_size;
   vector<char> section_names;
+  const typename Arch::ElfPhdr* segments;
+  size_t segments_size;
 };
 
 template <typename Arch>
@@ -116,6 +126,12 @@ ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
   section_names.resize(section_names_section.sh_size);
   memcpy(section_names.data(), section_names_ptr, section_names.size());
   section_names[section_names.size() - 1] = 0;
+
+  segments =
+      r.read<typename Arch::ElfPhdr>(elfheader->e_phoff, elfheader->e_phnum);
+  segments_size = elfheader->e_phnum;
+  // It's possible for a useful ELF file to have no segments, e.g. when
+  // it's a supplemental debuginfo file, so don't check that here.
 
   ok_ = true;
 }
@@ -534,6 +550,92 @@ bool ElfReaderImpl<Arch>::addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) {
   return false;
 }
 
+template <typename Arch>
+vector<ElfReader::Segment> ElfReaderImpl<Arch>::read_segments() {
+  vector<ElfReader::Segment> result;
+  if (!ok()) {
+    return result;
+  }
+  for (size_t i = 0; i < segments_size; ++i) {
+    auto& s = segments[i];
+    if (uint64_t(s.p_offset) + s.p_filesz > UINT32_MAX ||
+        uint64_t(s.p_vaddr) + s.p_memsz > UINT32_MAX ||
+        s.p_align > UINT32_MAX) {
+      FATAL() << "Oversized image";
+    }
+    ElfReader::Segment seg;
+    seg.type = s.p_type;
+    seg.flags = s.p_flags;
+    seg.file_offset = s.p_offset;
+    seg.file_size = s.p_filesz;
+    seg.mem_offset = s.p_vaddr;
+    seg.mem_size = s.p_memsz;
+    seg.align = s.p_align;
+    result.push_back(seg);
+  }
+  return result;
+}
+
+template <typename Arch>
+vector<ElfReader::Section> ElfReaderImpl<Arch>::read_sections() {
+  vector<ElfReader::Section> result;
+  if (!ok()) {
+    return result;
+  }
+  for (size_t i = 0; i < sections_size; ++i) {
+    auto& s = sections[i];
+    ElfReader::Section sec;
+    // XXX apply sanity checks?
+    sec.name = string(section_names.data() + s.sh_name);
+    sec.mem_offset = s.sh_addr;
+    result.push_back(sec);
+  }
+  return result;
+}
+
+template <typename Arch>
+void ElfReaderImpl<Arch>::iterate_relocations(
+    const ElfReader::RelocationCallback& callback) {
+  for (size_t i = 0; i < sections_size; ++i) {
+    auto& s = sections[i];
+    if (s.sh_type == SHT_RELA) {
+      if (s.sh_entsize != sizeof(typename Arch::ElfRela)) {
+        LOG(debug) << "Invalid ELF file: incorrect relocation entry size "
+                   << s.sh_entsize;
+        continue;
+      }
+      if (s.sh_size % s.sh_entsize) {
+        LOG(debug) << "Invalid ELF file: incorrect relocation section size "
+                   << s.sh_size;
+        continue;
+      }
+      size_t relocs_size = s.sh_size / s.sh_entsize;
+      auto relocs = r.read<typename Arch::ElfRela>(s.sh_offset, relocs_size);
+      for (size_t j = 0; j < relocs_size; ++j) {
+        auto& rel = relocs[j];
+        callback(rel.r_offset, rel.r_info, rel.r_addend);
+      }
+    } else if (s.sh_type == SHT_REL) {
+      if (s.sh_entsize != sizeof(typename Arch::ElfRel)) {
+        LOG(debug) << "Invalid ELF file: incorrect relocation entry size "
+                   << s.sh_entsize;
+        continue;
+      }
+      if (s.sh_size % s.sh_entsize) {
+        LOG(debug) << "Invalid ELF file: incorrect relocation section size "
+                   << s.sh_size;
+        continue;
+      }
+      size_t relocs_size = s.sh_size / s.sh_entsize;
+      auto relocs = r.read<typename Arch::ElfRel>(s.sh_offset, relocs_size);
+      for (size_t j = 0; j < relocs_size; ++j) {
+        auto& rel = relocs[j];
+        callback(rel.r_offset, rel.r_info, 0);
+      }
+    }
+  }
+}
+
 ElfReader::ElfReader(SupportedArch arch) : arch_(arch), map(nullptr), size(0) {}
 
 ElfReader::~ElfReader() {}
@@ -574,6 +676,18 @@ string ElfReader::read_interp() { return impl().read_interp(); }
 
 bool ElfReader::addr_to_phdr(uintptr_t addr, PhdrInfo& phdr) {
   return impl().addr_to_phdr(addr, phdr);
+}
+
+vector<ElfReader::Segment> ElfReader::read_segments() {
+  return impl().read_segments();
+}
+
+vector<ElfReader::Section> ElfReader::read_sections() {
+  return impl().read_sections();
+}
+
+void ElfReader::iterate_relocations(const RelocationCallback& callback) {
+  return impl().iterate_relocations(callback);
 }
 
 bool ElfReader::ok() { return impl().ok(); }

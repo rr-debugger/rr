@@ -78,14 +78,15 @@ static inline const char* extract_file_name(const char* s) {
   return ret;
 }
 
-/* This header file is included by preload.c and various rr .cc files. It
- * defines the interface between the preload library and rr. preload.c
+/* This header file is included by syscallbuf.c and various rr .cc files. It
+ * defines the interface between the preload library and rr. syscallbuf.c
  * #defines RR_IMPLEMENT_PRELOAD to let us handle situations where rr and
- * preload.c need to see slightly different definitions of the same constructs.
+ * syscallbuf.c need to see slightly different definitions of the same
+ * constructs.
  *
- * preload.c compiles this as C code. All rr modules compile this as C++ code.
- * We do not use 'extern "C"' because we don't actually link between C and C++
- * and 'extern "C"' is not compatible with our use of templates below.
+ * syscallbuf.c compiles this as C code. All rr modules compile this as C++
+ * code. We do not use 'extern "C"' because we don't actually link between C
+ * and C++ and 'extern "C"' is not compatible with our use of templates below.
  */
 
 #define SYSCALLBUF_LIB_FILENAME_BASE "librrpreload"

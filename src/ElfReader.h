@@ -5,6 +5,7 @@
 
 #include <string.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -117,6 +118,26 @@ public:
   SectionOffsets find_section_file_offsets(const char* name);
   DwarfSpan dwarf_section(const char* name, bool known_to_be_compressed = false);
   SupportedArch arch() const { return arch_; }
+
+  struct Segment {
+    uint32_t type;
+    uint32_t flags;
+    uint32_t file_offset;
+    uint32_t file_size;
+    uint32_t mem_offset;
+    uint32_t mem_size;
+    uint32_t align;
+  };
+  std::vector<Segment> read_segments();
+  struct Section {
+    std::string name;
+    uint32_t mem_offset;
+  };
+  std::vector<Section> read_sections();
+  typedef std::function<void(uint64_t offset, uint64_t info, uint64_t addend)>
+      RelocationCallback;
+  void iterate_relocations(const RelocationCallback& callback);
+
 private:
   ElfReaderImplBase& impl();
   std::unique_ptr<ElfReaderImplBase> impl_;

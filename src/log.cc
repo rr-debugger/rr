@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <deque>
 #include <fstream>
@@ -15,6 +16,7 @@
 #include "Flags.h"
 #include "GdbServerConnection.h"
 #include "GdbServer.h"
+#include "PerfCounters.h"
 #include "RecordSession.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -139,7 +141,7 @@ _CONSTANT_STATIC unique_ptr<deque<char>> log_buffer;
 // When non-null, log messages are flushed to this file.
 _CONSTANT_STATIC ostream* log_file;
 // Maximum size of `log_buffer`.
-size_t log_buffer_size;
+static size_t log_buffer_size;
 
 static void flush_log_file() { log_file->flush(); }
 
@@ -238,7 +240,7 @@ static void init_log_globals() {
   apply_log_spec_from_env();
 }
 
-static LogLevel get_log_level(const string& name) {
+LogLevel get_log_level(const string& name) {
   init_log_globals();
 
   auto it = level_map->find(simple_to_lower(name));
@@ -450,6 +452,78 @@ CleanFatalOstream::~CleanFatalOstream() {
   flush_log_stream();
   flush_log_buffer();
   exit(1);
+}
+
+StructuredFatalOstream::StructuredFatalOstream(const char* file, int line, const char* function, const char* token) {
+  errno = 0;
+  json << "\nSTRUCTURED_FATAL {\"source\":\"rr\",\"file\":\"" << json_escape(string(file))
+       << "\",\"line\":" << line << ",\"function\":\"" << json_escape(string(function))
+       << "\",\"token\":\"" << token << "\"";
+  write_prefix(message, LOG_fatal, file, line, function);
+}
+
+StructuredFatalOstream::~StructuredFatalOstream() {
+  if (Flags::get().structured_errors) {
+    if (!message.str().empty()) {
+      json << ",\"message\":\"" << json_escape(message.str()) << "\"";
+    }
+    json << "}\n";
+    write(STDERR_FILENO, json.str().c_str(), json.str().size());
+  } else {
+    cerr << message.str() << endl;
+  }
+
+  flush_log_stream();
+  exit(1);
+}
+
+StructuredFatalOstream& StructuredFatalOstream::task(Task* t) {
+  json << ",\"tid\":" << t->rec_tid
+       << ",\"tgid\":" << t->thread_group()->tgid
+       << ",\"taskName\":\"" << json_escape(t->name())
+       << "\",\"event\":" << t->trace_time()
+       << ",\"ticks\":" << t->tick_count()
+       << ",\"arch\":\"" << arch_name(t->arch()) << "\"";
+  const char* uarch_name = cpu_microarch_name();
+  if (uarch_name) {
+    json << ",\"cpuMicroarch\":\"" << json_escape(uarch_name) << "\"";
+  }
+  ReplaySession* replay = t->session().as_replay();
+  if (replay) {
+    const vector<CPUIDRecord> records = replay->trace_reader().cpuid_records();
+    const char* trace_uarch_name = x86_trace_cpu_microarch_name(records.data(), records.size());
+    if (trace_uarch_name) {
+      json << ",\"traceCpuMicroarch\":\"" << json_escape(trace_uarch_name) << "\"";
+    }
+  }
+  message << "(task " << t->tid << " (rec:" << t->rec_tid << ") at time "
+          << t->trace_time() << ") ";
+  return *this;
+}
+
+static void print_mapping(const AddressSpace::Mapping& mapping, stringstream& json) {
+  json << "{\"originalFileName\":\"" << json_escape(mapping.recorded_map.fsname())
+    << "\",\"traceFileName\":\"" << json_escape(mapping.map.fsname()) << "\"}";
+}
+
+StructuredFatalOstream& StructuredFatalOstream::disassembly(const char* text) {
+  json << ",\"disassembly\":\"" << json_escape(text) << "\"";
+  return *this;
+}
+
+StructuredFatalOstream& StructuredFatalOstream::instruction_family(const char* text) {
+  json << ",\"instructionFamily\":\"" << json_escape(text) << "\"";
+  return *this;
+}
+
+StructuredFatalOstream& StructuredFatalOstream::instruction_address(Task* t, uintptr_t addr) {
+  json << ",\"instructionAddress\":" << addr;
+  if (t->vm()->has_mapping(addr)) {
+     json << ",\"instructionAddressMapping\":";
+     print_mapping(t->vm()->mapping_of(addr), json);
+  }
+  message << " address=" << HEX(addr);
+  return *this;
 }
 
 FatalOstream::FatalOstream(const char* file, int line, const char* function) {

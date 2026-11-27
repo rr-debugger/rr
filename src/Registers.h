@@ -29,6 +29,7 @@ const uintptr_t X86_TF_FLAG = 1 << 8;
 const uintptr_t X86_IF_FLAG = 1 << 9;
 const uintptr_t X86_DF_FLAG = 1 << 10;
 const uintptr_t X86_RF_FLAG = 1 << 16;
+const uintptr_t X86_AC_FLAG = 1 << 18;
 const uintptr_t X86_ID_FLAG = 1 << 21;
 
 const uintptr_t X86_ALL_ARITH_FLAGS = 0x8D5;
@@ -260,6 +261,7 @@ public:
     return set_arg(Index, uintptr_t(value));
   }
 
+  // Set syscall arg by integer index
   bool set_arg(int index, uintptr_t value) {
     switch (index) {
       case 1:
@@ -270,6 +272,27 @@ public:
         return set_arg3(value);
       case 4:
         return set_arg4(value);
+      case 5:
+        return set_arg5(value);
+      case 6:
+        return set_arg6(value);
+      default:
+        DEBUG_ASSERT(0 && "Argument index out of range");
+        return false;
+    }
+  }
+
+  // Set regular C call arg by integer index
+  bool set_call_arg(int index, uintptr_t value) {
+    switch (index) {
+      case 1:
+        return set_arg1(value);
+      case 2:
+        return set_arg2(value);
+      case 3:
+        return set_arg3(value);
+      case 4:
+        return set_cx(value);
       case 5:
         return set_arg5(value);
       case 6:
@@ -335,6 +358,11 @@ public:
     RR_SET_REG_X86(ebx, rbx, ebx);
     RR_SET_REG_X86(ecx, rcx, ecx);
     RR_SET_REG_X86(edx, rdx, edx);
+  }
+
+  uintptr_t r8() {
+    DEBUG_ASSERT(arch() == x86_64);
+    return u.x64regs.r8;
   }
 
   bool set_r8(uintptr_t value) {
@@ -433,6 +461,9 @@ public:
    */
   bool x86_singlestep_flag() const;
   void clear_x86_singlestep_flag();
+
+  bool x86_alignmentcheck_flag();
+  void clear_x86_alignmentcheck_flag();
 
   /**
    * Aarch64 has two flags that control single stepping. An EL1 one that

@@ -63,8 +63,7 @@ static const AMDZenModels amd_zen_models[] = {
  * as the microarchitecture identifier for the P-cores of that architecture
  * in a hybrid setup.
  */
-static CpuMicroarch compute_cpu_microarch() {
-  auto cpuid_vendor = cpuid(CPUID_GETVENDORSTRING, 0);
+static CpuMicroarch compute_x86_microarch_from_cpuid(const CPUIDData& cpuid_vendor, const CPUIDData& cpuid_data) {
   char vendor[12];
   memcpy(&vendor[0], &cpuid_vendor.ebx, 4);
   memcpy(&vendor[4], &cpuid_vendor.edx, 4);
@@ -74,7 +73,6 @@ static CpuMicroarch compute_cpu_microarch() {
     CLEAN_FATAL() << "Unknown CPU vendor '" << vendor << "'";
   }
 
-  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
   // Compute the family and model as described in the CPUID documentation
   // from Intel and AMD.
   unsigned int base_family = (cpuid_data.eax >> 8) & 0xf;
@@ -193,6 +191,10 @@ static CpuMicroarch compute_cpu_microarch() {
                   << " unknown";
   }
   return UnknownCpu; // not reached
+}
+
+static CpuMicroarch compute_cpu_microarch() {
+  return { compute_x86_microarch_from_cpuid(cpuid(CPUID_GETVENDORSTRING, 0), cpuid(CPUID_GETFEATURES, 0)) };
 }
 
 static vector<CPUInfo> compute_cpus_info() {

@@ -10,6 +10,7 @@
 #include "ExportImportCheckpoints.h"
 #include "Flags.h"
 #include "GdbServer.h"
+#include "RemixModule.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "TraceField.h"
@@ -61,10 +62,13 @@ RerunCommand RerunCommand::singleton(
     "                             to run on the CPU stored in the trace.\n"
     "                             Note that this may diverge from the recording\n"
     "                             in some cases.\n"
+    "  -x, --remix                Use remix NullTool to run the trace. Implies -u.\n"
     "\n"
     "<REGS> is a comma-separated sequence of 'event','icount','ip','ticks',\n"
-    "'flags','gp_x16','xmm_x16','ymm_x16'. For the 'x16' cases, we always output\n"
-    "16 values, the latter 8 of which are zero for x86-32. GP registers are in\n"
+    "'flags','gp_x16','xmm_x16','ymm_x16','zmm_x32','k_x8','x87_x8','fstat',\n"
+    "'xinuse','fip','fop','mxcsr','tid','ticks', or the general purpose or\n"
+    "segment registers by name. For the 'xN' cases, we always output N values.\n"
+    "Registers not present on that processor will be 0. GP registers are in\n"
     "architectural order (AX,CX,DX,BX,SP,BP,SI,DI,R8-R15). All data is output\n"
     "in little-endian binary format; records are separated by \\n. String\n"
     "instruction repetitions are treated as a single instruction if not\n"
@@ -84,6 +88,7 @@ struct RerunFlags {
   int export_checkpoints_count;
   bool raw;
   bool cpu_unbound;
+  bool use_remix;
 
   RerunFlags()
       : trace_start(0),
@@ -91,7 +96,8 @@ struct RerunFlags {
         export_checkpoints_event(0),
         export_checkpoints_count(0),
         raw(false),
-        cpu_unbound(false) {}
+        cpu_unbound(false),
+        use_remix(false) {}
 };
 
 static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
@@ -108,7 +114,8 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
     { 'f', "function", HAS_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
     { 's', "trace-start", HAS_PARAMETER },
-    { 'u', "cpu-unbound", NO_PARAMETER }
+    { 'u', "cpu-unbound", NO_PARAMETER },
+    { 'x', "remix", NO_PARAMETER },
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -160,6 +167,9 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
       break;
     case 'u':
       flags.cpu_unbound = true;
+      break;
+    case 'x':
+      flags.use_remix = true;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
@@ -237,7 +247,9 @@ static ReplaySession::Flags session_flags(const RerunFlags& flags) {
   ReplaySession::Flags result;
   result.redirect_stdio = false;
   result.share_private_mappings = false;
-  result.cpu_unbound = flags.cpu_unbound;
+  result.cpu_unbound = flags.cpu_unbound || flags.use_remix;
+  result.transient_errors_fatal = flags.use_remix;
+  result.always_remix = flags.use_remix;
   return result;
 }
 
@@ -279,8 +291,15 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     }
   }
 
+  MemoryRange module_range;
+  if (flags.use_remix) {
+    module_range = replay_session->choose_remix_module_range();
+  }
+
   while (replay_session->trace_reader().time() < flags.trace_end) {
     RunCommand cmd = RUN_CONTINUE;
+    bool account_for_execve_exit =
+        ReplayTask::next_event_is_execve_exit(replay_session->current_task());
 
     auto old_task_p = replay_session->current_task();
     ReplayTask* old_task = old_task_p ? old_task_p->as_replay() : nullptr;
@@ -349,6 +368,11 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
         instruction_count_within_event += 1;
       }
     }
+    if (flags.use_remix && replay_session->done_initial_exec()) {
+      auto rt = replay_session->current_task();
+      ReplayTask::ensure_initialized_remix_module(rt, module_range,
+        DEFAULT_TEST_OPTIONS, account_for_execve_exit);
+    }
     if (before_time < after_time) {
       LOG(debug) << "Completed event " << before_time
                  << " instruction_count=" << instruction_count_within_event;
@@ -386,6 +410,11 @@ int RerunCommand::run_internal(CommandForCheckpoint& command_for_checkpoint) {
     }
     print_help(stderr);
     return 1;
+  }
+
+  bool use_null_tool = getenv("RR_FORCE_NULL_TOOL") != nullptr;
+  if (use_null_tool) {
+    flags.use_remix = true;
   }
 
   assert_prerequisites();

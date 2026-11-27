@@ -2065,7 +2065,8 @@ void RecordTask::maybe_flush_syscallbuf() {
     records = read_mem(REMOTE_PTR_FIELD(preload_globals, mprotect_records[0]),
                        hdr.mprotect_record_count);
     for (auto& r : records) {
-      as->protect(this, untagged_addr(arch(), r.start), r.size, r.prot);
+      as->protect(this, untagged_addr(arch(), r.start), r.size, r.prot,
+                  AddressSpace::MPROTECT_SYSCALLBUF);
     }
   }
 
@@ -2171,7 +2172,7 @@ void RecordTask::record_event(Event ev, FlushSyscallbuf flush,
   if (!ev.has_ticks_slop()) {
     // Only associate PT data with events whose timing is
     // exactly the same between recording and replay.
-    PTData pt_data = hpc.extract_intel_pt_data();
+    PTData pt_data = hpc ? hpc->extract_intel_pt_data() : PTData();
     if (!pt_data.data.empty()) {
       write_pt_data(this, current_time, pt_data.data);
     }
@@ -2310,7 +2311,7 @@ pid_t RecordTask::get_parent_pid() const { return get_ppid(tid); }
 
 void RecordTask::set_tid_and_update_serial(pid_t tid,
                                            pid_t own_namespace_tid) {
-  hpc.set_tid(tid);
+  hpc->set_tid(tid);
   this->tid = rec_tid = tid;
   serial = session().next_task_serial();
   own_namespace_rec_tid = own_namespace_tid;

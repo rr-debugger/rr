@@ -62,6 +62,7 @@
 #include <pwd.h>
 #include <sched.h>
 #include <scsi/sg.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <sound/asound.h>
 #include <stdarg.h>

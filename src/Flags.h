@@ -59,6 +59,9 @@ struct Flags {
   // Any warning or error that would be printed is treated as fatal
   bool fatal_errors_and_warnings;
 
+  // Print RR-STRUCTURED-ERROR JSON blob for fatal errors
+  bool structured_errors;
+
   // Pretend CPUID faulting support doesn't exist
   bool disable_cpuid_faulting;
 

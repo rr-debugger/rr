@@ -793,6 +793,8 @@ public:
 
   bool is_pass_signal(int sig);
 
+  void expect_phantom_continue() { expecting_phantom_continue_ = true; }
+
 private:
   /**
    * read() incoming data exactly one time, successfully.  May block.
@@ -901,6 +903,10 @@ private:
   bool swbreak_supported_; // client supports swbreak extension
   bool list_threads_in_stop_reply_; // client requested threads: and thread-pcs: in stop replies
   TargetDescription target_description_;
+
+  // true when we're expecting a dummy continue command that
+  // exists only to give gdb a new stop reason.
+  bool expecting_phantom_continue_;
 };
 
 } // namespace rr

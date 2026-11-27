@@ -12,6 +12,7 @@
 #include "Command.h"
 #include "Flags.h"
 #include "GdbServer.h"
+#include "RemixModule.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "WaitManager.h"
@@ -75,6 +76,7 @@ ReplayCommand ReplayCommand::singleton(
     "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n"
     "  --retry-transient-errors   If we detect a transient error that might resolve\n"
     "                             by retrying, retry it\n"
+    "  --remix                    use remix NullTool\n"
     "  --stats=<N>                display brief stats every N steps (eg 10000).\n"
     "  --serve-files              Serve all files from the trace rather than\n"
     "                             assuming they exist on disk. Debugging will\n"
@@ -127,6 +129,9 @@ struct ReplayFlags {
   /* When true, do not bind to the CPU stored in the trace file. */
   bool cpu_unbound;
 
+  /* When true, use remix */
+  bool use_remix;
+
   // When true make all private mappings shared with the tracee by default
   // to test the corresponding code.
   bool share_private_mappings;
@@ -155,6 +160,7 @@ struct ReplayFlags {
         gdb_binary_file_path("gdb"),
         redirect(true),
         cpu_unbound(false),
+        use_remix(false),
         share_private_mappings(false),
         retry_transient_errors(false),
         dump_interval(0),
@@ -189,7 +195,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 3, "serve-files", NO_PARAMETER },
     { 4, "tty", HAS_PARAMETER },
     { 5, "intel-pt-start-checking-event", HAS_PARAMETER },
-    { 6, "retry-transient-errors", NO_PARAMETER }
+    { 6, "retry-transient-errors", NO_PARAMETER },
+    { 7, "remix", NO_PARAMETER },
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -295,6 +302,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     case 6:
       flags.retry_transient_errors = true;
       break;
+    case 7:
+      flags.use_remix = true;
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
   }
@@ -364,9 +374,10 @@ static ReplaySession::Flags session_flags(const ReplayFlags& flags, bool can_ret
   result.redirect_stdio = flags.redirect;
   result.redirect_stdio_file = flags.tty;
   result.share_private_mappings = flags.share_private_mappings;
-  result.cpu_unbound = flags.cpu_unbound;
+  result.cpu_unbound = flags.cpu_unbound || flags.use_remix;
   result.intel_pt_start_checking_event = flags.intel_pt_start_checking_event;
-  result.transient_errors_fatal = !can_retry_transient_errors || !flags.retry_transient_errors;
+  result.transient_errors_fatal = (!can_retry_transient_errors || !flags.retry_transient_errors) && !flags.use_remix;
+  result.always_remix = flags.use_remix;
   return result;
 }
 
@@ -385,10 +396,17 @@ static void serve_replay_no_debugger(const string& trace_dir,
   gettimeofday(&last_dump_time, NULL);
   FrameTime printed_stdio_up_to_event = 0;
 
+  MemoryRange module_range;
+  if (flags.use_remix) {
+    module_range = replay_session->choose_remix_module_range();
+  }
+
   while (true) {
     RunCommand cmd = RUN_CONTINUE;
+    bool account_for_execve_exit =
+        ReplayTask::next_event_is_execve_exit(replay_session->current_task());
     if (flags.singlestep_to_event > 0 &&
-        replay_session->trace_reader().time() >= flags.singlestep_to_event) {
+        replay_session->trace_reader().time() == flags.singlestep_to_event) {
       cmd = RUN_SINGLESTEP;
       fputs("Stepping from: ", stderr);
       ReplayTask* t = replay_session->current_task()->as_replay();
@@ -449,6 +467,12 @@ static void serve_replay_no_debugger(const string& trace_dir,
     DEBUG_ASSERT(!result.break_status.breakpoint_hit);
     DEBUG_ASSERT(cmd == RUN_SINGLESTEP ||
                  !result.break_status.singlestep_complete);
+
+    if (flags.use_remix && replay_session->done_initial_exec()) {
+      auto rt = replay_session->current_task();
+      ReplayTask::ensure_initialized_remix_module(rt, module_range,
+        DEFAULT_TEST_OPTIONS, account_for_execve_exit);
+    }
   }
 
   LOG(info) << "Replayer successfully finished";
@@ -667,6 +691,11 @@ int ReplayCommand::run(vector<string>& args) {
   }
   if (flags.retry_transient_errors && !flags.dont_launch_debugger) {
     fprintf(stderr, "--retry-transient-errors requires -a (for now)");
+    print_help(stderr);
+    return 2;
+  }
+  if (flags.retry_transient_errors && flags.use_remix) {
+    fprintf(stderr, "--retry-transient-errors is not compatible with --remix");
     print_help(stderr);
     return 2;
   }

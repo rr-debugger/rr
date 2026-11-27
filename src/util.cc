@@ -1068,6 +1068,31 @@ vector<CPUIDRecord> all_cpuid_records() {
   return gather_cpuid_records(UINT32_MAX);
 }
 
+bool is_cpu_amd(const std::vector<CPUIDRecord>& records) {
+  const CPUIDRecord* rec = find_cpuid_record(records, CPUID_GETVENDORSTRING, 0);
+  return rec && is_cpu_vendor_amd(rec->out);
+}
+
+bool is_cpu_abm_enabled(const std::vector<CPUIDRecord>& records) {
+#if defined(__i386__) || defined(__x86_64__)
+  const CPUIDRecord* rec = find_cpuid_record(records, CPUID_INTELFEATURES, 0);
+  return rec && (rec->out.ecx & ABM_FEATURE_FLAG) != 0;
+#else
+  FATAL_X86_ONLY();
+  return false;
+#endif
+}
+
+bool is_cpu_bmi1_enabled(const std::vector<CPUIDRecord>& records) {
+#if defined(__i386__) || defined(__x86_64__)
+  const CPUIDRecord* rec = find_cpuid_record(records, CPUID_GETEXTENDEDFEATURES, 0);
+  return rec && (rec->out.ebx & BMI1_FEATURE_FLAG) != 0;
+#else
+  FATAL_X86_ONLY();
+  return false;
+#endif
+}
+
 #ifdef SYS_arch_prctl
 #define RR_ARCH_PRCTL(a, b) syscall(SYS_arch_prctl, a, b)
 #else
@@ -1120,9 +1145,10 @@ bool cpuid_faulting_works() {
   return cpuid_faulting_ok;
 }
 
-const CPUIDRecord* find_cpuid_record(const vector<CPUIDRecord>& records,
+const CPUIDRecord* find_cpuid_record(const CPUIDRecord* records, size_t record_count,
                                      uint32_t eax, uint32_t ecx) {
-  for (const auto& rec : records) {
+  for (size_t i = 0; i < record_count; ++i) {
+    const CPUIDRecord& rec = records[i];
     if (rec.eax_in == eax && (rec.ecx_in == ecx || rec.ecx_in == UINT32_MAX)) {
       return &rec;
     }
@@ -1930,8 +1956,39 @@ TempFile create_temporary_file(const char* pattern) {
   return result;
 }
 
-ScopedFd open_memory_file(const std::string &name) {
-  ScopedFd fd(syscall(SYS_memfd_create, name.c_str(), 0));
+static ScopedFd create_memfd_file(const string &real_name) {
+  ScopedFd fd(syscall(SYS_memfd_create, real_name.c_str(), 0));
+  return fd;
+}
+
+static void replace_char(string& s, char c, char replacement) {
+  size_t i = 0;
+  while (string::npos != (i = s.find(c, i))) {
+    s[i] = replacement;
+  }
+}
+
+ScopedFd open_tmpfs_file(const string &real_name, string& name_out) {
+  name_out = real_name;
+  replace_char(name_out, '/', '\\');
+  name_out = string(tmp_dir()) + '/' + name_out;
+  name_out = name_out.substr(0, 255);
+
+  ScopedFd fd =
+      ScopedFd(name_out.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
+  return fd;
+}
+
+ScopedFd open_memory_file(const std::string &name)
+{
+  ScopedFd fd(create_memfd_file(name));
+  if (!fd.is_open()) {
+    string name_out;
+    fd = open_tmpfs_file(name, name_out);
+    /* Remove the fs name so that we don't have to worry about
+     * cleaning up this segment in error conditions. */
+    unlink(name_out.c_str());
+  }
   return fd;
 }
 
@@ -2482,6 +2539,37 @@ size_t word_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(word_size_arch, arch);
 }
 
+static int decode_utf8_extra_bytes(const string& str, size_t* i, size_t count, int value) {
+  size_t j = *i + 1;
+  if (j + count > str.size()) {
+    return 0;
+  }
+  while (count > 0) {
+    if ((str[j] & ~0x3f) != 0x80) {
+      return 0;
+    }
+    value += str[j] & 0x3f;
+    ++j;
+    --count;
+  }
+  *i = j - 1;
+  return value;
+}
+
+static int try_decode_utf8(const string& str, size_t* i) {
+  uint8_t b1 = str[*i];
+  if ((b1 & ~0x1f) == 0xc0) {
+    return decode_utf8_extra_bytes(str, i, 1, b1 & 0x1f);
+  }
+  if ((b1 & ~0x0f) == 0xe0) {
+    return decode_utf8_extra_bytes(str, i, 2, b1 & 0x0f);
+  }
+  if ((b1 & ~0x07) == 0xf0) {
+    return decode_utf8_extra_bytes(str, i, 3, b1 & 0x07);
+  }
+  return 0;
+}
+
 string json_escape(const string& str, size_t pos) {
   string out;
   for (size_t i = pos; i < str.size(); ++i) {
@@ -2494,8 +2582,18 @@ string json_escape(const string& str, size_t pos) {
       out += "\\\\";
     } else if (c == '\"') {
       out += "\\\"";
-    } else {
+    } else if (c < 0x80) {
       out += c;
+    } else {
+      int unichar = try_decode_utf8(str, &i);
+      if (unichar > 0) {
+        char buf[8];
+        sprintf(buf, "\\u%04x", c);
+        out += buf;
+      } else {
+        // replacement char
+        out += "\\ufffd";
+      }
     }
   }
   return out;

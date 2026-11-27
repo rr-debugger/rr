@@ -36,9 +36,10 @@
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
 #include "ProcStatMonitor.h"
-#include "RRPageMonitor.h"
+#include "RemixModule.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
+#include "RRPageMonitor.h"
 #include "SeccompFilterRewriter.h"
 #include "StdioMonitor.h"
 #include "SysCpuMonitor.h"
@@ -368,8 +369,25 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
       remote.infallible_mmap_syscall_if_alive(km.start(), km.size(), km.prot(),
                                               (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1,
                                               0);
-      // The data, if any, will be written back by
-      // ReplayTask::apply_all_data_records_from_trace
+      if (data.source == TraceReader::SOURCE_TRACE) {
+        while (true) {
+          TraceReader::RawData buf;
+          bool ok = t->trace_reader().read_raw_data_for_frame(buf);
+          ASSERT(t, ok);
+          // Our mapping records may be preceded by one or more writes
+          // to another task (the uniform-fd-table flag).
+          if (buf.rec_tid == t->rec_tid) {
+            ASSERT(t, km.start() == buf.addr) << "Mapping at " << km.start()
+              << " got data at " << buf.addr;
+            t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data(),
+                                  nullptr, Task::IS_INITIAL_DATA_FOR_MAPPING);
+            break;
+          } else {
+            // This actually writes to another task.
+            t->write_data_record_from_trace(buf);
+          }
+        }
+      }
       break;
     default:
       ASSERT(t, false) << "Unknown data source";
@@ -382,6 +400,16 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
                            ReplayTraceStep* step) {
+  {
+    auto remix = t->vm()->remix_module();
+    if (remix) {
+      remix->notify_will_exec(t);
+      // Disconnect the remix module so it no longer receives notifications.
+      // It should be destroyed after this block.
+      t->vm()->unload_remix(t);
+    }
+  }
+
   step->action = TSTEP_RETIRE;
 
   /* First, exec a stub program */
@@ -518,7 +546,25 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   // Apply final data records --- fixing up the last page in each data segment
   // for zeroing applied by the kernel, and applying monkeypatches.
-  t->apply_all_data_records_from_trace();
+  TraceReader::RawData raw;
+  t->clear_post_exec_writes();
+  while (t->trace_reader().read_raw_data_for_frame(raw)) {
+    if (!raw.addr.is_null() && raw.data.size() > 0) {
+      // Some records may be for other tasks, e.g. a vfork parent whose
+      // address space we were sharing until the exec.
+      auto target = t->session().find_task(raw.rec_tid);
+      ASSERT(t, target) << "Can't find task " << raw.rec_tid;
+      target->write_bytes_helper(raw.addr, raw.data.size(), raw.data.data());
+      target->vm()->maybe_update_breakpoints(target, raw.addr.cast<uint8_t>(),
+                                             raw.data.size());
+      if (target->vm() == t->vm()) {
+        // Save writes so we can notify a remix module that wants to see all
+        // writes. (We can't load it any earlier.) Writes to other address
+        // spaces were already notified to their modules by write_bytes_helper.
+        t->append_post_exec_write(raw);
+      }
+    }
+  }
 
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
@@ -560,6 +606,7 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   ino_t inode = KernelMapping::NO_INODE;
   TraceReader::MappedData data;
   KernelMapping recorded_km = t->trace_reader().read_mapped_region(&data);
+  ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
   EmuFile::shr_ptr emu_file;
   if (!(flags & MAP_SHARED)) {
     remote.infallible_mmap_syscall_if_alive(rec_addr, length, prot,
@@ -592,7 +639,7 @@ static void write_mapped_data(ReplayTask* t,
     // Note that this gets called for remaps and shared maps that refer to the same pages
     // as previous maps and so the data we're recording might not be the initial data
     // for those pages, but it is the inital data *for this mapping*.
-    t->apply_data_record_from_trace();
+    t->apply_data_record_from_trace(Task::IS_INITIAL_DATA_FOR_MAPPING);
     break;
   }
   case TraceReader::SOURCE_FILE: {
@@ -611,7 +658,9 @@ static void write_mapped_data(ReplayTask* t,
       if (ret == 0) {
         break;
       }
-      t->write_bytes_helper(rec_addr, ret, buf.data());
+      t->write_bytes_helper(rec_addr, ret, buf.data(), nullptr,
+                            Task::IS_INITIAL_DATA_FOR_MAPPING);
+      t->vm()->maybe_update_breakpoints(t, rec_addr.cast<uint8_t>(), ret);
       rec_addr += ret;
       size -= ret;
     }
@@ -712,16 +761,48 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                          off_t offset_bytes, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
+  if (t->remix_execution_enabled() &&
+      !!(prot & PROT_EXEC) &&
+      !(prot & PROT_READ)) {
+    LOG(debug) << "\tFixing executable but not readable mmap";
+    prot |= PROT_READ;
+  }
+
   {
     remote_ptr<void> addr = trace_frame.regs().syscall_result();
+    // We may have used space inside a PROT_NONE mapping for remix. Don't let the
+    // tracee overwrite it.
+    if (t->remix_execution_enabled()) {
+      auto range = MemoryRange(addr, length);
+      auto intersection = range.intersect(t->vm()->remix_module()->memory_range());
+      if (intersection.size() > 0) {
+        ASSERT(t, prot == PROT_NONE);
+        // XXXkhuey handle disjoint ranges.
+        ASSERT(t, intersection.start() == range.start() || intersection.end() == range.end());
+        length = range.size() - intersection.size();
+        if (length == 0) {
+          // NB: Consume the map.
+          TraceReader::MappedData data;
+          t->trace_reader().read_mapped_region(&data);
+          // Emulate the result.
+          Registers r = t->regs();
+          r.set_syscall_result(trace_frame.regs().syscall_result());
+          t->set_regs(r);
+          t->apply_all_data_records_from_trace();
+          return;
+        } else if (intersection.start() == range.start()) {
+          addr = intersection.end();
+          offset_bytes += intersection.size();
+        }
+      }
+    }
     // Hand off actual execution of the mapping to the appropriate helper.
     AutoRemoteSyscalls remote(t,
                               !(flags & MAP_SHARED) && (flags & MAP_ANONYMOUS)
                                   ? AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS
                                   : AutoRemoteSyscalls::ENABLE_MEMORY_PARAMS);
     if (flags & MAP_ANONYMOUS) {
-      finish_anonymous_mmap(t, remote, trace_frame.regs().syscall_result(),
-                            length, prot, flags);
+      finish_anonymous_mmap(t, remote, addr, length, prot, flags);
     } else {
       TraceReader::MappedData data;
       vector<TraceRemoteFd> extra_fds;
@@ -947,6 +1028,9 @@ static void process_shmdt(ReplayTask* t, const TraceFrame& trace_frame,
 // executed by the tracee.
 static bool process_madvise(ReplayTask* t, const TraceFrame& trace_frame,
                             int advice, int result) {
+  remote_ptr<void> addr = t->regs().arg1();
+  size_t num_bytes = t->regs().arg2();
+  t->vm()->will_advise(t, addr, num_bytes, advice);
   switch (advice) {
     case MADV_DONTNEED:
     case MADV_REMOVE:
@@ -1078,6 +1162,9 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   LOG(debug) << "processing " << sys_ev.syscall_name() << " (entry)";
 
   if (is_restart_syscall_syscall(sys, sys_ev.arch())) {
+    if (t->remix_execution_enabled()) {
+      t->vm()->remix_module()->will_change_state_without_execution(t);
+    }
     ASSERT(t, t->tick_count() == t->current_trace_frame().ticks());
     t->set_regs(t->current_trace_frame().regs());
     t->apply_all_data_records_from_trace();
@@ -1229,6 +1316,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::mremap:
       return process_mremap(t, trace_frame, step);
 
+
     case Arch::madvise:
       if (!process_madvise(t, trace_frame, trace_regs.arg3(),
                            trace_regs.syscall_result_signed())) {
@@ -1241,8 +1329,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
           (arg1 == ARCH_GET_CPUID || arg1 == ARCH_SET_CPUID)) {
         return;
       }
-    }
       RR_FALLTHROUGH;
+    }
     case Arch::prctl: {
       auto arg1 = t->regs().arg1();
       if (sys == Arch::prctl &&
@@ -1257,8 +1345,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         // with EINVAL because the recording kernel may not have supported it.
         return;
       }
-    }
       RR_FALLTHROUGH;
+    }
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::modify_ldt:
@@ -1269,18 +1357,59 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       int modified_sys = sys == Arch::pkey_mprotect ? Arch::mprotect : sys;
       r.set_syscallno(modified_sys);
       r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+      auto arg1 = r.arg1();
+      auto arg2 = r.arg2();
+      auto arg3 = r.arg3();
+      if (modified_sys == Arch::mprotect) {
+        // If using remix, make sure there are no mappings that are PROT_EXEC
+        // but not PROT_READ.
+        if (t->remix_execution_enabled() &&
+            !!(arg3 & PROT_EXEC) &&
+            !(arg3 & PROT_READ)) {
+          LOG(debug) << "\tFixing executable but not readable mapping at " << HEX(r.arg1());
+          r.set_arg3(arg3 | PROT_READ);
+        }
+      } else if (modified_sys == Arch::munmap) {
+        // We may have used space inside a PROT_NONE mapping for remix. Don't let the
+        // tracee overwrite it.
+        if (t->remix_execution_enabled()) {
+          auto range = MemoryRange(arg1, arg2);
+          auto intersection = range.intersect(t->vm()->remix_module()->memory_range());
+          if (intersection.size() > 0) {
+            // XXXkhuey handle disjoint ranges.
+            ASSERT(t, intersection.start() == range.start() || intersection.end() == range.end());
+            auto length = range.size() - intersection.size();
+            if (!length) {
+              r = t->regs();
+              r.set_syscall_result(trace_frame.regs().syscall_result());
+              t->set_regs(r);
+              goto emulated_address_space_syscall;
+            }
+            r.set_arg2(length);
+            if (intersection.start() == range.start()) {
+              r.set_arg1(intersection.end());
+            }
+          }
+        }
+      }
       t->set_regs(r);
       if (modified_sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
       t->enter_syscall(Arch::arch());
       t->exit_syscall(Arch::arch());
+      emulated_address_space_syscall:
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       if (modified_sys == Arch::mprotect) {
         Registers r2 = t->regs();
         r2.set_arg1(r.arg1());
         r2.set_arg2(r.arg2());
-        r2.set_arg3(r.arg3());
+        r2.set_arg3(arg3);
+        t->set_regs(r2);
+      } else if (modified_sys == Arch::munmap) {
+        Registers r2 = t->regs();
+        r2.set_arg1(arg1);
+        r2.set_arg2(arg2);
         t->set_regs(r2);
       }
       // The syscall modified registers. Re-emulate the syscall entry.

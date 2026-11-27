@@ -19,6 +19,7 @@
 #include "PerfCounters.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "RemixModule.h"
 #include "Task.h"
 #include "ThreadGroup.h"
 #include "core.h"
@@ -30,6 +31,18 @@
 using namespace std;
 
 namespace rr {
+
+bool BreakStatus::operator==(const BreakStatus& other) const {
+  vector<WatchConfig> w1 = watchpoints_hit;
+  vector<WatchConfig> w2 = other.watchpoints_hit;
+  sort(w1.begin(), w1.end());
+  sort(w2.begin(), w2.end());
+  return w1 == w2 && signal == other.signal &&
+         breakpoint_hit == other.breakpoint_hit &&
+         singlestep_complete == other.singlestep_complete &&
+         approaching_ticks_target == other.approaching_ticks_target &&
+         task_exit == other.task_exit;
+}
 
 struct Session::CloneCompletion {
   struct AddressSpaceClone {
@@ -54,7 +67,8 @@ Session::Session()
       ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),
       visible_execution_(true),
-      intel_pt_(false) {
+      intel_pt_(false),
+      is_dead(false) {
   LOG(debug) << "Session " << this << " created";
 }
 
@@ -80,7 +94,8 @@ Session::Session(const Session& other)
       ticks_semantics_(other.ticks_semantics_),
       done_initial_exec_(other.done_initial_exec_),
       visible_execution_(other.visible_execution_),
-      intel_pt_(other.intel_pt_) {}
+      intel_pt_(other.intel_pt_),
+      is_dead(other.is_dead) {}
 
 void Session::on_create(ThreadGroup* tg) { thread_group_map_[tg->tguid()] = tg; }
 void Session::on_destroy(ThreadGroup* tg) {
@@ -159,6 +174,7 @@ Task* Session::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 }
 
 vector<AddressSpace*> Session::vms() const {
+  finish_initializing();
   vector<AddressSpace*> result;
   for (auto& vm : vm_map) {
     result.push_back(vm.second);
@@ -216,6 +232,7 @@ AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
 }
 
 void Session::kill_all_tasks() {
+  is_dead = true;
   LOG(debug) << "Killing all tasks ...";
   for (int pass = 0; pass <= 1; ++pass) {
     /* We delete tasks in two passes. First, we kill
@@ -275,6 +292,30 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   assert_fully_initialized();
   BreakStatus break_status;
   break_status.task_context = TaskContext(t);
+
+  auto remix = t->vm()->remix_module();
+  if (remix) {
+    int stop_reason = remix->last_remix_execute_stop_reason();
+    if (stop_reason != STOPPED_NULL) {
+      // Last execution was via remix_execute.
+      // If we reached a breakpoint, we don't have to move the current IP
+      // back to the start of the instruction, because unlike normal execution
+      // remix execution does not execute the breakpoint.
+      if (stop_reason == STOPPED_BREAKPOINT) {
+        BreakpointType bp_type = t->vm()->get_breakpoint_type_at_addr(t->ip());
+        if (BKPT_USER == bp_type) {
+          LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
+          // SW breakpoint: $ip is just past the
+          // breakpoint instruction.  Move $ip back
+          // right before it.
+          t->move_ip_before_breakpoint();
+          break_status.breakpoint_hit = true;
+        }
+      }
+      break_status.singlestep_complete = stop_reason == STOPPED_SINGLESTEP;
+      return break_status;
+    }
+  }
 
   int stop_sig = t->stop_sig();
   if (!stop_sig) {
@@ -748,7 +789,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   }
   dest.clone_completion = std::move(completion);
 
-  DEBUG_ASSERT(dest.vms().size() > 0);
+  DEBUG_ASSERT(dest.vm_map.size() > 0);
 }
 
 bool Session::has_cpuid_faulting() {

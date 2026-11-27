@@ -22,6 +22,7 @@
 #include "HasTaskSet.h"
 #include "MemoryRange.h"
 #include "Monkeypatcher.h"
+#include "RemixModule.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "core.h"
@@ -36,6 +37,9 @@ class AutoRemoteSyscalls;
 class MonitoredSharedMemory;
 class RecordSession;
 class RecordTask;
+class RemixModule;
+struct RemixTestOptions;
+class RemixToolHost;
 class Session;
 class Task;
 
@@ -256,6 +260,27 @@ struct WatchConfig {
   }
   bool operator!=(const WatchConfig& other) const {
     return !(*this == other);
+  }
+  bool operator<(const WatchConfig& other) const {
+    if (addr < other.addr) {
+      return true;
+    }
+    if (addr > other.addr) {
+      return false;
+    }
+    if (num_bytes < other.num_bytes) {
+      return true;
+    }
+    if (num_bytes > other.num_bytes) {
+      return false;
+    }
+    if (type < other.type) {
+      return true;
+    }
+    if (type > other.type) {
+      return false;
+    }
+    return false;
   }
 };
 
@@ -545,6 +570,7 @@ public:
     return monitored_mem;
   }
 
+  enum ProtectSource { MPROTECT_SYSCALL, MPROTECT_SYSCALLBUF };
   /**
    * Return the start addresses of the MAP_SHARED mappings of the file with
    * the given device/inode (as recorded in the KernelMapping), using an index
@@ -567,7 +593,8 @@ public:
    * Change the protection bits of [addr, addr + num_bytes) to
    * |prot|.
    */
-  void protect(Task* t, remote_ptr<void> addr, size_t num_bytes, int prot);
+  void protect(Task* t, remote_ptr<void> addr, size_t num_bytes, int prot,
+               ProtectSource source);
 
   /**
    * Fix up mprotect registers parameters to take account of PROT_GROWSDOWN.
@@ -586,7 +613,10 @@ public:
    * by the kernel.
    * |flags| can contain values from Task::WriteFlags.
    */
-  void notify_written(remote_ptr<void> addr, size_t num_bytes, uint32_t flags);
+  void notify_will_write(Task* t, remote_ptr<void> addr, size_t num_bytes,
+                         uint32_t flags);
+  void notify_written(Task* t, remote_ptr<void> addr, size_t num_bytes,
+                      uint32_t flags);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
   bool add_breakpoint(remote_code_ptr addr, BreakpointType type);
@@ -689,6 +719,12 @@ public:
    */
   void unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
 
+  /**
+   * Notification of pending madvise call. This must not execute syscalls in
+   * |t|.
+   */
+  void will_advise(Task* t, remote_ptr<void> addr, ssize_t num_bytes,
+                   int advice);
   /**
    * Notification of madvise call.
    */
@@ -875,6 +911,12 @@ public:
   void set_thread_locals_tuid(const TaskUid& tuid) {
     thread_locals_tuid_ = tuid;
   }
+
+  std::shared_ptr<RemixModule> remix_module() { return remix_module_; }
+  void load_remix(ReplayTask* t, const MemoryRange& range,
+                  const std::string& path, std::shared_ptr<RemixToolHost> host,
+                  intptr_t init_cookie, RemixTestOptions test_options);
+  void unload_remix(ReplayTask* t);
 
   /**
    * Call this when the memory at [addr,addr+len) was externally overwritten.
@@ -1291,6 +1333,7 @@ private:
   // of old traces.
   remote_code_ptr stopping_breakpoint_table_;
   int stopping_breakpoint_table_entry_size_;
+  std::shared_ptr<RemixModule> remix_module_;
 
   std::vector<uint8_t> saved_auxv_;
   remote_ptr<void> saved_interpreter_base_;

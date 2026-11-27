@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+RECORD_ARGS=--chaos
+record $TESTNAME
+remix
+check_remix EXIT-SUCCESS

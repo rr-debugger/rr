@@ -250,6 +250,8 @@ const int AVX_FEATURE_FLAG = 1 << 28;
 const int HLE_FEATURE_FLAG = 1 << 4;
 const int XSAVEC_FEATURE_FLAG = 1 << 1;
 const int PKU_FEATURE_FLAG = 1 << 3;
+const int BMI1_FEATURE_FLAG = 1 << 3;
+const int ABM_FEATURE_FLAG = 1 << 5;
 
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers
@@ -289,18 +291,36 @@ struct CPUIDRecord {
 std::vector<CPUIDRecord> all_cpuid_records();
 
 /**
+ * Check from all the CPUIDRecords whether that CPU is AMD.
+ */
+
+bool is_cpu_amd(const std::vector<CPUIDRecord>& all_cpuid_records);
+
+/**
+ * Check if LZCNT is available.
+ */
+bool is_cpu_abm_enabled(const std::vector<CPUIDRecord>& all_cpuid_records);
+
+/**
+ * Check if TZCNT/etc is available.
+ */
+bool is_cpu_bmi1_enabled(const std::vector<CPUIDRecord>& all_cpuid_records);
+
+/**
  * Returns true if CPUID faulting is supported by the kernel and hardware and
  * is actually working.
  */
 bool cpuid_faulting_works();
-
 /**
  * Locate a CPUID record for the give parameters, or return nullptr if there
  * isn't one.
  */
-const CPUIDRecord* find_cpuid_record(const std::vector<CPUIDRecord>& records,
+const CPUIDRecord* find_cpuid_record(const CPUIDRecord* records, size_t record_count,
                                      uint32_t eax, uint32_t ecx);
-
+inline const CPUIDRecord* find_cpuid_record(const std::vector<CPUIDRecord>& records,
+                                            uint32_t eax, uint32_t ecx) {
+  return find_cpuid_record(records.data(), records.size(), eax, ecx);
+}
 /**
  * Return true if the trace's CPUID values are "compatible enough" with our
  * CPU's CPUID values.
@@ -517,6 +537,12 @@ TempFile create_temporary_file(const char* pattern);
  * Opens a temporary file backed by RAM.
  */
 ScopedFd open_memory_file(const std::string &name);
+
+/**
+ * Opens a temporary file with a name in the filesystem.
+ * `name_out` is the filesystem name.
+ */
+ScopedFd open_tmpfs_file(const std::string &name, std::string& name_out);
 
 void good_random(void* out, size_t out_len);
 

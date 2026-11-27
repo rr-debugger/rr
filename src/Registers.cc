@@ -679,6 +679,29 @@ void Registers::clear_x86_singlestep_flag() {
   }
 }
 
+bool Registers::x86_alignmentcheck_flag() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      return flags() & X86_AC_FLAG;
+    default:
+      DEBUG_ASSERT(0 && "X86 only code path");
+      return false;
+  }
+}
+
+void Registers::clear_x86_alignmentcheck_flag() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      set_flags(flags() & ~X86_AC_FLAG);
+      return;
+    default:
+      DEBUG_ASSERT(0 && "X86 only code path");
+      break;
+  }
+}
+
 bool Registers::syscall_failed() const {
   auto result = syscall_result_signed();
   return -4096 < result && result < 0;

@@ -151,6 +151,25 @@ static SimpleDebuggerExtensionCommand forward(
       gdb_server.timeline()->seek_to_mark(current_history_cp);
       return string();
     });
+static RefreshDebuggerExtensionCommand seek(
+    "seek", "Seek to a given rr event.",
+    [](GdbServer& gdb_server, Task* t, const vector<string>& args) {
+      if (!t->session().is_replaying()) {
+        return DebuggerExtensionCommandHandler::cmd_end_diversion();
+      }
+      if (args.size() == 0) {
+        return string("Seek argument expected");
+      }
+      if (args.size() > 1) {
+        return string("Additional parameters not supported");
+      }
+      const string& where = args[1];
+      int64_t time = stoi(where);
+      gdb_server.timeline()->seek_to_event(FrameTime(time));
+      gdb_server.expect_phantom_continue();
+      return string("Seeked to event ") +
+        to_string(gdb_server.timeline()->mark().time());
+});
 
 static int gNextCheckpointId = 0;
 

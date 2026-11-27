@@ -35,6 +35,11 @@ if(POLICY CMP0148)
   cmake_policy(SET CMP0148 OLD)
 endif()
 
+# Silence a warning.
+if(POLICY CMP0076)
+  cmake_policy(SET CMP0076 NEW)
+endif()
+
 # On single configuration generators, make Debug the default configuration
 if(NOT CMAKE_CONFIGURATION_TYPES)
   if(NOT CMAKE_BUILD_TYPE)
@@ -56,6 +61,7 @@ set(BUILD_SHARED_LIBS ON)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib/rr)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib/rr)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BUILD_TESTS ON CACHE BOOL "Build tests")
@@ -156,6 +162,13 @@ if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "debug")
 elseif(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
   # CMake itself will add optimization flags
   set(RR_FLAGS "${RR_FLAGS_RELEASE} -g3 -flto")
+endif()
+
+set(LINKER_FLAGS "")
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  # Gcc generates bogus R_386_GOTOFF relocations in .debug_info which
+  # lld 9 rejects
+  set(LINKER_FLAGS "-fuse-ld=bfd")
 endif()
 
 set(LINKER_FLAGS "")
@@ -606,6 +619,7 @@ else()
 endif()
 
 set(RR_SOURCES
+  src/test/x86/cpuid_loop.S
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
   src/BuildidCommand.cc
@@ -665,6 +679,8 @@ set(RR_SOURCES
   src/record_syscall.cc
   src/RecordTask.cc
   src/Registers.cc
+  src/RemixCommand.cc
+  src/RemixModule.cc
   src/remote_code_ptr.cc
   src/ReplayCommand.cc
   src/ReplaySession.cc
@@ -993,6 +1009,79 @@ if(rr_32BIT AND rr_64BIT)
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
 endif()
 
+if(rr_64BIT)
+  # Expects DynamoRIO to be built in ~/dynamiorio/obj
+  set(DYNAMORIO_OBJ_PATH "$ENV{HOME}/dynamorio/obj")
+  include_directories(AFTER "${DYNAMORIO_OBJ_PATH}/include")
+  link_directories(AFTER "${DYNAMORIO_OBJ_PATH}/lib64")
+  link_directories(AFTER "${DYNAMORIO_OBJ_PATH}/lib64/release")
+
+  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/zen_tables.cc"
+                     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/remix/generate_zen_tables.py"
+                             "${CMAKE_CURRENT_BINARY_DIR}/zen_tables.cc"
+                     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/remix/generate_zen_tables.py"
+                             "${CMAKE_CURRENT_SOURCE_DIR}/src/remix/zen_rsqrt_deltas.zstd"
+                             "${CMAKE_CURRENT_SOURCE_DIR}/src/remix/zen_rcp_deltas.zstd")
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/zen_tables.cc"
+                              PROPERTIES GENERATED true)
+  add_custom_target(generate_zen_tables DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/zen_tables.cc")
+
+  set(REMIX_SOURCES
+    src/remix/engine.cc
+    src/remix/fragment_stubs.S
+    src/remix/Generator.cc
+    src/remix/libc.cc
+    src/remix/mmap.cc
+    src/remix/remix.cc
+    src/remix/remix_util.cc
+    src/remix/Translation.cc
+    src/remix/xsave_utils.cc
+    ${CMAKE_CURRENT_BINARY_DIR}/zen_tables.cc
+    third-party/malloc.c
+    third-party/snprintf.c
+  )
+  set(REMIX_DEPENDENCIES generate_zen_tables)
+  # Avoid using AVX etc in remix code
+  set(REMIX_ISA_FLAGS "-march=x86-64 -mno-sse2 -mno-avx")
+  # We disable builtin "printf" because that sometimes gets optimized to
+  # putchar, which has an extern_inline definition that we can't easily
+  # implement in libc.cc
+  set(REMIX_FLAGS "${RR_FLAGS} ${REMIX_ISA_FLAGS} -DLINUX -DX86_64 -DDR_FAST_IR -fno-builtin-printf -fno-exceptions -fno-rtti -fno-stack-protector -fno-threadsafe-statics -U_FORTIFY_SOURCE -U_GLIBCXX_ASSERTIONS -D_GLIBCXX_NO_ASSERTIONS")
+  set_source_files_properties(${REMIX_SOURCES}
+                              PROPERTIES COMPILE_FLAGS "${REMIX_FLAGS}")
+  set_source_files_properties(third-party/snprintf.c
+                              PROPERTIES COMPILE_FLAGS "${RR_FLAGS_RELEASE} ${REMIX_ISA_FLAGS} -DHAVE_STDARG_H=1 -DHAVE_STDLIB_H=1 -DHAVE_FLOAT_H=1 -DHAVE_ASPRINTF=1 -Wno-strict-prototypes -fno-stack-protector")
+  set_source_files_properties(third-party/malloc.c
+                              PROPERTIES COMPILE_FLAGS "${RR_FLAGS_RELEASE} ${REMIX_ISA_FLAGS} -fno-builtin-malloc -include sys/user.h -DHAVE_MREMAP=0 -DHAVE_MORECORE=0 -DNO_MALLOC_STATS=1 -Dmalloc_getpagesize=PAGE_SIZE -DLACKS_TIME_H=1 -Wno-strict-prototypes -fno-stack-protector")
+  set(REMIX_TOOLS
+    NullTool
+    StatisticsTool
+  )
+  foreach(tool ${REMIX_TOOLS})
+    set_source_files_properties(src/remix/tool/${tool}.cc
+                                PROPERTIES COMPILE_FLAGS "${REMIX_FLAGS}")
+    add_library(rrremix_${tool}
+      ${REMIX_SOURCES}
+      src/remix/tool/${tool}.cc
+    )
+    add_dependencies(rrremix_${tool} ${REMIX_DEPENDENCIES})
+    set_target_properties(rrremix_${tool} PROPERTIES LINK_FLAGS "-nostdlib -Wl,-Bsymbolic ${LINKER_FLAGS}")
+    target_link_libraries(rrremix_${tool}
+      libdrdecode.a
+      libdrlibc.a
+      libdrmemfuncs.a
+    )
+    add_custom_command(TARGET rrremix_${tool} POST_BUILD
+                       COMMAND python3 ARGS ${CMAKE_SOURCE_DIR}/src/remix/validate_library.py $<TARGET_FILE:rrremix_${tool}>
+                       VERBATIM)
+    install(TARGETS rrremix_${tool}
+            DESTINATION lib/rr)
+  endforeach(tool)
+  target_sources(rrremix_StatisticsTool
+    PUBLIC src/remix/tool/StatisticsTool_stubs.S
+  )
+endif()
+
 ##--------------------------------------------------
 ## Testing
 
@@ -1023,6 +1112,7 @@ set(BASIC_TESTS
   async_signal_jit
   at_threadexit
   bad_ip
+  bad_ip2
   bad_syscall
   barrier
   big_buffers
@@ -1403,6 +1493,9 @@ set(BASIC_TESTS
   x86/seccomp_stop_remote_syscall
   seccomp_tsync
   seccomp_veto_exec
+  self_modifying_code
+  self_modifying_code_mmap
+  self_modifying_code_wx
   self_shebang
   self_sigint
   sem
@@ -1479,6 +1572,7 @@ set(BASIC_TESTS
   stdout_cloexec
   stdout_dup
   stdout_redirect
+  string_instructions_zero_iterations
   switch_read
   symlink
   sync
@@ -1599,6 +1693,7 @@ set(TESTS_WITH_PROGRAM
   breakpoint_overlap
   call_function
   call_gettid
+  chaos_fragmentation
   chaos_buffered_syscalls
   chaos_oom
   # Disabled because it's very slow
@@ -1747,6 +1842,7 @@ set(TESTS_WITH_PROGRAM
   x86/string_instructions_multiwatch
   x86/string_instructions_replay
   x86/string_instructions_singlestep_fastforward
+  x86/string_instruction_switch
   x86/string_instructions_watch
   x86/syscallbuf_branch_check
   syscallbuf_fd_disabling
@@ -1799,6 +1895,7 @@ set(TESTS_WITH_PROGRAM
 #
 # Alphabetical, please.
 set(TESTS_WITHOUT_PROGRAM
+  async_kill_with_syscallbuf_remix
   async_signal_syscalls_100
   async_signal_syscalls_1000
   bad_breakpoint
@@ -1851,6 +1948,7 @@ set(TESTS_WITHOUT_PROGRAM
   interrupt_while_stopped
   kill_before_initial_exec
   large_file
+  many_yields_remix
   mprotect_step
   nested_detach
   nested_detach_kill

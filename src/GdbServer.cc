@@ -23,6 +23,7 @@
 #include "DebuggerExtensionCommandHandler.h"
 #include "GdbServerExpression.h"
 #include "GdbServerRegister.h"
+#include "RemixModule.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "ScopedFd.h"
@@ -1452,6 +1453,14 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     DEBUG_ASSERT(req.type == DREQ_INTERRUPT);
     interrupt_pending = true;
     req = last_resume_request;
+    if (req.type == DREQ_NONE) {
+      // execution direction not established yet. Just continue forward. This
+      // only matters if we're currently running a task that's not being
+      // debugged.
+      req = GdbRequest(DREQ_CONT);
+      req.cont().run_direction = RUN_FORWARD;
+      req.cont().actions.push_back(GdbContAction(ACTION_CONTINUE));
+    }
     DEBUG_ASSERT(req.is_resume_request());
   }
 

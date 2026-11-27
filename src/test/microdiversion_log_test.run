@@ -1,0 +1,115 @@
+source `dirname $0`/util.sh
+
+skip_if_no_syscall_buf
+
+record $TESTNAME
+remix_MicroDiversion
+
+if [ ! -f record.out -o ! -f remix.err -o ! -f remix.out -o ! -f record.err ]; then
+    failed "output files not found."
+elif [[ $(cat record.err) != "" ]]; then
+    failed ": error during recording:"
+    echo "--------------------------------------------------"
+    cat record.err
+    echo "--------------------------------------------------"
+    echo "record.out:"
+    echo "--------------------------------------------------"
+    cat record.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l EXIT-SUCCESS remix.out) ]]; then
+    failed ": token 'EXIT-SUCCESS' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Nested-OK remix.out) ]]; then
+    failed ": token 'Nested-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l clock_gettime-OK remix.out) ]]; then
+    failed ": token 'clock_gettime-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l early_exit-OK remix.out) ]]; then
+    failed ": token 'early_exit-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l duplicated-OK remix.out) ]]; then
+    failed ": token 'duplicated-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Stack-OK remix.out) ]]; then
+    failed ": token 'Stack-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l many_writes-OK remix.out) ]]; then
+    failed ": token 'many_writes-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l getrlimit-OK remix.out) ]]; then
+    failed ": token 'getrlimit-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l mprotect-OK remix.out) ]]; then
+    failed ": token 'mprotect-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l madvise-OK remix.out) ]]; then
+    failed ": token 'madvise-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l setne-OK remix.out) ]]; then
+    failed ": token 'setne-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Forked-OK remix.out) ]]; then
+    failed ": token 'Forked-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Chromium-LogMessage-OK remix.out) ]]; then
+    failed ": token 'Chromium-LogMessage-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Chromium-LogMessage2-OK remix.out) ]]; then
+    failed ": token 'Chromium-LogMessage2-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Chromium-LogMessage3-OK remix.out) ]]; then
+    failed ": token 'Chromium-LogMessage3-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Chromium-LogMessage4-OK remix.out) ]]; then
+    failed ": token 'Chromium-LogMessage4-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ "remix.out" != $(grep -l Chromium-DiagnosticLogMessage-OK remix.out) ]]; then
+    failed ": token 'Chromium-DiagnosticLogMessage-LogMessage3-OK' not in remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+elif [[ $(cat remix.err) != "" ]]; then
+    failed ": error during remix:"
+    echo "--------------------------------------------------"
+    cat remix.err
+    echo "--------------------------------------------------"
+    echo "remix.out:"
+    echo "--------------------------------------------------"
+    cat remix.out
+    echo "--------------------------------------------------"
+else
+    passed " (remix)"
+fi

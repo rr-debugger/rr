@@ -88,6 +88,8 @@ public:
     GdbServer(dbg, t, nullptr, Target()).process_debugger_requests();
   }
 
+  void expect_phantom_continue() { dbg->expect_phantom_continue(); }
+
 private:
   GdbServer(std::unique_ptr<GdbServerConnection>& connection, Task* t,
             ReplayTimeline* timeline, const Target& target);

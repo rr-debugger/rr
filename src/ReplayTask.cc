@@ -5,6 +5,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "PreserveFileMonitor.h"
 #include "ReplaySession.h"
+#include "RemixModule.h"
 #include "log.h"
 #include "rr/rr.h"
 
@@ -167,16 +168,26 @@ FrameTime ReplayTask::current_frame_time() const {
   return current_trace_frame().time();
 }
 
+void ReplayTask::write_data_record_from_trace(const TraceReader::RawData& buf, uint32_t flags) {
+  if (!buf.addr.is_null() && buf.data.size() > 0) {
+    auto t = session().find_task(buf.rec_tid);
+    t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data(), NULL, flags);
+    t->vm()->maybe_update_breakpoints(t, buf.addr.cast<uint8_t>(),
+                                      buf.data.size());
+  }
+}
+
 // Returns number of bytes written (including holes)
 static size_t write_data_with_holes(ReplayTask* t,
-                                    const TraceReader::RawDataWithHoles& buf) {
+                                    const TraceReader::RawDataWithHoles& buf,
+                                    uint32_t flags) {
   unique_ptr<AutoRemoteSyscalls> remote;
   size_t data_offset = 0;
   size_t addr_offset = 0;
   auto holes_iter = buf.holes.begin();
   while (data_offset < buf.data.size() || holes_iter != buf.holes.end()) {
     if (holes_iter != buf.holes.end() && holes_iter->offset == addr_offset) {
-      t->write_zeroes(&remote, buf.addr + addr_offset, holes_iter->size);
+      t->write_zeroes(&remote, buf.addr + addr_offset, holes_iter->size, flags);
       addr_offset += holes_iter->size;
       ++holes_iter;
       continue;
@@ -185,9 +196,10 @@ static size_t write_data_with_holes(ReplayTask* t,
     if (holes_iter != buf.holes.end()) {
       data_end = data_offset + holes_iter->offset - addr_offset;
     }
+
     bool ok = true;
     ssize_t nwritten = t->write_bytes_helper(buf.addr + addr_offset, data_end - data_offset,
-                                             buf.data.data() + data_offset,&ok);
+                                             buf.data.data() + data_offset, &ok, flags);
 
     ASSERT(t, ok || buf.size_validation == MemWriteSizeValidation::CONSERVATIVE)
         << "Should have written " << buf.data.size() << " bytes to " << (buf.addr + addr_offset)
@@ -199,7 +211,7 @@ static size_t write_data_with_holes(ReplayTask* t,
   return addr_offset;
 }
 
-void ReplayTask::apply_data_record_from_trace() {
+void ReplayTask::apply_data_record_from_trace(uint32_t flags) {
   TraceReader::RawDataWithHoles buf;
   bool ok = trace_reader().read_raw_data_for_frame_with_holes(buf);
   ASSERT(this, ok);
@@ -207,18 +219,18 @@ void ReplayTask::apply_data_record_from_trace() {
     return;
   }
   auto t = session().find_task(buf.rec_tid);
-  size_t size = write_data_with_holes(t, buf);
+  size_t size = write_data_with_holes(t, buf, flags);
   t->vm()->maybe_update_breakpoints(t, buf.addr.cast<uint8_t>(), size);
 }
 
-void ReplayTask::apply_all_data_records_from_trace() {
+void ReplayTask::apply_all_data_records_from_trace(uint32_t flags) {
   TraceReader::RawDataWithHoles buf;
   while (trace_reader().read_raw_data_for_frame_with_holes(buf)) {
     if (buf.addr.is_null()) {
       continue;
     }
     auto t = session().find_task(buf.rec_tid);
-    size_t size = write_data_with_holes(t, buf);
+    size_t size = write_data_with_holes(t, buf, flags);
     t->vm()->maybe_update_breakpoints(t, buf.addr.cast<uint8_t>(), size);
   }
 }
@@ -239,7 +251,9 @@ void ReplayTask::set_return_value_from_trace() {
 }
 
 void ReplayTask::set_real_tid_and_update_serial(pid_t tid) {
-  hpc.set_tid(tid);
+  if (hpc) {
+    hpc->set_tid(tid);
+  }
   this->tid = tid;
   serial = session().next_task_serial();
 }
@@ -249,6 +263,37 @@ const ExtraRegisters& ReplayTask::extra_regs() {
     ASSERT(this, false) << "Can't find task for infallible extra_regs";
   }
   return extra_registers;
+}
+
+void ReplayTask::maybe_restart_syscall() {
+  /* See "Did we come from a system call?" code in do_signal in arch/x86/kernel/signal.c.
+     handle_signal has different logic, but that shouldn't matter since it simply
+     modifies the state that is saved to a sigframe handler... which we get from
+     the recording.
+     One thing we need to be careful about: that after we've made these changes,
+     the kernel doesn't make them again (if this is called during regular non-remix
+     replay). But that follows because we only make changes here if orig_rax >= 0,
+     in which case rax is set to something >= 0, so the kernel won't see any of the
+     error values in rax.
+  */
+  if (regs().original_syscallno() >= 0) {
+    switch (regs().syscall_result_signed()) {
+      case -ERESTARTNOHAND:
+      case -ERESTARTSYS:
+      case -ERESTARTNOINTR:
+      case -ERESTART_RESTARTBLOCK: {
+        Registers r = regs();
+        if (r.syscall_result_signed() == -ERESTART_RESTARTBLOCK) {
+          r.set_syscallno(syscall_number_for_restart_syscall(arch()));
+        } else {
+          r.set_syscallno(r.original_syscallno());
+        }
+        r.set_ip(r.ip() - 2);
+        set_regs(r);
+        break;
+      }
+    }
+  }
 }
 
 void ReplayTask::will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
@@ -295,6 +340,43 @@ bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   }
 
   return false;
+}
+
+void ReplayTask::ensure_initialized_remix_module(ReplayTask* rt,
+                                                 const MemoryRange& module_range,
+                                                 RemixTestOptions test_options,
+                                                 bool account_for_execve) {
+  if (!rt) {
+    return;
+  }
+  auto remix_module = rt->vm()->remix_module();
+  if (remix_module) {
+    return;
+  }
+
+  string tool_path = resource_path() + "lib/rr/librrremix_NullTool";
+  LOG(debug) << "Loading tool " << tool_path << " at time "
+             << rt->session().trace_reader().time();
+  rt->vm()->load_remix(rt, module_range, tool_path, nullptr, 0, test_options);
+  auto module = rt->vm()->remix_module();
+  if (account_for_execve) {
+    for (auto& w : rt->post_exec_writes()) {
+      module->notify_written(rt, MemoryRange(w.addr, w.data.size()));
+    }
+    module->did_complete_execve(rt);
+  }
+}
+
+bool ReplayTask::next_event_is_execve_exit(ReplayTask* rt) {
+  if (!rt) {
+    return false;
+  }
+  auto event = rt->current_trace_frame().event();
+  if (!event.is_syscall_event()) {
+    return false;
+  }
+  return event.Syscall().state == EXITING_SYSCALL &&
+         is_execve_syscall(event.Syscall().number, event.Syscall().arch());
 }
 
 } // namespace rr

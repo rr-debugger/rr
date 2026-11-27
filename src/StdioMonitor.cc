@@ -14,7 +14,8 @@ namespace rr {
 Switchable StdioMonitor::will_write(Task* t) {
   if (t->session().mark_stdio()) {
     char buf[256];
-    snprintf(buf, sizeof(buf) - 1, "[rr %d %" PRId64 "]", t->tgid(), t->trace_time());
+
+    snprintf(buf, sizeof(buf) - 1, "[rr %d %" PRId64 "]", t->rec_tid, t->trace_time());
     write_all(original_fd, buf, strlen(buf));
   }
 

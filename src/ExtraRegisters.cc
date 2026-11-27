@@ -487,24 +487,37 @@ void ExtraRegisters::validate(Task* t) {
   }
 }
 
-static size_t get_full_value(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi,
+static size_t get_full_value(const ExtraRegisters& r,
+                             GdbServerRegister low,
+                             GdbServerRegister higher,
+                             GdbServerRegister highest,
                              uint8_t buf[128]) {
   bool defined = false;
   size_t len = r.read_register(buf, low, &defined);
   DEBUG_ASSERT(defined && len <= 64);
-  if (hi != GdbServerRegister(0)) {
-    size_t len2 = r.read_register(buf + len, hi, &defined);
+  if (higher != GdbServerRegister(0)) {
+    size_t len2 = r.read_register(buf + len, higher, &defined);
     if (defined) {
       DEBUG_ASSERT(len == len2);
       len += len2;
+    }
+    if (highest != GdbServerRegister(0)) {
+      size_t len3 = r.read_register(buf + len, highest, &defined);
+      if (defined) {
+        DEBUG_ASSERT(len == len3);
+        len += len3;
+      }
     }
   }
   return len;
 }
 
-static string reg_to_string(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi) {
+static string reg_to_string(const ExtraRegisters& r,
+                            GdbServerRegister low,
+                            GdbServerRegister higher,
+                            GdbServerRegister highest) {
   uint8_t buf[128];
-  size_t len = get_full_value(r, low, hi, buf);
+  size_t len = get_full_value(r, low, higher, highest, buf);
   bool printed_digit = false;
   char out_buf[257];
   char* p = out_buf;
@@ -518,19 +531,23 @@ static string reg_to_string(const ExtraRegisters& r, GdbServerRegister low, GdbS
   return out_buf;
 }
 
-static void print_reg(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi,
+static void print_reg(const ExtraRegisters& r, GdbServerRegister low,
+                      GdbServerRegister higher, GdbServerRegister highest,
                       const char* name, FILE* f) {
-  string out = reg_to_string(r, low, hi);
+  string out = reg_to_string(r, low, higher, highest);
   fprintf(f, "%s:0x%s", name, out.c_str());
 }
 
-static void print_regs(const ExtraRegisters& r, GdbServerRegister low, GdbServerRegister hi,
+static void print_regs(const ExtraRegisters& r, GdbServerRegister low,
+                       GdbServerRegister higher, GdbServerRegister highest,
                        int num_regs, const char* name_base, FILE* f) {
   for (int i = 0; i < num_regs; ++i) {
     char buf[80];
     sprintf(buf, "%s%d", name_base, i);
     print_reg(r, (GdbServerRegister)(low + i),
-              hi == GdbServerRegister(0) ? hi : (GdbServerRegister)(hi + i), buf, f);
+              higher == GdbServerRegister(0) ? higher : (GdbServerRegister)(higher + i),
+              highest == GdbServerRegister(0) ? highest : (GdbServerRegister)(highest + i),
+              buf, f);
     if (i < num_regs - 1) {
       fputc(' ', f);
     }
@@ -540,22 +557,23 @@ static void print_regs(const ExtraRegisters& r, GdbServerRegister low, GdbServer
 void ExtraRegisters::print_register_file_compact(FILE* f) const {
   switch (arch_) {
     case x86:
-      print_regs(*this, DREG_ST0, GdbServerRegister(0), 8, "st", f);
+      print_regs(*this, DREG_ST0, GdbServerRegister(0), GdbServerRegister(0), 8, "st", f);
       fputc(' ', f);
-      print_regs(*this, DREG_XMM0, DREG_YMM0H, 8, "ymm", f);
+      print_regs(*this, DREG_XMM0, DREG_YMM0H, GdbServerRegister(0), 8, "ymm", f);
       break;
     case x86_64:
-      print_regs(*this, DREG_64_ST0, GdbServerRegister(0), 8, "st", f);
+      print_regs(*this, DREG_64_ST0, GdbServerRegister(0), GdbServerRegister(0), 8, "st", f);
       fputc(' ', f);
-      print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
+      print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, DREG_64_ZMM0H, 16, "zmm", f);
+      print_regs(*this, DREG_64_XMM16, DREG_64_YMM16H, DREG_64_ZMM16H, 16, "zmm16+", f);
       break;
     case aarch64:
       DEBUG_ASSERT(format_ == AARCH64_FPR);
-      print_regs(*this, DREG_V0, GdbServerRegister(0), 32, "v", f);
+      print_regs(*this, DREG_V0, GdbServerRegister(0), GdbServerRegister(0), 32, "v", f);
       fputc(' ', f);
-      print_reg(*this, DREG_FPSR, GdbServerRegister(0), "fpsr", f);
+      print_reg(*this, DREG_FPSR, GdbServerRegister(0), GdbServerRegister(0), "fpsr", f);
       fputc(' ', f);
-      print_reg(*this, DREG_FPCR, GdbServerRegister(0), "fpcr", f);
+      print_reg(*this, DREG_FPCR, GdbServerRegister(0), GdbServerRegister(0), "fpcr", f);
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
@@ -897,16 +915,19 @@ void ExtraRegisters::reset() {
 
 static void compare_regs(const ExtraRegisters& reg1,
                          const ExtraRegisters& reg2,
-                         GdbServerRegister low, GdbServerRegister hi,
+                         GdbServerRegister low,
+                         GdbServerRegister higher,
+                         GdbServerRegister highest,
                          int num_regs, const char* name_base,
                          Registers::Comparison& result) {
   for (int i = 0; i < num_regs; ++i) {
     GdbServerRegister this_low = (GdbServerRegister)(low + i);
-    GdbServerRegister this_hi = hi == GdbServerRegister(0) ? hi : (GdbServerRegister)(hi + i);
+    GdbServerRegister this_higher = higher == GdbServerRegister(0) ? higher : (GdbServerRegister)(higher + i);
+    GdbServerRegister this_highest = highest == GdbServerRegister(0) ? highest : (GdbServerRegister)(highest + i);
     uint8_t buf1[128];
-    size_t len1 = get_full_value(reg1, this_low, this_hi, buf1);
+    size_t len1 = get_full_value(reg1, this_low, this_higher, this_highest, buf1);
     uint8_t buf2[128];
-    size_t len2 = get_full_value(reg2, this_low, this_hi, buf2);
+    size_t len2 = get_full_value(reg2, this_low, this_higher, this_highest, buf2);
     DEBUG_ASSERT(len1 == len2);
 
     if (!memcmp(buf1, buf2, len1)) {
@@ -917,8 +938,8 @@ static void compare_regs(const ExtraRegisters& reg1,
     if (result.store_mismatches) {
       char regname[80];
       sprintf(regname, "%s%d", name_base, i);
-      result.mismatches.push_back({regname, reg_to_string(reg1, this_low, this_hi),
-          reg_to_string(reg2, this_low, this_hi)});
+      result.mismatches.push_back({regname, reg_to_string(reg1, this_low, this_higher, this_highest),
+          reg_to_string(reg2, this_low, this_higher, this_highest)});
     }
   }
 }
@@ -938,22 +959,32 @@ void ExtraRegisters::compare_internal(const ExtraRegisters& reg2,
     FATAL() << "Can't compare register files with different formats";
   }
   bool avx_present = false;
+  bool avx512_present = false;
+  bool avx512_hiregs_present = false;
   if (format() == XSAVE) {
     avx_present = !!(xsave_native_layout().supported_feature_bits & (1 << AVX_FEATURE_BIT));
+    avx512_present = !!(xsave_native_layout().supported_feature_bits & (1 << AVX_ZMM_HI256_FEATURE_BIT));
+    avx512_hiregs_present = !!(xsave_native_layout().supported_feature_bits & (1 << AVX_ZMM_HI16_FEATURE_BIT));
   }
 
   switch (arch()) {
     case x86:
-      compare_regs(*this, reg2, DREG_ST0, NOT_PRESENT, 8, "st", result);
-      compare_regs(*this, reg2, DREG_XMM0, avx_present ? DREG_YMM0H : NOT_PRESENT, 8, "ymm", result);
+      compare_regs(*this, reg2, DREG_ST0, NOT_PRESENT, NOT_PRESENT, 8, "st", result);
+      compare_regs(*this, reg2, DREG_XMM0, avx_present ? DREG_YMM0H : NOT_PRESENT,
+          avx512_present ? DREG_ZMM0H : NOT_PRESENT, 8, "zmm", result);
       break;
     case x86_64:
-      compare_regs(*this, reg2, DREG_64_ST0, NOT_PRESENT, 8, "st", result);
-      compare_regs(*this, reg2, DREG_64_XMM0, avx_present ? DREG_64_YMM0H : NOT_PRESENT, 8, "ymm", result);
+      compare_regs(*this, reg2, DREG_64_ST0, NOT_PRESENT, NOT_PRESENT, 8, "st", result);
+      compare_regs(*this, reg2, DREG_64_XMM0, avx_present ? DREG_64_YMM0H : NOT_PRESENT,
+          avx512_present ? DREG_ZMM0H : NOT_PRESENT, 16, "zmm", result);
+      if (avx512_hiregs_present) {
+        compare_regs(*this, reg2, DREG_64_XMM16, DREG_64_YMM16H,
+            avx512_present ? DREG_64_ZMM16H : NOT_PRESENT, 16, "zmm16+", result);
+      }
       break;
     case aarch64:
       DEBUG_ASSERT(format_ == AARCH64_FPR);
-      compare_regs(*this, reg2, DREG_V0, NOT_PRESENT, 32, "v", result);
+      compare_regs(*this, reg2, DREG_V0, NOT_PRESENT, NOT_PRESENT, 32, "v", result);
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");

@@ -18,6 +18,8 @@
 #include "MonitoredSharedMemory.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "RemixModule.h"
+#include "ReplayTask.h"
 #include "Session.h"
 #include "Task.h"
 #include "core.h"
@@ -731,16 +733,12 @@ bool AddressSpace::is_exec_watchpoint(remote_code_ptr addr) {
 
 bool AddressSpace::is_breakpoint_in_private_read_only_memory(
     remote_code_ptr addr) {
-  for (const auto& m : maps_containing_or_after(addr.to_data_ptr<void>())) {
-    if (m.map.start() >=
-        addr.increment_by_bkpt_insn_length(arch()).to_data_ptr<void>()) {
-      break;
-    }
-    if ((m.map.prot() & PROT_WRITE) || (m.map.flags() & MAP_SHARED)) {
-      return false;
-    }
+  auto p = addr.to_data_ptr<void>();
+  if (!has_mapping(p)) {
+    return false;
   }
-  return true;
+  auto map = mapping_of(p).map;
+  return !(map.prot() & PROT_WRITE) && !(map.flags() & MAP_SHARED);
 }
 
 void AddressSpace::replace_breakpoints_with_original_values(
@@ -824,6 +822,17 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes) << ")";
   num_bytes = ceil_page_size(num_bytes);
+
+  // Hack around https://bugreports.qt.io/browse/QTBUG-91071
+  if (prot & PROT_EXEC && string::npos != fsname.find("libQt5Core.so") && remix_module_) {
+    auto start = addr.as_int();
+    auto end = start + num_bytes;
+    LOG(error) << "Allowing use of rdrand in range " << HEX(start) << ".." << HEX(end);
+    remix_module_->notify_remix_apply_quirk(static_cast<ReplayTask*>(t),
+                                            RemixQuirk::ALLOW_RDRAND,
+                                            start, end);
+  }
+
   KernelMapping m(addr, addr + num_bytes, fsname, device, inode, prot, flags,
                   offset_bytes);
   if (!num_bytes) {
@@ -966,13 +975,12 @@ bool AddressSpace::has_rr_page() const {
 }
 
 void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
-                           int prot) {
+                           int prot, ProtectSource source) {
   LOG(debug) << "mprotect(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ")";
 
   MemoryRange last_overlap;
-  auto protector = [this, prot, &last_overlap](Mapping m,
-                                               MemoryRange rem) {
+  auto protector = [this, t, prot, source, &last_overlap](const Mapping& m, const MemoryRange& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
     remove_from_map(m.map);
@@ -1008,6 +1016,11 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
         [new_prot](const KernelMapping& km) { return km.set_prot(new_prot); });
     add_to_map(overlap);
     last_overlap = overlap.map;
+
+    if (source == MPROTECT_SYSCALL && remix_module_) {
+      remix_module_->notify_mprotect(static_cast<ReplayTask*>(t), overlap.map,
+                                     new_prot);
+    }
 
     // If the last segment we protect overflows the
     // region, remap the overflow region with previous
@@ -1347,12 +1360,44 @@ bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
   return triggered;
 }
 
-void AddressSpace::notify_written(remote_ptr<void> addr, size_t num_bytes,
-                                  uint32_t flags) {
+static const int remix_ignore_flags =
+  Task::IS_AUTO_REMOTE_MEMORY |
+  Task::IS_INITIAL_DATA_FOR_MAPPING;
+
+void AddressSpace::notify_will_write(Task* t, remote_ptr<void> addr,
+                                     size_t num_bytes, uint32_t flags) {
+  // Don't notify remix modules of writes that are adding or removing a
+  // breakpoint. Remix execution normally doesn't require real breakpoints.
+  // However, in some rare cases (prepare_clone) we need to call
+  // Task::finish_emulated_syscall to get out of the kernel syscall-stop and
+  // into a signal-stop, which requires setting a breakpoint in some cases.
+  if (remix_module_ && !(flags & remix_ignore_flags) &&
+      !(flags & Task::IS_BREAKPOINT_RELATED)) {
+    remix_module_->notify_will_write(static_cast<ReplayTask*>(t),
+                                     MemoryRange(addr, num_bytes));
+  }
+}
+
+void AddressSpace::notify_written(Task* t, remote_ptr<void> addr,
+                                  size_t num_bytes, uint32_t flags) {
   if (!(flags & Task::IS_BREAKPOINT_RELATED)) {
     update_watchpoint_values(addr, addr + num_bytes);
   }
   session()->accumulate_bytes_written(num_bytes);
+  // Don't notify remix modules of writes that are adding or removing a
+  // breakpoint. Remix execution normally doesn't require real breakpoints.
+  // However, in some rare cases (prepare_clone) we need to call
+  // Task::finish_emulated_syscall to get out of the kernel syscall-stop and
+  // into a signal-stop, which requires setting a breakpoint in some cases.
+  if (remix_module_ && !(flags & remix_ignore_flags)) {
+    if (flags & Task::IS_BREAKPOINT_RELATED) {
+      remix_module_->notify_breakpoint_changed(static_cast<ReplayTask*>(t),
+                                               MemoryRange(addr, num_bytes));
+    } else {
+      remix_module_->notify_written(static_cast<ReplayTask*>(t),
+                                    MemoryRange(addr, num_bytes));
+    }
+  }
 }
 
 void AddressSpace::remove_all_watchpoints() {
@@ -1457,7 +1502,12 @@ void AddressSpace::unmap_internal(Task* t, remote_ptr<void> addr,
     }
   };
   for_each_in_range(addr, num_bytes, unmapper);
+
   update_watchpoint_values(addr, addr + num_bytes);
+  if (remix_module_) {
+    remix_module_->notify_unmapped(static_cast<ReplayTask*>(t),
+                                   MemoryRange(addr, num_bytes));
+  }
 }
 
 // madvise applies the advice only to mapped memory, failing with ENOMEM
@@ -1485,7 +1535,17 @@ void AddressSpace::add_range_where_mapped(set<MemoryRange>& ranges,
   }
 }
 
-void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
+void AddressSpace::will_advise(Task* t, remote_ptr<void> addr,
+                               ssize_t num_bytes, int advice) {
+  num_bytes = ceil_page_size(num_bytes);
+
+  if (remix_module_) {
+    remix_module_->notify_will_madvise(static_cast<ReplayTask*>(t),
+                                       MemoryRange(addr, num_bytes), advice);
+  }
+}
+
+void AddressSpace::advise(Task* t, remote_ptr<void> addr, ssize_t num_bytes,
                           int advice) {
   LOG(debug) << "madvise(" << addr << ", " << num_bytes << ", " << advice
              << ")";
@@ -1506,6 +1566,11 @@ void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
       break;
     default:
       break;
+  }
+
+  if (remix_module_) {
+    remix_module_->notify_madvise(static_cast<ReplayTask*>(t),
+                                  MemoryRange(addr, num_bytes), advice);
   }
 }
 
@@ -1829,6 +1894,11 @@ void AddressSpace::verify(Task* t) const {
       ++kernel_it;
     }
 
+    if (remix_module_ && remix_module_->memory_range().contains(km)) {
+      // Ignore remix module memory.
+      continue;
+    }
+
     KernelMapping vm = mem_it->second.map;
     ++mem_it;
     while (mem_it != mem.end() && try_merge_adjacent(&vm, mem_it->second.map)) {
@@ -1932,6 +2002,13 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
     // The original address space continues to have exclusive ownership of
     // all local mappings.
     m.second.local_addr = nullptr;
+  }
+
+  if (o.remix_module_ && session->is_replaying()) {
+    remix_module_ = RemixModule::shr_ptr(new RemixModule(*o.remix_module_));
+    // XXX When cloning to a diversion session we leave the remix module code
+    // and data lying around in the diversion address space. This is probably
+    // harmless but we may need to clean it up at some point.
   }
 
   for (auto& it : o.breakpoints) {
@@ -2280,6 +2357,10 @@ void AddressSpace::map_and_coalesce(
   coalesce_around(t, ins.first);
 
   update_watchpoint_values(m.start(), m.end());
+
+  if (remix_module_) {
+    remix_module_->notify_mapped(static_cast<ReplayTask*>(t), m, m.prot());
+  }
 }
 
 static bool could_be_stack(const KernelMapping& km) {
@@ -2652,6 +2733,22 @@ bool AddressSpace::range_is_private_mapping(const MemoryRange& range) const {
     r = MemoryRange(m.map.end(), r.end());
   }
   return true;
+}
+
+void AddressSpace::load_remix(ReplayTask* t, const MemoryRange& range,
+                              const string& path,
+                              shared_ptr<RemixToolHost> host,
+                              intptr_t init_cookie,
+                              RemixTestOptions test_options) {
+  ASSERT(t, !remix_module_) << "Module already assigned";
+  remix_module_ = shared_ptr<RemixModule>(
+      new RemixModule(t, range, path, host, init_cookie, test_options));
+}
+
+void AddressSpace::unload_remix(ReplayTask* t) {
+  ASSERT(t, remix_module_ != nullptr) << "Module not assigned";
+  remix_module_->unload(t);
+  remix_module_ = nullptr;
 }
 
 } // namespace rr

@@ -171,7 +171,7 @@ public:
    * 'time'. Useful if you want to run up to that event.
    */
   void seek_to_before_event(FrameTime time) {
-    return seek_to_before_key(MarkKey(time, 0, ReplayStepKey()));
+    return seek_to_before_key(MarkKey::from_time(time));
   }
 
   /**
@@ -191,6 +191,12 @@ public:
    * and executing forwards if necessary.
    */
   void seek_to_mark(const Mark& mark);
+
+  /**
+   * Sets current session to 'event' by restoring the nearest useful checkpoint
+   * and executing forwards if necessary.
+   */
+  void seek_to_event(FrameTime time);
 
   /**
    * Replay 'current'.
@@ -295,6 +301,9 @@ private:
              step_key == other.step_key;
     }
     bool operator!=(const MarkKey& other) const { return !(*this == other); }
+    static MarkKey from_time(FrameTime time) {
+      return MarkKey(time, 0, ReplayStepKey());
+    }
   };
   friend std::ostream& operator<<(std::ostream& s, const MarkKey& o);
 
@@ -412,6 +421,8 @@ private:
   // optimize performance.
   ReplayResult replay_step_to_mark(const Mark& mark,
                                    ReplayStepToMarkStrategy& strategy);
+  ReplayResult replay_step_to_event(FrameTime time,
+                                    ReplayStepToMarkStrategy& strategy);
   ReplayResult singlestep_with_breakpoints_disabled();
   bool fix_watchpoint_coalescing_quirk(ReplayResult& result,
                                        const ProtoMark& before);

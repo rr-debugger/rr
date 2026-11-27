@@ -27,6 +27,10 @@ static std::ostream &operator<<(std::ostream &stm, const CPUID &cpuid)
   return stm;
 }
 
+static CpuMicroarch compute_x86_microarch_from_cpuid(const CPUIDData& cpuid_vendor, const CPUIDData& cpuid_data) {
+  return UnknownCpu;
+}
+
 /**
  * Return the detected, known microarchitecture of this CPU, or don't
  * return; i.e. never return UnknownCpu.

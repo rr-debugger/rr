@@ -332,7 +332,7 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
     wait
 }
 
-function replay { replayflags=$1
+function replay { replayargs=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
         $RR_EXE $GLOBAL_OPTIONS replay --retry-transient-errors -a \
         $replayflags 1> replay.out 2> replay.err
@@ -356,11 +356,23 @@ function rerun { rerunflags=$1
 function pack {
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT pack.err \
         $RR_EXE $GLOBAL_OPTIONS pack $@ 1> pack.out 2> pack.err
-    exit_code=$?
-    if [[ $exit_code == 124 ]]; then
-        failed "Timeout in pack"
-    fi
-    return $exit_code
+}
+
+function remix {
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT remix.err \
+        rr $GLOBAL_OPTIONS remix NullTool 1> remix.out 2> remix.err
+}
+
+function remix_MicroDiversion {
+    args=""
+    for symbol in "_ZN7mozilla6detail8log_testEPKNS_9LogModuleENS_8LogLevelE" "_ZN7logging10LogMessageD1Ev" "_ZN7logging12_GLOBAL__N_119log_message_handlerE" "_ZN7logging18GetVlogLevelHelperEPKcm" "_ZN7logging12_GLOBAL__N_121g_logging_destinationE" "_ZN3rtc20DiagnosticLogMessageD1Ev" "_ZN7logging12_GLOBAL__N_115g_log_timestampE" "_ZN7logging12_GLOBAL__N_115g_log_tickcountE"; do
+      for f in $workdir/latest-trace/*microdiversion_log_test*; do
+          args="$args $symbol,`objdump -t $f|grep $symbol|cut -c 1-16`,`basename $f`"
+      done
+    done
+    echo rr $GLOBAL_OPTIONS remix MicroDiversionTool $workdir/latest-trace 0 $args > $workdir/remix_command
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT remix.err \
+        rr $GLOBAL_OPTIONS remix MicroDiversionTool $workdir/latest-trace 0 $args 1> remix.out 2> remix.err
 }
 
 function do_ps { psflags=$1
@@ -422,36 +434,31 @@ function failed { msg=$1;
     echo "Test '$TESTNAME' FAILED: $msg"
 }
 
-function passed {
-    echo "Test '$TESTNAME' PASSED"
+function passed { type=$1;
+    echo "Test '$TESTNAME' PASSED$type"
 }
 
 function passed_msg { msg=$1
     echo "Test '$TESTNAME' PASSED ($msg)"
 }
 
-function skipped_msg { msg=$1
-    test_skipped=y
-    echo "NOTE: Test '$TESTNAME' skipped ($msg)"
-}
-
-function just_check_replay_err {
-    if [[ $(cat replay.err) != "" ]]; then
-        failed ": error during replay:"
+function just_check_replay_err { kind=$1;
+    if [[ $(cat $kind.err) != "" ]]; then
+        failed ": error during $kind:"
         echo "--------------------------------------------------"
-        cat replay.err
+        cat $kind.err
         echo "--------------------------------------------------"
-        echo "replay.out:"
+        echo "$kind.out:"
         echo "--------------------------------------------------"
-        cat replay.out
+        cat $kind.out
         echo "--------------------------------------------------"
         return 1
     fi
     return 0
 }
 
-function just_check_record { token=$1;
-     if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out -o ! -f record.err ]; then
+function just_check_record { token=$1; kind=$2;
+     if [ ! -f record.out -o ! -f $kind.err -o ! -f $kind.out -o ! -f record.err ]; then
         failed "output files not found."
     elif [[ $(cat record.err) != "" ]]; then
         failed ": error during recording:"
@@ -473,11 +480,11 @@ function just_check_record { token=$1;
     return 1
 }
 
-function just_check_record_replay_match {
-    if [[ $(diff record.out replay.out) != "" ]]; then
-        failed ": output from recording different than replay"
-        echo "diff -U8 $workdir/record.out $workdir/replay.out"
-        diff -U8 record.out replay.out
+function just_check_record_replay_match { kind=$1;
+    if [[ $(diff record.out $kind.out) != "" ]]; then
+        failed ": output from recording different than $kind"
+        echo "diff -U8 $workdir/record.out $workdir/$kind.out"
+        diff -U8 record.out $kind.out
         return 1
     fi
     return 0
@@ -486,10 +493,10 @@ function just_check_record_replay_match {
 # Check that (i) no error during replay; (ii) recorded and replayed
 # output match; (iii) the supplied token was found in the output.
 # Otherwise the test fails.
-function check { token=$1;
-    if ! just_check_record $1; then return;
-    elif ! just_check_replay_err; then return;
-    elif ! just_check_record_replay_match; then return;
+function check_generic { token=$1; kind=$2;
+    if ! just_check_record $1 $2; then return;
+    elif ! just_check_replay_err $2; then return;
+    elif ! just_check_record_replay_match $2; then return;
     else
         passed
     fi
@@ -499,7 +506,7 @@ function check { token=$1;
 # replay
 function check_record { token=$1;
     if ! just_check_record $token; then return;
-    elif ! just_check_replay_err; then return;
+    elif ! just_check_replay_err replay; then return;
     else
         passed
     fi
@@ -512,12 +519,19 @@ function check_replay_token { token=$1;
         echo "--------------------------------------------------"
         cat replay.out
         echo "--------------------------------------------------"
-    elif ! just_check_replay_err; then return;
+    elif ! just_check_replay_err replay; then return;
     else
         passed
     fi
 }
 
+function check { token=$1;
+    check_generic "$token" replay
+}
+
+function check_remix { token=$1;
+    check_generic "$token" remix
+}
 
 #  compare_test <token> [<replay-flags>] [executable]
 #
@@ -525,17 +539,26 @@ function check_replay_token { token=$1;
 # with $replayflags) and verify record/replay output match and $token
 # appears in the output. Uses $executable instead of the passed-in testname
 # if present.
-function compare_test { token=$1; replayflags=$2;
+function compare_test { token=$1;
     test=$TESTNAME
+    if (( $# >= 2 )); then
+        test=$2
+    fi
+    replayargs=""
     if (( $# >= 3 )); then
-        test=$3
+        replayargs=$3
     fi
     if [[ $token == "" ]]; then
         failed ": didn't pass an exit token"
     fi
     record $test
-    replay $replayflags
+    replay $replayargs
     check $token
+
+    if [[ $TEST_REMIX != "" && $bitness != "_32" ]]; then
+        remix
+        check_remix $token
+    fi
 }
 
 #  debug_test

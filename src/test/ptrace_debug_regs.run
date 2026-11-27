@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+# remix doesn't support HW debug registers tested here
+unset TEST_REMIX
+compare_test EXIT-SUCCESS

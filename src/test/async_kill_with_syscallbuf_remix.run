@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+# SIGKILL, wait 2.0s
+record_async_signal 9 2.0 async_kill_with_syscallbuf$bitness
+remix
+check_remix 'EXIT-SUCCESS'

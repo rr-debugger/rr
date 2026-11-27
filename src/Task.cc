@@ -42,6 +42,7 @@
 #include "ProcMemMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "RemixModule.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "ScopedFd.h"
@@ -74,11 +75,13 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       desched_fd_child(-1),
       // This will be initialized when the syscall buffer is.
       cloned_file_data_fd_child(-1),
-      hpc(_tid, session.cpu_binding(), session.ticks_semantics(),
-          session.need_performance_counters() ? PerfCounters::ENABLE
-            : PerfCounters::DISABLE,
-          session.intel_pt_enabled() ? PerfCounters::PT_ENABLE
-            : PerfCounters::PT_DISABLE),
+      hpc(session.using_perf_counters() ?
+          new PerfCounters(_tid, session.cpu_binding(),
+                           session.ticks_semantics(), session.need_performance_counters() ? PerfCounters::ENABLE
+                           : PerfCounters::DISABLE,
+                           session.intel_pt_enabled() ? PerfCounters::PT_ENABLE
+                           : PerfCounters::PT_DISABLE) :
+          nullptr),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       own_namespace_rec_tid(_rec_tid > 0 ? _rec_tid: _tid),
@@ -427,7 +430,7 @@ pid_t Task::get_ptrace_eventmsg_pid() {
 }
 
 const siginfo_t& Task::get_siginfo() {
-  DEBUG_ASSERT(stop_sig());
+  ASSERT(this, stop_sig());
   return pending_siginfo;
 }
 
@@ -640,11 +643,12 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     int prot = regs.arg4_signed();
     Task* t = session().find_task(tid);
     ASSERT(this, t);
-    return t->vm()->protect(t, untagged_addr(t->arch(), addr), num_bytes, prot);
+    return t->vm()->protect(t, untagged_addr(t->arch(), addr), num_bytes, prot, AddressSpace::MPROTECT_SYSCALL);
   }
 
   // mprotect can change the protection status of some mapped regions before
   // failing.
+  // Likewise madvise can act on some mapped regions before failing.
   // madvise applies the advice to the mapped parts of the range when it
   // fails with ENOMEM because other parts are unmapped.
   // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
@@ -673,11 +677,32 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       remote_ptr<void> addr = untagged_addr(Arch::arch(), regs.orig_arg1());
       size_t num_bytes = regs.arg2();
       int prot = regs.arg3_signed();
-      return vm()->protect(this, addr, num_bytes, prot);
+      if (remix_execution_enabled() &&
+          !!(prot & PROT_EXEC) &&
+          !(prot & PROT_READ)) {
+        // We added PROT_READ to this in replay_syscall.cc
+        prot |= PROT_READ;
+      }
+      return vm()->protect(this, addr, num_bytes, prot,
+                           AddressSpace::MPROTECT_SYSCALL);
     }
     case Arch::munmap: {
       remote_ptr<void> addr = untagged_addr(Arch::arch(), regs.orig_arg1());
       size_t num_bytes = regs.arg2();
+      // We may have used space inside a PROT_NONE mapping for remix. Don't let the
+      // tracee overwrite it.
+      if (remix_execution_enabled()) {
+        auto range = MemoryRange(addr, num_bytes);
+        auto intersection = range.intersect(vm()->remix_module()->memory_range());
+        if (intersection.size() > 0) {
+          // XXXkhuey handle disjoint ranges.
+          ASSERT(this, intersection.start() == range.start() || intersection.end() == range.end());
+          num_bytes -= intersection.size();
+          if (intersection.start() == range.start()) {
+            addr = intersection.end();
+          }
+        }
+      }
       return vm()->unmap(this, addr, num_bytes);
     }
     case Arch::shmdt:
@@ -1439,9 +1464,22 @@ static bool is_singlestep_resume(ResumeRequest request) {
 }
 
 TrapReasons Task::compute_trap_reasons() {
-  ASSERT(this, stop_sig() == SIGTRAP);
-
   TrapReasons reasons;
+
+  auto remix = as->remix_module();
+  if (remix) {
+    int reason = remix->last_remix_execute_stop_reason();
+    if (reason != STOPPED_NULL) {
+      // Last execution was via remix_execute.
+      // remix doesn't support watchpoints.
+      reasons.watchpoint = false;
+      reasons.breakpoint = reason == STOPPED_BREAKPOINT;
+      reasons.singlestep = reason == STOPPED_SINGLESTEP;
+      return reasons;
+    }
+  }
+
+  ASSERT(this, stop_sig() == SIGTRAP);
 
   const siginfo_t& si = get_siginfo();
   if (arch() == x86 || arch() == x86_64) {
@@ -1686,10 +1724,16 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   // between the wait_stop_or_exit below and the PTRACE_CONT.
   if (tick_period != RESUME_NO_TICKS) {
     if (tick_period == RESUME_UNLIMITED_TICKS) {
-      hpc.start(this, 0);
+      if (hpc) {
+        hpc->start(this, 0);
+      } else {
+        ASSERT(this, !session().done_initial_exec())
+          << "We shouldn't need resume execution with RESUME_UNLIMITED_TICKS but no perf counters, after the initial exec";
+      }
     } else {
       ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
-      hpc.start(this, max<Ticks>(1, tick_period));
+      ASSERT(this, !!hpc) << "We shouldn't resume execution with a ticks limit but no perf counters";
+      hpc->start(this, max<Ticks>(1, tick_period));
     }
     activate_preload_thread_locals();
   }
@@ -1722,7 +1766,7 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
           << "got " << result.status;
       LOG(debug) << "Task " << tid << " exited unexpectedly with status "
           << result.status;
-      Ticks executed_ticks = hpc.stop(this);
+      Ticks executed_ticks = hpc->stop(this);
       ASSERT(this, !executed_ticks)
           << "Didn't actually resume the task, so there should be no ticks";
       if (did_waitpid(result.status)) {
@@ -1753,8 +1797,8 @@ bool Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   // already resumed.
   if (flushed_ok) {
     ptrace_if_stopped(how, nullptr, (void*)(uintptr_t)sig);
-  } else {
-    Ticks executed_ticks = hpc.stop(this);
+  } else if (hpc) {
+    Ticks executed_ticks = hpc->stop(this);
     ASSERT(this, !executed_ticks)
         << "Didn't actually resume the task, so there should be no ticks";
   }
@@ -2427,7 +2471,6 @@ bool Task::did_waitpid(WaitStatus status) {
   }
 
   LOG(debug) << "  Task " << tid << " changed status to " << status;
-
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
   Ticks more_ticks = 0;
@@ -2476,7 +2519,7 @@ bool Task::did_waitpid(WaitStatus status) {
       status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
       memset(&pending_siginfo, 0, sizeof(pending_siginfo));
       pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
-      pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
+      pending_siginfo.si_fd = hpc->ticks_interrupt_fd();
       pending_siginfo.si_code = POLL_IN;
       // Don't try to inject signals into ptrace-interrupt stops
       in_injectable_signal_stop = false;
@@ -2530,18 +2573,22 @@ bool Task::did_waitpid(WaitStatus status) {
           registers.set_from_ptrace(ptrace_regs);
         }
 
-        // Only adjust tick count if we were able to read registers.
-        // For example if the task is already reaped we don't have new
-        // register values and we don't want to read a ticks value
-        // that mismatches our registers.
-        more_ticks = hpc.stop(this, detect_transient_error);
+        if (hpc) {
+          // Only adjust tick count if we were able to read registers.
+          // For example if the task is already reaped we don't have new
+          // register values and we don't want to read a ticks value
+          // that mismatches our registers.
+          more_ticks = hpc->stop(this, detect_transient_error);
+        }
       }
 #elif defined(__aarch64__)
       struct iovec vec = { &ptrace_regs,
                           sizeof(ptrace_regs) };
       if (ptrace_if_stopped(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
         registers.set_from_ptrace(ptrace_regs);
-        more_ticks = hpc.stop(this, detect_transient_error);
+        if (hpc) {
+          more_ticks = hpc->stop(this, detect_transient_error);
+        }
       }
 #else
 #error detect architecture here
@@ -2569,6 +2616,13 @@ bool Task::did_waitpid(WaitStatus status) {
   wait_status = status;
   /* Record this now that we're going to stay in the stopped state */
   in_injectable_signal_stop_ = in_injectable_signal_stop;
+
+  if (hpc) {
+    // We stop counting here because there may be things we want to do to the
+    // tracee that would otherwise generate ticks.
+    hpc->stop(this);
+  }
+
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 
@@ -3209,7 +3263,7 @@ void Task::reset_syscallbuf() {
       read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes));
   uint8_t* ptr = as->local_mapping(
         syscallbuf_child.cast<void>() + session().syscallbuf_hdr_size(), num_rec);
-  DEBUG_ASSERT(ptr != nullptr);
+  ASSERT(this, ptr);
   memset(ptr, 0, num_rec);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes), (uint32_t)0);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count),
@@ -3421,9 +3475,10 @@ ssize_t Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                               const void* buf, bool* ok, uint32_t flags) {
   // See read_bytes_fallible.
   addr = untagged_addr(arch(), addr);
+  vm()->notify_will_write(this, addr, buf_size, flags);
   ssize_t nwritten = write_bytes_helper_no_notifications(addr, buf_size, buf, ok, flags);
   if (nwritten > 0) {
-    vm()->notify_written(addr, nwritten, flags);
+    vm()->notify_written(this, addr, nwritten, flags);
   }
   return nwritten;
 }
@@ -3500,11 +3555,12 @@ uint64_t Task::write_ranges(const vector<FileMonitor::Range>& ranges,
   return result;
 }
 
-void Task::write_zeroes(unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size) {
+void Task::write_zeroes(unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size, uint32_t flags) {
   if (!size) {
     return;
   }
 
+  vm()->notify_will_write(this, addr, size, flags);
   remote_ptr<void> initial_addr = addr;
   size_t initial_size = size;
   vector<uint8_t> zeroes;
@@ -3535,12 +3591,12 @@ void Task::write_zeroes(unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void>
     }
     zeroes.resize(bytes);
     memset(zeroes.data(), 0, bytes);
-    ssize_t written = write_bytes_helper_no_notifications(addr, bytes, zeroes.data(), nullptr, 0);
+    ssize_t written = write_bytes_helper_no_notifications(addr, bytes, zeroes.data(), nullptr, flags);
     ASSERT(this, written == (ssize_t)bytes);
     addr += bytes;
     size -= bytes;
   }
-  vm()->notify_written(initial_addr, initial_size, 0);
+  vm()->notify_written(this, initial_addr, initial_size, flags);
 }
 
 void Task::will_schedule() {
@@ -4491,7 +4547,9 @@ static bool __ptrace_cont(Task* t, ResumeRequest resume_how,
     }
     ASSERT(t, result.code == WAIT_OK);
     if (new_tid >= 0) {
-      t->hpc.set_tid(new_tid);
+      if (t->hpc) {
+        t->hpc->set_tid(new_tid);
+      }
       t->tid = new_tid;
     }
     if (!t->did_waitpid(result.status)) {

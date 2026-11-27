@@ -3,11 +3,15 @@
 #ifndef RR_REPLAY_TASK_H_
 #define RR_REPLAY_TASK_H_
 
+#include <vector>
+
 #include "AutoRemoteSyscalls.h"
 #include "Task.h"
+#include "TraceStream.h"
 
 namespace rr {
 
+struct RemixTestOptions;
 class TraceFrame;
 
 /**
@@ -68,9 +72,11 @@ public:
   FrameTime current_frame_time() const;
 
   /** Restore the next chunk of this frame's saved data from the trace to this. */
-  void apply_data_record_from_trace();
+  void apply_data_record_from_trace(uint32_t flags = 0);
   /** Restore all remaining chunks of saved data for the current trace frame. */
-  void apply_all_data_records_from_trace();
+  void apply_all_data_records_from_trace(uint32_t flags = 0);
+
+  void write_data_record_from_trace(const TraceReader::RawData& buf, uint32_t flags = 0);
 
   /**
    * Set the syscall-return-value register of this to what was
@@ -95,6 +101,25 @@ public:
     return name_;
   }
 
+  /**
+   * Emulate the kernel's syscall-restart logic from do_signal.
+   */
+  void maybe_restart_syscall();
+
+  void clear_post_exec_writes() { post_exec_writes_.clear(); }
+  void append_post_exec_write(const TraceReader::RawData& data) {
+    post_exec_writes_.push_back(data);
+  }
+  const std::vector<TraceReader::RawData>& post_exec_writes() {
+    return post_exec_writes_;
+  }
+
+  static void ensure_initialized_remix_module(ReplayTask* rt,
+                                              const MemoryRange& module_range,
+                                              RemixTestOptions test_options,
+                                              bool account_for_execve);
+  static bool next_event_is_execve_exit(ReplayTask* rt);
+
 private:
   template <typename Arch> void init_buffers_arch();
 
@@ -106,6 +131,10 @@ private:
 
   // Set to true when we see a sched event with in_syscallbuf_syscall_hook set.
   bool seen_sched_in_syscallbuf_syscall_hook;
+
+  // Records the raw-data writes (other than mappings) performed by the
+  // last execve syscall for this task.
+  std::vector<TraceReader::RawData> post_exec_writes_;
 };
 
 } // namespace rr

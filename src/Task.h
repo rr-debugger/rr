@@ -206,6 +206,8 @@ public:
    */
   Ticks tick_count() const { return ticks; }
 
+  void set_tick_count(Ticks count) { ticks = count; }
+
   /**
    * Return the path of this fd as /proc/<pid>/fd/<fd>
    */
@@ -599,6 +601,13 @@ public:
   std::string read_c_str(remote_ptr<char> child_addr, bool *ok = nullptr);
 
   /**
+   * Make the global |thread_locals_initialized| variable indicate whether
+   * this task's thread-locals are initialized. Call this whenever we're
+   * about to run tracee code.
+   */
+  void update_thread_locals_initialized_flag();
+
+  /**
    * Resume execution |how|, delivering |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
    * request a tick period of tick_period. The default value
@@ -780,6 +789,22 @@ public:
 
   enum WriteFlags {
     IS_BREAKPOINT_RELATED = 0x1,
+    // This indicates the the data being written is the initial data for a new
+    // mapping. The mapping may refer to existing pages that we already know about.
+    // AddressSpace will skip notifying remix modules about these writes because:
+    // -- data for the first mapping of new pages can be obtained by examining the
+    // trace directly instead
+    // -- remapping of already-known pages does not change their values
+    // If we map some pages, unmap them, and something writes to the pages, then
+    // we remap them, this is still OK because
+    // -- If a mapping exists while the pages were written by tracees, we'll observe
+    // those writes directly
+    // -- If no mapping exists while the pages were written by tracees or non-tracees,
+    // the remapping will look like a new mapping and the data will be in the trace
+    // -- If a mapping exists while the pages were written by non-tracees, that's
+    // not supported
+    IS_INITIAL_DATA_FOR_MAPPING = 0x2,
+    IS_AUTO_REMOTE_MEMORY = 0x4,
   };
   /**
    * Write |val| to |child_addr|.
@@ -801,10 +826,10 @@ public:
 
   template <typename T>
   void write_mem(remote_ptr<T> child_addr, const T* val, int count,
-                 bool* ok = nullptr) {
+                 bool* ok = nullptr, uint32_t flags = 0) {
     DEBUG_ASSERT(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(*val) * count,
-                       static_cast<const void*>(val), ok);
+                       static_cast<const void*>(val), ok, flags);
   }
 
   uint64_t write_ranges(const std::vector<FileMonitor::Range>& ranges,
@@ -815,7 +840,7 @@ public:
    * For efficiency tries using MADV_REMOVE via `remote`. Caches
    * an AutoRemoteSyscalls in `*remote`.
    */
-  void write_zeroes(std::unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size);
+  void write_zeroes(std::unique_ptr<AutoRemoteSyscalls>* remote, remote_ptr<void> addr, size_t size, uint32_t flags);
 
   /**
    * Don't use these helpers directly; use the safer and more
@@ -963,7 +988,7 @@ public:
   // Current rseq state if registered
   std::unique_ptr<RseqState> rseq_state;
 
-  PerfCounters hpc;
+  std::unique_ptr<PerfCounters> hpc;
 
   /* This is always the "real" tid of the tracee. For a detached proxy,
    * it's the proxy tid. */
@@ -1097,6 +1122,8 @@ public:
   remote_code_ptr last_execution_resume() const {
     return address_of_last_execution_resume;
   }
+  // TODO We could support per-thread enabling of remix execution
+  bool remix_execution_enabled() { return as->remix_module() != nullptr; }
 
   bool was_reaped() const {
     return was_reaped_;

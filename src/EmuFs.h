@@ -99,6 +99,7 @@ public:
   const std::string emu_path() const { return orig_path; }
 
   const std::string real_path() const { return tmp_path; }
+  const std::string filesystem_path() const { return filesystem_path_; }
 
   dev_t device() const { return device_; }
   ino_t inode() const { return inode_; }
@@ -109,8 +110,8 @@ private:
   friend class EmuFs;
 
   EmuFile(EmuFs& owner, ScopedFd&& fd, const std::string& orig_path,
-          const std::string& real_path, dev_t device, ino_t inode,
-          uint64_t file_size);
+          const std::string& real_path, const std::string& filesystem_path,
+          dev_t device, ino_t inode, uint64_t file_size);
 
   /**
    * Return a copy of this file.  See |create()| for the meaning
@@ -136,6 +137,7 @@ private:
 
   std::string orig_path;
   std::string tmp_path;
+  std::string filesystem_path_;
   ScopedFd file;
   EmuFs& owner;
   uint64_t size_;
@@ -184,12 +186,21 @@ public:
 
   void destroyed_file(EmuFile& emu_file) { files.erase(FileId(emu_file)); }
 
+  /**
+   * Force all files to be exposed with real names in the filesystem.
+   * This makes them accessible for analysis by tools, though if rr dies unexpectedly
+   * they won't be cleaned up.
+   */
+  void set_expose_files() { expose_files_ = true; }
+  bool expose_files() const { return expose_files_; }
+
 private:
   EmuFs();
 
   typedef std::map<FileId, std::weak_ptr<EmuFile>> FileMap;
 
   FileMap files;
+  bool expose_files_;
 
   EmuFs(const EmuFs&) = delete;
   EmuFs& operator=(const EmuFs&) = delete;

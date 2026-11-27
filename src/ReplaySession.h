@@ -32,6 +32,8 @@ struct ReplayFlushBufferedSyscallState {
   uintptr_t stop_breakpoint_offset;
   /* This includes slop */
   Ticks recorded_ticks;
+  /* Our AddressSpace records are current through this mprotect record */
+  uint32_t mprotect_index;
 };
 
 /**
@@ -126,6 +128,12 @@ struct ReplayResult {
   // one iteration to go. did_fast_forward may be false in this case if the
   // instruction executes exactly twice.
   bool incomplete_fast_forward;
+
+  bool operator==(const ReplayResult& other) {
+    return status == other.status && break_status == other.break_status &&
+           did_fast_forward == other.did_fast_forward &&
+           incomplete_fast_forward == other.incomplete_fast_forward;
+  }
 };
 
 /**
@@ -157,6 +165,11 @@ private:
   ReplayTraceStepType action;
 };
 
+enum class ExposeEmuFsFiles {
+  Deleted,
+  Exposed
+};
+
 /** Encapsulates additional session state related to replay. */
 class ReplaySession final : public Session {
 public:
@@ -183,7 +196,7 @@ public:
    * session. Partially initialized sessions automatically finish
    * initializing when necessary.
    */
-  shr_ptr clone();
+  shr_ptr clone(ExposeEmuFsFiles expose_emufs_files = ExposeEmuFsFiles::Deleted);
 
   /**
    * Return true if we're in a state where it's OK to clone. For example,
@@ -247,15 +260,25 @@ public:
       , replay_stops_at_first_execve(false)
       , cpu_unbound(false)
       , transient_errors_fatal(false)
-      , intel_pt_start_checking_event(-1) {}
+      , intel_pt_start_checking_event(-1)
+      , always_remix(false) {}
     Flags(const Flags&) = default;
     bool redirect_stdio;
     std::string redirect_stdio_file;
     bool share_private_mappings;
     bool replay_stops_at_first_execve;
+    /**
+     * Used to choose whether or not to try to bind to the CPU specified
+     * in the trace. Normally we will try to bind, so the "lsl" instruction
+     * used as a fast "get CPU index" will work correctly, but one can
+     * opt out of this. Opting out is important if you're going to run
+     * multiple replays of the same trace concurrently; you don't want to
+     * bind all those replays to the same CPU.
+     */
     bool cpu_unbound;
     bool transient_errors_fatal;
     FrameTime intel_pt_start_checking_event;
+    bool always_remix;
   };
 
   /**
@@ -264,6 +287,12 @@ public:
    */
   static shr_ptr create(const std::string& dir, const Flags& flags);
 
+  /**
+   * Constraints passed to replay_step.
+   *
+   * When a remix module is in use, RUN_SINGLESTEP_FAST_FORWARD is not
+   * supported.
+   */
   struct StepConstraints {
     explicit StepConstraints(RunCommand command)
         : command(command), ticks_target(0) {}
@@ -311,6 +340,7 @@ public:
   static bool is_ignored_signal(int sig);
 
   const Flags& flags() const { return flags_; }
+  virtual bool using_perf_counters() const override { return !flags_.always_remix; }
 
   typedef std::set<MemoryRange, MappingComparator> MemoryRanges;
   enum PerfTradeoff {
@@ -331,9 +361,31 @@ public:
   static void delete_range(ReplaySession::MemoryRanges& ranges,
                            const MemoryRange& r);
 
+  MemoryRange choose_remix_module_range();
+
   double get_trace_start_time();
+  void set_remix_module_with_modified_ranges(const AddressSpaceUid& uid) {
+    remix_module_with_modified_ranges_ = uid;
+  }
+  const AddressSpaceUid& remix_module_with_modified_ranges() const {
+    return remix_module_with_modified_ranges_;
+  }
 
   virtual TraceStream* trace_stream() override { return &trace_in; }
+  // calls handle_unrecorded_cpuid_fault but only if hardware CPUID faulting
+  // is actually enabled for this session.
+  bool handle_unrecorded_cpuid_fault_if_enabled(ReplayTask* t,
+                                                const StepConstraints& constraints);
+  void handle_unrecorded_cpuid_fault(ReplayTask* t,
+                                     const StepConstraints& constraints);
+  // Flush buffered mapping events to all RemixModules now so their state
+  // is up-to-date.
+  void flush_remix_module_state();
+
+  // Unload all remix modules
+  void unload_remix();
+
+  bool remix_needs_xsave_emulation() const { return remix_needs_xsave_emulation_; }
 
   virtual BindCPU cpu_binding() const override;
 
@@ -342,6 +394,7 @@ public:
   virtual int tracee_output_fd(int dflt) override {
     return tracee_output_fd_.get() ? tracee_output_fd_->get() : dflt;
   }
+  void ensure_mprotect_records_up_to_date();
 
   /**
    * Get ready to detach these tasks and reattach them in a child process. Call this
@@ -399,8 +452,6 @@ private:
   Completion enter_syscall(ReplayTask* t, const StepConstraints& constraints);
   Completion exit_syscall(ReplayTask* t);
   Completion exit_task(ReplayTask* t);
-  bool handle_unrecorded_cpuid_fault(ReplayTask* t,
-                                     const StepConstraints& constraints);
   void check_ticks_consistency(ReplayTask* t, const Event& ev);
   void check_pending_sig(ReplayTask* t);
   Completion continue_or_step(ReplayTask* t, const StepConstraints& constraints,
@@ -430,6 +481,9 @@ private:
 
   std::shared_ptr<EmuFs> emu_fs;
   std::shared_ptr<ScopedFd> tracee_output_fd_;
+  AddressSpaceUid remix_module_with_modified_ranges_;
+  MemoryRange remix_module_range_;
+  bool remix_needs_xsave_emulation_;
   TraceReader trace_in;
   TraceFrame trace_frame;
   ReplayTraceStep current_step;

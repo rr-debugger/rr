@@ -4026,7 +4026,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   regs.set_arg1(0);
   new_t->set_regs(regs);
   // Disable syscall buffering. XXX: We could also try to unpatch syscalls here
-  new_t->hpc.close();
+  new_t->hpc->close();
   new_t->set_in_diversion(true);
   // Just clean up some additional state
   new_t->reenable_cpuid_tsc();
@@ -5723,13 +5723,18 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
-    case Arch::madvise:
-      switch ((int)regs.arg3()) {
+    case Arch::madvise: {
+      remote_ptr<void> addr = regs.arg1();
+      size_t num_bytes = regs.arg2();
+      int advice = regs.arg3();
+      t->vm()->will_advise(t, addr, num_bytes, advice);
+
+      switch (advice) {
         case MADV_NORMAL:
         case MADV_RANDOM:
         case MADV_SEQUENTIAL:
-        case MADV_WILLNEED:
         case MADV_DONTNEED:
+        case MADV_WILLNEED:
         case MADV_REMOVE:
         case MADV_DONTFORK:
         case MADV_DOFORK:
@@ -5767,6 +5772,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
       }
       return PREVENT_SWITCH;
+    }
 
     case Arch::personality: {
       int p = regs.arg1();
@@ -6252,13 +6258,13 @@ static void check_privileged_exe(RecordTask* t) {
     // namespace - as a result we must have at least as much privilege).
     // Nevertheless, we still need to stop the hpc counters, since
     // the executable may be privileged with respect to its namespace.
-    t->hpc.close();
+    t->hpc->close();
   } else if (is_privileged_executable(t, t->vm()->exe_image())) {
     if (has_effective_caps(1 << CAP_SYS_ADMIN)) {
       // perf_events may have decided to stop counting for security reasons.
       // To be safe, close all perf counters now, to force re-opening the
       // perf file descriptors the next time we resume the task.
-      t->hpc.close();
+      t->hpc->close();
     } else {
       // Only issue the warning once. If it's a problem, the user will likely
       // find out soon enough. If not, no need to keep bothering them.

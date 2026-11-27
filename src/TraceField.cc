@@ -277,6 +277,125 @@ void print_trace_fields(ReplayTask* t, FrameTime event, uint64_t instruction_cou
         print_value(buf, value, sizeof(value), true, raw, out);
         break;
       }
+      case TRACE_ZMM_REG: {
+        uint8_t value[64];
+        bool defined;
+        switch (t->arch()) {
+          case x86:
+            if (field.reg_num < 8) {
+              t->extra_regs().read_register(
+                  value, GdbServerRegister(DREG_XMM0 + field.reg_num), &defined);
+              t->extra_regs().read_register(
+                  value + 16, GdbServerRegister(DREG_YMM0H + field.reg_num),
+                  &defined);
+              t->extra_regs().read_register(
+                  value + 32, GdbServerRegister(DREG_ZMM0H + field.reg_num),
+                  &defined);
+            } else {
+              memset(value, 0, sizeof(value));
+            }
+            break;
+          case x86_64:
+            if (field.reg_num < 16) {
+              t->extra_regs().read_register(
+                  value, GdbServerRegister(DREG_64_XMM0 + field.reg_num), &defined);
+              t->extra_regs().read_register(
+                  value + 16, GdbServerRegister(DREG_64_YMM0H + field.reg_num),
+                  &defined);
+              t->extra_regs().read_register(
+                  value + 32, GdbServerRegister(DREG_64_ZMM0H + field.reg_num),
+                  &defined);
+            } else if (field.reg_num < 32) {
+              t->extra_regs().read_register(
+                  value, GdbServerRegister(DREG_64_XMM16 + field.reg_num - 16), &defined);
+              t->extra_regs().read_register(
+                  value + 16, GdbServerRegister(DREG_64_YMM16H + field.reg_num - 16),
+                  &defined);
+              t->extra_regs().read_register(
+                  value + 32, GdbServerRegister(DREG_64_ZMM16H + field.reg_num - 16),
+                  &defined);
+            } else {
+              memset(value, 0, sizeof(value));
+            }
+            break;
+          default:
+            FATAL() << "Unexpected architecture";
+        }
+        char buf[8];
+        sprintf(buf, "zmm%d", field.reg_num);
+        print_value(buf, value, sizeof(value), true, raw, out);
+        break;
+      }
+      case TRACE_K_REG: {
+        bool defined;
+        uint64_t value = 0;
+        switch (t->arch()) {
+          case x86:
+            if (field.reg_num < 8) {
+              t->extra_regs().read_register((uint8_t*)&value,
+                  GdbServerRegister(DREG_K0 + field.reg_num), &defined);
+            }
+            break;
+          case x86_64:
+            if (field.reg_num < 8) {
+              t->extra_regs().read_register((uint8_t*)&value,
+                  GdbServerRegister(DREG_64_K0 + field.reg_num), &defined);
+            }
+            break;
+          default:
+            FATAL() << "Unexpected architecture";
+        }
+        char buf[8];
+        sprintf(buf, "k%d", field.reg_num);
+        print_value(buf, &value, sizeof(value), true, raw, out);
+        break;
+      }
+      case TRACE_X87_REG: {
+        uint8_t value[10];
+        bool defined;
+        switch (t->arch()) {
+          case x86:
+            if (field.reg_num < 8) {
+              t->extra_regs().read_register(
+                  value, GdbServerRegister(DREG_ST0 + field.reg_num), &defined);
+            } else {
+              memset(value, 0, sizeof(value));
+            }
+            break;
+          case x86_64:
+            if (field.reg_num < 8) {
+              t->extra_regs().read_register(
+                  value, GdbServerRegister(DREG_64_ST0 + field.reg_num), &defined);
+            } else {
+              memset(value, 0, sizeof(value));
+            }
+            break;
+          default:
+            FATAL() << "Unexpected architecture";
+        }
+        char buf[8];
+        sprintf(buf, "st%d", field.reg_num);
+        print_value(buf, value, sizeof(value), true, raw, out);
+        break;
+      }
+      case TRACE_X87_STATUS: {
+        uint8_t value[2];
+        bool defined;
+        switch (t->arch()) {
+          case x86:
+            t->extra_regs().read_register(
+                value, GdbServerRegister(DREG_FSTAT), &defined);
+            break;
+          case x86_64:
+            t->extra_regs().read_register(
+                value, GdbServerRegister(DREG_64_FSTAT), &defined);
+            break;
+          default:
+            FATAL() << "Unexpected architecture";
+        }
+        print_value("fstat", &value, sizeof(value), true, raw, out);
+        break;
+      }
       case TRACE_FIP: {
         bool defined;
         uint64_t value = t->extra_regs().read_fip(&defined);
@@ -331,6 +450,8 @@ bool parse_trace_fields(const string& value, vector<TraceField>* out) {
       out->push_back({ TRACE_INSTRUCTION_COUNT, 0 });
     } else if (reg == "ip" || reg == "rip") {
       out->push_back({ TRACE_IP, 0 });
+    } else if (reg == "ticks") {
+      out->push_back({ TRACE_TICKS, 0 });
     } else if (reg == "fsbase") {
       out->push_back({ TRACE_FSBASE, 0 });
     } else if (reg == "gsbase") {
@@ -351,6 +472,20 @@ bool parse_trace_fields(const string& value, vector<TraceField>* out) {
       for (uint8_t i = 0; i < 16; ++i) {
         out->push_back({ TRACE_YMM_REG, i });
       }
+    } else if (reg == "zmm_x32") {
+      for (uint8_t i = 0; i < 32; ++i) {
+        out->push_back({ TRACE_ZMM_REG, i });
+      }
+    } else if (reg == "k_x8") {
+      for (uint8_t i = 0; i < 8; ++i) {
+        out->push_back({ TRACE_K_REG, i });
+      }
+    } else if (reg == "x87_x8") {
+      for (uint8_t i = 0; i < 8; ++i) {
+        out->push_back({ TRACE_X87_REG, i });
+      }
+    } else if (reg == "fstat") {
+      out->push_back({ TRACE_X87_STATUS, 0 });
     } else if (find_gp_reg(reg) >= 0) {
       out->push_back({ TRACE_GP_REG, (uint8_t)find_gp_reg(reg) });
     } else if (find_seg_reg(reg) >= 0) {

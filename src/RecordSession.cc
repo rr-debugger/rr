@@ -354,7 +354,9 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   // The counters might be running if we did not read the final register values
   // (e.g. because our registers are dirty). Stop them now so we can close them
   // safely.
-  t->hpc.stop(t);
+  if (t->hpc) {
+    t->hpc->stop(t);
+  }
 
   // If we died because of a coredumping signal while the core dump is in
   // progress, we can't wait for this task to exit: before Linux 5.16
@@ -1597,7 +1599,7 @@ void RecordSession::dispose_of_leader_killed_by_exec(RecordTask* leader) {
     // shared-memory mapping or two different thread-groups sharing the same
     // address space.
     leader->did_die_in_exec();
-    leader->hpc.stop(leader);
+    leader->hpc->stop(leader);
     leader->record_exit_trace_event(WaitStatus(0));
     leader->record_exit_event();
   }

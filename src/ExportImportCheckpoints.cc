@@ -209,6 +209,7 @@ CommandForCheckpoint export_checkpoints(ReplaySession::shr_ptr session, int coun
       args.push_back(string(arg.data(), arg.size()));
     }
 
+    session->unload_remix();
     ReplaySession::shr_ptr checkpoint = session->clone();
     int parent_to_child_fds[2];
     ret = pipe(parent_to_child_fds);

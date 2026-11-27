@@ -7,6 +7,7 @@
 #include <signal.h>
 
 #include <iostream>
+#include <sstream>
 #include <type_traits>
 #include <vector>
 #include <cstdint>
@@ -56,6 +57,8 @@ void set_all_logging(LogLevel level);
  * Set log level for 'name' to 'level'
  */
 void set_logging(const char* name, LogLevel level);
+
+LogLevel get_log_level(const std::string& name);
 
 std::ostream& operator<<(std::ostream& stream,
                          const std::vector<uint8_t>& bytes);
@@ -137,6 +140,37 @@ const CleanFatalOstream& operator<<(const CleanFatalOstream& stream,
 }
 
 /**
+ * Print structured fatal errors. Like CleanFatalOstream but prints a JSON
+ * blob if requested.
+ */
+struct StructuredFatalOstream {
+  /**
+   * `file` must be a pointer that is valid forever, preferably
+   * some value of `__FILE__`.
+   * `token` identifies the failure type (ASCII only)
+   */
+  StructuredFatalOstream(const char* file, int line, const char* function, const char* token);
+  ~StructuredFatalOstream();
+
+  StructuredFatalOstream& task(Task* t);
+  StructuredFatalOstream& instruction_address(Task* t, uintptr_t addr);
+  StructuredFatalOstream& disassembly(const char* text);
+  StructuredFatalOstream& instruction_family(const char* family);
+
+  std::stringstream json;
+  std::stringstream message;
+};
+/**
+ * Add to the human-readable failure message.
+ */
+template <typename T>
+StructuredFatalOstream& operator<<(StructuredFatalOstream& stream,
+                                   const T& v) {
+  stream.message << v;
+  return stream;
+}
+
+/**
  * Print detailed fatal errors. These include the file, line and function name
  * plus errno and a stack trace. Used for fatal errors where detailed
  * diagnostics may be required.
@@ -192,6 +226,9 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
 #define FATAL() FatalOstream(__FILE__, __LINE__, __FUNCTION__)
 
 #define CLEAN_FATAL() CleanFatalOstream(__FILE__, __LINE__, __FUNCTION__)
+
+#define STRUCTURED_FATAL(_token)                                                   \
+  StructuredFatalOstream(__FILE__, __LINE__, __FUNCTION__, _token)
 
 #ifndef __has_builtin
 #define __has_builtin(x) 0

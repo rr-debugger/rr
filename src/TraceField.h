@@ -23,6 +23,10 @@ enum TraceFieldKind {
   TRACE_GP_REG,            // outputs 64-bit value
   TRACE_XMM_REG,           // outputs 128-bit value
   TRACE_YMM_REG,           // outputs 256-bit value
+  TRACE_ZMM_REG,           // outputs 512-bit value
+  TRACE_K_REG,             // outputs 64-bit value
+  TRACE_X87_REG,           // outputs 80-bit value
+  TRACE_X87_STATUS,        // outputs 16-bit value
   TRACE_FIP,               // outputs 64-bit value
   TRACE_FOP,               // outputs 16-bit value
   TRACE_TID,               // outputs 32-bit value

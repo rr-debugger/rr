@@ -183,7 +183,7 @@ void check_intel_pt_if_enabled(ReplayTask* t) {
 
   // Always extract PT data if there is any, and throw it
   // away if we don't want to check it.
-  PTData replay_pt_data = t->hpc.extract_intel_pt_data();
+  PTData replay_pt_data = t->hpc ? t->hpc->extract_intel_pt_data() : PTData();
 
   FrameTime start_checking_event =
     t->session().flags().intel_pt_start_checking_event;
@@ -202,7 +202,7 @@ void check_intel_pt_if_enabled(ReplayTask* t) {
 }
 
 void emergency_check_intel_pt(ReplayTask* t, ostream& stream) {
-  PTData replay_pt_data = t->hpc.extract_intel_pt_data();
+  PTData replay_pt_data = t->hpc ? t->hpc->extract_intel_pt_data() : PTData();
   if (!replay_pt_data.data.empty()) {
     check_intel_pt_internal(t, replay_pt_data, stream);
   }

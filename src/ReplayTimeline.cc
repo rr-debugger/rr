@@ -457,17 +457,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
   ProtoMark before = proto_mark();
   ASSERT(t, before.key <= mark.ptr->proto.key)
       << "Current mark " << before << " is already after target " << mark;
-  ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->proto.key.trace_time) {
-    // Easy case: each RUN_CONTINUE can only advance by at most one
-    // trace event, so do one. But do a singlestep if our strategy suggests
-    // we should.
-    ReplaySession::StepConstraints constraints =
-        strategy.setup_step_constraints();
-    result = current->replay_step(constraints);
-    update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
-                                             before);
-    return result;
+    return replay_step_to_event(mark.ptr->proto.key.trace_time, strategy);
   }
 
   ASSERT(t, current->trace_reader().time() == mark.ptr->proto.key.trace_time);
@@ -476,6 +467,7 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
   // reaching the mark ... apart from where we call
   // fix_watchpoint_coalescing_quirk.
 
+  ReplayResult result;
   if (t->tick_count() < mark.ptr->proto.key.ticks) {
     // Try to make progress by just continuing with a ticks constraint
     // set to stop us before the mark. This is efficient in the worst case,
@@ -546,6 +538,24 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
   return result;
 }
 
+ReplayResult ReplayTimeline::replay_step_to_event(
+    FrameTime time, ReplayStepToMarkStrategy& strategy) {
+  ReplayTask* t = current->current_task();
+  ProtoMark before = proto_mark();
+  ASSERT(t, before.key <= MarkKey::from_time(time))
+      << "Current mark " << before << " is already after frame time " << time;
+
+  // Easy case: each RUN_CONTINUE can only advance by at most one
+  // trace event, so do one. But do a singlestep if our strategy suggests
+  // we should.
+  ReplaySession::StepConstraints constraints =
+      strategy.setup_step_constraints();
+  ReplayResult result = current->replay_step(constraints);
+  update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
+                                           before);
+  return result;
+}
+
 void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
   seek_to_before_key(pmark.key);
   unapply_breakpoints_and_watchpoints();
@@ -582,6 +592,17 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
     replay_step_to_mark(mark, strategy);
   }
   current_at_or_after_mark = mark.ptr;
+  // XXX handle cases where breakpoints can't yet be applied
+}
+
+void ReplayTimeline::seek_to_event(FrameTime event) {
+  seek_to_before_event(event);
+  while (current->current_frame_time() < event) {
+    unapply_breakpoints_and_watchpoints();
+    ReplayStepToMarkStrategy strategy;
+    replay_step_to_event(event, strategy);
+  }
+  current_at_or_after_mark = current_mark();
   // XXX handle cases where breakpoints can't yet be applied
 }
 
