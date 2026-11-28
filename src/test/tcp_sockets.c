@@ -22,11 +22,22 @@ int main(void) {
 
   test_assert(0 == bind(socket_fd[0], (struct sockaddr*)&sa, sa_size));
   test_assert(0 == getsockname(socket_fd[0], (struct sockaddr*)&sa, &sa_size));
-  test_assert(0 == listen(socket_fd[0], 1));
+  struct sockaddr_in listen_sa = *sa_in;
+  test_assert(0 == listen(socket_fd[0], 2));
   test_assert(0 == connect(socket_fd[1], (struct sockaddr*)&sa, sa_size));
 
   socket_fd[2] = accept(socket_fd[0], (struct sockaddr*)&sa, &sa_size);
   test_assert(socket_fd[2] >= 0);
+
+  // nonblocking ipv4 connect. This may return EINPROGRESS, in which case
+  // rr records the address passed to connect() as the remote address.
+  int nb_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  test_assert(nb_fd >= 0);
+  int ret = connect(nb_fd, (struct sockaddr*)&listen_sa, sizeof(listen_sa));
+  test_assert(ret == 0 || errno == EINPROGRESS);
+  atomic_printf("nonblocking connect %s to port %d\n",
+                ret == 0 ? "completed" : "in progress", ntohs(listen_sa.sin_port));
+  close(nb_fd);
 
   close(socket_fd[0]);
   close(socket_fd[1]);

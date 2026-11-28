@@ -5,11 +5,19 @@ cp ${OBJDIR}/bin/$exe $exe-$nonce
 just_record $exe-$nonce
 # The test binary might fail due to IPv6 being unsupported
 EXIT_CODE=$?
-if [[ `rr dump --socket-addresses latest-trace|grep --count -F 127.0.0.1` != 2 ]]; then
+rr dump --socket-addresses latest-trace > socket-addrs.txt
+# connect(), accept() and the nonblocking connect()
+if [[ `grep --count -F 127.0.0.1 socket-addrs.txt` != 3 ]]; then
     failed "Wrong number of '127.0.0.1's"
 fi
+# The nonblocking connect()'s remote address must be the listening socket,
+# even if the connect was still in progress.
+port=`grep -oP 'nonblocking connect .* to port \K[0-9]+' record.out`
+if [[ `grep --count -F "Remote socket address '127.0.0.1:$port'" socket-addrs.txt` != 2 ]]; then
+    failed "Expected two connections to port $port"
+fi
 if [[ $EXIT_CODE == 0 ]]; then
-  if [[ `rr dump --socket-addresses latest-trace|grep --count -F ::1:` != 2 ]]; then
+  if [[ `grep --count -F ::1: socket-addrs.txt` != 2 ]]; then
       failed "Wrong number of '::1:'s"
   fi
 fi

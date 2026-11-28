@@ -7141,14 +7141,87 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
                 "of tracees";
 }
 
-static void maybe_process_new_socket(RecordTask* t, int fd) {
-  if (t->regs().syscall_failed()) {
+// Record the local and remote addresses of a TCP socket that has just been
+// connected or accepted. For connect(), `connect_addr` and `connect_addrlen`
+// are the address the tracee passed; if a nonblocking connect is still in
+// progress the socket has no peer yet, so we record that address instead.
+static void maybe_process_new_socket(RecordTask* t, int fd,
+                                     remote_ptr<void> connect_addr = nullptr,
+                                     size_t connect_addrlen = 0) {
+  bool connect_in_progress = !connect_addr.is_null() &&
+      t->regs().syscall_result_signed() == -EINPROGRESS;
+  if (t->regs().syscall_failed() && !connect_in_progress) {
+    return;
+  }
+
+  // Get our own reference to the socket (with pidfd_getfd if possible, which
+  // doesn't need the tracee to run) and query it directly. This works even
+  // if the tracee is in a different network namespace.
+  ScopedFd sock;
+  {
+    AutoRemoteSyscalls remote(t);
+    sock = remote.retrieve_fd(fd);
+  }
+  if (!sock.is_open()) {
     return;
   }
 
   std::array<typename NativeArch::sockaddr_storage, 2> socket_addresses;
-  if (!read_proc_net_socket_addresses(t, fd, socket_addresses)) {
+  static_assert(sizeof(socket_addresses[0]) == sizeof(struct sockaddr_storage),
+                "Unexpected sockaddr_storage size");
+  memset(socket_addresses.data(), 0, sizeof(socket_addresses));
+  auto local = reinterpret_cast<struct sockaddr_storage*>(&socket_addresses[0]);
+  auto remote = reinterpret_cast<struct sockaddr_storage*>(&socket_addresses[1]);
+  socklen_t len = sizeof(*local);
+  if (getsockname(sock, (struct sockaddr*)local, &len)) {
+    LOG(warn) << "getsockname failed: " << errno_name(errno);
     return;
+  }
+  // Only TCP sockets are recorded. The address family rules out everything
+  // but IP sockets; then check the protocol to rule out UDP etc.
+  if (local->ss_family != AF_INET && local->ss_family != AF_INET6) {
+    return;
+  }
+  int protocol;
+  socklen_t protocol_len = sizeof(protocol);
+  if (getsockopt(sock, SOL_SOCKET, SO_PROTOCOL, &protocol, &protocol_len) ||
+      protocol != IPPROTO_TCP) {
+    return;
+  }
+  if (connect_in_progress) {
+    ssize_t size = min<size_t>(connect_addrlen, sizeof(*remote));
+    if (t->read_bytes_fallible(connect_addr, size, remote) != size) {
+      return;
+    }
+  } else {
+    len = sizeof(*remote);
+    if (getpeername(sock, (struct sockaddr*)remote, &len)) {
+      LOG(warn) << "getpeername failed: " << errno_name(errno);
+      return;
+    }
+  }
+  if (local->ss_family != remote->ss_family) {
+    return;
+  }
+
+  // Traces store ports in host byte order.
+  switch (local->ss_family) {
+    case AF_INET: {
+      auto local_in = reinterpret_cast<struct sockaddr_in*>(local);
+      auto remote_in = reinterpret_cast<struct sockaddr_in*>(remote);
+      local_in->sin_port = ntohs(local_in->sin_port);
+      remote_in->sin_port = ntohs(remote_in->sin_port);
+      break;
+    }
+    case AF_INET6: {
+      auto local_in6 = reinterpret_cast<struct sockaddr_in6*>(local);
+      auto remote_in6 = reinterpret_cast<struct sockaddr_in6*>(remote);
+      local_in6->sin6_port = ntohs(local_in6->sin6_port);
+      remote_in6->sin6_port = ntohs(remote_in6->sin6_port);
+      break;
+    }
+    default:
+      return;
   }
 
   auto& syscall = t->ev().Syscall();
@@ -7739,7 +7812,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         r.set_syscall_result(-EACCES);
         t->set_regs(r);
       }
-      maybe_process_new_socket(t, r.orig_arg1());
+      maybe_process_new_socket(t, r.orig_arg1(), r.arg2(), r.arg3());
       break;
     }
 
@@ -7868,7 +7941,17 @@ static void rec_process_syscall_arch(RecordTask* t,
       t->set_regs(r);
       maybe_created_writable_fd(t);
 
-      if (!t->regs().syscall_failed()) {
+      if (t->regs().orig_arg1_signed() == SYS_CONNECT) {
+        // Do this even if connect() failed, to handle nonblocking connects
+        // that failed with EINPROGRESS.
+        bool ok = true;
+        auto args = t->read_mem(
+            remote_ptr<typename Arch::connect_args>(t->regs().arg2()), &ok);
+        if (ok) {
+          maybe_process_new_socket(t, args.sockfd, args.addr.rptr(),
+                                   args.addrlen);
+        }
+      } else if (!t->regs().syscall_failed()) {
         switch ((int)t->regs().orig_arg1_signed()) {
           case SYS_RECVMSG: {
             auto args = t->read_mem(
@@ -7885,12 +7968,6 @@ static void rec_process_syscall_arch(RecordTask* t,
             for (auto& m : msgs) {
               check_scm_rights_fd<Arch>(t, m.msg_hdr);
             }
-            break;
-          }
-          case SYS_CONNECT: {
-            auto args = t->read_mem(
-                remote_ptr<typename Arch::connect_args>(t->regs().arg2()));
-            maybe_process_new_socket(t, args.sockfd);
             break;
           }
           case SYS_ACCEPT:
