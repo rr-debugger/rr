@@ -928,6 +928,45 @@ bool TraceWriter::try_clone_file(RecordTask* t,
   return true;
 }
 
+static bool same_timespec(const struct timespec& a, const struct timespec& b) {
+  return a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec;
+}
+
+bool TraceWriter::try_clone_file_cached(RecordTask* t, const KernelMapping& km,
+                                        const struct stat& stat,
+                                        const std::string& access_file_name,
+                                        std::string* new_name) {
+  auto key = make_pair(stat.st_dev, stat.st_ino);
+  // A file that is MAP_SHARED in some tracee could be modified through that
+  // mapping without its timestamps changing (they're only updated when a
+  // clean page is first written), so don't trust our clone of it.
+  bool shared = false;
+  for (AddressSpace* vm : t->session().vms()) {
+    if (vm->has_shared_mapping_of(stat.st_dev, stat.st_ino)) {
+      shared = true;
+      break;
+    }
+  }
+  if (!shared) {
+    auto it = cloned_files.find(key);
+    if (it != cloned_files.end() && it->second.size == stat.st_size &&
+        same_timespec(it->second.mtime, stat.st_mtim) &&
+        same_timespec(it->second.ctime, stat.st_ctim)) {
+      *new_name = it->second.name;
+      return true;
+    }
+  }
+  if (!try_clone_file(t, km.fsname(), access_file_name, new_name)) {
+    return false;
+  }
+  if (shared) {
+    cloned_files.erase(key);
+  } else {
+    cloned_files[key] = { *new_name, stat.st_size, stat.st_mtim, stat.st_ctim };
+  }
+  return true;
+}
+
 bool TraceWriter::copy_file(const std::string& real_file_name,
                             const std::string& access_file_name,
                             std::string* new_name) {
@@ -1030,7 +1069,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     if (assumed_immutable != files_assumed_immutable.end()) {
       src.initFile().setBackingFileName(str_to_data(assumed_immutable->second));
     } else if ((km.flags() & MAP_PRIVATE) &&
-               try_clone_file(t, km.fsname(), file_name, &backing_file_name)) {
+               try_clone_file_cached(t, km, stat, file_name,
+                                     &backing_file_name)) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
     } else if (should_copy_mmap_region(km, file_name, stat)) {
       copy_file_or_trace(file_name);

@@ -323,6 +323,10 @@ private:
   bool try_clone_file(RecordTask* t, const std::string& real_file_name,
                       const std::string& access_file_name,
                       std::string* new_name);
+  bool try_clone_file_cached(RecordTask* t, const KernelMapping& km,
+                             const struct stat& stat,
+                             const std::string& access_file_name,
+                             std::string* new_name);
   bool copy_file(const std::string& real_file_name,
                  const std::string& access_file_name, std::string* new_name);
 
@@ -338,6 +342,18 @@ private:
    * are immutable.
    */
   std::map<std::pair<dev_t, ino_t>, std::string> files_assumed_immutable;
+  /**
+   * Clones we've made for MAP_PRIVATE mappings, so mapping the same
+   * unmodified file again can reuse the clone. Processes typically map each
+   * shared library several times, and many processes map the same libraries.
+   */
+  struct ClonedFile {
+    std::string name;
+    off_t size;
+    struct timespec mtime;
+    struct timespec ctime;
+  };
+  std::map<std::pair<dev_t, ino_t>, ClonedFile> cloned_files;
   std::vector<RawDataMetadata> raw_recs;
   struct DeferredRawData {
     pid_t rec_tid;
