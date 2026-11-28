@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <linux/perf_event.h>
 #include <poll.h>
+#include <sched.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -718,12 +719,23 @@ static void check_pmu(int pmu_index) {
     return;
   }
 
-  if (perf_attrs.size() > 1 && !CPUs::set_affinity_to_cpu(pmu_index)) {
-    FATAL() << "Couldn't set affinity to the right PMU";
+  // This usually runs after Session::do_bind_cpu has bound us to the
+  // tracees' CPU, so restore our current affinity afterwards, not our
+  // initial affinity. Otherwise rr stops sharing the tracees' CPU, so every
+  // perf counter ioctl and every wakeup between rr and a tracee needs an IPI.
+  cpu_set_t old_affinity;
+  if (perf_attrs.size() > 1) {
+    if (sched_getaffinity(0, sizeof(old_affinity), &old_affinity)) {
+      FATAL() << "sched_getaffinity failed";
+    }
+    if (!CPUs::set_affinity_to_cpu(pmu_index)) {
+      FATAL() << "Couldn't set affinity to the right PMU";
+    }
   }
   perf_attr.ticks_min_period = check_for_bugs(perf_attr, pmu_index);
-  if (perf_attrs.size() > 1) {
-    CPUs::get().restore_initial_affinity();
+  if (perf_attrs.size() > 1 &&
+      sched_setaffinity(0, sizeof(old_affinity), &old_affinity)) {
+    FATAL() << "Couldn't restore affinity after checking the PMU";
   }
 
   /*
