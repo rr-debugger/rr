@@ -1394,6 +1394,7 @@ set(BASIC_TESTS
   seccomp_cloning
   seccomp_clone_fail
   seccomp_desched
+  arm/seccomp_errno_x7
   seccomp_kill_clone
   seccomp_kill_exit
   seccomp_madvise
