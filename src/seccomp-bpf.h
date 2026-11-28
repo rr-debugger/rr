@@ -78,6 +78,11 @@ public:
   void allow_syscalls_from_callsite(remote_code_ptr ip) {
     uint32_t v(ip.register_value());
     DEBUG_ASSERT(ip.register_value() == v);
+    // Check that the upper half of the 64-bit (little-endian)
+    // instruction_pointer is zero, then compare the lower half.
+    filters.push_back(
+        BPF_STMT(BPF_LD + BPF_W + BPF_ABS, inst_ptr + sizeof(uint32_t)));
+    filters.push_back(BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, 0, 0, 3));
     filters.push_back(BPF_STMT(BPF_LD + BPF_W + BPF_ABS, inst_ptr));
     filters.push_back(BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, v, 0, 1));
     allow();
