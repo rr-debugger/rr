@@ -1065,6 +1065,7 @@ set(BASIC_TESTS
   cwd_inaccessible
   daemon
   x86/deferred_patch
+  x86/deferred_patch_changed_restart
   desched_blocking_poll
   desched_sigkill
   detach_huge_mmap
