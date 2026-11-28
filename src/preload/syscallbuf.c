@@ -2898,31 +2898,15 @@ static long sys_epoll_wait(struct syscall_info* call) {
 
   ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
   ret = commit_raw_syscall(call->no, ptr, ret);
-  if (timeout == 0 || (ret != EINTR && ret != 0)) {
-    /* If we got some real results, or a non-EINTR error, we can just
-       return it directly.
+  if (timeout == 0 || ret != 0) {
+    /* If we got some real results or an error we can just
+       return immediately.
        If we got no results and the timeout was 0, we can just return 0.
-       If we got EINTR and the timeout was 0, a signal must have
-       interrupted the syscall (not sure if this can happen...). If the signal
-       needs to be handled, we'll handle it as we exit the syscallbuf.
-       Returning EINTR is fine because that's what the syscall would have
-       returned had it run traced. (We didn't enable the desched signal
-       so no extra signals could have affected our untraced syscall that
-       could not have been delivered to a traced syscall.) */
+     */
     return ret;
   }
-  /* Some timeout was requested and either we got no results or we got
-     EINTR.
-     In the former case we just have to wait, so we do a traced syscall.
-     In the latter case, the syscall must have been interrupted by a
-     signal (which rr will have handled or stashed, and won't deliver until
-     we exit syscallbuf code or do a traced syscall). The kernel doesn't
-     automatically restart the syscall because of a longstanding bug (as of
-     4.17 anyway). Doing a traced syscall will allow a stashed signal to be
-     processed (if necessary) and allow things to proceed normally after that.
-     Note that if rr decides to deliver a signal to the tracee, that will
-     itself interrupt the syscall and cause it to return EINTR just as
-     would happen without rr.
+  /* Some timeout was requested and there are no results pending.
+     We just have to wait, so we do a traced syscall.
   */
   return traced_raw_syscall(call);
 }
@@ -2967,31 +2951,15 @@ static long sys_epoll_pwait2(struct syscall_info* call) {
   ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
   ret = commit_raw_syscall(call->no, ptr, ret);
   if ((timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0) ||
-      (ret != EINTR && ret != 0)) {
-    /* If we got some real results, or a non-EINTR error, we can just
-       return it directly.
+      ret != 0) {
+    /* If we got some real results or an error we can just
+       return immediately.
        If we got no results and the timeout was 0, we can just return 0.
-       If we got EINTR and the timeout was 0, a signal must have
-       interrupted the syscall (not sure if this can happen...). If the signal
-       needs to be handled, we'll handle it as we exit the syscallbuf.
-       Returning EINTR is fine because that's what the syscall would have
-       returned had it run traced. (We didn't enable the desched signal
-       so no extra signals could have affected our untraced syscall that
-       could not have been delivered to a traced syscall.) */
+     */
     return ret;
   }
-  /* Some timeout was requested and either we got no results or we got
-     EINTR.
-     In the former case we just have to wait, so we do a traced syscall.
-     In the latter case, the syscall must have been interrupted by a
-     signal (which rr will have handled or stashed, and won't deliver until
-     we exit syscallbuf code or do a traced syscall). The kernel doesn't
-     automatically restart the syscall because of a longstanding bug (as of
-     4.17 anyway). Doing a traced syscall will allow a stashed signal to be
-     processed (if necessary) and allow things to proceed normally after that.
-     Note that if rr decides to deliver a signal to the tracee, that will
-     itself interrupt the syscall and cause it to return EINTR just as
-     would happen without rr.
+  /* Some timeout was requested and there are no results pending.
+     We just have to wait, so we do a traced syscall.
   */
   return traced_raw_syscall(call);
 }
