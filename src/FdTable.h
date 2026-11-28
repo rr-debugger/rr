@@ -5,6 +5,7 @@
 
 #include <sys/types.h>
 
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -86,8 +87,9 @@ public:
    * (device, inode) of the file they refer to. When `writable_fds_valid` is
    * true, every writable fd in the table is present, but entries can be
    * stale (closed or reused fds), so users must revalidate each entry.
-   * Invalidate whenever a writable fd may have been created.
-   * Not copied by clone(); a cloned table starts out invalid.
+   * When a writable fd is created and rr knows its number, add it with
+   * did_create_writable_fd; otherwise invalidate.
+   * clone() copies it, since the new table has the same fds.
    */
   std::unordered_map<std::pair<dev_t, ino_t>, std::vector<int>, DevInodeHash>
       writable_fds_by_file;
@@ -95,6 +97,15 @@ public:
   void invalidate_writable_fds() {
     writable_fds_valid = false;
     writable_fds_by_file.clear();
+  }
+  void did_create_writable_fd(int fd, dev_t device, ino_t inode) {
+    if (!writable_fds_valid) {
+      return;
+    }
+    auto& fds = writable_fds_by_file[std::make_pair(device, inode)];
+    if (std::find(fds.begin(), fds.end(), fd) == fds.end()) {
+      fds.push_back(fd);
+    }
   }
 
 private:
@@ -104,7 +115,10 @@ private:
   // Does not call the base-class copy constructor because
   // we don't want to copy the task set; the new FdTable will
   // be for new tasks.
-  FdTable(const FdTable& other) : fds(other.fds),
+  FdTable(const FdTable& other) :
+    writable_fds_by_file(other.writable_fds_by_file),
+    writable_fds_valid(other.writable_fds_valid),
+    fds(other.fds),
     syscallbuf_fds_disabled_size(other.syscallbuf_fds_disabled_size),
     fd_count_beyond_limit(other.fd_count_beyond_limit),
     last_free_fd_(other.last_free_fd_) {}

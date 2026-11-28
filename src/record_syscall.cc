@@ -6755,14 +6755,53 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   return our_mapping_writable;
 }
 
-// Recording only. Call after a traced syscall that might have created an fd
-// in the caller's fd table, other than via handle_opened_file
-// (open/openat/openat2/creat and SCM_RIGHTS), which invalidates the
-// writable-fd cache itself, and only for writable fds.
+// Call after a traced syscall that might have created fds in the
+// caller's fd table that we can't identify.
 static void maybe_created_writable_fd(RecordTask* t) {
   if (!t->regs().syscall_failed()) {
     t->fd_table()->invalidate_writable_fds();
   }
+}
+
+// Call when `fd` may have just been created in `t`'s fd table, to keep
+// its writable-fd cache up to date. It's harmless if `fd` is actually an existing fd.
+static void did_create_fd(RecordTask* t, int fd) {
+  if (!t->fd_table()->writable_fds_valid) {
+    return;
+  }
+  struct stat st, lst;
+  if (!try_stat_fd(t, fd, &lst, true)) {
+    // It's already gone (another thread closed it?), or was never an fd.
+    return;
+  }
+  if (!(lst.st_mode & S_IWUSR) || !try_stat_fd(t, fd, &st, false)) {
+    return;
+  }
+  t->fd_table()->did_create_writable_fd(fd, st.st_dev, st.st_ino);
+}
+
+// Call after a traced syscall that returns a new fd.
+static void did_create_result_fd(RecordTask* t) {
+  if (!t->regs().syscall_failed()) {
+    did_create_fd(t, (int)t->regs().syscall_result_signed());
+  }
+}
+
+// Call after a traced syscall that writes two new fds to
+// `fds_ptr` (pipe, pipe2, socketpair).
+static void did_create_fd_pair(RecordTask* t, remote_ptr<int> fds_ptr) {
+  if (t->regs().syscall_failed()) {
+    return;
+  }
+  bool ok = true;
+  auto fds = t->read_mem(fds_ptr.cast<std::array<int, 2>>(), &ok);
+  if (!ok) {
+    // We can't tell which fds were created.
+    t->fd_table()->invalidate_writable_fds();
+    return;
+  }
+  did_create_fd(t, fds[0]);
+  did_create_fd(t, fds[1]);
 }
 
 static bool os_has_broken_zfs() {
@@ -7397,7 +7436,7 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
 
   bool writable = is_writable(t, fd);
   if (writable) {
-    t->fd_table()->invalidate_writable_fds();
+    t->fd_table()->did_create_writable_fd(fd, st.st_dev, st.st_ino);
   }
 
   // This must be kept in sync with replay_syscall's handle_opened_files.
@@ -7781,7 +7820,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::perf_event_open:
-      maybe_created_writable_fd(t);
+      did_create_result_fd(t);
       if (!t->regs().syscall_failed()) {
         int fd = t->regs().syscall_result_signed();
         if (t->regs().original_syscallno() == Arch::inotify_init1) {
@@ -7818,7 +7857,7 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::accept:
     case Arch::accept4: {
-      maybe_created_writable_fd(t);
+      did_create_result_fd(t);
       Registers r = t->regs();
       maybe_process_new_socket(t, r.syscall_result());
       break;
@@ -8003,7 +8042,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       t->set_regs(r);
 
       if (r.arg2() == Arch::DUPFD || r.arg2() == Arch::DUPFD_CLOEXEC) {
-        maybe_created_writable_fd(t);
+        did_create_result_fd(t);
       }
 
       if (!r.syscall_failed() && r.arg3() == O_DIRECT) {
@@ -8050,22 +8089,31 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::inotify_init1:
     case Arch::fanotify_init:
     case Arch::socket:
+    case Arch::landlock_create_ruleset:
+      did_create_result_fd(t);
+      break;
+
     case Arch::socketpair:
+      did_create_fd_pair(t, t->regs().arg4());
+      break;
     case Arch::pipe:
     case Arch::pipe2:
-    case Arch::landlock_create_ruleset:
-      maybe_created_writable_fd(t);
+      did_create_fd_pair(t, t->regs().orig_arg1());
       break;
 
     case Arch::dup2:
     case Arch::dup3:
-    // Some ioctls create fds (e.g. KVM, DRM PRIME, sync_file). Traced ioctls
-    // are rare enough that we don't try to distinguish them.
-    case Arch::ioctl:
     case Arch::io_uring_setup:
     case Arch::memfd_create:
     case Arch::userfaultfd:
-      maybe_created_writable_fd(t);
+    // Some ioctls create fds (e.g. KVM, DRM PRIME, sync_file). Traced ioctls
+    // are rare enough that we don't try to distinguish them.
+    case Arch::ioctl:
+      if (syscallno == Arch::ioctl) {
+        maybe_created_writable_fd(t);
+      } else {
+        did_create_result_fd(t);
+      }
       RR_FALLTHROUGH;
     case Arch::clone3:
     case Arch::close_range:

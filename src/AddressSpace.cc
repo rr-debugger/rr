@@ -1928,6 +1928,10 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       saved_ld_path_(o.saved_ld_path_),
       last_free_memory(o.last_free_memory),
       first_run_event_(0) {
+  // Our memory (including preload_globals) is a copy of `o`'s, and our tasks'
+  // fd tables start out as copies of its tasks' fd tables, writable-fd caches
+  // included.
+  writable_fd_generation_seen = o.writable_fd_generation_seen;
   for (auto& m : mem) {
     // The original address space continues to have exclusive ownership of
     // all local mappings.

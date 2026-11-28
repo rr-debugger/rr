@@ -3409,8 +3409,6 @@ static long sys_recvmsg(struct syscall_info* call) {
        * file descriptors was received.
        */
       thread_locals->notify_control_msg = msg;
-      /* rr only learns about the fds at the next safe point. */
-      note_writable_fd_created();
     }
   } else {
     /* Allocate record space as least to cover the data we overwrote above.
